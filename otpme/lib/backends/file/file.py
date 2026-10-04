@@ -2264,13 +2264,18 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             if not object_uuid in result_dict:
                 result_dict[object_uuid] = {}
             if attribute_name in config.otpme_base_attributes:
-                try:
-                    x_val = result_dict[object_uuid][attribute_name]
-                except Exception:
-                    x_val = None
-                if attribute_value == x_val:
-                    continue
-                result_dict[object_uuid][attribute_name] = x_val
+                # A base attribute is already in the result, from the
+                # main query above, and as the value it is: an OID as an
+                # OID, the ldif as a dict. A row for the same name in
+                # the attribute table must not turn that into a list,
+                # which is what happens to every other attribute below,
+                # and must not overwrite it with the string the table
+                # holds either. So it is left alone.
+                #
+                # This used to assign the value it had just read back
+                # over itself, which did nothing but read like a typo --
+                # and like one that would leave a base attribute at None
+                # if it ever did come from here and nowhere else.
                 continue
             try:
                 x_val_list = result_dict[object_uuid][attribute_name]

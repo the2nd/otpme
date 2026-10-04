@@ -281,13 +281,24 @@ def get_thread_name():
     return thread_name
 
 def signal_handler(_signal, frame):
-    """ Handle SIGTERM. """
+    """ End this process on SIGTERM or on SIGINT.
+
+    Both, because atfork(exit_on_signal=True) registers this for both.
+    Acting on SIGTERM alone left this worse than no handler at all for
+    SIGINT: without one the interpreter raises KeyboardInterrupt and
+    the child ends, while this one swallowed the signal. So every child
+    of a daemon that was started in the foreground survived the Ctrl+C
+    that stopped the realm, and went on running with its parent gone --
+    hostd's wait_for_news collected one orphan per run that way, each
+    of them retrying a connection to a site nobody was listening on.
+    """
     from otpme.lib import config
-    if _signal != 15:
+    if _signal not in (signal.SIGTERM, signal.SIGINT):
         return
     # Get logger.
     logger = config.logger
-    log_msg = _("Received SIGTERM.", log=True)[1]
+    log_msg = _("Received {signal_name}.", log=True)[1]
+    log_msg = log_msg.format(signal_name=signal.Signals(_signal).name)
     logger.info(log_msg)
     os._exit(0)
 
@@ -1218,18 +1229,30 @@ class InterProcessQueue(object):
         except Exception:
             return
         if sender is None:
-             sender = list(recipient_queue)[0]
+            # The first one that has something. It used to be the first key
+            # there is, and an empty list under it ended the search: nothing
+            # came back although another sender had something waiting.
+            for x_sender in list(recipient_queue):
+                if recipient_queue[x_sender]:
+                    sender = x_sender
+                    break
+            else:
+                return
         try:
             sender_messages = recipient_queue[sender]
         except Exception:
             return
         try:
             sender, command, data = sender_messages.pop()
-            if not sender_messages:
-                recipient_queue.pop(sender)
         except Exception:
             return
-        recipient_queue[sender] = sender_messages
+        # An empty list is taken out instead of being put back: it was
+        # popped and then written again one line later, so the sender kept
+        # a bucket with nothing in it, and the search above stopped there.
+        if sender_messages:
+            recipient_queue[sender] = sender_messages
+        else:
+            recipient_queue.pop(sender, None)
         self.message_queue[recipient] = recipient_queue
         return sender, command, data
 
@@ -1254,14 +1277,38 @@ class InterProcessQueue(object):
             if autoclose:
                 queue.close()
 
-    def recv(self, recipient, sender=None, timeout=None):
-        """ Receive message. """
-        # Try to get queued message.
+    def recv(self, recipient, sender=None, command=None, timeout=None):
+        """ Receive message.
+
+        command: wait for this one and leave anything else where it is. A
+        list where more than one answer will do.
+
+        Without it this hands over the next message from that sender,
+        whatever it says -- and a caller that is waiting for an answer takes
+        a message somebody sent unasked for a wrong answer, and swallows it
+        on the way. A daemon does send things unasked: clusterd passes on a
+        reload a peer asked for, idled and ssod say "reload_done", hostd
+        says "ready".
+
+        What does not match goes back the way a message from another sender
+        already does, with its own sender, so whoever it was meant for still
+        gets it.
+        """
+        if command is not None:
+            if isinstance(command, str):
+                command = [command]
+        # Try to get queued message. The sender is checked in there: the
+        # queue is kept per sender, see queue_message(). Not assigned to
+        # <sender>, which the loop below still needs.
         try:
-            sender, command, data = self.get_queued_message(recipient, sender)
-            return sender, command, data
+            x_sender, x_command, x_data = self.get_queued_message(recipient,
+                                                                sender)
         except Exception:
             pass
+        else:
+            if command is None or x_command in command:
+                return x_sender, x_command, x_data
+            self.queue_message(recipient, x_sender, x_command, x_data)
         while True:
             # Get queue.
             queue = self.get_queue(recipient)
@@ -1269,7 +1316,7 @@ class InterProcessQueue(object):
             message = queue.recv(timeout=timeout)
             # Decode message.
             try:
-                _sender, command, data = self.decode_message(message)
+                _sender, _command, data = self.decode_message(message)
             except Exception as e:
                 msg = _("Failed to decode message: {e}")
                 msg = msg.format(e=e)
@@ -1281,9 +1328,10 @@ class InterProcessQueue(object):
             if _sender == sender:
                 sender_ok = True
             if sender_ok:
-                return _sender, command, data
-            # Queue message from other sender than requested.
-            self.queue_message(recipient, _sender, command, data)
+                if command is None or _command in command:
+                    return _sender, _command, data
+            # Queue message we are not waiting for.
+            self.queue_message(recipient, _sender, _command, data)
 
     def close(self):
         for x in self.queues:

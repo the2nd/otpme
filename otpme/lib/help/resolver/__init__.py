@@ -89,6 +89,13 @@ cmd_help = {
                                     'cmd'                   : _('Get config parameter.'),
                                 },
                 },
+    'show_config'      : {
+                    '_cmd_usage_help' : _('Usage: otpme-resolver show_config {resolver} [parameter]'),
+                    'cmd'   :   '<|object|> [parameter]',
+                    '_help' :   {
+                                    'cmd'                   : _('Show resolver config parameters'),
+                                },
+                },
     'changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver changelog {resolver}'),
                     'cmd'   :   '<|object|>',
@@ -129,16 +136,16 @@ cmd_help = {
                 },
 
     'add_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-resolver add_acl {resolver} {role|token} {role_path|token_path} {acl[:value]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-resolver add_acl {resolver} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
+                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to resolver.'),
                                 },
                 },
 
     'del_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-resolver del_acl {resolver} {acl}'),
-                    'cmd'   :   '<|object|> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-resolver del_acl {resolver} {acl[,acl]}'),
+                    'cmd'   :   '<|object|> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Delete ACL from resolver.'),
                                 },
@@ -239,10 +246,11 @@ cmd_help = {
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-resolver export {resolver}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-resolver export --password <password> {resolver}'),
+                    'cmd'   :   '--password :password: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export resolver config to stdout.'),
+                                    '--password <password>' : _('Encrypt object config with password.'),
                                 },
                 },
 

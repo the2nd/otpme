@@ -30,6 +30,11 @@ from otpme.lib.classes.data_objects.token_counter import TokenCounter
 from otpme.lib.exceptions import *
 
 LOCK_TYPE = "offline_token"
+# The private keys of a user, named the way the user object names them
+# (User._key_attr()). Here rather than there because this is the side
+# that holds them for the key script: otpme-agent and the login both
+# ask for the list, and neither has business loading the user class.
+PRIVATE_KEY_ROLES = ["sign", "encrypt"]
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = [
@@ -211,6 +216,10 @@ class OfflineToken(object):
         # Key mode file.
         self.key_mode_file = f"{self.offline_dir}/key_mode"
         self.key_cache_time_file = f"{self.offline_dir}/key_cache_time"
+        # Where the users private keys go, one file per role. They are
+        # here as the user stored them, wrapped with the key password,
+        # see save_private_key().
+        self.private_key_dir = f"{self.offline_dir}/keys"
 
     def set_login_token(self, uuid, session_uuid, token_owns_keys=False):
         """ Write login token UUID to cache file. """
@@ -1262,6 +1271,81 @@ class OfflineToken(object):
             msg = _("Error writing key cache time file: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg) from e
+
+    def get_private_key_file(self, key_role):
+        """ Where the private key of one role is kept. """
+        if key_role not in ("sign", "encrypt"):
+            msg = _("Unknown key role: {key_role}")
+            msg = msg.format(key_role=key_role)
+            raise OTPmeException(msg)
+        return os.path.join(self.private_key_dir, f"{key_role}_private_key")
+
+    def get_private_key(self, key_role):
+        """ The private key of one role, or None if we have none.
+
+        As it came from the server, which is as the user stored it:
+        wrapped with the key password. Nothing here can read it, and
+        nothing here has to -- the key script does that, and only when
+        it is asked to use the key.
+        """
+        private_key_file = self.get_private_key_file(key_role)
+        if not os.path.exists(private_key_file):
+            return
+        try:
+            return filetools.read_file(private_key_file)
+        except Exception as e:
+            log_msg = _("Error reading private key file: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
+            return
+
+    def save_private_key(self, key_role, private_key):
+        """ Keep the private key of one role.
+
+        Readable by the user and nobody else, like everything in here.
+        The point of holding it is a login that works without the
+        servers, and a key script that does not ask them once per
+        signature.
+        """
+        private_key_file = self.get_private_key_file(key_role)
+        if not private_key:
+            self.remove_private_key(key_role)
+            return
+        if not os.path.exists(self.private_key_dir):
+            filetools.create_dir(path=self.private_key_dir,
+                                user=self.username,
+                                mode=0o700,
+                                user_acls=self.dir_acls)
+        try:
+            filetools.create_file(private_key_file,
+                                private_key,
+                                user=self.username,
+                                mode=0o600,
+                                user_acls=self.file_acls)
+        except Exception as e:
+            msg = _("Error writing private key file: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg) from e
+        log_msg = _("Saved {key_role} private key to file: {private_key_file}", log=True)[1]
+        log_msg = log_msg.format(key_role=key_role,
+                                private_key_file=private_key_file)
+        self.logger.debug(log_msg)
+
+    def remove_private_key(self, key_role):
+        """ Drop the private key of one role.
+
+        Called when the server sends none: the user turned key caching
+        off, or the key is gone. What we hold must not outlive that.
+        """
+        private_key_file = self.get_private_key_file(key_role)
+        if not os.path.exists(private_key_file):
+            return
+        try:
+            os.remove(private_key_file)
+        except OSError as e:
+            log_msg = _("Error removing private key file: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
 
     def save_script(self, script_id, script_uuid, script, script_path,
         script_options=None, script_signs=None):

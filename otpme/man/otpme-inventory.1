@@ -20,14 +20,9 @@ It checks the host every 60 seconds and only sends what changed.
 It does not take stock while a job is running on the host.
 A package manager at work is no good moment for it, the next round does it.
 .PP
-The data is stored in two places:
-.IP \(bu 2
-The OS and the OS version are stored on the host object (\fBos\fR, \fBos_version\fR).
-They are shown by \fBotpme\-host show\fR.
-.IP \(bu 2
-The packages and the hardware are stored in a separate inventory object for each host.
-Host objects are synced to all hosts, and the package lists of all hosts should not be.
-The inventory stays on the nodes of the host's site.
+The OS, the OS version, the packages and the hardware are stored in a separate inventory object for each host, not on the host object.
+All four are what the host reported about itself, and an inventory has to stand on its own.
+Host objects are synced to all hosts, and the package lists of all hosts should not be, so the inventory stays on the nodes of the host's site.
 .PP
 Changing the inventory does not change the last modified time of the host.
 .PP
@@ -37,7 +32,7 @@ config parameter of that host.
 Hosts you may not see are left out of search results.
 See \fBPERMISSIONS\fR below.
 .PP
-Only hosts of the own site are shown.
+Shown are the hosts whose inventory this site keeps: its own, and those of other sites that report here, see \fBA CENTRAL INVENTORY\fR.
 .PP
 The hardware is read on any Linux host.
 Package lists need a package manager the host knows, which today means Debian and Ubuntu.
@@ -67,6 +62,7 @@ With a \fIpackage\fR that is the package and its version, one line per package.
 With \fB\-\-hardware\fR it is the value that matched.
 A host has several disks, and then only the disks that match are shown, with their name.
 So a search for \fB'disk_size>=100G'\fR shows \fBsdb=150.0G\fR and not all disks of the host.
+Behind the size comes what says which disk it is, the vendor, the model and the serial, where the host knows them: \fBsdb=150.0G(SEAGATE ST1000NM0055 ZA12345)\fR.
 .SH OPTIONS
 .TP
 .B \-\-filter \fIpattern\fR
@@ -123,6 +119,59 @@ Example:
 .RS
 otpme\-host config client1 allow_inventory 'role|example.org/berlin/it\-support'
 .RE
+.PP
+For a host of another site that reports here, see \fBA CENTRAL INVENTORY\fR, there is a second parameter:
+.TP
+.B allow_foreign_inventory \fR(list)
+Who may read the inventories of hosts that are not ours.
+Set on the site that keeps them, it holds tokens and roles like \fBallow_inventory\fR and decides instead of the \fBallow_inventory\fR of the host.
+.br
+Unset means the host decides, with its own \fBallow_inventory\fR at the host, its unit and its site of origin.
+.br
+It does not touch the hosts of this site, those always go by \fBallow_inventory\fR.
+.br
+Object types: site
+.SH A CENTRAL INVENTORY
+By default a host reports to the site it belongs to, and that site answers for it.
+A realm that wants one place to ask "which machines do we have" points its hosts somewhere else.
+.PP
+Two parameters, one at each end, because a host saying where it wants to report is not the same as a site agreeing to keep it.
+.TP
+.B inventory_site \fR(str)
+Where a host reports its inventory.
+Set it on a host, a unit or a site; the most specific one wins, like every config parameter.
+Unset means the site the host belongs to.
+.br
+Object types: site, unit, host, node
+.TP
+.B inventory_trusts \fR(list)
+The sites whose hosts this site keeps inventories for.
+Unset means none, and then a host of another site is refused.
+.br
+Object types: site
+.PP
+Example, with every host of \fIberlin\fR reporting to \fImunich\fR:
+.PP
+.RS
+.nf
+otpme\-site config berlin inventory_site munich
+otpme\-site config munich inventory_trusts berlin
+.fi
+.RE
+.PP
+Both sites have to be in the same realm.
+An inventory is kept per realm, and a host of another realm is refused whatever is set here.
+.PP
+Who may read them is the
+.B allow_foreign_inventory
+of this site, and where that is unset the
+.B allow_inventory
+of the host, which resolves at that host, its unit and its site of origin.
+So either end can decide: set it here and this site says who reads, leave it and the site the data is about keeps saying.
+See \fBPERMISSIONS\fR.
+.PP
+A host that reported to its own site before keeps that inventory there.
+It is not moved and not deleted, and it stops being updated.
 .SH OS AND OS VERSION
 \fBos\fR is \fBLinux\fR, \fBWindows\fR or \fBMacOS\fR.
 \fBos_version\fR is the ID and the version from \fI/etc/os\-release\fR, for example \fBdebian\-13\fR or \fBubuntu\-24.04\fR.
@@ -135,11 +184,14 @@ Only fully installed packages are listed.
 The host reads all of this from files, so nothing has to be installed for it.
 A field that a host cannot read is left out.
 On a virtual machine most of the DMI fields are empty.
+.br
+The one thing that is nicer with a package installed is the name of a controller: it comes from the PCI ID database (\fBpciutils\fR or \fBhwdata\fR), and without it a controller is its IDs and its driver.
 .PP
-These fields can be searched with \fB\-\-hardware\fR:
+Everything a host reports can be searched with \fB\-\-hardware\fR.
+These are the fields:
 .TP
 .B vendor\fR, \fBmodel\fR, \fBserial\fR, \fBasset_tag\fR, \fBsku
-What the board says about itself, from \fI/sys/class/dmi/id\fR.
+What the machine says about itself, from \fI/sys/class/dmi/id\fR.
 .B serial
 is what Dell calls the Service Tag.
 You can also write
@@ -147,6 +199,10 @@ You can also write
 in a search, it means the same field.
 .B asset_tag
 is the tag your own IT sets, it is a different field.
+.TP
+.B board_vendor\fR, \fBboard_model\fR, \fBboard_serial
+The same three for the mainboard.
+Useful when a board series turns out to be faulty: the machine can carry the name of the maker who built it, the board carries the name of who made the board.
 .TP
 .B cpu_model\fR, \fBcpu_count
 The CPU and how many logical CPUs there are, from \fI/proc/cpuinfo\fR.
@@ -158,13 +214,43 @@ How much memory the host has, from \fI/proc/meminfo\fR.
 Can be compared.
 Write it as a size, for example \fB8G\fR.
 .TP
-.B disk\fR, \fBdisk_size
+.B disk\fR, \fBdisk_size\fR, \fBdisk_serial\fR, \fBdisk_vendor\fR, \fBdisk_model
 One entry per disk, from \fI/sys/block\fR.
 .B disk
 is the name, for example \fBsda\fR.
 .B disk_size
 is the size and can be compared.
-A host matches when any of its disks matches.
+.B disk_serial
+is the serial number of the disk, the one on the sticker.
+.B disk_vendor
+and
+.B disk_model
+are who made it and what it is called, for example \fBATA\fR and \fBOCZ\-VERTEX3 MI\fR.
+Use them when a whole series of disks turns out to be faulty.
+.br
+A SATA disk says \fBATA\fR as its vendor, whatever is written on it: that is the name of the interface and not of the maker, and the maker is part of the model.
+A SAS or SCSI disk says \fBSEAGATE\fR or \fBDELL\fR.
+So search a SATA disk by its model.
+.br
+A host matches when any of its disks matches, and the answer names the disks that did.
+.br
+The serial is read from the disk itself, so not every disk has one: NVMe disks report it directly, SCSI and SATA disks through their serial number page.
+.TP
+.B nic
+The network cards, from \fI/sys/class/net\fR.
+Only what has hardware behind it, so the loopback, the bridges, the bonds, the VLAN interfaces and the tunnels are left out: those are not hardware and are named after whoever configured them.
+.br
+Matches the name the kernel gave a card (\fBeno1\fR), its MAC, its vendor, the name on the card or the name of the chip on it.
+Search it by MAC when a DHCP lease or a switch port is all you have and the question is which host that is.
+.TP
+.B controller
+The storage controllers, from \fI/sys/bus/pci/devices\fR: every PCI device of the mass storage class.
+Matches the PCI address of a controller (\fB0000:18:00.0\fR), its vendor, the name on the card (\fBPERC H730P Mini\fR) or the name of the chip on it (\fBMegaRAID SAS\-3 3108\fR).
+.br
+The answer is the disks that hang on the controller, because that is what a controller is looked for.
+.br
+The names come from the PCI ID database of the host (\fI/usr/share/misc/pci.ids\fR or \fI/usr/share/hwdata/pci.ids\fR).
+A host without one reports the IDs and the driver, and then only those can be searched.
 .TP
 .B virtual\fR, \fBvirt_type
 Whether the host is a virtual machine, and on what.
@@ -173,12 +259,13 @@ is \fByes\fR or \fBno\fR.
 .B virt_type
 is \fBkvm\fR, \fBvmware\fR, \fBvirtualbox\fR, \fBxen\fR, \fBhyperv\fR and so on.
 .TP
-.B bios_version\fR, \fBchassis_type
-The BIOS version, and what kind of case this is (\fBrack\-mount\-chassis\fR, \fBlaptop\fR, \fBdesktop\fR and so on).
-.PP
-.B hardware
-also shows the board, the BIOS vendor and the BIOS date.
-Those are not searched, they are only read off the host.
+.B bios_vendor\fR, \fBbios_version\fR, \fBbios_date
+The BIOS.
+.B bios_date
+is written the way the board writes it, usually \fBmm/dd/yyyy\fR, so search it with a wildcard.
+.TP
+.B chassis_type
+What kind of case this is (\fBrack\-mount\-chassis\fR, \fBlaptop\fR, \fBdesktop\fR and so on).
 .SH EXAMPLES
 .SS One host
 Show the system of a host, how many packages it has and which machine it is:
@@ -211,8 +298,10 @@ model: PowerEdge R640
 serial: ABC1234
 vendor: Dell Inc.
 virtual: no
-disk: sda 223.6G PERC H730P
-disk: sdb 1.8T PERC H730P
+disk: sda 223.6G DELL PERC H730P serial=6F4EE0803A2E4900 controller=0000:18:00.0
+disk: sdb 1.8T DELL PERC H730P serial=6F4EE0803A2E4901 controller=0000:18:00.0
+controller: 0000:18:00.0 Broadcom / LSI PERC H730P Mini MegaRAID SAS\-3 3108 vendor_id=1000 device_id=005d subsystem_id=1028:1f47 driver=megaraid_sas
+nic: eno1 ec:f4:bb:11:22:33 Intel Corporation I350 Gigabit Network Connection vendor_id=8086 device_id=1521 driver=igb
 .fi
 .RE
 .PP
@@ -257,9 +346,6 @@ Show all hosts that run Debian 12.
 .TP
 .B otpme-inventory search \-\-os\-version 'debian\-*'
 Show all Debian hosts, whatever the version.
-.TP
-.B otpme-tool search object_type=host attribute=os_version value=debian\-12 return_type=name
-The same search with \fBotpme\-tool\fR, which gives the names only.
 .SS Find hosts by hardware
 .TP
 .B otpme-inventory search \-\-hardware service_tag=ABC1234
@@ -293,9 +379,47 @@ A host has several disks, so only the disks that match are shown:
 .RS
 .nf
 $ otpme\-inventory search \-\-hardware 'disk_size>=100G'
-client1 sda=223.6G
-dev1 sdc=100.0G
-server1 sdb=150.0G
+client1 sda=223.6G(DELL PERC H730P 6F4EE0803A2E4900)
+dev1 sdc=100.0G(QEMU QEMU HARDDISK)
+server1 sdb=150.0G(SEAGATE ST1000NM0055 ZA12345)
+.fi
+.RE
+.PP
+The other way round, to find the host a disk sits in when all you have is the disk:
+.PP
+.RS
+.nf
+$ otpme\-inventory search \-\-hardware disk_serial=ZA12345
+server1 sdb=150.0G(SEAGATE ST1000NM0055 ZA12345)
+.fi
+.RE
+.PP
+Or every host that has a disk of a model, when a series turns out to be faulty:
+.PP
+.RS
+.nf
+$ otpme\-inventory search \-\-hardware 'disk_model=ST1000NM*'
+server1 sdb=150.0G(SEAGATE ST1000NM0055 ZA12345)
+server2 sdb=150.0G(SEAGATE ST1000NM0055 ZA67890)
+.fi
+.RE
+.PP
+Ask for a controller, and the answer is the disks that hang on it:
+.PP
+.RS
+.nf
+$ otpme\-inventory search \-\-hardware 'controller=PERC H730P*'
+server1 PERC H730P Mini(sda=223.6G,sdb=1.8T)
+server2 PERC H730P Mini(sda=223.6G)
+.fi
+.RE
+.PP
+Which host a MAC belongs to:
+.PP
+.RS
+.nf
+$ otpme\-inventory search \-\-hardware nic=ec:f4:bb:11:22:33
+server1 eno1=ec:f4:bb:11:22:33(Intel Corporation I350 Gigabit Network Connection)
 .fi
 .RE
 .PP
@@ -305,9 +429,9 @@ Search by disk name the same way.
 .RS
 .nf
 $ otpme\-inventory search \-\-hardware disk=sda
-client1 sda=223.6G
-dev1 sda=48.0G
-server1 sda=32.0G
+client1 sda=223.6G(DELL PERC H730P 6F4EE0803A2E4900)
+dev1 sda=48.0G(QEMU QEMU HARDDISK)
+server1 sda=32.0G(QEMU QEMU HARDDISK)
 .fi
 .RE
 .SS Narrow it down

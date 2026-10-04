@@ -263,7 +263,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['owner_type', 'owner_name', 'acls'],
                     'oargs'             : ['recursive_acls', 'apply_default_acls', 'object_types'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
@@ -274,7 +275,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['acls'],
                     'oargs'             : ['recursive_acls', 'apply_default_acls', 'object_types'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',

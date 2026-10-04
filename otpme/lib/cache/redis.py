@@ -48,7 +48,6 @@ try:
 except Exception:
     pass
 
-from otpme.lib import re
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import system_command
@@ -404,7 +403,6 @@ class RedisHandler(object):
         elif raise_exceptions is True:
             self.raise_exceptions = [
                                     'config_set',
-                                    'scan_iter',
                                     'exists',
                                     'delete',
                                     'set',
@@ -430,23 +428,11 @@ class RedisHandler(object):
                 self.connection_error_logged = True
                 self.logger.critical(log_msg)
 
-    def scan_iter(self, *args, **kwargs):
-        try:
-            result = []
-            for x in list(self.redis_db.scan_iter(*args, **kwargs)):
-                x = x.decode()
-                result.append(x)
-            return result
-        except (redis.ConnectionError, redis.ResponseError) as e:
-            msg, log_msg = _("Redis error: {error}", log=True)
-            msg = msg.format(error=e)
-            log_msg = log_msg.format(error=e)
-            if "scan_iter" in self.raise_exceptions:
-                raise KeyError(msg) from e
-            if not self.connection_error_logged:
-                self.connection_error_logged = True
-                self.logger.critical(log_msg)
-        return []
+# No scan_iter() here on purpose. SCAN walks the whole keyspace
+# whatever MATCH is given -- the pattern only decides what comes back
+# -- so anything that calls it once per object pays for every key in
+# redis, and pays more the fuller redis gets. Whoever needs to know
+# which keys a dict holds asks the set it keeps (RedisDict).
 
     def set(self, *args, **kwargs):
         try:
@@ -515,6 +501,49 @@ class RedisHandler(object):
                 self.connection_error_logged = True
                 self.logger.critical(log_msg)
 
+    def sadd(self, *args, **kwargs):
+        try:
+            return self.redis_db.sadd(*args, **kwargs)
+        except (redis.ConnectionError, redis.ResponseError) as e:
+            msg, log_msg = _("Redis error: {error}", log=True)
+            msg = msg.format(error=e)
+            log_msg = log_msg.format(error=e)
+            if "sadd" in self.raise_exceptions:
+                raise KeyError(msg) from e
+            if not self.connection_error_logged:
+                self.connection_error_logged = True
+                self.logger.critical(log_msg)
+
+    def srem(self, *args, **kwargs):
+        try:
+            return self.redis_db.srem(*args, **kwargs)
+        except (redis.ConnectionError, redis.ResponseError) as e:
+            msg, log_msg = _("Redis error: {error}", log=True)
+            msg = msg.format(error=e)
+            log_msg = log_msg.format(error=e)
+            if "srem" in self.raise_exceptions:
+                raise KeyError(msg) from e
+            if not self.connection_error_logged:
+                self.connection_error_logged = True
+                self.logger.critical(log_msg)
+
+    def smembers(self, *args, **kwargs):
+        try:
+            result = []
+            for x in self.redis_db.smembers(*args, **kwargs):
+                result.append(x.decode())
+            return result
+        except (redis.ConnectionError, redis.ResponseError) as e:
+            msg, log_msg = _("Redis error: {error}", log=True)
+            msg = msg.format(error=e)
+            log_msg = log_msg.format(error=e)
+            if "smembers" in self.raise_exceptions:
+                raise KeyError(msg) from e
+            if not self.connection_error_logged:
+                self.connection_error_logged = True
+                self.logger.critical(log_msg)
+        return []
+
     def ttl(self, *args, **kwargs):
         try:
             return self.redis_db.ttl(*args, **kwargs)
@@ -566,6 +595,14 @@ class RedisDict(SharedDict):
         self.locking = locking
         self.compression = compression
         self.dict_data_key = "dict_data"
+        # The keys we wrote, as a redis set. clear() used to find them
+        # with SCAN, which walks the whole keyspace however few keys
+        # this dict has -- MATCH only filters what comes back. That is
+        # paid per clear(), and the function caches clear themselves on
+        # every write of an object (FuncCache.invalidate()), so a
+        # command that walks a tree spent most of its time scanning
+        # redis, and more of it the fuller redis got.
+        self.keys_set_id = f"{self.name}.keys"
         self.refresh_keys = refresh_keys
         #self.logger = config.logger
         self.pool = pool
@@ -597,45 +634,51 @@ class RedisDict(SharedDict):
         self._lock.release_lock()
 
     def clear(self):
-        search_regex = f"{self.name}.*"
-        keys = self.redis_db.scan_iter(search_regex)
-        if not keys:
-            return
-        self.redis_db.delete(*keys)
+        keys = self.redis_db.smembers(self.keys_set_id)
+        if keys:
+            # A key that expired in the meantime is gone already and
+            # deleting it does nothing, so the set does not have to be
+            # kept free of them. It goes with them anyway.
+            self.redis_db.delete(*keys)
+        self.redis_db.delete(self.keys_set_id)
 
-    def keys(self):
+    def _known_keys(self):
+        """ The keys the writes put in the set, as the caller named them.
+
+        From the set and not from a SCAN, for the reason above. A key
+        that has expired since it was written is still in here; the
+        three methods below ask redis for the values and drop the ones
+        that are not there anymore, which is one roundtrip and tells
+        them the same thing a scan would have.
+        """
+        prefix = f"{self.name}.{self.dict_data_key}."
         keys = []
-        search_regex = f"{self.name}.{self.dict_data_key}.*"
-        replace_regex = f"{self.name}.{self.dict_data_key}.(.*)"
-        _keys = self.redis_db.scan_iter(search_regex)
-        for x in _keys:
-            key = re.sub(replace_regex, r'\1', x)
-            keys.append(key)
+        for x in self.redis_db.smembers(self.keys_set_id):
+            if not x.startswith(prefix):
+                continue
+            keys.append(x[len(prefix):])
         return keys
 
+    def keys(self):
+        keys = self._known_keys()
+        if not keys:
+            return []
+        # The values are not wanted here, only whether they are there,
+        # so this does not go through get_multi() and its decoding.
+        _keys = [self.get_key_id(x) for x in keys]
+        values = self.redis_db.mget(_keys)
+        result = []
+        for x_key, x_value in zip(keys, values):
+            if x_value is None:
+                continue
+            result.append(x_key)
+        return result
+
     def values(self):
-        values = []
-        search_regex = f"{self.name}.{self.dict_data_key}.*"
-        _keys = self.redis_db.scan_iter(search_regex)
-        for x in _keys:
-            value = self._get(x)
-            values.append(value)
-        return values
+        return list(self.get_multi(self._known_keys()).values())
 
     def items(self):
-        items = []
-        search_regex = f"{self.name}.{self.dict_data_key}.*"
-        replace_regex = f"{self.name}.{self.dict_data_key}.(.*)"
-        _keys = self.redis_db.scan_iter(search_regex)
-        for x in _keys:
-            key = re.sub(replace_regex, r'\1', x)
-            try:
-                value = self._get(x)
-            except KeyError:
-                continue
-            item = (key, value)
-            items.append(item)
-        return items
+        return list(self.get_multi(self._known_keys()).items())
 
     def add(self, key, value, expire=None, **kwargs):
         from otpme.lib import locking
@@ -645,11 +688,14 @@ class RedisDict(SharedDict):
         try:
             # Add key.
             self._add(_key, value, expire=expire, **kwargs)
+            # Remember it, so clear() finds it without a scan.
+            self.redis_db.sadd(self.keys_set_id, _key)
             if self.refresh_keys:
                 # Set key expire time.
                 if expire is not None:
                     expire_key = self.get_key_expire_id(key)
                     self.redis_db.set(expire_key, expire, ex=expire)
+                    self.redis_db.sadd(self.keys_set_id, expire_key)
         finally:
             if self.locking:
                 _lock.release_lock()
@@ -737,11 +783,13 @@ class RedisDict(SharedDict):
         try:
             deleted_item = self.get(key)
             self.redis_db.delete(_key)
+            self.redis_db.srem(self.keys_set_id, _key)
         finally:
             # Remove expire key.
             if self.refresh_keys:
                 expire_key = self.get_key_expire_id(key)
                 self.redis_db.delete(expire_key)
+                self.redis_db.srem(self.keys_set_id, expire_key)
             if self.locking:
                 _lock.release_lock()
         return deleted_item
@@ -844,13 +892,17 @@ class RedisInvalidationStrategy(CustomInvalidationStrategy):
                                     raise_exceptions=False,
                                     db=0)
     def invalidate(self, hard=None):
+        # The timestamp the base class writes is what makes the
+        # entries of this region invalid: dogpile asks
+        # is_invalidated() with the time an entry was created and
+        # throws away everything older. So nothing has to be deleted
+        # here, and what was deleted here cost a SCAN over the whole
+        # redis keyspace per call -- these keys are written by
+        # dogpile's own backend, so there is no set of them to go by.
+        # They carry the expiry the region was configured with
+        # (redis_expiration_time, see get_dogpile_region()), so redis
+        # reclaims them by itself.
         super().invalidate(hard=hard)
-        # Do real cache invalidation.
-        search_regex = f"dogpile.{self.region}.*"
-        keys = self.redis_db.scan_iter(search_regex)
-        if not keys:
-            return
-        self.redis_db.delete(*keys)
 
 def get_dogpile_region(name, expire=7200):
     _load_make_region()

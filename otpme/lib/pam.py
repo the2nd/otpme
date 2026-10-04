@@ -30,6 +30,7 @@ from otpme.lib import init_otpme
 from otpme.lib import connections
 from otpme.lib.register import register_module
 from otpme.lib.offline_token import OfflineToken
+from otpme.lib.offline_token import PRIVATE_KEY_ROLES
 from otpme.lib.smartcard.utils import detect_smartcard
 
 from otpme.lib.exceptions import *
@@ -1465,6 +1466,32 @@ class PamHandler(object):
             else:
                 log_msg = _("No offline session found. Relogin required when servers are available again...", log=True)[1]
                 self.logger.debug(log_msg)
+
+            # Hand the users private keys to otpme-agent, the same way a
+            # login against the servers does (OTPmeClient.handle_response()).
+            # Without the servers this is the only way the key script gets
+            # them at all, which is the point of keeping them here.
+            added_keys = []
+            for key_role in PRIVATE_KEY_ROLES:
+                private_key = self.offline_token.get_private_key(key_role)
+                if not private_key:
+                    continue
+                try:
+                    agent_conn.add_private_key(key_role=key_role,
+                                            private_key=private_key)
+                except Exception as e:
+                    log_msg = _("Unable to add private key to otpme-agent: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
+                else:
+                    added_keys.append(key_role)
+            if added_keys:
+                log_msg = _("Added private key(s) to otpme-agent: {keys}", log=True)[1]
+                log_msg = log_msg.format(keys=",".join(sorted(added_keys)))
+                self.logger.info(log_msg)
+            else:
+                log_msg = _("Found no private keys in the offline tokens.", log=True)[1]
+                self.logger.info(log_msg)
 
             # Add ACL for the login user to allow access to otpme-agent login
             # session.

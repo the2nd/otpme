@@ -222,16 +222,16 @@ cmd_help = {
                 },
 
     'add_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-role add_acl {role} {role|token} {role_path|token_path} {acl[:value]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-role add_acl {role} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
+                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to role'),
                                 },
                 },
 
     'del_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-role del_acl {role} {acl}'),
-                    'cmd'   :   '<|object|> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-role del_acl {role} {acl[,acl]}'),
+                    'cmd'   :   '<|object|> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Delete ACL from role'),
                                 },
@@ -517,6 +517,15 @@ cmd_help = {
                     '_help' :   {
                                     'cmd'                   : _('List assigned roles.'),
                                     '-r'                    : _('List roles recursive.'),
+                                },
+                },
+    'find_roles'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-role find_roles [--return-type <return_type>] [-r] {role}'),
+                    'cmd'   :   '--return-type :return_type: -r :recursive=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Find roles this role is in.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                    '-r'                    : _('Find roles recursive.'),
                                 },
                 },
     'list_hosts'   : {

@@ -74,6 +74,22 @@ cmd_help = {
                                     'cmd'                   : _('Get config parameter.'),
                                 },
                 },
+    'config'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-pool config -d -a {pool} {param} [value]'),
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
+                    '_help' :   {
+                                    'cmd'                   : _('Add config parameter to pool.'),
+                                    '-a'                    : _('Append value to config parameter.'),
+                                    '-d'                    : _('Delete config parameter.'),
+                                },
+                },
+    'show_config'      : {
+                    '_cmd_usage_help' : _('Usage: otpme-pool show_config {pool} [parameter]'),
+                    'cmd'   :   '<|object|> [parameter]',
+                    '_help' :   {
+                                    'cmd'                   : _('Show pool config parameters'),
+                                },
+                },
     'changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pool changelog {pool}'),
                     'cmd'   :   '<|object|>',
@@ -136,16 +152,16 @@ cmd_help = {
                 },
 
     'add_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-pool add_acl {pool} {role|token} {role_path|token_path} {acl[:value]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-pool add_acl {pool} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
+                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to pool.'),
                                 },
                 },
 
     'del_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-pool del_acl {pool} {acl}'),
-                    'cmd'   :   '<|object|> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-pool del_acl {pool} {acl[,acl]}'),
+                    'cmd'   :   '<|object|> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Delete ACL from pool.'),
                                 },

@@ -183,8 +183,16 @@ class Cache(object):
             self._shared_caches[shared_cache_name] = _shared_cache
         return _shared_cache
 
-    def decorator(self, func, class_method=False):
-        """ Decorator to be added to function/method. """
+    def decorator(self, func, class_method=False, check_valid=None):
+        """ Decorator to be added to function/method.
+
+        check_valid: asked whether a value found in one of the caches
+        is still good, which is the case unless somebody invalidated
+        the cache since it was put there. It is asked here and not
+        before the lookup because the answer costs a roundtrip to the
+        shared cache: a call that finds nothing has nothing to ask
+        about, and that is most of them while walking a tree.
+        """
         def wrapper(*args, **kwargs):
             from otpme.lib import config
             """ Wrapper to cache function/method
@@ -252,11 +260,28 @@ class Cache(object):
             if check_shared_cache:
                 _shared_cache = self.get_shared_cache(cache_name)
 
+            # Asked once per call, and only where a cache had
+            # something to give.
+            checked = None
+            def cached_value_valid():
+                nonlocal checked
+                if checked is None:
+                    if check_valid is None:
+                        checked = True
+                    else:
+                        checked = check_valid(cache_name)
+                return checked
+
             # Try to get result from cache.
             result = None
             if check_cache:
                 try:
                     result = _cache[k]
+                    if not cached_value_valid():
+                        # Somebody invalidated this cache while the
+                        # value sat in it, so it went with the cache.
+                        result = None
+                        raise KeyError(k)
                     if self.copy_cache:
                         #result = self.pickle_handler.loads(result)
                         try:
@@ -290,6 +315,10 @@ class Cache(object):
             if check_shared_cache and result is None:
                 try:
                     result = _shared_cache.get(k)
+                    if not cached_value_valid():
+                        # See above.
+                        result = None
+                        raise KeyError(k)
                     # Update local cache from shared cache.
                     if cache_name is not None:
                         update_cache = True
@@ -515,16 +544,40 @@ class FuncCache(object):
                     except Exception as e:
                         raise
                     return result
-                try:
-                    clear_trigger = multiprocessing.function_cache_clear_trigger[self.name].copy()
-                except KeyError:
-                    clear_trigger = None
-
                 # Get cache of this thread.
                 _cache = self.get_cache()
 
-                # Make sure we clear the cache if needed.
-                if clear_trigger:
+                def check_valid(wanted_cache):
+                    """ Is what a cache just gave us still good?
+
+                    invalidate() writes the time it ran into a shared
+                    dict, and a value that was cached before that time
+                    is stale. Reading it is a roundtrip to the shared
+                    cache, and this used to be done at the top of
+                    every call of every cached function -- for caches
+                    that keep nothing shared at all, and whether or
+                    not the call found anything. A walk over a tree
+                    finds nothing in the cache and paid it for every
+                    object.
+
+                    So the question is asked where an answer is
+                    needed: something was found and we have to know
+                    whether to believe it. With nothing found the
+                    function runs anyway.
+
+                    Every cache the trigger names is thrown away, not
+                    only the one asked about -- the others hold stale
+                    values too, and this is where we know. Returns
+                    False when the value the caller found went with
+                    them.
+                    """
+                    try:
+                        clear_trigger = multiprocessing.function_cache_clear_trigger[self.name].copy()
+                    except KeyError:
+                        return True
+                    if not clear_trigger:
+                        return True
+                    still_valid = True
                     for cache_name in clear_trigger:
                         clear_time = clear_trigger[cache_name]
                         try:
@@ -536,7 +589,10 @@ class FuncCache(object):
                                 continue
                         if cache_name == "all":
                             cache_name = None
+                        if cache_name is None or cache_name == wanted_cache:
+                            still_valid = False
                         _cache.clear_cache(cache_name=cache_name)
+                    return still_valid
 
                 # Get method/function name.
                 func_name = f.__name__
@@ -553,7 +609,8 @@ class FuncCache(object):
                 f_kwargs['_otpme_func_name'] = func_name
 
                 # Get cache decorator.
-                cf = _cache.decorator(f, class_method=class_method)
+                cf = _cache.decorator(f, class_method=class_method,
+                                    check_valid=check_valid)
                 # Call method.
                 result = cf(*f_args, **f_kwargs)
                 return result
@@ -561,10 +618,17 @@ class FuncCache(object):
         return wrapper
 
     def invalidate(self, cache_name=None, object_type=None, shared=True):
-        """ Invalidate the cache. """
-        from otpme.lib import config
-        if not config.cache_enabled:
-            return
+        """ Invalidate the cache.
+
+        Whether this process uses caches (config.cache_enabled) does
+        not come into it. Telling everybody else that what they hold
+        is stale is not the same as holding something oneself: a
+        process that writes objects with its own caches switched off
+        would otherwise leave the caches of every other process
+        standing, and that is true for the caches that keep nothing
+        shared as well -- they are invalidated across processes by the
+        same trigger.
+        """
         _cache = self.get_cache()
         if cache_name is None:
             if object_type:
@@ -576,10 +640,24 @@ class FuncCache(object):
             trigger_name = "all"
         if shared:
             # Make sure we update the clear trigger to get other processes notified.
-            try:
-                clear_trigger = multiprocessing.function_cache_clear_trigger[self.name].copy()
-            except Exception:
+            if trigger_name == "all":
+                # Nothing to read first. This trigger says that every
+                # cache of this name is stale, whatever anybody else
+                # wrote before: a reader that finds it throws all of its
+                # caches away, which is more than any of the finer
+                # triggers would have made it do. So they can go with it.
+                #
+                # It is worth the special case because it is the only
+                # trigger there is in the write path -- a written object
+                # invalidates around two dozen caches, none of them by
+                # name -- and reading the old value before writing the
+                # new one is a roundtrip to the shared cache each time.
                 clear_trigger = {}
+            else:
+                try:
+                    clear_trigger = multiprocessing.function_cache_clear_trigger[self.name].copy()
+                except Exception:
+                    clear_trigger = {}
             clear_trigger[trigger_name] = time.time()
             # Expire clear trigger after 1h. This is required for caches based on
             # object UUID which would otherwise grow forever.

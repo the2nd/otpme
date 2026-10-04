@@ -68,17 +68,12 @@ read_value_acls = {
                             "master",
                             "ca",
                             "ca_data",
-                            "alias",
                             ],
             }
 
 write_value_acls = {
                 "add"       : [
-                            "alias",
                             "realm",
-                            ],
-                "delete"    : [
-                            "alias",
                             ],
                 "enable"    : [
                             "auth",
@@ -342,29 +337,12 @@ commands = {
                     },
                 },
             },
-    'add_alias'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'add_alias',
-                    'args'              : ['alias'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'del_alias'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'del_alias',
-                    'args'              : ['alias'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
     'add_acl'   : {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['owner_type', 'owner_name', 'acls', 'recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -374,7 +352,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['acls'],
                     'oargs'             : ['recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
@@ -696,8 +675,6 @@ def register_config():
     # as well; they are registered here, once.
     realm_sync = ["node:untrusted"]
     realm_types = ["realm"]
-    config.register_index_attribute("alias", sync=realm_sync,
-                                    object_types=realm_types)
     # A site carries both as well and registers them for itself, see
     # site.py.
     config.register_index_attribute("auth_enabled", sync=realm_sync,
@@ -841,7 +818,6 @@ class Realm(OTPmeObject):
         self.own = False
         self.ca = None
         self.ca_data = None
-        #self.aliases = []
         self.master = None
         self.auth_enabled = True
         self.sync_enabled = True
@@ -855,7 +831,6 @@ class Realm(OTPmeObject):
                     'host'  : {
                         'trusted'  : [
                             "ADMIN_TOKEN",
-                            "ALIASES",
                             "CA",
                             "CA_DATA",
                             "MASTER",
@@ -872,7 +847,6 @@ class Realm(OTPmeObject):
                     'node'  : {
                         'untrusted'  : [
                             "ADMIN_TOKEN",
-                            "ALIASES",
                             "CERT",
                             "CA",
                             "CA_DATA",
@@ -936,12 +910,6 @@ class Realm(OTPmeObject):
                                             'type'      : str,
                                             'required'  : False,
                                             'encryption': config.disk_encryption,
-                                        },
-
-            'ALIASES'                   : {
-                                            'var_name'  : 'aliases',
-                                            'type'      : list,
-                                            'required'  : False,
                                         },
 
             'AUTH_ENABLED'              : {
@@ -1197,69 +1165,6 @@ class Realm(OTPmeObject):
 
         self.sync_enabled = False
         self.update_index("sync_enabled", self.sync_enabled)
-
-        return self._write(callback=callback)
-
-    @object_lock()
-    @backend.transaction
-    @object_changelog("add alias {alias}")
-    def add_alias(
-        self,
-        alias: str,
-        force: bool=False,
-        callback=default_callback,
-        **kwargs,
-        ):
-        """ Add an realm alias. """
-        if not self.verify_acl(acl="add:alias", check_admin_role=False):
-            msg = _("Permission denied.")
-            return callback.error(msg, exception=PermissionDenied)
-
-        if alias == self.name:
-            msg = _("Cannot add alias with the same name as this realm.")
-            return callback.error(msg)
-        if alias in self.aliases:
-            msg = _("Alias '{alias}' already added to this realm.")
-            msg = msg.format(alias=alias)
-            return callback.error(msg)
-
-        msg = _("Add alias '{alias}' to realm '{realm_name}'?: ")
-        msg = msg.format(alias=alias, realm_name=self.name)
-        if not self.ask_change_confirmation(msg, force=force, callback=callback):
-            return callback.abort()
-
-        self.aliases.append(alias)
-        self.add_index("alias", alias)
-
-        return self._write(callback=callback)
-
-    @object_lock()
-    @backend.transaction
-    @object_changelog("remove alias {alias}")
-    def del_alias(
-        self,
-        alias: str,
-        force: bool=False,
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Deletes an alias from this realm. """
-        if not self.verify_acl(acl="delete:alias", check_admin_role=False):
-            msg = _("Permission denied.")
-            return callback.error(msg, exception=PermissionDenied)
-
-        if not alias in self.aliases:
-            msg = _("Alias '{alias}' is not an alias of this realm.")
-            msg = msg.format(alias=alias)
-            return callback.error(msg)
-
-        msg = _("Remove alias '{alias}' from realm '{realm_name}'?: ")
-        msg = msg.format(alias=alias, realm_name=self.name)
-        if not self.ask_change_confirmation(msg, force=force, callback=callback):
-            return callback.abort()
-
-        self.aliases.remove(alias)
-        self.del_index("alias", alias)
 
         return self._write(callback=callback)
 
@@ -1717,13 +1622,12 @@ class Realm(OTPmeObject):
         realm_users_group = backend.get_object(object_type="group",
                                     uuid=master_site.realm_users_group_uuid)
         view_objects = [ realm_user_role, site_admin_role, realm_users_group ]
-        for o in view_objects:
-            acl = f"role:{o.uuid}:view_public"
-            self.add_acl(acl=acl,
-                        force=True,
-                        recursive_acls=False,
-                        apply_default_acls=False,
-                        verify_acls=False)
+        view_acls = [f"role:{o.uuid}:view_public" for o in view_objects]
+        self.add_acl(acls=view_acls,
+                    force=True,
+                    recursive_acls=False,
+                    apply_default_acls=False,
+                    verify_acls=False)
 
         # Finally write the realm config.
         self._write(callback=callback)
@@ -1923,14 +1827,6 @@ class Realm(OTPmeObject):
             if self.ca_data:
                 ca_data = encode(self.ca_data, "base64")
         lines.append(f'CA_DATA="{ca_data}"')
-
-        aliases = ""
-        if self.verify_acl("view:alias") \
-        or self.verify_acl("add:alias") \
-        or self.verify_acl("delete:alias"):
-            if self.aliases:
-                aliases = ",".join(self.aliases)
-        lines.append(f'ALIASES="{aliases}"')
 
         return OTPmeObject.show_config(self,
                                     config_lines=lines,

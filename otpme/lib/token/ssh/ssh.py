@@ -506,6 +506,14 @@ class SshToken(Token):
         offline_config['NEED_OFFLINE_ENCRYPTION'] = need_encryption
         return offline_config
 
+    def get_default_sign_tags(self):
+        """ Get default sign tags for this token. """
+        default_tags = super().get_default_sign_tags()
+        # Type of the object (e.g. token, script, etc.)
+        user_tag = f"user:{self.owner_uuid}"
+        default_tags.append(user_tag)
+        return default_tags
+
     def verify_acl(self, action: str, **kwargs):
         """ Verify ACLs required to allow <action>. """
         # Parent class cannot know the ACL to allow verification of signatures

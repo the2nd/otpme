@@ -53,6 +53,10 @@ read_value_acls = {
                                     "hosts",
                                     "user",
                                     "tokens",
+                                    # show_config() offers the devices
+                                    # of a role to whoever holds it,
+                                    # and it was in no list.
+                                    "devices",
                                     "shares",
                                     "accessgroups",
                                     "groups",
@@ -69,6 +73,7 @@ read_value_acls = {
                                     "clients",
                                     "shares",
                                     "scopes",
+                                    "roles",
                                 ],
             }
 
@@ -473,6 +478,17 @@ commands = {
                     },
                 },
             },
+    'find_roles'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_roles',
+                    'oargs'             : ['return_type', 'recursive'],
+                    'dargs'             : {'return_type':'name',
+                                        'skip_disabled':False},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'find_accessgroups'   : {
             'default'    : {
                 'exists'    : {
@@ -593,7 +609,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'cache_update_interval' : 30,
+                    'args'              : ['owner_type', 'owner_name', 'acls', 'recursive_acls', 'apply_default_acls',],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -603,7 +620,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['acls'],
                     'oargs'             : ['recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
@@ -1294,6 +1312,26 @@ class Role(OTPmeObject):
         ):
         """ Return list with all roles of this role. """
         return self.get_roles(**kwargs)
+
+    @cli.check_rapi_opts()
+    @check_acls(acls=['find:roles'])
+    def find_roles(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all roles this role is in.
+
+        The other direction of list_roles, and the same question
+        find_roles of a token answers -- a role is held the way a token
+        is.
+
+        Not through find_objects() like the other find_* commands here.
+        That one would find the roles that hold us, but only those: it
+        has no <recursive>, and the roles above those are what somebody
+        asking where a role is used wants. get_roles(parent=True) walks
+        up as far as it is told to.
+        """
+        return self.get_roles(parent=True, **kwargs)
 
     def get_roles(
         self,

@@ -53,6 +53,12 @@ write_acls =  [
 read_value_acls = {
                 "view"      : [
                             "mschap",
+                            # The second factor token: the methods
+                            # around it ask for these and none of them
+                            # was in a list, so only an admin could
+                            # see it or change it.
+                            "2ftoken",
+                            "2ftoken_status",
                             "nt_hash",
                             "auth_script",
                             "password_hash",
@@ -68,6 +74,7 @@ write_value_acls = {
                             "password",
                             "password_hash",
                             "auth_script",
+                            "2ftoken",
                             "offline_expiry",
                             "offline_unused_expiry",
                             ],
@@ -76,12 +83,14 @@ write_value_acls = {
                             "offline",
                             "session_keep",
                             "mschap",
+                            "2ftoken",
                             ],
                 "disable"   : [
                             "auth_script",
                             "offline",
                             "session_keep",
                             "mschap",
+                            "2ftoken",
                             ],
                 "remove"  : [
                             "nt_hash",

@@ -526,6 +526,14 @@ On the client the share is mounted below the mount root
 
 > */otpme/\<user\>/\<realm\>/\<site\>/\<share\>*
 
+A share has an ID, and that is what **otpme-mount** takes:
+
+> *\<realm\>/\<site\>/\<share\>*
+
+The realm is part of it because two realms may have a site of the same
+name. You can leave it out and write *\<site\>/\<share\>*; then it is a
+share of your own realm.
+
 A **home share** is a special share which gives every user an own
 directory. A normal share gives all users the same directory. In a home
 share, each user only gets the own directory and sees nothing else.
@@ -685,6 +693,10 @@ in the units below, see **otpme-unit**(1).
 An object can refuse inherited ACLs with **disable_acl_inheritance**.
 **enable_acl_inheritance** turns it on again.
 
+Which ACLs a kind of object knows is in **otpme-acls**(7). **list_acls**
+shows the ACLs an object has, and the shell completion offers the ones
+it takes after **add_acl**.
+
 # OFFLINE AUTHENTICATION
 
 When a host can not reach the OTPme server, it can check logins against
@@ -818,11 +830,17 @@ Object types: site, unit, token
 
 **auto_sign (bool, default: false)**  
 Offer to sign the object after each change.  
-Object types: site, unit, user, token
+On an object a token can be assigned to — a role, a group, an access
+group, a client, a host or a node — it says to sign the token for that
+assignment, which is what **add_token --sign** does by hand. A host can
+be told to let an SSH key in only with such a signature, see
+**otpme-role**(1).  
+Object types: site, unit, user, token, script, role, group, accessgroup,
+client, host, node
 
 **auto_revoke (bool, default: true)**  
 Revoke the signatures of an object when it is changed.  
-Object types: site, unit, token, script
+Object types: site, unit, user, token, script
 
 **force_site_config_parameters (list)**  
 Config parameters that the site enforces for all of its objects. For a
@@ -1013,6 +1031,16 @@ Object types: site, unit
 **default_login_script (str, default: scripts/login_script.sh)**  
 Runs on the host at the login through PAM, so you can do things there.  
 Object types: site, unit
+
+**run_foreign_user_auth_scripts (bool, default: false)**  
+If enabled, a login of a user of another site may run the auth scripts
+of that user.  
+The auth script of a user, and the auth script of their token, are
+scripts of the site of that user. Running one means running code of that
+site here, on your node, at every login of that user.  
+Off by default. The login then goes on without these scripts. The auth
+scripts of your own users always run.  
+Object types: site
 
 ## User Management
 
@@ -1246,8 +1274,22 @@ How long configuration jobs and their results are kept on the nodes. It
 takes time units, e.g. **180D**. The lowest value is one day. Jobs that
 worked are kept too, so you can see which jobs were already sent. A job
 that failed on a host is kept until it is acknowledged with
-**otpme-deploy ack**. The **confd** daemon on the master node removes
-old jobs once an hour.  
+**otpme-deploy ack**, unless it was taken back with **otpme-deploy
+cancel** — that answers it as well. The **confd** daemon on the master
+node removes old jobs once an hour.  
+A remote access job goes by **remote_access_job_max_age** instead.  
+Object types: site
+
+**remote_access_job_max_age (time, default: 1h)**  
+How long a remote access job is kept after it expired. It takes time
+units, e.g. **30m**, and **0** means as soon as it expires.  
+Its own value, because such a job is a different kind of record:
+**otpme-shell** makes one for every shell, it is good for five minutes,
+and it says nothing afterwards — whoever asked for the shell stood there
+while it happened. Kept as long as every other job they would pile up
+for three months.  
+Counted from the expiry and not from the creation, because that is when
+the job stopped being of use to anybody.  
 Object types: site
 
 **hosts_accessgroup (str)**  
@@ -1407,7 +1449,12 @@ Makes a role usable for SSO device tokens. A role without this parameter
 is not shown in the SSO portal at all, so it works as the opt-in switch
 for **device_token_roles**.  
 The value is appended to the token name when the portal registers a
-device token under this role.  
+device token under this role, with a **-** in between: the device
+**iphone** under a role whose suffix is **wlan** becomes the token
+**iphone-wlan**. So the suffix is written without a leading dash.  
+It is what tells two tokens of the same device apart where a user is in
+more than one of the **device_token_roles** — **iphone-wlan** and
+**iphone-vpn**.  
 Object types: role
 
 **device_token_types (list)**  
@@ -1999,6 +2046,14 @@ deploy page. How long such an authentication stays fresh is
 The recovery deploy is not covered by this. It runs from the link in the
 recovery mail and has no session to prove anything with, so the link
 itself is the proof.  
+Neither is the enrollment a token asks for itself, the one **otpme-token
+enable_sso_deploy** sets — whatever this parameter says. There the token
+the user signed in with is the only credential they have, and it is a
+password token, so the re-auth would ask for the same password a second
+time and say nothing. It stays for every other flow, where a token of
+their own already exists: an OTP is good for one authentication, so
+whoever phished one gets a session and is then asked for a second OTP
+they do not have.  
 The value is looked up on the user, then on the user's unit and the
 units above it, then on the site. The first one found wins.  
 Object types: site, unit, user
@@ -3064,7 +3119,7 @@ The settings of one user, e.g. which agent to talk to.
 
 # SEE ALSO
 
-**otpme**(1), **otpme.conf**(5), **pam_otpme**(8),
+**otpme**(1), **otpme-acls**(7), **otpme.conf**(5), **pam_otpme**(8),
 **otpme-accessgroup**(1), **otpme-backup**(1), **otpme-ca**(1),
 **otpme-client**(1), **otpme-deploy**(1), **otpme-device**(1),
 **otpme-dictionary**(1), **otpme-group**(1), **otpme-host**(1),

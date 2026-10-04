@@ -8,24 +8,76 @@ otpme-role - manage OTPme roles
 
 # DESCRIPTION
 
-**otpme-role** manages roles in the OTPme system. Roles are groups of
-tokens or other roles that can be nested.
+**otpme-role** manages the roles of a realm.
+
+A role is what things are assigned to. An access group, a client, a
+share, a host, a node, a group, an OIDC scope and a VLAN all take a
+role, and a role holds tokens. So the assignments are made once and
+stay, and people come and go by being put into the role or taken out of
+it.
+
+A role can hold another role. **otpme-role add_role *parent* *child***
+puts *child* into *parent*, and from then on the tokens of *child* reach
+everything *parent* is assigned to. That is the direction to keep in
+mind: what is assigned to the outer role flows to the tokens of the
+inner one, and not the other way round.
+
+A role lives in a unit, which is where its ACLs come from, and belongs
+to one site.
 
 # COMMANDS
 
 ## Role Management
 
 **add \[**--groups** *group1,group2*\] \[**--roles** *role1,role2*\] *role***  
-Create a new role. Optionally add it directly to groups or other roles.
+Create a role.  
+**--groups** puts it into those groups and **--roles** into those roles,
+which saves an **add_role** per role afterwards.
 
-**del *role***  
-Delete a role.
+**del \[**--no-trash**\] *role***  
+Delete a role. It goes to the trash, from where **otpme-trash**(1) can
+bring it back; **--no-trash** deletes it right away.  
+A role that still holds tokens or other roles is not deleted — take them
+out first. A role that is a member of access groups is, and they are
+named in the question before it happens. What held it keeps a reference
+to something that is gone; **remove_orphans** on those objects clears it
+up.  
+A base role of the realm cannot be deleted at all.
 
-**show \[*role*\]**  
-Display role information. Without arguments, shows all roles.
+**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--token-limit** *N*\] \[**--role-limit** *N*\] \[**--accessgroup-limit** *N*\] \[**--group-limit** *N*\] \[**--scope-limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*role*\]**  
+Show the roles, with their tokens, access groups, groups, scopes and
+policies. Without a role you get all of them.
 
-**list \[*regex*\]**  
-List roles, optionally filtered by regex pattern.
+**-a**  
+Also the roles you may only look at, not just the ones you may change.
+
+**-z *N***  
+How many roles to print.
+
+**--fields *F1,F2***  
+Print these columns and no others. The names are the ones in the header
+of the table.
+
+**--limit *N***  
+How many of each kind to print per role: tokens, roles, access groups,
+groups, scopes, policies.
+
+**--token-limit *N*, **--role-limit** *N*, **--accessgroup-limit** *N*, **--group-limit** *N*, **--scope-limit** *N*, **--policy-limit** *N***  
+The same for one of them, where the others should stay as they are.
+
+**--sort-by *field*, **--reverse****  
+Which column to sort by, and the other way round.
+
+**--raw, **--csv**, **--csv-sep** *sep***  
+For reading with something other than your eyes: **--raw** leaves the
+header and the borders out, **--csv** prints one row per line with **;**
+between the columns, and **--csv-sep** uses another separator.
+
+**list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
+List the role names, and with a regex only those that match it.  
+You get the roles you may change; **-a** adds those you may only look
+at.  
+**--attribute** prints that attribute of each role next to its name.
 
 **enable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role***  
 Enable a disabled role.
@@ -56,89 +108,178 @@ Keep persisted share mounts on hosts (transient unmount only).
 Rename a role.
 
 **move \[**--keep-acls**\] *role* *unit***  
-Move role to a different unit.
+Move the role into another unit.  
+Its ACLs move with it: the default ACLs of the old unit are taken away
+and those of the new one are applied. **--keep-acls** leaves the ACLs of
+the role as they are.
 
 **touch *role***  
 Re-index the object to fix potential index problems.
 
 ## Token Assignment
 
-**add_token \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign** **--tags** *tag1,tag2*\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] \[**--skip-portal-token**\] *role* *token_path***  
-Add a token to the role. Use **-i** to limit login to specific
-interfaces (e.g. tty, gui, ssh). If the token is the SSO token of a
-site's portal (its name is that site's **default_sso_token_name**), the
-tokens the portal manages for the user are added as well, after a
-confirmation, with the same options. **--skip-portal-token** adds only
-the given token.
+Putting a token into a role can sign the token. The signature says where
+the token belongs: the user it is for, this role, the roles above it,
+the access groups and the groups those roles are in, the interfaces of
+**-i** and the *token_options*.
 
-**--share-notify**  
-Send notification to all online hosts on new share permissions.
+A host can be told whose signature it trusts. It then lets an SSH key in
+only if the token carries a signature from one of them. So somebody the
+host does not trust cannot get a key onto it by putting a token into a
+role. The host side of this is **otpme-tool add_signer --signer-type
+token,** see **otpme-tool**(1).
 
-**--no-share-notify**  
-Do not send notification to all online hosts on new share permissions.
+Signing usually happens on its own. It does when the token you are
+logged in with says **auto_sign**, when you have auto-sign switched on
+as a user, or when the role, its unit or its site say **auto_sign** (see
+**otpme**(7)).
+
+Some token types cannot be signed at all. Those are added without a
+signature.
+
+**add_token \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign**\] \[**--tags** *tag1,tag2*\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] \[**--skip-portal-token**\] *role* *token* \[*token_options*\]**  
+Put a token into the role. From then on it reaches everything the role
+is assigned to, and everything the roles above it are assigned to.
+
+If the token is the SSO token of a site's portal — its name is that
+site's **default_sso_token_name** — the tokens the portal manages for
+that user go in as well, after a question, with the same options.
+**--skip-portal-token** adds only the token you named.
+
+**-i *interfaces***  
+Only let this token log in over these: **tty**, **gui**, **ssh**, comma
+separated. Without it the token counts for all of them.
+
+*token_options*  
+Options for the token in this role, at the end of the line. For an SSH
+token these are the **authorized_keys** options its key is written with:
+**command**, **from**, **restrict**, **no-pty**, **no-port-forwarding**,
+**no-agent-forwarding**, **no-X11-forwarding**, **no-user-rc**,
+**environment**, **permitopen**, **principals**, **tunnel** and
+**cert-authority**. An option the type of token has no use for is
+dropped.
+
+**--sign**  
+Sign, where nothing above asked for it. On a token that cannot be signed
+this is an error.
+
+**--tags *tag1,tag2***  
+Put more tags into the signature.
+
+**--no-auto-sign**  
+Do not sign this time.
+
+**--share-notify, **--no-share-notify****  
+Whether the online hosts are told that there are new share permissions.
 
 **--no-persist-mount**  
 Do not persist new share mounts on hosts.
 
-**remove_token \[**--keep-sign**\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] \[**--skip-portal-token**\] *role* *token_path***  
-Remove a token from the role. If the token is the SSO token of a site's
-portal, the tokens the portal manages for the user are removed as well,
-after a confirmation, with the same options. **--skip-portal-token**
-removes only the given token.
+**remove_token \[**--keep-sign**\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] \[**--skip-portal-token**\] *role* *token***  
+Take the token out of the role. What it reached through the role, it no
+longer reaches.
 
-**--share-notify**  
-Send notification to all online hosts on revoked share permissions.
+The signature goes with it. It says the token is in this role, and that
+is no longer true. **--keep-sign** leaves it, for a token that is about
+to go back in.
 
-**--no-share-notify**  
-Do not send notification to all online hosts on revoked share
-permissions.
+An SSO token takes the tokens of the portal with it, as above;
+**--skip-portal-token** removes only the one you named.
+
+**--share-notify, **--no-share-notify****  
+Whether the online hosts are told that share permissions were revoked.
 
 **--no-persist-mount**  
 Keep persisted share mounts on hosts (transient unmount only).
 
-**list_tokens \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *role***  
-List tokens assigned to the role. Use **--return-type** to select the
-attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
+**list_tokens \[**--return-type** *type*\] \[**--token-types** *t1,t2*\] *role***  
+The tokens in this role. Only the ones put in here, not the ones that
+reach it through a nested role.  
+**--return-type** picks what is printed: **name** (default),
+**read_oid**, **full_oid** or **uuid**. **--token-types** narrows it to
+those types, for example **hotp,totp**.  
+Disabled tokens are listed as well.
+
+**list_users \[**--return-type** *type*\] *role***  
+The users those tokens belong to. One user with three tokens in the role
+is named once.
 
 ## Role Nesting
 
+A role can hold other roles, and what the outer role is assigned to
+reaches the tokens of the inner ones. See the **DESCRIPTION** above.
+
+A *child_role* is looked for in the site of the role, or written as
+*site***/***role* to take one from another site of the realm.
+**remove_role** takes a UUID as well, which is how a reference to a role
+that is gone is cleared out.
+
 **add_role \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role* *child_role***  
-Add a child role to this role.
+Put *child_role* into *role*. The tokens of *child_role* then reach
+everything *role* is assigned to.
 
-**--share-notify**  
-Send notification to all online hosts on new share permissions.
+Nothing is copied: take the child out again and its tokens lose it all.
 
-**--no-share-notify**  
-Do not send notification to all online hosts on new share permissions.
+**--share-notify, **--no-share-notify****  
+Whether the online hosts are told that there are new share permissions.
 
 **--no-persist-mount**  
 Do not persist new share mounts on hosts.
 
 **remove_role \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role* *child_role***  
-Remove a child role from this role.
+Take *child_role* out of *role* again.
 
-**--share-notify**  
-Send notification to all online hosts on revoked share permissions.
-
-**--no-share-notify**  
-Do not send notification to all online hosts on revoked share
-permissions.
+**--share-notify, **--no-share-notify****  
+Whether the online hosts are told that share permissions were revoked.
 
 **--no-persist-mount**  
 Keep persisted share mounts on hosts (transient unmount only).
 
 **list_roles \[**-r**\] *role***  
-List roles assigned to the role. Use **-r** for recursive listing.
+The roles this role holds. **-r** adds the roles those hold, all the way
+down.
+
+## Where this role is used
+
+A command that starts with **list\_** answers what is in the role. One
+that starts with **find\_** answers the other question: where the role
+is used.
+
+**--return-type** picks what they print: **name** (default),
+**read_oid**, **full_oid** or **uuid**. A name from another site is
+printed as *site***/***name*.
+
+Disabled objects are listed as well, so a permission that is only
+switched off is not mistaken for one that is gone.
+
+**find_roles \[**-r**\] \[**--return-type** *type*\] *role***  
+The roles this role is in, which is the other way round from
+**list_roles**. **-r** adds the roles those are in, all the way up.
+
+**find_accessgroups \[**--return-type** *type*\] *role***  
+The access groups this role is in. Those are what say where a token of
+the role may log in at all.
+
+**find_clients \[**--return-type** *type*\] *role***  
+The clients this role is assigned to.
+
+**find_groups \[**--return-type** *type*\] *role***  
+The groups this role is in.
+
+**find_shares \[**-r**\] \[**--return-type** *type*\] *role***  
+The shares this role opens. **-r** adds the shares the roles below it
+open.  
+Here **--return-type** starts at **path**, which is the share name with
+its site in front.
+
+**find_scopes \[**--return-type** *type*\] *role***  
+The OIDC scopes this role is assigned to. They decide what a relying
+party learns about the user.
 
 **find_acls *role***  
-Find the ACLs this role holds on other objects.
-
-**find_scopes \[**--return-type** *TYPE*\] *role***  
-Find OIDC scopes the role is assigned to. **--return-type** selects the
-attribute to return (**name**, **read_oid**, **full_oid**, **uuid**).
-
-**find_shares \[**-r**\] \[**--return-type** *TYPE*\] *role***  
-Find shares granted via this role. **-r** walks child roles too.
+The ACLs this role holds on other objects, i.e. what the members of this
+role may do elsewhere. Not the ACLs that lie on the role itself — those
+are **list_acls**.
 
 ## VLAN Assignment
 
@@ -159,60 +300,126 @@ Only VLANs of the site answering the RADIUS request are looked at. Where
 no VLAN names the role or its members, the **vlans** config parameter of
 the token, user, host or device decides (see **otpme**(7)).
 
-## User and Group Listing
+A VLAN that is switched off answers nothing, on either way in: neither
+where the VLAN names the role nor where the **vlans** parameter names
+the VLAN. Switching a VLAN off therefore takes away every assignment it
+is part of.
 
-**list_users \[**--return-type** *TYPE*\] *role***  
-List users of the role. Use **--return-type** to select the attribute
-returned (**name**, **read_oid**, **full_oid**, **uuid**).
+Both ways write a warning to the log when an assignment is skipped for
+that reason. Without one, an assignment to a VLAN that is off looks
+exactly like no assignment at all.
 
-**list_dynamic_groups *role***  
-List dynamic groups of the role.
+A **vlans** parameter can also name a VLAN that no longer exists. Its
+UUID stays in the parameter, and it is ignored with a warning in the
+log.
 
-## Host and Device Assignment
+Two VLANs naming the same object at the same distance are a mistake in
+the configuration, and OTPme cannot resolve it: it takes the first of
+them by name, every time, and writes a warning to the log.
+
+## Hosts and Devices
+
+A role holds hosts and devices as well as tokens. A machine gets two
+things from the role: the VLAN of the role at port authentication, and
+access to the shares the role is assigned to.
+
+The share part only matters where the share says so. A share with
+**limit_by_hosts** set asks which hosts may reach it, and a host in this
+role — or in a role nested in it — may. A role that is switched off does
+not count. Without **limit_by_hosts** a share does not ask about hosts
+at all.
+
+This is not the way round in which a host takes things from a role. A
+host names its own roles, with **otpme-host add_role,** and that is what
+decides which tokens may log in there and whose accounts are synced to
+it — see **otpme-host**(1). Here the role names the host, which is what
+the VLAN and the shares are read from. Both are needed, for different
+things.
+
+A device is a machine that cannot authenticate itself, a printer or an
+IP phone, and is let onto the network by its MAC address. See
+**otpme-device**(1).
 
 **add_host *role* *host***  
-Add a host to the role.
+Put a host into the role.
 
 **remove_host *role* *host***  
-Remove a host from the role.
+Take it out again.
 
 **list_hosts *role***  
-List hosts assigned to the role.
+The hosts in this role.
 
 **add_device *role* *device***  
-Add a device to the role.
+Put a device into the role.
 
 **remove_device *role* *device***  
-Remove a device from the role.
+Take it out again.
 
 **list_devices *role***  
-List devices assigned to the role.
+The devices in this role.
 
 ## Dynamic Groups
 
+A dynamic group is a group on the host itself, not an OTPme group —
+**dialout**, **video**, **wheel**. It has to exist there already. At
+login **pam_otpme** puts the user into it for that session.
+
+A token in this role gets the dynamic groups of the role, and those of
+the roles this role is in. What else gives a user one, and why a name
+that is already an OTPme group is refused, is under **Dynamic Groups**
+in **otpme**(7).
+
 **add_dynamic_group *role* *group***  
-Add a dynamic group to the role.
+Give the members of this role that group on the host they log in to.
 
 **remove_dynamic_group *role* *group***  
-Remove a dynamic group from the role.
+Take it away again.
+
+**list_dynamic_groups *role***  
+The dynamic groups of this role.
 
 ## Sync Users
 
+A sync user is a user whose account is copied to a host without any
+token of theirs going with it. The account exists on the host — a file
+belongs to them, a service runs as them — and nobody logs in with it.
+
+A host that names this role takes its sync users — **otpme-host
+add_role**, not **otpme-role add_host,** which is for the VLAN and the
+shares. A sync group that names this role takes them as well, and so do
+the roles inside this one.
+
+A user who is to log in there needs a token in the role instead. That
+brings the account along with it.
+
 **add_sync_user *role* *user***  
-Add a sync user to the role.
+Have that user's account copied to the hosts that name this role.
 
 **remove_sync_user *role* *user***  
-Remove a sync user from the role.
+Stop that.
 
-**list_sync_users \[**--return-type** *TYPE*\] *role***  
-List sync users of the role. Use **--return-type** to select the
-attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
+**list_sync_users \[**--return-type** *type*\] *role***  
+The sync users of this role.
 
 ## Policy Management
 
 A *policy* is the name of a policy, not a path. It is looked for in the
 site of the role. Which policies there are, and what each of them does,
 is in **otpme-policy**(1).
+
+Three types can go on a role: **logintimes**, **forcetoken** and
+**autodisable**. A policy of any other type is refused here.
+
+A policy on a role applies to the logins that role lets through, and to
+no others. At a login to a host, a node or a client, the policies of a
+role run when both halves hold: the role is assigned to that host, node
+or client, and the role holds the token. Either half may run through
+nested roles, and every role of the chain counts — the one assigned to
+the host, the one holding the token, and the ones between them.
+
+So login times on a role say when the members of that role may log in to
+the machines that role gets them onto, and say nothing about any other
+machine. A role that is switched off says nothing at all.
 
 Attaching and detaching ask before they change anything; the global
 option **-f** skips the question.
@@ -249,17 +456,18 @@ A command that changes something asks first; the global option **-f**
 skips the question.
 
 The other direction, the ACLs this role holds on other objects, is
-**find_acls** under **Listing** above.
+**find_acls** under **Where this role is used** above.
 
-**add_acl *role* *owner_type* *owner* *acl*\[**:***value*\]**  
-Give a role or a token an ACL on this role.  
+**add_acl *role* *owner_type* *owner* *acl*\[**:***value*\]\[**,***acl*\[**:***value*\]\]**  
+Give a role or a token one or more ACLs on this role.  
 *owner_type* is **role** or **token**, and *owner* the path of that role
-or token. An ACL may carry a value, for example **view:tokens**.  
+or token. An ACL may carry a value, for example **view:tokens**, and
+several are separated by commas.  
 Needs the ACL **add:acl**.
 
-**del_acl *role* *acl***  
-Take that ACL away again.  
-Here the *acl* is the whole entry, owner and all, the way **list_acls**
+**del_acl *role* *acl*\[**,***acl*\]**  
+Take those ACLs away again.  
+Here an *acl* is the whole entry, owner and all, the way **list_acls**
 prints it: **role:berlin/sw-admins:view**.  
 Needs the ACL **delete:acl**.
 
@@ -277,6 +485,11 @@ Moving a role into another unit is the one place that asks something
 else as well: the site admin role **SITE_ADMIN** gets neither the
 default ACLs of the new unit nor loses those of the old one.
 
+A move by somebody who does not hold **add:acl** and **delete:acl** on
+the role leaves its ACLs alone as well, and says so. Otherwise moving an
+object into a unit would be a way of handing yourself the default ACLs
+of that unit.
+
 Needs the ACL **enable:acl_inheritance**.
 
 **disable_acl_inheritance *role***  
@@ -284,44 +497,109 @@ Stop inheriting them. Only the ACLs on the role itself count from then
 on.  
 Needs the ACL **disable:acl_inheritance**.
 
-## Extension and Attribute Management
+## Extensions and LDAP Attributes
+
+A role is also an LDAP entry, and an extension is what gives it one: the
+object classes it is of, and the attributes those classes allow. What
+**ldapd** serves and what **show_ldif** prints comes from them.
+
+A new role gets two, and keeps them unless you take them away:
+
+> -   **base** makes it an **organizationalRole** with **cn** and
+>     **description**.
+>
+> -   **posix** gives a role no class and no attribute of its own. It is
+>     there for the other direction: when a token goes into the role or
+>     out of it, the POSIX attributes of the groups the role is in have
+>     to follow, **memberUid** among them, and that runs through this
+>     extension.
+
+So a role without the **posix** extension stops keeping those groups up
+to date.
 
 **add_extension *role* *extension***  
-Add an extension to the role.
+Add **base** or **posix** to the role. An extension that is not for
+roles is refused, and so is one the role already has.
 
 **remove_extension *role* *extension***  
-Remove an extension from the role.
+Take it away again, with the classes and attributes it brought.
 
-**add_attribute *role* *attribute*=*value***  
-Add an LDAP attribute to the role.
+**add_attribute *role* *attribute***=**\[*value*\]**  
+Set an LDAP attribute of the role.
 
-**del_attribute *role* *attribute*=*value***  
-Remove an LDAP attribute from the role.
+Only an attribute one of its extensions allows: there is no setting an
+attribute OTPme knows nothing about. An attribute can hold more than one
+value, so this adds one and leaves the others.
+
+The ACL is per attribute, **add:attribute:***attribute*, and a plain
+**add:attribute** covers all of them.
+
+**del_attribute *role* *attribute***=**\[*value*\]**  
+Remove that value, or the whole attribute where no value is given.  
+A mandatory attribute of a class the role is of cannot be removed, and
+neither can a read-only one. The ACL is
+**delete:attribute:***attribute*.
 
 **add_object_class *role* *class***  
-Add an LDAP object class to the role.
+Add an LDAP object class to the role, beyond the ones its extensions
+brought.
 
 **del_object_class *role* *class***  
-Remove an LDAP object class from the role.
+Remove one again.
 
-**show_ldif \[**-a** *attributes*\] *role***  
-Show LDIF representation of the role. Use **-a** to show only specific
-attributes.
+**show_ldif *role* \[**-a** *attribute1,attribute2*\]**  
+The role as LDAP sees it. **-a** prints only those attributes.
 
-## Configuration and Attributes
+## Configuration
+
+Seven config parameters can be set on a role. What each of them does is
+under **CONFIG PARAMETERS** in **otpme**(7); here is what they are
+about:
+
+> -   **device_token_suffix**, **device_token_types**,
+>     **max_device_tokens** and **device_token_mschap** make the role
+>     one the SSO portal offers for device tokens, and say what it
+>     creates there. The first of them is the switch: a role without it
+>     is not shown in the portal at all.
+>
+> -   **auto_sign** signs a token for the assignment when it is put into
+>     this role, the way **add_token --sign** does by hand.
+>
+> -   **changelog** and **allow_changelog_clearing** are about the
+>     history of the object, see **Object Changelog** below.
+
+A value is looked for on the role, then on the unit above it, then on
+the unit above that, and last on the site. The nearest one wins, and the
+realm holds none. A site can take that away for single parameters with
+**force_site_config_parameters**: those are read from the site and
+nowhere else, whatever the role says.
 
 **config \[**-d**\] \[**-a**\] *role* *parameter* \[*value*\]**  
-Set a configuration parameter. Use **-d** to delete (reset to default)
-or **-a** to append the value to a list-typed parameter.
+Set a parameter on the role itself.
+
+**-a** appends to a parameter that holds a list instead of replacing it.
+
+**-d** removes the parameter from the role, or with a value only that
+one value from a list. What the role gets afterwards is whatever the
+units above it or the site say — **-d** is not the same as setting the
+parameter to its default.
+
+The ACL is per parameter, **set:config:***parameter*.
 
 **show_config *role* \[*parameter*\]**  
-Show all configuration parameters.
+The parameters set on the role itself, or only the one named. Nothing is
+shown for a parameter that the role gets from a unit or from the site.
 
 **get_config *role* *parameter***  
-Show the value of a single configuration parameter.
+What the parameter comes to for this role, once the role, its units and
+its site have been looked at. So this answers what applies, where
+**show_config** answers what was set here.
 
 **description *role* \[*description*\]**  
-Set role description.
+Set the description. Without one OTPme asks and offers the current text
+for editing.  
+It is an LDAP attribute of the role as well (**description**, from the
+**base** extension), so it is what an LDAP client sees.
 
 **info \[**--language** *LANG*\] *role* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
@@ -333,13 +611,22 @@ is one for the users of that language: a role named in
 whoever is looking, see **otpme**(7).
 
 **dump_info \[**--language** *LANG*\] *role***  
-Dump the info text to stdout.
+Write one of those texts to stdout, for reading it with something other
+than the editor.  
+**--language** picks which one, the same way as for **info**; without it
+you get the note of the administrator. A language the role has no text
+for gives nothing and is not an error.
 
 ## Object Changelog
 
 Every change to the object writes an entry: who made it, when, and what
 was done. A change can carry a comment of its own, through the global
 option **--changelog**.
+
+Unless the **changelog** config parameter says otherwise. It is read
+along the cascade of the role, and nothing is written where it is off —
+not for that role, and not for the ones below a unit that switched it
+off. Without any value anywhere it is on.
 
 An *entry_id* is the number the listing shows in front of an entry,
 counted from 0.
@@ -369,151 +656,179 @@ true by default, but where no value is found at all, clearing is
 refused. OTPme asks the token you are signed in with first, then the
 object.
 
-## Import/Export
+## Export and Cleanup
 
-**export \[**--password** *PASS*\] *role***  
-Export role configuration.
+Both write to stdout. There is no import on this page: reading an export
+back in is **otpme-tool import,** see **otpme-tool**(1).
+
+**remove_orphans** asks before it changes anything; the global option
+**-f** skips the question.
+
+**export \[**--password** *password*\] *role***  
+Write the whole object of the role to stdout, as JSON.
+
+Without **--password** it is written as it is, in clear. With one, a key
+is derived from that password and the object is encrypted with it; the
+salt goes into the output, so the password is all you need to read it
+back.
+
+What a role holds are references by UUID — its tokens, its roles, its
+hosts, its devices — so an export says something only in the realm it
+came from. It carries no secret of any token.
+
+Needs the ACL **export**.
 
 **remove_orphans *role***  
-Remove orphaned object references.
+Remove what the role still points at although it is gone.
+
+On a role that is its ACLs, its policies, its signatures, and the
+tokens, roles, hosts and devices in its member lists. A token that was
+deleted leaves its UUID in the list, and so does a role, a host or a
+device.
+
+It shows everything it found and asks once for all of it. It asks
+nothing and changes nothing when it finds nothing.
+
+Needs the ACL **remove:orphans**.
 
 # OPTIONS
 
-## Display Options
+Every option belongs to one command and is described with that command
+above. A short option means what that command makes of it.
 
-**-a**  
-Show all roles (across all units).
-
-**-z *SIZE***  
-Limit output size.
-
-**--fields *FIELD1,FIELD2***  
-Display only specified fields.
-
-**--token-limit *N***  
-Limit number of tokens shown.
-
-**--role-limit *N***  
-Limit number of roles shown.
-
-**--accessgroup-limit *N***  
-Limit number of access groups shown.
-
-**--group-limit *N***  
-Limit number of groups shown.
-
-**--policy-limit *N***  
-Limit number of policies shown.
-
-**--limit *N***  
-Limit number of items shown per object.
-
-**--sort-by *FIELD***  
-Sort output by field.
-
-**--reverse**  
-Reverse sort order.
-
-**--raw**  
-Output without headers/borders.
-
-**--csv**  
-Output as CSV.
-
-**--csv-sep *SEP***  
-CSV separator character.
-
-**--attribute *ATTR***  
-Display specific attribute in list command.
-
-## Token Options
-
-**-i *interfaces***  
-Limit login to given interfaces (e.g. tty, gui, ssh).
-
-**--sign**  
-Sign the object with default tags.
-
-**--tags *tag1,tag2***  
-Add tags to signature.
-
-**--no-auto-sign**  
-Do not automatically sign when adding a token.
-
-**--keep-sign**  
-Do not remove any signature when removing a token.
-
-## General Options
-
-**--keep-acls**  
-Preserve ACLs when moving role.
-
-**--password *PASS***  
-Password for encrypting exports.
-
-**-r**  
-List roles recursively.
-
-Global options are available for all commands. See **otpme**(1) for
-details.
+Global options work with every command, see **otpme**(1).
 
 # CONFIG PARAMETERS
 
-Configuration parameters can be set with the **config** command and
-displayed with **show_config**. For a complete description of all
-available parameters and their applicable object types, see
-**otpme**(7).
+Which parameters a role takes is under **Configuration** above, and what
+each of them does is in **otpme**(7).
 
 # EXAMPLES
 
-## Managing Roles
+The examples use the site **berlin** of the realm **example.org**.
 
-**otpme-role add admins**  
-Create a new role
+## Letting people onto the WLAN
 
-**otpme-role add --groups sysadmins --roles operators**  
-Create a role and add it to groups and roles
+**otpme-role add wlan-users**  
+A role. By itself it does nothing — it is the next step that gives it a
+meaning.
 
-## Token Assignment
+**otpme-accessgroup add_role wlan wlan-users**  
+Assign it to the access group the WLAN authenticates against. Now the
+tokens in the role may log in there, and nowhere else by way of this
+role. See **otpme-accessgroup**(1).
 
-**otpme-role add_token admins admin/totp**  
-Add admin's TOTP token to the role
+**otpme-role add_token wlan-users alice/laptop**  
+Put a token in. alice gets onto the WLAN with it from now on.
 
-**otpme-role add_token -i ssh admins admin/ssh_key**  
-Add SSH key for SSH interface only
+**otpme-role remove_token wlan-users alice/laptop**  
+Take it out again. What it reached through the role is gone with it, and
+the signature of the assignment too.
 
-## Role Nesting
+## Letting a whole group of people on
 
-**otpme-role add_role super_admins admins**  
-Add admins role as child of super_admins
+**otpme-role add_role wlan-users office-staff**  
+Put **office-staff** into **wlan-users**. Everybody in **office-staff**
+is now on the WLAN, without a token of theirs being named here. The
+direction is from the outer role to the tokens of the inner one.
 
-**otpme-role list_roles -r super_admins**  
-List all nested roles recursively
+**otpme-role list_roles -r wlan-users**  
+Which roles are inside it, all the way down.
 
-## VLAN Assignment
+**otpme-role find_roles -r office-staff**  
+And the other way: which roles **office-staff** is in.
 
-**otpme-vlan add_role employees_vlan employees**  
-Put every member of the role into a VLAN
+## Device tokens from the SSO portal
 
-**otpme-vlan add_role admin_vlan admins**  
-Give a role nested in "employees" a VLAN of its own. Its members get it
-instead of the VLAN of "employees"
+A device token is a password of its own for one device: a notebook on
+the WLAN, a phone fetching mail. The user makes it in the SSO portal, so
+nobody has to hand out a password for it.
 
-## Policy Assignment
+**otpme-role config wlan-users device_token_suffix wlan**  
+This is the switch: without a suffix the role is not offered in the
+portal at all. A token of the device **iphone** is then called
+**iphone-wlan**.
 
-**otpme-role add_policy admins require_2fa**  
-Attach a policy to the role
+**otpme-role config wlan-users device_token_mschap True**  
+WLAN with PEAP/MSCHAPv2 needs it. It keeps the NT hash of the password
+on the server, which is why it is off unless the role says so.
+
+**otpme-role config wlan-users max_device_tokens 5**  
+Five devices per user.
+
+**otpme-site config berlin device_token_roles wlan-users**  
+Offer the role to the users of this site. It can also be said per user
+or per unit, see **otpme**(7).
+
+**otpme-role info --language en wlan-users**  
+What the portal tells the user about the role, in English. A text
+written without a language is your own note and is shown to nobody.
+
+## What does a role actually grant?
+
+**otpme-role show wlan-users**  
+Its tokens, roles, access groups, groups, scopes and policies in one
+table.
+
+**otpme-role find_accessgroups wlan-users**  
+Where its tokens may log in.
+
+**otpme-role find_shares -r sw-admins**  
+Which shares they can mount, the roles below it included.
+
+## An SSH key the hosts accept
+
+**otpme-role config sw-admins auto_sign True**  
+Sign every token this role takes in from now on. Without it you sign one
+at a time with **add_token --sign**.
+
+**otpme-role add_token sw-admins alice/ssh**  
+The key goes in and is signed with your own. A host told to trust you
+for token signatures lets it in; see **Token Assignment** above.
+
+## Machines in a role
+
+**otpme-vlan add_role office-vlan office-hosts**  
+Put the role into a VLAN. Its tokens, hosts and devices get it at port
+authentication. See **otpme-vlan**(1).
+
+**otpme-role add_host office-hosts client1**  
+A host in the role reaches the shares the role is assigned to, and gets
+its VLAN. What tokens may log in to that host is the other way round,
+**otpme-host add_role.**
+
+**otpme-role add_device office-hosts printer1**  
+The same for a device that is let onto the network by its MAC address.
+
+## Looking after one
+
+**otpme-role add_policy wlan-users office-hours**  
+Attach a policy. Three types fit a role; see **Policy Management** above
+for when they take effect.
+
+**otpme-role remove_orphans wlan-users**  
+Clean out what the role still points at although it is gone.
 
 # FILES
 
 */var/lib/otpme/*  
-OTPme data directory
+The objects of the realm, on a node. A role lives in the unit it was
+created in. A host holds no full role, only the view it answers a login
+with: the UUIDs of the members, the login interfaces they may use, the
+dynamic groups and the policies on the role.
+
+*/var/cache/otpme/ssh/authorized_keys/*user/authorized_keys**  
+The SSH keys that may log in to this host, one file per user. A key is
+only written here while a role of the host holds the token — see
+**otpme-host**(1) and **add_role** there.
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-user**(1), **otpme-token**(1),
-**otpme-group**(1), **otpme-accessgroup**(1), **otpme-vlan**(1),
-**otpme-policy**(1)
+**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-user**(1),
+**otpme-token**(1), **otpme-group**(1), **otpme-accessgroup**(1),
+**otpme-host**(1), **otpme-device**(1), **otpme-vlan**(1),
+**otpme-share**(1), **otpme-unit**(1), **otpme-policy**(1),
+**otpme-tool**(1), **otpme-trash**(1)
 
 # AUTHOR
 
@@ -525,4 +840,4 @@ This manual page was created with AI assistance.
 
 # COPYRIGHT
 
-Copyright © 2014-2025 the2nd. License: GPLv3
+Copyright © 2014-2026 the2nd. License: GPLv3

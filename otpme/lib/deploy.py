@@ -34,7 +34,11 @@ from otpme.lib.classes.data_objects.conf_job import get_sign_tags
 from otpme.lib.classes.data_objects.conf_job import get_job_types
 from otpme.lib.classes.data_objects.conf_job import get_job_actions
 from otpme.lib.classes.data_objects.conf_job import check_job_args
+from otpme.lib.classes.data_objects.conf_job import check_job_ttl
+from otpme.lib.classes.data_objects.conf_job import check_job_values
 from otpme.lib.classes.data_objects.conf_job import check_job_objects
+from otpme.lib.classes.data_objects.conf_job import REMOTE_ACCESS_DEFAULT_TTL
+from otpme.lib.classes.data_objects.conf_job import REMOTE_ACCESS_JOB_MAX_AGE
 from otpme.lib.classes.data_objects.conf_job import CONF_JOB_MAX_AGE
 from otpme.lib.classes.data_objects.conf_job import CONF_JOB_ACTIONS
 from otpme.lib.classes.data_objects.conf_job import job_creation_allowed
@@ -64,6 +68,8 @@ commands = {
                                         'roles',
                                         'groups',
                                         'job_ttl',
+                                        'on_demand',
+                                        'return_uuid',
                                         ],
                     'job_type'          : 'thread',
                     },
@@ -275,7 +281,8 @@ def get_job_args(job_args=None, job_file=None, job_key=None,
 
 def add_job(job_type, action, job_args=None, job_file=None, job_key=None,
     hosts=None, units=None, recursive=False, roles=None, groups=None,
-    job_ttl=None, _caller="API", callback=default_callback, **kwargs):
+    job_ttl=None, on_demand=False, return_uuid=False, _caller="API",
+    callback=default_callback, **kwargs):
     """ Make a job and sign it.
 
     Two things have to be true for it: the token of whoever asks has to
@@ -302,6 +309,7 @@ def add_job(job_type, action, job_args=None, job_file=None, job_key=None,
         return job_args
     try:
         check_job_args(job_type=job_type, action=action, args=job_args)
+        check_job_values(job_type=job_type, action=action, args=job_args)
         check_job_objects(job_type=job_type, action=action, args=job_args)
     except OTPmeException as e:
         return callback.error(str(e))
@@ -339,7 +347,10 @@ def add_job(job_type, action, job_args=None, job_file=None, job_key=None,
     target_uuids = [x.uuid for x in target_hosts]
 
     if job_ttl is None:
-        job_ttl = DEFAULT_JOB_TTL
+        if job_type == "remote_access":
+            job_ttl = REMOTE_ACCESS_DEFAULT_TTL
+        else:
+            job_ttl = DEFAULT_JOB_TTL
     else:
         try:
             job_ttl = humanize_units.time2int(job_ttl, time_unit="s")
@@ -349,6 +360,12 @@ def add_job(job_type, action, job_args=None, job_file=None, job_key=None,
             return callback.error(msg)
     created = time.time()
     expiry = created + job_ttl
+    # Asked here and asked again on the host: a signature says who
+    # wanted a shell, not how long the invitation stands.
+    try:
+        check_job_ttl(job_type=job_type, created=created, expiry=expiry)
+    except OTPmeException as e:
+        return callback.error(str(e))
 
     job_uuid = stuff.gen_uuid()
     sign_data = get_sign_data(job_uuid=job_uuid,
@@ -413,7 +430,56 @@ def add_job(job_type, action, job_args=None, job_file=None, job_key=None,
                     job_type=job_type,
                     action=action,
                     hosts=host_names)
+    if on_demand:
+        told, _waiting = notify_hosts(target_hosts, job_type=job_type)
+        if told == len(target_hosts):
+            notice = _("Told all {count} host(s) to look now.")
+            notice = notice.format(count=told)
+        else:
+            # Said rather than left out: a host that was not reached
+            # is not a failure, it asks on its next round anyway, but
+            # somebody waiting for a shell wants to know why it takes
+            # a minute.
+            notice = _("Told {told} of {count} host(s) to look now; the rest ask on their next round.")
+            notice = notice.format(told=told, count=len(target_hosts))
+        msg = f"{msg}\n{notice}"
+    if return_uuid:
+        # For a caller that has to go on working with the job: a
+        # remote access session meets the host under its uuid, and
+        # picking it out of a sentence would be a thing to get wrong
+        # later.
+        return callback.ok(job_uuid)
     return callback.ok(msg)
+
+def notify_hosts(target_hosts, job_type=None):
+    """ Tell the hosts of a job that there is one.
+
+    Returns how many were told and how many were listening at all. It
+    says nothing more than "look now": whether a host may do anything
+    with what it finds is decided on the host, as it always was.
+
+    <job_type> goes along because a host waits a moment of its own
+    before it asks syncd, to keep a job for a whole unit from bringing
+    every host of it there in the same second. A remote access job is
+    for one host and somebody is waiting at a terminal for it, so that
+    one is asked for at once -- see confd.handle_job_notification().
+    """
+    from otpme.lib import idle
+    told = 0
+    waiting = 0
+    for x_host in target_hosts:
+        try:
+            heard = idle.notify_host(x_host.uuid, "conf_job",
+                                    data={'job_type':job_type})
+        except Exception as e:
+            log_msg = _("Failed to tell host about a job: {host}: {error}", log=True)[1]
+            log_msg = log_msg.format(host=x_host.name, error=e)
+            logger.warning(log_msg)
+            continue
+        if heard:
+            told += 1
+            waiting += heard
+    return told, waiting
 
 def sign_job(signer, job_uuid, sign_tags, sign_data, callback=default_callback):
     """ Have the user sign the job.
@@ -519,19 +585,96 @@ def get_conf_job_max_age():
         return CONF_JOB_MAX_AGE
     return int(conf_job_max_age)
 
+def get_remote_access_job_max_age():
+    """ How long a remote access job is kept after it expired
+    (remote_access_job_max_age).
+
+    Its own parameter: there is one such job per otpme-shell call, it
+    is good for five minutes, and it says nothing afterwards. Zero is a
+    value somebody may set, so the parameter is asked for by name and
+    not by whether it is true.
+
+    apply_getter=False for the same reason as get_conf_job_max_age().
+    """
+    own_site = backend.get_object(object_type="site",
+                                realm=config.realm,
+                                name=config.site)
+    if not own_site:
+        return REMOTE_ACCESS_JOB_MAX_AGE
+    max_age = own_site.get_config_parameter("remote_access_job_max_age",
+                                            apply_getter=False)
+    if max_age is None:
+        return REMOTE_ACCESS_JOB_MAX_AGE
+    return int(max_age)
+
+def job_is_unanswered(job_type, job_failed, job_refused, job_pending,
+    cancelled):
+    """ Whether a job still has something nobody has seen.
+
+    Takes the type, what get_job_status() found and whether the job was
+    taken back, and nothing else, so the rule can be read and tested on
+    its own -- see remove_outdated_jobs(), which is what it decides for.
+
+    Two kinds of job are never held: one that was taken back and a
+    remote access job. Both have been answered by somebody standing
+    there -- the one who cancelled it, and the one who waited for the
+    shell -- and that is the same answer an ack gives.
+
+    Not whether the job expired. Every job has an expiry and the default
+    is 30 days (DEFAULT_JOB_TTL), which is less than the 90 days a job
+    is kept: by the time anything looks at an old job it has expired,
+    so letting that end the waiting would end it for every job. A
+    remote access job is the exception and goes by its expiry, see
+    get_remote_access_job_max_age().
+    """
+    if cancelled:
+        # Somebody looked at the job to take it back, and that is the
+        # answer -- to what a host reported as much as to one that
+        # never did. What a host did to itself before that stays in its
+        # result, where it is read with the job it belongs to, and the
+        # listing shows such a job as over (grey, see list_jobs()).
+        # Held for an ack it would be the one thing in a listing that
+        # is grey and still waiting for somebody.
+        return False
+    if job_type == "remote_access":
+        # Nothing about a shell has to be found out later. Whoever asked
+        # for it stood there while it happened -- otpme-shell waits for
+        # the host and says what came of it -- and the job is good for
+        # five minutes. Held like the others, every shell whose host did
+        # not come would be kept until somebody acked it.
+        return False
+    if job_failed or job_refused:
+        return True
+    if not job_pending:
+        return False
+    # A host that never reported is the case nothing else would tell
+    # anybody about, so it holds the job.
+    return True
+
 def remove_outdated_jobs(still_allowed, logger):
     """ Remove the jobs that are older than conf_job_max_age, with their
     results.
 
-    A job that failed somewhere and was not acked is kept, however old:
-    somebody has to see it first. Results whose job is gone are removed
-    as well.
+    A job with something unanswered about it is kept until somebody acks
+    it, however old: nobody should have to find out from a log that
+    something went wrong weeks ago. That is a host where it failed, one
+    that refused it, and one that never reported at all -- a host that
+    was switched off for three months is exactly the case nothing else
+    would tell anybody about.
+
+    Two things are not kept that way. A job that was taken back:
+    somebody looked at it to cancel it, and the hosts that never ran it
+    were never meant to. And a remote access job, which whoever asked
+    for it watched while it happened.
+
+    Results whose job is gone are removed as well.
 
     Runs on the master node only (see confd). <still_allowed> is asked
     before each job, so a failover stops the cleanup right away.
     Removed objects are removed on the other nodes too (cluster sync).
     Returns how many jobs were removed. """
     conf_job_max_age = get_conf_job_max_age()
+    remote_access_max_age = get_remote_access_job_max_age()
     now = time.time()
     jobs = backend.search(object_type="conf_job",
                         attribute="job_type",
@@ -543,11 +686,23 @@ def remove_outdated_jobs(still_allowed, logger):
         if not still_allowed():
             return removed
         created = job.created or 0
-        if (now - created) <= conf_job_max_age:
+        if job.job_type == "remote_access":
+            # From the expiry, which is when a shell job stopped being
+            # of use to anybody, and on its own parameter: there is one
+            # per otpme-shell call, and to conf_job_max_age they would
+            # pile up for three months.
+            gone_since = now - (job.expiry or created)
+            if gone_since <= remote_access_max_age:
+                kept_jobs.append(job.uuid)
+                continue
+        elif (now - created) <= conf_job_max_age:
             kept_jobs.append(job.uuid)
             continue
         ok, job_failed, job_refused, job_pending, job_gone = get_job_status(job)
-        if (job_failed or job_refused) and not job.ack_time:
+        unanswered = job_is_unanswered(job.job_type,
+                                    job_failed, job_refused, job_pending,
+                                    job.is_cancelled())
+        if unanswered and not job.ack_time:
             log_msg = _("Keeping job {job_uuid}: it did not go through and was not acked.", log=True)[1]
             log_msg = log_msg.format(job_uuid=job.uuid)
             logger.debug(log_msg)
@@ -781,11 +936,20 @@ def list_jobs(host=None, failed=False, pending=False,
                     f"({job_status})",
                     ]
         job_line = " ".join([x for x in job_line if x])
-        # At a glance, worst first: red where a host ran it and it broke,
-        # yellow where a host would not run it, cyan where that has been
-        # acknowledged, grey for a job that was taken back and has
-        # nothing left to do, orange while a host has not run it yet,
-        # green when every host ran it.
+        # At a glance: grey for a job that was taken back, then the
+        # worst first -- red where a host ran it and it broke, yellow
+        # where a host would not run it, cyan where that has been
+        # acknowledged, orange while a host has not run it yet, green
+        # when every host ran it.
+        #
+        # Grey first, because a job that was taken back is over and
+        # nobody has to do anything about it. Red for one of those read
+        # as something going wrong, which is the opposite of what
+        # happened: somebody cancelled it on purpose. A host that ran it
+        # before it was taken back and failed is still in the status
+        # text of the line ("cancelled, 2 ok, 1 failed") and in
+        # otpme-deploy results, and the job is still kept until somebody
+        # acks it, see job_is_unanswered().
         #
         # Acknowledging is the answer to red and yellow, so it takes
         # their place: somebody has seen it, and a listing full of red
@@ -793,25 +957,17 @@ def list_jobs(host=None, failed=False, pending=False,
         # It says nothing about a job that worked, which therefore stays
         # green, and nothing about one that is still running.
         #
-        # Cancelled is grey once nothing is left to answer. A job that
-        # was taken back is over, and over says more than what it was
-        # over of -- but not while a host reported something that nobody
-        # has looked at: taking a job back does not undo what it did on
-        # the hosts that had it already. So after red and yellow, before
-        # the cyan that says both have been seen, and before pending,
-        # because the hosts counted there never will run it.
-        #
         # force_color, because this runs in mgmtd and the line travels to
         # the client that prints it. Left to termcolor the color would be
         # there while the daemons run in a terminal and gone once they
         # run as daemons -- and the two colors of our own (orange, grey)
         # would stay either way, which is worse than no color at all.
-        if job_failed and not job.ack_time:
+        if job.is_cancelled():
+            job_line = colored_grey(job_line)
+        elif job_failed and not job.ack_time:
             job_line = colored(job_line, "red", force_color=True)
         elif job_refused and not job.ack_time:
             job_line = colored(job_line, "yellow", force_color=True)
-        elif job.is_cancelled():
-            job_line = colored_grey(job_line)
         elif job_failed or job_refused:
             job_line = colored(job_line, "cyan", force_color=True)
         elif job_pending:
@@ -821,7 +977,7 @@ def list_jobs(host=None, failed=False, pending=False,
         lines.append(job_line)
     if not lines:
         return callback.ok(_("No jobs."))
-    return callback.ok("\n".join(lines))
+    return callback.ok("\n".join(lines), return_value=True)
 
 def show_job(conf_job, _caller="API", callback=default_callback, **kwargs):
     """ One job with its targets: done, failed, still waiting. Only the
@@ -862,7 +1018,7 @@ def show_job(conf_job, _caller="API", callback=default_callback, **kwargs):
     lines.append(f"pending: {', '.join(pending) or '-'}")
     if gone:
         lines.append(f"deleted: {', '.join(gone)}")
-    return callback.ok("\n".join(lines))
+    return callback.ok("\n".join(lines), return_value=True)
 
 def show_results(conf_job=None, host=None,
     _caller="API", callback=default_callback, **kwargs):
@@ -958,14 +1114,16 @@ def show_results(conf_job=None, host=None,
             lines.append(hint)
     if not lines:
         return callback.ok(_("No results."))
-    return callback.ok("\n".join(lines))
+    return callback.ok("\n".join(lines), return_value=True)
 
 def ack_job(conf_job, _caller="API", callback=default_callback, **kwargs):
-    """ Note that somebody has seen a job that failed somewhere.
+    """ Note that somebody has seen how a job went.
 
-    A job is removed after conf_job_max_age. One that failed somewhere stays
-    until this: nobody should have to find out from a log that something
-    went wrong weeks ago. """
+    A job is removed after conf_job_max_age. One with something
+    unanswered about it stays until this -- a host where it failed, one
+    that refused it, or one that never reported at all. Nobody should
+    have to find out from a log that something went wrong weeks ago.
+    See remove_outdated_jobs(). """
     job = get_visible_job(conf_job, callback=callback)
     if not job:
         return job

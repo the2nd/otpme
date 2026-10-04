@@ -232,16 +232,16 @@ cmd_help = {
      #           },
 
     'add_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca add_acl {ca} {role|token} {role_path|token_path} {acl[:value]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-ca add_acl {ca} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
+                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to CA'),
                                 },
                 },
 
     'del_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca del_acl {ca} {acl}'),
-                    'cmd'   :   '<|object|> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-ca del_acl {ca} {acl[,acl]}'),
+                    'cmd'   :   '<|object|> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Delete ACL from CA'),
                                 },

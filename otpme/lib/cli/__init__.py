@@ -525,11 +525,19 @@ def get_opts(command_syntax, command_line, command_args=None,
             found_required_string = False
 
         # Check for optional_opt parameter/object.
-        try:
-            para = check_string(para, "[", "]")
-            found_optional_string = True
-        except Exception:
-            found_optional_string = False
+        #
+        # Not on something that came out of "<>": an optional parameter
+        # is written "[name]" and a required one "<name>", so brackets
+        # inside "<[name]>" are not that -- they say the parameter is a
+        # list, and stripping them here took the list away before
+        # check_list_opt() below could see it.
+        found_optional_string = False
+        if not found_required_string:
+            try:
+                para = check_string(para, "[", "]")
+                found_optional_string = True
+            except Exception:
+                found_optional_string = False
 
         # Check for file.
         try:

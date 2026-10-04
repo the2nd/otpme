@@ -2,11 +2,11 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 """ Showing and searching the inventory of hosts (otpme-inventory).
 
-The system a host runs is kept on the host object (os, os_version), its
-packages and its hardware in its host_inventory object; confd on the
-host reports all of it (see daemon/confd.py, confd/inventory.py and
-confd/hardware.py). This is the side that reads them. Only hosts of our
-own site: the inventory of a host is kept on the nodes of its site.
+The system a host runs, its packages and its hardware are all in its
+host_inventory object; confd on the host reports all of it (see
+daemon/confd.py, confd/inventory.py and confd/hardware.py). This is the
+side that reads them. Only hosts of our own site: the inventory of a
+host is kept on the nodes of its site.
 
 Reading the inventory of a host needs the token to be named in the
 allow_inventory of that host -- see inventory_read_allowed(). A host the
@@ -40,6 +40,13 @@ from otpme.lib.classes.data_objects.host_inventory import get_host_inventory
 from otpme.lib.classes.data_objects.host_inventory import HARDWARE_INDEX_FIELDS
 from otpme.lib.classes.data_objects.host_inventory import HARDWARE_DISK_ATTRIBUTE
 from otpme.lib.classes.data_objects.host_inventory import HARDWARE_DISK_SIZE_ATTRIBUTE
+from otpme.lib.classes.data_objects.host_inventory import HARDWARE_DISK_SERIAL_ATTRIBUTE
+from otpme.lib.classes.data_objects.host_inventory import HARDWARE_DISK_VENDOR_ATTRIBUTE
+from otpme.lib.classes.data_objects.host_inventory import HARDWARE_DISK_MODEL_ATTRIBUTE
+from otpme.lib.classes.data_objects.host_inventory import HARDWARE_CONTROLLER_ATTRIBUTE
+from otpme.lib.classes.data_objects.host_inventory import HARDWARE_CONTROLLER_FIELDS
+from otpme.lib.classes.data_objects.host_inventory import HARDWARE_NIC_ATTRIBUTE
+from otpme.lib.classes.data_objects.host_inventory import HARDWARE_NIC_FIELDS
 
 from otpme.lib.exceptions import *
 
@@ -54,6 +61,21 @@ REGISTER_AFTER = ["otpme.lib.classes.host"]
 HARDWARE_SEARCH_FIELDS = dict(HARDWARE_INDEX_FIELDS)
 HARDWARE_SEARCH_FIELDS['disk'] = HARDWARE_DISK_ATTRIBUTE
 HARDWARE_SEARCH_FIELDS['disk_size'] = HARDWARE_DISK_SIZE_ATTRIBUTE
+HARDWARE_SEARCH_FIELDS['disk_serial'] = HARDWARE_DISK_SERIAL_ATTRIBUTE
+HARDWARE_SEARCH_FIELDS['disk_vendor'] = HARDWARE_DISK_VENDOR_ATTRIBUTE
+HARDWARE_SEARCH_FIELDS['disk_model'] = HARDWARE_DISK_MODEL_ATTRIBUTE
+HARDWARE_SEARCH_FIELDS['controller'] = HARDWARE_CONTROLLER_ATTRIBUTE
+HARDWARE_SEARCH_FIELDS['nic'] = HARDWARE_NIC_ATTRIBUTE
+# The fields a host has several of, one per disk. A search by one of
+# them finds the host through the index and then says which of its
+# disks answered, see show_search_hosts().
+HARDWARE_DISK_SEARCH_FIELDS = {
+                    'disk'          : None,
+                    'disk_size'     : "size",
+                    'disk_serial'   : "serial",
+                    'disk_vendor'   : "vendor",
+                    'disk_model'    : "model",
+                    }
 # Dell writes the service tag into the system serial number, and every
 # other vendor calls that field the serial. One value, two names for
 # it, so that looking for the name on the sticker finds something.
@@ -123,6 +145,14 @@ def inventory_read_allowed(host_object, token=None):
     of tokens and of roles; a token counts as named when it is in a
     named role, however deep the role nesting goes. Unset means nobody.
 
+    A host of another site that reports here (inventory_site) brings
+    its allow_inventory with it, at the host, its unit and its site of
+    origin. Whoever runs a central inventory can take that decision
+    over with allow_foreign_inventory on this site, which is asked
+    first and, where it is unset, leaves the host's own in charge. Both
+    are wanted: one where the site that keeps the data says who reads
+    it, one where the site the data is about keeps saying.
+
     Nobody but an admin, that is: the admin token and the admin role
     pass without being named, which is the rule that already decides
     who is above an ACL (see otpme_acl.check_access()). Keeping one
@@ -142,21 +172,53 @@ def inventory_read_allowed(host_object, token=None):
                                         check_admin_role=check_admin_role)
     if not need_acls:
         return access_granted
-    try:
-        allowed = host_object.get_config_parameter("allow_inventory",
-                                                apply_getter=False)
-    except Exception:
-        allowed = None
+    allowed = None
+    if host_object.site != config.site or host_object.realm != config.realm:
+        # A host of another site that reports here (inventory_site).
+        # Our own say about data that is not ours comes first, and
+        # where we have not said anything the host brings its own with
+        # it, as below.
+        allowed = read_config_parameter(get_own_site(),
+                                        "allow_foreign_inventory")
+    if not allowed:
+        allowed = read_config_parameter(host_object, "allow_inventory")
     return token_role_list_allows(allowed, token)
 
+def get_own_site():
+    """ The site object of this site, or None. """
+    if not config.site_uuid:
+        return None
+    return backend.get_object(object_type="site", uuid=config.site_uuid)
+
+def read_config_parameter(config_object, name):
+    """ One config parameter as it is stored, or None.
+
+    Not as the getter shows it: these hold token and role UUIDs, and
+    the getter turns them into paths that would have to be turned back.
+    """
+    if not config_object:
+        return None
+    try:
+        return config_object.get_config_parameter(name, apply_getter=False)
+    except Exception:
+        return None
+
 def get_host(host, callback=default_callback):
-    """ A host or node of our site by its name, if the caller may see
-    its inventory. """
+    """ A host or node by its name, if the caller may see its inventory.
+
+    Of any site of our realm, not only of ours: a host may report its
+    inventory to another site (inventory_site), and then that site is
+    the one that answers for it. What we have an inventory of is what
+    we can say something about, whoever the host belongs to.
+
+    A host name is unique within its site and not within the realm, so
+    the first of two is taken -- as everywhere else a host is named
+    without saying where it is.
+    """
     result = backend.search(object_types=["host", "node"],
                             attribute="name",
                             value=host,
                             realm=config.realm,
-                            site=config.site,
                             return_type="instance")
     if not result:
         msg = _("Unknown host: {host}")
@@ -189,6 +251,81 @@ def format_hardware_value(name, value):
     if isinstance(value, bool):
         return "yes" if value else "no"
     return str(value)
+
+def format_disk_name(disk):
+    """ A disk as "<name>=<size>". """
+    name = disk.get("name")
+    size = int2size(disk.get("size", 0))
+    return f"{name}={size}"
+
+def format_controller(controller, hardware):
+    """ One controller, and the disks that hang on it.
+
+    Called by the name on the card where the host could read one, else
+    by the chip, else by its PCI address. The disks by name and size:
+    the question a controller is searched for is which disks are on it,
+    and what each of them is beside that has its own field.
+    """
+    name = controller.get("model") \
+            or controller.get("chip") \
+            or controller.get("address")
+    disks = []
+    for x_disk in hardware.get("disks") or []:
+        if x_disk.get("controller") != controller.get("address"):
+            continue
+        disks.append(format_disk_name(x_disk))
+    disks = ",".join(disks) or "-"
+    return f"{name}({disks})"
+
+def device_matches(device, fields, search):
+    """ Whether a device is one the search asked for.
+
+    Against every name it has, which are the ones the index holds, so
+    the answer here and the hosts the index found agree.
+    """
+    for name in fields:
+        value = device.get(name)
+        if value is None:
+            continue
+        if hardware_value_matches(value, search):
+            return True
+    return False
+
+def format_nic(nic):
+    """ One network card, the way a search result names it.
+
+    The name the kernel gave it and its MAC, and behind them what the
+    card is. The MAC is the answer to the question a card is usually
+    searched for: which host has this one.
+    """
+    name = nic.get("name")
+    mac = nic.get("mac") or "-"
+    known = [x for x in (nic.get("vendor"),
+                        nic.get("model"),
+                        nic.get("chip")) if x]
+    if not known:
+        return f"{name}={mac}"
+    known = " ".join(known)
+    return f"{name}={mac}({known})"
+
+def format_disk(disk):
+    """ One disk, the way a search result names it.
+
+    Name and size, and behind them what says which disk this is: the
+    vendor, the model and the serial, where the host reported them. A
+    search for "disk_size>=10G" is asked to find a disk, so the answer
+    has to be enough to go and find it in the rack. The same three the
+    hardware of a host shows, in the same order, so a line here and a
+    line there read alike.
+    """
+    disk_name = format_disk_name(disk)
+    known = [x for x in (disk.get("vendor"),
+                        disk.get("model"),
+                        disk.get("serial")) if x]
+    if not known:
+        return disk_name
+    known = " ".join(known)
+    return f"{disk_name}({known})"
 
 def parse_hardware_search(expression):
     """ What "--hardware" says, taken apart.
@@ -283,10 +420,15 @@ def show_inventory(host, _caller="API", callback=default_callback, **kwargs):
         if inventory.last_inventory_update:
             last_update = time.strftime("%Y-%m-%d %H:%M",
                             time.localtime(inventory.last_inventory_update))
+    os_name = "-"
+    os_version = "-"
+    if inventory:
+        os_name = inventory.os or "-"
+        os_version = inventory.os_version or "-"
     lines = [
             f"host: {host_object.name}",
-            f"os: {host_object.os or '-'}",
-            f"os_version: {host_object.os_version or '-'}",
+            f"os: {os_name}",
+            f"os_version: {os_version}",
             f"packages: {packages}",
             ]
     # The three that say which machine this is. The rest of the
@@ -314,14 +456,44 @@ def show_hardware(host, _caller="API", callback=default_callback, **kwargs):
         return callback.error(msg)
     lines = []
     for x_name in sorted(hardware):
-        if x_name == "disks":
+        if x_name in ("disks", "controllers", "nics"):
             continue
         lines.append(f"{x_name}: {format_hardware_value(x_name, hardware[x_name])}")
+    for controller in hardware.get("controllers") or []:
+        controller_line = f"controller: {controller.get('address')}"
+        for x_key in ("vendor", "model", "chip"):
+            x_value = controller.get(x_key)
+            if x_value:
+                controller_line = f"{controller_line} {x_value}"
+        # Named, because none of these says what it is by itself.
+        for x_key in ("vendor_id", "device_id", "subsystem_id", "driver"):
+            x_value = controller.get(x_key)
+            if x_value:
+                controller_line = f"{controller_line} {x_key}={x_value}"
+        lines.append(controller_line)
+    for nic in hardware.get("nics") or []:
+        nic_line = f"nic: {nic.get('name')} {nic.get('mac') or '-'}"
+        for x_key in ("vendor", "model", "chip"):
+            x_value = nic.get(x_key)
+            if x_value:
+                nic_line = f"{nic_line} {x_value}"
+        for x_key in ("vendor_id", "device_id", "subsystem_id", "driver"):
+            x_value = nic.get(x_key)
+            if x_value:
+                nic_line = f"{nic_line} {x_key}={x_value}"
+        lines.append(nic_line)
     for disk in hardware.get("disks") or []:
         disk_line = f"disk: {disk.get('name')} {int2size(disk.get('size', 0))}"
-        disk_model = disk.get("model")
-        if disk_model:
-            disk_line = f"{disk_line} {disk_model}"
+        for x_key in ("vendor", "model"):
+            x_value = disk.get(x_key)
+            if x_value:
+                disk_line = f"{disk_line} {x_value}"
+        # Named, because a serial and a PCI address say nothing about
+        # themselves the way a model does.
+        for x_key in ("serial", "controller"):
+            x_value = disk.get(x_key)
+            if x_value:
+                disk_line = f"{disk_line} {x_key}={x_value}"
         lines.append(disk_line)
     return callback.ok("\n".join(lines))
 
@@ -378,14 +550,13 @@ def search_inventory(package=None, os_version=None, hardware=None,
         host_uuids = {host_object.uuid}
 
     if os_version:
-        os_uuids = set()
-        result = backend.search(object_types=["host", "node"],
-                                attribute="os_version",
-                                value=os_version,
-                                realm=config.realm,
-                                site=config.site,
-                                return_type="uuid")
-        os_uuids.update(result)
+        # In the inventories, the same as the packages and the hardware:
+        # that is where a host says what it runs.
+        os_inventories = backend.search(object_type="host_inventory",
+                                        attribute="os_version",
+                                        value=os_version,
+                                        return_type="instance")
+        os_uuids = {x.host_uuid for x in os_inventories}
         if host_uuids is None:
             host_uuids = os_uuids
         else:
@@ -491,30 +662,52 @@ def show_search_hosts(host_uuids, os_version=None, hardware_field=None,
         if not inventory_read_allowed(x_host):
             continue
         line = x_host.name
-        if os_version:
-            line = f"{line} {x_host.os_version}"
-        if hardware_field:
+        inventory = None
+        if os_version or hardware_field:
             inventory = get_host_inventory(x_host.uuid)
+        if os_version:
+            line = f"{line} {inventory and inventory.os_version or '-'}"
+        if hardware_field:
             x_hardware = {}
             if inventory:
                 x_hardware = inventory.hardware or {}
-            if hardware_field in ("disk", "disk_size"):
+            if hardware_field == "controller":
+                # A controller is asked for to get at the disks on it,
+                # so that is what the answer is.
+                found = []
+                for x_controller in x_hardware.get("controllers") or []:
+                    if not device_matches(x_controller,
+                                        HARDWARE_CONTROLLER_FIELDS,
+                                        hardware_search):
+                        continue
+                    found.append(format_controller(x_controller, x_hardware))
+                line = f"{line} {' '.join(found) or '-'}"
+            elif hardware_field == "nic":
+                found = []
+                for x_nic in x_hardware.get("nics") or []:
+                    if not device_matches(x_nic, HARDWARE_NIC_FIELDS,
+                                        hardware_search):
+                        continue
+                    found.append(format_nic(x_nic))
+                line = f"{line} {','.join(found) or '-'}"
+            elif hardware_field in HARDWARE_DISK_SEARCH_FIELDS:
+                disk_key = HARDWARE_DISK_SEARCH_FIELDS[hardware_field]
                 disks = []
                 for x_disk in x_hardware.get("disks") or []:
-                    if hardware_field == "disk_size":
-                        x_value = x_disk.get("size", 0)
-                    else:
+                    if disk_key is None:
                         # The same string the index holds and the
                         # search was built against, see
                         # parse_hardware_search().
                         x_value = "{name}={size}".format(
                                             name=x_disk.get("name"),
                                             size=x_disk.get("size", 0))
+                    else:
+                        x_value = x_disk.get(disk_key)
+                        if x_value is None:
+                            continue
                     if not hardware_value_matches(x_value, hardware_search):
                         continue
-                    x_name = x_disk.get("name")
-                    x_size = int2size(x_disk.get("size", 0))
-                    disks.append(f"{x_name}={x_size}")
+                    disks.append(format_disk(x_disk))
                 line = f"{line} {','.join(disks) or '-'}"
             else:
                 x_value = x_hardware.get(hardware_field)

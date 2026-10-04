@@ -217,24 +217,26 @@ cmd_help = {
                 },
 
     'add_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-unit add_acl [-r -a --objects <user,group,token>] {unit} {role|token} {role_path|token_path} {acl[:value]}'),
-                    'cmd'   :   '-r :recursive_acls=True: -a :apply_default_acls=True: --objects :[object_types]: <|object|> <owner_type> <owner_name> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-unit add_acl [-r -a --objects <user,group,token> --procs <num>] {unit} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
+                    'cmd'   :   '-r :recursive_acls=True: -a :apply_default_acls=True: --objects :[object_types]: --procs :procs: <|object|> <owner_type> <owner_name> <[acls]>',
                     '_help' :   {
                                     'cmd'                           : _('Add ACL to unit'),
                                     '-r'                            : _('Set ACL recursive'),
                                     '-a'                            : _('Apply default ACLs to existing objects'),
                                     '--objects <user,group,token>'  : _('Add ACLs to this object types only'),
+                                    '--procs <num>'                 : _('Processes to walk the objects with (default: a quarter of the cores)'),
                                 },
                 },
 
     'del_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-unit del_acl [-r -a --objects <user,group,token>] {unit} {acl}'),
-                    'cmd'   :   '-r :recursive_acls=True: -a :apply_default_acls=True: --objects :[object_types]: <|object|> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-unit del_acl [-r -a --objects <user,group,token> --procs <num>] {unit} {acl[,acl]}'),
+                    'cmd'   :   '-r :recursive_acls=True: -a :apply_default_acls=True: --objects :[object_types]: --procs :procs: <|object|> <[acls]>',
                     '_help' :   {
                                     'cmd'                           : _('Delete ACL from unit'),
                                     '-r'                            : _('Delete ACLs recursive'),
                                     '-a'                            : _('Delete default ACLs from existing objects'),
                                     '--objects <user,group,token>'  : _('Delete ACLs from this object types only'),
+                                    '--procs <num>'                 : _('Processes to walk the objects with (default: a quarter of the cores)'),
                                 },
                 },
 

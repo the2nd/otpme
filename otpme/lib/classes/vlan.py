@@ -204,6 +204,15 @@ commands = {
                     },
                 },
             },
+    'show_config'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_config_parameters',
+                    'oargs'             : ['parameter'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'changelog'   : {
             'default'    : {
                 'exists'    : {
@@ -375,7 +384,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'cache_update_interval' : 30,
+                    'args'              : ['owner_type', 'owner_name', 'acls', 'recursive_acls', 'apply_default_acls',],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -385,7 +395,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['acls'],
                     'oargs'             : ['recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
@@ -554,6 +565,26 @@ def pick_member_vlan(vlans, object_uuid):
     logger.warning(log_msg)
     return vlans[0]
 
+def say_disabled_vlans(vlans, object_uuid):
+    """ Say that a VLAN naming this object is switched off.
+
+    A VLAN that is off answers nothing, and from the outside that looks
+    the same as no assignment at all -- which is the one thing somebody
+    looking for a missing VLAN needs told. Only the ones that name this
+    object, and only where they would have answered: the VLANs of a site
+    that have nothing to do with it are not this object's business.
+
+    The same is said for the other way of assigning a VLAN, see
+    auth_handler.get_site_vlans().
+    """
+    if not vlans:
+        return
+    object_id = backend.get_oid(uuid=object_uuid)
+    log_msg = _("Ignoring disabled VLAN assigned to {object_id}: {vlans}", log=True)[1]
+    log_msg = log_msg.format(object_id=object_id,
+                            vlans=", ".join(sorted(x.name for x in vlans)))
+    logger.warning(log_msg)
+
 def get_member_vlan(object_uuid, object_type, site_uuid=None):
     """ Get the VLAN of our site the given object is a member of.
 
@@ -570,6 +601,10 @@ def get_member_vlan(object_uuid, object_type, site_uuid=None):
     nested in another can have a VLAN of its own -- the same rule all
     the way up, instead of whichever VLAN the backend happened to
     return first.
+
+    A VLAN that is switched off answers nothing, and an assignment to
+    one is said out loud rather than passed over: from the outside it
+    looks like no assignment at all. See say_disabled_vlans().
     """
     if site_uuid is None:
         site_uuid = config.site_uuid
@@ -577,19 +612,25 @@ def get_member_vlan(object_uuid, object_type, site_uuid=None):
     if not site:
         return
     vlans = []
+    disabled_vlans = []
     for vlan in backend.search(object_type="vlan",
                             attribute="uuid",
                             value="*",
                             realm=site.realm,
                             site=site.name,
                             return_type="instance"):
-        if not vlan.enabled:
-            continue
-        vlans.append(vlan)
-    if not vlans:
+        if vlan.enabled:
+            vlans.append(vlan)
+        else:
+            disabled_vlans.append(vlan)
+    if not vlans and not disabled_vlans:
         return
 
     # Named by a VLAN itself.
+    say_disabled_vlans(
+            [x for x in disabled_vlans
+            if object_uuid in x._get_members(object_type)],
+            object_uuid)
     x_vlans = [x for x in vlans if object_uuid in x._get_members(object_type)]
     if x_vlans:
         return pick_member_vlan(x_vlans, object_uuid)
@@ -603,6 +644,10 @@ def get_member_vlan(object_uuid, object_type, site_uuid=None):
                                 return_type="uuid")
     seen_uuids = list(check_uuids)
     while check_uuids:
+        say_disabled_vlans(
+                [x for x in disabled_vlans
+                if [y for y in check_uuids if y in x.roles]],
+                object_uuid)
         x_vlans = [x for x in vlans
                 if [y for y in check_uuids if y in x.roles]]
         if x_vlans:

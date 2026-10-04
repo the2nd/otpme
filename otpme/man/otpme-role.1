@@ -1,4 +1,4 @@
-.TH OTPME-ROLE 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.TH OTPME-ROLE 1 "2026-10-04" "OTPme 0.3.0a279" "OTPme Manual"
 .SH NAME
 otpme-role \- manage OTPme roles
 .SH SYNOPSIS
@@ -7,21 +7,86 @@ otpme-role \- manage OTPme roles
 [\fIoptions\fR] [\fIrole\fR]
 .SH DESCRIPTION
 .B otpme-role
-manages roles in the OTPme system. Roles are groups of tokens or other roles that can be nested.
+manages the roles of a realm.
+.PP
+A role is what things are assigned to.
+An access group, a client, a share, a host, a node, a group, an OIDC scope and a VLAN all take a role, and a role holds tokens.
+So the assignments are made once and stay, and people come and go by being put into the role or taken out of it.
+.PP
+A role can hold another role.
+.B otpme\-role add_role \fIparent\fB \fIchild\fR
+puts \fIchild\fR into \fIparent\fR, and from then on the tokens of \fIchild\fR reach everything \fIparent\fR is assigned to.
+That is the direction to keep in mind: what is assigned to the outer role flows to the tokens of the inner one, and not the other way round.
+.PP
+A role lives in a unit, which is where its ACLs come from, and belongs to one site.
 .SH COMMANDS
 .SS Role Management
 .TP
 .B add \fR[\fB\-\-groups\fR \fIgroup1,group2\fR] [\fB\-\-roles\fR \fIrole1,role2\fR] \fIrole\fR
-Create a new role. Optionally add it directly to groups or other roles.
+Create a role.
+.br
+.B \-\-groups
+puts it into those groups and
+.B \-\-roles
+into those roles, which saves an
+.B add_role
+per role afterwards.
 .TP
-.B del \fIrole\fR
+.B del \fR[\fB\-\-no\-trash\fR] \fIrole\fR
 Delete a role.
+It goes to the trash, from where
+.BR otpme\-trash (1)
+can bring it back; \fB\-\-no\-trash\fR deletes it right away.
+.br
+A role that still holds tokens or other roles is not deleted \(em take them out first.
+A role that is a member of access groups is, and they are named in the question before it happens.
+What held it keeps a reference to something that is gone;
+.B remove_orphans
+on those objects clears it up.
+.br
+A base role of the realm cannot be deleted at all.
 .TP
-.B show \fR[\fIrole\fR]
-Display role information. Without arguments, shows all roles.
+.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-token\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-accessgroup\-limit\fR \fIN\fR] [\fB\-\-group\-limit\fR \fIN\fR] [\fB\-\-scope\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIrole\fR]
+Show the roles, with their tokens, access groups, groups, scopes and policies.
+Without a role you get all of them.
+.RS
 .TP
-.B list \fR[\fIregex\fR]
-List roles, optionally filtered by regex pattern.
+.B \-a
+Also the roles you may only look at, not just the ones you may change.
+.TP
+.B \-z \fIN\fR
+How many roles to print.
+.TP
+.B \-\-fields \fIF1,F2\fR
+Print these columns and no others.
+The names are the ones in the header of the table.
+.TP
+.B \-\-limit \fIN\fR
+How many of each kind to print per role: tokens, roles, access groups, groups, scopes, policies.
+.TP
+.B \-\-token\-limit \fIN\fR, \fB\-\-role\-limit \fIN\fR, \fB\-\-accessgroup\-limit \fIN\fR, \fB\-\-group\-limit \fIN\fR, \fB\-\-scope\-limit \fIN\fR, \fB\-\-policy\-limit \fIN\fR
+The same for one of them, where the others should stay as they are.
+.TP
+.B \-\-sort\-by \fIfield\fR, \fB\-\-reverse\fR
+Which column to sort by, and the other way round.
+.TP
+.B \-\-raw\fR, \fB\-\-csv\fR, \fB\-\-csv\-sep \fIsep\fR
+For reading with something other than your eyes:
+.B \-\-raw
+leaves the header and the borders out,
+.B \-\-csv
+prints one row per line with \fB;\fR between the columns, and
+.B \-\-csv\-sep
+uses another separator.
+.RE
+.TP
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
+List the role names, and with a regex only those that match it.
+.br
+You get the roles you may change; \fB\-a\fR adds those you may only look at.
+.br
+.B \-\-attribute
+prints that attribute of each role next to its name.
 .TP
 .B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIrole\fR
 Enable a disabled role.
@@ -55,83 +120,180 @@ Keep persisted share mounts on hosts (transient unmount only).
 Rename a role.
 .TP
 .B move \fR[\fB\-\-keep\-acls\fR] \fIrole\fR \fIunit\fR
-Move role to a different unit.
+Move the role into another unit.
+.br
+Its ACLs move with it: the default ACLs of the old unit are taken away and those of the new one are applied.
+.B \-\-keep\-acls
+leaves the ACLs of the role as they are.
 .TP
 .B touch \fIrole\fR
 Re-index the object to fix potential index problems.
 .SS Token Assignment
+Putting a token into a role can sign the token.
+The signature says where the token belongs: the user it is for, this role, the roles above it, the access groups and the groups those roles are in, the interfaces of \fB\-i\fR and the \fItoken_options\fR.
+.PP
+A host can be told whose signature it trusts.
+It then lets an SSH key in only if the token carries a signature from one of them.
+So somebody the host does not trust cannot get a key onto it by putting a token into a role.
+The host side of this is
+.B otpme\-tool add_signer \-\-signer\-type token\fR,
+see
+.BR otpme\-tool (1).
+.PP
+Signing usually happens on its own.
+It does when the token you are logged in with says \fBauto_sign\fR, when you have auto-sign switched on as a user, or when the role, its unit or its site say \fBauto_sign\fR (see
+.BR otpme (7)).
+.PP
+Some token types cannot be signed at all.
+Those are added without a signature.
 .TP
-.B add_token \fR[\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] [\fB\-\-skip\-portal\-token\fR] \fIrole\fR \fItoken_path\fR
-Add a token to the role. Use \fB\-i\fR to limit login to specific interfaces (e.g. tty, gui, ssh). If the token is the SSO token of a site's portal (its name is that site's \fBdefault_sso_token_name\fR), the tokens the portal manages for the user are added as well, after a confirmation, with the same options. \fB\-\-skip\-portal\-token\fR adds only the given token.
+.B add_token \fR[\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR] [\fB\-\-tags\fR \fItag1,tag2\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] [\fB\-\-skip\-portal\-token\fR] \fIrole\fR \fItoken\fR \fR[\fItoken_options\fR]
+Put a token into the role.
+From then on it reaches everything the role is assigned to, and everything the roles above it are assigned to.
 .RS
+.PP
+If the token is the SSO token of a site's portal \(em its name is that site's \fBdefault_sso_token_name\fR \(em the tokens the portal manages for that user go in as well, after a question, with the same options.
+.B \-\-skip\-portal\-token
+adds only the token you named.
 .TP
-.B \-\-share\-notify
-Send notification to all online hosts on new share permissions.
+.B \-i \fIinterfaces\fR
+Only let this token log in over these: \fBtty\fR, \fBgui\fR, \fBssh\fR, comma separated.
+Without it the token counts for all of them.
 .TP
-.B \-\-no\-share\-notify
-Do not send notification to all online hosts on new share permissions.
+.I token_options
+Options for the token in this role, at the end of the line.
+For an SSH token these are the \fBauthorized_keys\fR options its key is written with: \fBcommand\fR, \fBfrom\fR, \fBrestrict\fR, \fBno\-pty\fR, \fBno\-port\-forwarding\fR, \fBno\-agent\-forwarding\fR, \fBno\-X11\-forwarding\fR, \fBno\-user\-rc\fR, \fBenvironment\fR, \fBpermitopen\fR, \fBprincipals\fR, \fBtunnel\fR and \fBcert\-authority\fR.
+An option the type of token has no use for is dropped.
+.TP
+.B \-\-sign
+Sign, where nothing above asked for it.
+On a token that cannot be signed this is an error.
+.TP
+.B \-\-tags \fItag1,tag2\fR
+Put more tags into the signature.
+.TP
+.B \-\-no\-auto\-sign
+Do not sign this time.
+.TP
+.B \-\-share\-notify\fR, \fB\-\-no\-share\-notify
+Whether the online hosts are told that there are new share permissions.
 .TP
 .B \-\-no\-persist\-mount
 Do not persist new share mounts on hosts.
 .RE
 .TP
-.B remove_token \fR[\fB\-\-keep\-sign\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] [\fB\-\-skip\-portal\-token\fR] \fIrole\fR \fItoken_path\fR
-Remove a token from the role. If the token is the SSO token of a site's portal, the tokens the portal manages for the user are removed as well, after a confirmation, with the same options. \fB\-\-skip\-portal\-token\fR removes only the given token.
+.B remove_token \fR[\fB\-\-keep\-sign\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] [\fB\-\-skip\-portal\-token\fR] \fIrole\fR \fItoken\fR
+Take the token out of the role.
+What it reached through the role, it no longer reaches.
 .RS
+.PP
+The signature goes with it.
+It says the token is in this role, and that is no longer true.
+.B \-\-keep\-sign
+leaves it, for a token that is about to go back in.
+.PP
+An SSO token takes the tokens of the portal with it, as above;
+.B \-\-skip\-portal\-token
+removes only the one you named.
 .TP
-.B \-\-share\-notify
-Send notification to all online hosts on revoked share permissions.
-.TP
-.B \-\-no\-share\-notify
-Do not send notification to all online hosts on revoked share permissions.
+.B \-\-share\-notify\fR, \fB\-\-no\-share\-notify
+Whether the online hosts are told that share permissions were revoked.
 .TP
 .B \-\-no\-persist\-mount
 Keep persisted share mounts on hosts (transient unmount only).
 .RE
 .TP
-.B list_tokens \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIrole\fR
-List tokens assigned to the role. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.B list_tokens \fR[\fB\-\-return\-type\fR \fItype\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIrole\fR
+The tokens in this role.
+Only the ones put in here, not the ones that reach it through a nested role.
+.br
+.B \-\-return\-type
+picks what is printed: \fBname\fR (default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
+.B \-\-token\-types
+narrows it to those types, for example \fBhotp,totp\fR.
+.br
+Disabled tokens are listed as well.
+.TP
+.B list_users \fR[\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
+The users those tokens belong to.
+One user with three tokens in the role is named once.
 .SS Role Nesting
+A role can hold other roles, and what the outer role is assigned to reaches the tokens of the inner ones.
+See the \fBDESCRIPTION\fR above.
+.PP
+A \fIchild_role\fR is looked for in the site of the role, or written as \fIsite\fB/\fIrole\fR to take one from another site of the realm.
+\fBremove_role\fR takes a UUID as well, which is how a reference to a role that is gone is cleared out.
 .TP
 .B add_role \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIrole\fR \fIchild_role\fR
-Add a child role to this role.
+Put \fIchild_role\fR into \fIrole\fR.
+The tokens of \fIchild_role\fR then reach everything \fIrole\fR is assigned to.
 .RS
+.PP
+Nothing is copied: take the child out again and its tokens lose it all.
 .TP
-.B \-\-share\-notify
-Send notification to all online hosts on new share permissions.
-.TP
-.B \-\-no\-share\-notify
-Do not send notification to all online hosts on new share permissions.
+.B \-\-share\-notify\fR, \fB\-\-no\-share\-notify
+Whether the online hosts are told that there are new share permissions.
 .TP
 .B \-\-no\-persist\-mount
 Do not persist new share mounts on hosts.
 .RE
 .TP
 .B remove_role \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIrole\fR \fIchild_role\fR
-Remove a child role from this role.
+Take \fIchild_role\fR out of \fIrole\fR again.
 .RS
 .TP
-.B \-\-share\-notify
-Send notification to all online hosts on revoked share permissions.
-.TP
-.B \-\-no\-share\-notify
-Do not send notification to all online hosts on revoked share permissions.
+.B \-\-share\-notify\fR, \fB\-\-no\-share\-notify
+Whether the online hosts are told that share permissions were revoked.
 .TP
 .B \-\-no\-persist\-mount
 Keep persisted share mounts on hosts (transient unmount only).
 .RE
 .TP
 .B list_roles \fR[\fB\-r\fR] \fIrole\fR
-List roles assigned to the role. Use \fB\-r\fR for recursive listing.
+The roles this role holds.
+.B \-r
+adds the roles those hold, all the way down.
+.SS Where this role is used
+A command that starts with \fBlist_\fR answers what is in the role.
+One that starts with \fBfind_\fR answers the other question: where the role is used.
+.PP
+.B \-\-return\-type
+picks what they print: \fBname\fR (default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
+A name from another site is printed as \fIsite\fB/\fIname\fR.
+.PP
+Disabled objects are listed as well, so a permission that is only switched off is not mistaken for one that is gone.
+.TP
+.B find_roles \fR[\fB\-r\fR] [\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
+The roles this role is in, which is the other way round from
+.BR list_roles .
+.B \-r
+adds the roles those are in, all the way up.
+.TP
+.B find_accessgroups \fR[\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
+The access groups this role is in.
+Those are what say where a token of the role may log in at all.
+.TP
+.B find_clients \fR[\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
+The clients this role is assigned to.
+.TP
+.B find_groups \fR[\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
+The groups this role is in.
+.TP
+.B find_shares \fR[\fB\-r\fR] [\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
+The shares this role opens.
+.B \-r
+adds the shares the roles below it open.
+.br
+Here \fB\-\-return\-type\fR starts at \fBpath\fR, which is the share name with its site in front.
+.TP
+.B find_scopes \fR[\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
+The OIDC scopes this role is assigned to.
+They decide what a relying party learns about the user.
 .TP
 .B find_acls \fIrole\fR
-Find the ACLs this role holds on other objects.
-.TP
-.B find_scopes \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIrole\fR
-Find OIDC scopes the role is assigned to. \fB\-\-return\-type\fR selects the attribute to return (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
-.TP
-.B find_shares \fR[\fB\-r\fR] [\fB\-\-return\-type\fR \fITYPE\fR] \fIrole\fR
-Find shares granted via this role. \fB\-r\fR walks child roles too.
+The ACLs this role holds on other objects, i.e. what the members of this role may do elsewhere.
+Not the ACLs that lie on the role itself \(em those are
+.BR list_acls .
 .SS VLAN Assignment
 A role is not assigned a VLAN from here. The VLAN names the role, not the
 other way round, so the assignment belongs to the site that runs the network
@@ -154,54 +316,113 @@ VLAN names the role or its members, the
 .B vlans
 config parameter of the token, user, host or device decides (see
 .BR otpme (7)).
-.SS User and Group Listing
-.TP
-.B list_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIrole\fR
-List users of the role. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
-.TP
-.B list_dynamic_groups \fIrole\fR
-List dynamic groups of the role.
-.SS Host and Device Assignment
+.PP
+A VLAN that is switched off answers nothing, on either way in: neither where
+the VLAN names the role nor where the
+.B vlans
+parameter names the VLAN. Switching a VLAN off therefore takes away every
+assignment it is part of.
+.PP
+Both ways write a warning to the log when an assignment is skipped for that
+reason. Without one, an assignment to a VLAN that is off looks exactly like
+no assignment at all.
+.PP
+A \fBvlans\fR parameter can also name a VLAN that no longer exists. Its UUID
+stays in the parameter, and it is ignored with a warning in the log.
+.PP
+Two VLANs naming the same object at the same distance are a mistake in the
+configuration, and OTPme cannot resolve it: it takes the first of them by
+name, every time, and writes a warning to the log.
+.SS Hosts and Devices
+A role holds hosts and devices as well as tokens.
+A machine gets two things from the role: the VLAN of the role at port authentication, and access to the shares the role is assigned to.
+.PP
+The share part only matters where the share says so.
+A share with \fBlimit_by_hosts\fR set asks which hosts may reach it, and a host in this role \(em or in a role nested in it \(em may.
+A role that is switched off does not count.
+Without \fBlimit_by_hosts\fR a share does not ask about hosts at all.
+.PP
+This is not the way round in which a host takes things from a role.
+A host names its own roles, with
+.B otpme\-host add_role\fR,
+and that is what decides which tokens may log in there and whose accounts are synced to it \(em see
+.BR otpme\-host (1).
+Here the role names the host, which is what the VLAN and the shares are read from.
+Both are needed, for different things.
+.PP
+A device is a machine that cannot authenticate itself, a printer or an IP phone, and is let onto the network by its MAC address.
+See
+.BR otpme\-device (1).
 .TP
 .B add_host \fIrole\fR \fIhost\fR
-Add a host to the role.
+Put a host into the role.
 .TP
 .B remove_host \fIrole\fR \fIhost\fR
-Remove a host from the role.
+Take it out again.
 .TP
 .B list_hosts \fIrole\fR
-List hosts assigned to the role.
+The hosts in this role.
 .TP
 .B add_device \fIrole\fR \fIdevice\fR
-Add a device to the role.
+Put a device into the role.
 .TP
 .B remove_device \fIrole\fR \fIdevice\fR
-Remove a device from the role.
+Take it out again.
 .TP
 .B list_devices \fIrole\fR
-List devices assigned to the role.
+The devices in this role.
 .SS Dynamic Groups
+A dynamic group is a group on the host itself, not an OTPme group \(em \fBdialout\fR, \fBvideo\fR, \fBwheel\fR.
+It has to exist there already.
+At login \fBpam_otpme\fR puts the user into it for that session.
+.PP
+A token in this role gets the dynamic groups of the role, and those of the roles this role is in.
+What else gives a user one, and why a name that is already an OTPme group is refused, is under \fBDynamic Groups\fR in
+.BR otpme (7).
 .TP
 .B add_dynamic_group \fIrole\fR \fIgroup\fR
-Add a dynamic group to the role.
+Give the members of this role that group on the host they log in to.
 .TP
 .B remove_dynamic_group \fIrole\fR \fIgroup\fR
-Remove a dynamic group from the role.
+Take it away again.
+.TP
+.B list_dynamic_groups \fIrole\fR
+The dynamic groups of this role.
 .SS Sync Users
+A sync user is a user whose account is copied to a host without any token of theirs going with it.
+The account exists on the host \(em a file belongs to them, a service runs as them \(em and nobody logs in with it.
+.PP
+A host that names this role takes its sync users \(em \fBotpme\-host add_role\fR, not
+.B otpme\-role add_host\fR,
+which is for the VLAN and the shares.
+A sync group that names this role takes them as well, and so do the roles inside this one.
+.PP
+A user who is to log in there needs a token in the role instead.
+That brings the account along with it.
 .TP
 .B add_sync_user \fIrole\fR \fIuser\fR
-Add a sync user to the role.
+Have that user's account copied to the hosts that name this role.
 .TP
 .B remove_sync_user \fIrole\fR \fIuser\fR
-Remove a sync user from the role.
+Stop that.
 .TP
-.B list_sync_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIrole\fR
-List sync users of the role. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.B list_sync_users \fR[\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
+The sync users of this role.
 .SS Policy Management
 A \fIpolicy\fR is the name of a policy, not a path.
 It is looked for in the site of the role.
 Which policies there are, and what each of them does, is in
 .BR otpme\-policy (1).
+.PP
+Three types can go on a role: \fBlogintimes\fR, \fBforcetoken\fR and \fBautodisable\fR.
+A policy of any other type is refused here.
+.PP
+A policy on a role applies to the logins that role lets through, and to no others.
+At a login to a host, a node or a client, the policies of a role run when both halves hold: the role is assigned to that host, node or client, and the role holds the token.
+Either half may run through nested roles, and every role of the chain counts \(em the one assigned to the host, the one holding the token, and the ones between them.
+.PP
+So login times on a role say when the members of that role may log in to the machines that role gets them onto, and say nothing about any other machine.
+A role that is switched off says nothing at all.
 .PP
 Attaching and detaching ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
@@ -234,20 +455,20 @@ What the three forms \fIacl\fR, \fB+\fIacl\fR and \fB++\fIacl\fR mean, and which
 .PP
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .PP
-The other direction, the ACLs this role holds on other objects, is \fBfind_acls\fR under \fBListing\fR above.
+The other direction, the ACLs this role holds on other objects, is \fBfind_acls\fR under \fBWhere this role is used\fR above.
 .TP
-.B add_acl \fIrole\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[\fB:\fIvalue\fR]
-Give a role or a token an ACL on this role.
+.B add_acl \fIrole\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[\fB:\fIvalue\fR][\fB,\fIacl\fR[\fB:\fIvalue\fR]]
+Give a role or a token one or more ACLs on this role.
 .br
 \fIowner_type\fR is \fBrole\fR or \fBtoken\fR, and \fIowner\fR the path of that role or token.
-An ACL may carry a value, for example \fBview:tokens\fR.
+An ACL may carry a value, for example \fBview:tokens\fR, and several are separated by commas.
 .br
 Needs the ACL \fBadd:acl\fR.
 .TP
-.B del_acl \fIrole\fR \fIacl\fR
-Take that ACL away again.
+.B del_acl \fIrole\fR \fIacl\fR[\fB,\fIacl\fR]
+Take those ACLs away again.
 .br
-Here the \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fBrole:berlin/sw\-admins:view\fR.
+Here an \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fBrole:berlin/sw\-admins:view\fR.
 .br
 Needs the ACL \fBdelete:acl\fR.
 .TP
@@ -263,6 +484,9 @@ Only default ACLs are inherited. An ordinary ACL on the unit never is.
 .PP
 Moving a role into another unit is the one place that asks something else as well: the site admin role \fBSITE_ADMIN\fR gets neither the default ACLs of the new unit nor loses those of the old one.
 .PP
+A move by somebody who does not hold \fBadd:acl\fR and \fBdelete:acl\fR on the role leaves its ACLs alone as well, and says so.
+Otherwise moving an object into a unit would be a way of handing yourself the default ACLs of that unit.
+.PP
 Needs the ACL \fBenable:acl_inheritance\fR.
 .RE
 .TP
@@ -271,41 +495,100 @@ Stop inheriting them.
 Only the ACLs on the role itself count from then on.
 .br
 Needs the ACL \fBdisable:acl_inheritance\fR.
-.SS Extension and Attribute Management
+.SS Extensions and LDAP Attributes
+A role is also an LDAP entry, and an extension is what gives it one: the object classes it is of, and the attributes those classes allow.
+What \fBldapd\fR serves and what \fBshow_ldif\fR prints comes from them.
+.PP
+A new role gets two, and keeps them unless you take them away:
+.RS 4
+.IP \(bu 2
+\fBbase\fR makes it an \fBorganizationalRole\fR with \fBcn\fR and \fBdescription\fR.
+.IP \(bu 2
+\fBposix\fR gives a role no class and no attribute of its own. It is there for the other direction: when a token goes into the role or out of it, the POSIX attributes of the groups the role is in have to follow, \fBmemberUid\fR among them, and that runs through this extension.
+.RE
+.PP
+So a role without the \fBposix\fR extension stops keeping those groups up to date.
 .TP
 .B add_extension \fIrole\fR \fIextension\fR
-Add an extension to the role.
+Add \fBbase\fR or \fBposix\fR to the role.
+An extension that is not for roles is refused, and so is one the role already has.
 .TP
 .B remove_extension \fIrole\fR \fIextension\fR
-Remove an extension from the role.
+Take it away again, with the classes and attributes it brought.
 .TP
-.B add_attribute \fIrole\fR \fIattribute\fR=\fIvalue\fR
-Add an LDAP attribute to the role.
+.B add_attribute \fIrole\fR \fIattribute\fR\fB=\fR[\fIvalue\fR]
+Set an LDAP attribute of the role.
+.RS
+.PP
+Only an attribute one of its extensions allows: there is no setting an attribute OTPme knows nothing about.
+An attribute can hold more than one value, so this adds one and leaves the others.
+.PP
+The ACL is per attribute, \fBadd:attribute:\fIattribute\fR, and a plain \fBadd:attribute\fR covers all of them.
+.RE
 .TP
-.B del_attribute \fIrole\fR \fIattribute\fR=\fIvalue\fR
-Remove an LDAP attribute from the role.
+.B del_attribute \fIrole\fR \fIattribute\fR\fB=\fR[\fIvalue\fR]
+Remove that value, or the whole attribute where no value is given.
+.br
+A mandatory attribute of a class the role is of cannot be removed, and neither can a read-only one.
+The ACL is \fBdelete:attribute:\fIattribute\fR.
 .TP
 .B add_object_class \fIrole\fR \fIclass\fR
-Add an LDAP object class to the role.
+Add an LDAP object class to the role, beyond the ones its extensions brought.
 .TP
 .B del_object_class \fIrole\fR \fIclass\fR
-Remove an LDAP object class from the role.
+Remove one again.
 .TP
-.B show_ldif \fR[\fB\-a\fR \fIattributes\fR] \fIrole\fR
-Show LDIF representation of the role. Use \fB\-a\fR to show only specific attributes.
-.SS Configuration and Attributes
+.B show_ldif \fIrole\fR \fR[\fB\-a\fR \fIattribute1,attribute2\fR]
+The role as LDAP sees it.
+.B \-a
+prints only those attributes.
+.SS Configuration
+Seven config parameters can be set on a role.
+What each of them does is under \fBCONFIG PARAMETERS\fR in
+.BR otpme (7);
+here is what they are about:
+.RS 4
+.IP \(bu 2
+\fBdevice_token_suffix\fR, \fBdevice_token_types\fR, \fBmax_device_tokens\fR and \fBdevice_token_mschap\fR make the role one the SSO portal offers for device tokens, and say what it creates there. The first of them is the switch: a role without it is not shown in the portal at all.
+.IP \(bu 2
+\fBauto_sign\fR signs a token for the assignment when it is put into this role, the way
+.B add_token \-\-sign
+does by hand.
+.IP \(bu 2
+\fBchangelog\fR and \fBallow_changelog_clearing\fR are about the history of the object, see \fBObject Changelog\fR below.
+.RE
+.PP
+A value is looked for on the role, then on the unit above it, then on the unit above that, and last on the site.
+The nearest one wins, and the realm holds none.
+A site can take that away for single parameters with \fBforce_site_config_parameters\fR: those are read from the site and nowhere else, whatever the role says.
 .TP
 .B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIrole\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
+Set a parameter on the role itself.
+.RS
+.PP
+.B \-a
+appends to a parameter that holds a list instead of replacing it.
+.PP
+.B \-d
+removes the parameter from the role, or with a value only that one value from a list.
+What the role gets afterwards is whatever the units above it or the site say \(em \fB\-d\fR is not the same as setting the parameter to its default.
+.PP
+The ACL is per parameter, \fBset:config:\fIparameter\fR.
+.RE
 .TP
-.B show_config \fIrole\fR [\fIparameter\fR]
-Show all configuration parameters.
+.B show_config \fIrole\fR \fR[\fIparameter\fR]
+The parameters set on the role itself, or only the one named.
+Nothing is shown for a parameter that the role gets from a unit or from the site.
 .TP
 .B get_config \fIrole\fR \fIparameter\fR
-Show the value of a single configuration parameter.
+What the parameter comes to for this role, once the role, its units and its site have been looked at.
+So this answers what applies, where \fBshow_config\fR answers what was set here.
 .TP
 .B description \fIrole\fR \fR[\fIdescription\fR]
-Set role description.
+Set the description.
+Without one OTPme asks and offers the current text for editing.
+.br
+It is an LDAP attribute of the role as well (\fBdescription\fR, from the \fBbase\fR extension), so it is what an LDAP client sees.
 .TP
 .B info \fR[\fB\-\-language\fR \fILANG\fR] \fIrole\fR \fR[\fIinfo\fR]
 Set free-form info text. If \fIinfo\fR is omitted, the current info text is
@@ -318,10 +601,17 @@ the text is the administrator's own note about the object, which no user is ever
 shows it on the SSO portal, in the language of whoever is looking, see \fBotpme\fR(7).
 .TP
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIrole\fR
-Dump the info text to stdout.
+Write one of those texts to stdout, for reading it with something other than the editor.
+.br
+\fB\-\-language\fR picks which one, the same way as for \fBinfo\fR; without it you get the note of the administrator.
+A language the role has no text for gives nothing and is not an error.
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
+.PP
+Unless the \fBchangelog\fR config parameter says otherwise.
+It is read along the cascade of the role, and nothing is written where it is off \(em not for that role, and not for the ones below a unit that switched it off.
+Without any value anywhere it is on.
 .PP
 An \fIentry_id\fR is the number the listing shows in front of an entry, counted from 0.
 .PP
@@ -351,145 +641,179 @@ This needs more than the ACL \fBclear:changelog\fR: the config parameter
 has to allow it (see \fBotpme\fR(7)).
 It is true by default, but where no value is found at all, clearing is refused.
 OTPme asks the token you are signed in with first, then the object.
-.SS Import/Export
+.SS Export and Cleanup
+Both write to stdout.
+There is no import on this page: reading an export back in is
+.B otpme\-tool import\fR,
+see
+.BR otpme\-tool (1).
+.PP
+.B remove_orphans
+asks before it changes anything; the global option \fB\-f\fR skips the question.
 .TP
-.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIrole\fR
-Export role configuration.
+.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIrole\fR
+Write the whole object of the role to stdout, as JSON.
+.RS
+.PP
+Without \fB\-\-password\fR it is written as it is, in clear.
+With one, a key is derived from that password and the object is encrypted with it; the salt goes into the output, so the password is all you need to read it back.
+.PP
+What a role holds are references by UUID \(em its tokens, its roles, its hosts, its devices \(em so an export says something only in the realm it came from.
+It carries no secret of any token.
+.PP
+Needs the ACL \fBexport\fR.
+.RE
 .TP
 .B remove_orphans \fIrole\fR
-Remove orphaned object references.
-.SH OPTIONS
-.SS Display Options
-.TP
-.B \-a
-Show all roles (across all units).
-.TP
-.B \-z \fISIZE\fR
-Limit output size.
-.TP
-.B \-\-fields \fIFIELD1,FIELD2\fR
-Display only specified fields.
-.TP
-.B \-\-token\-limit \fIN\fR
-Limit number of tokens shown.
-.TP
-.B \-\-role\-limit \fIN\fR
-Limit number of roles shown.
-.TP
-.B \-\-accessgroup\-limit \fIN\fR
-Limit number of access groups shown.
-.TP
-.B \-\-group\-limit \fIN\fR
-Limit number of groups shown.
-.TP
-.B \-\-policy\-limit \fIN\fR
-Limit number of policies shown.
-.TP
-.B \-\-limit \fIN\fR
-Limit number of items shown per object.
-.TP
-.B \-\-sort\-by \fIFIELD\fR
-Sort output by field.
-.TP
-.B \-\-reverse
-Reverse sort order.
-.TP
-.B \-\-raw
-Output without headers/borders.
-.TP
-.B \-\-csv
-Output as CSV.
-.TP
-.B \-\-csv\-sep \fISEP\fR
-CSV separator character.
-.TP
-.B \-\-attribute \fIATTR\fR
-Display specific attribute in list command.
-.SS Token Options
-.TP
-.B \-i \fIinterfaces\fR
-Limit login to given interfaces (e.g. tty, gui, ssh).
-.TP
-.B \-\-sign
-Sign the object with default tags.
-.TP
-.B \-\-tags \fItag1,tag2\fR
-Add tags to signature.
-.TP
-.B \-\-no\-auto\-sign
-Do not automatically sign when adding a token.
-.TP
-.B \-\-keep\-sign
-Do not remove any signature when removing a token.
-.SS General Options
-.TP
-.B \-\-keep\-acls
-Preserve ACLs when moving role.
-.TP
-.B \-\-password \fIPASS\fR
-Password for encrypting exports.
-.TP
-.B \-r
-List roles recursively.
+Remove what the role still points at although it is gone.
+.RS
 .PP
-Global options are available for all commands. See
-.BR otpme (1)
-for details.
+On a role that is its ACLs, its policies, its signatures, and the tokens, roles, hosts and devices in its member lists.
+A token that was deleted leaves its UUID in the list, and so does a role, a host or a device.
+.PP
+It shows everything it found and asks once for all of it.
+It asks nothing and changes nothing when it finds nothing.
+.PP
+Needs the ACL \fBremove:orphans\fR.
+.RE
+.SH OPTIONS
+Every option belongs to one command and is described with that command above.
+A short option means what that command makes of it.
+.PP
+Global options work with every command, see
+.BR otpme (1).
 .SH CONFIG PARAMETERS
-Configuration parameters can be set with the \fBconfig\fR command and displayed with \fBshow_config\fR.
-For a complete description of all available parameters and their applicable object types, see
+Which parameters a role takes is under \fBConfiguration\fR above, and what each of them does is in
 .BR otpme (7).
 .SH EXAMPLES
-.SS Managing Roles
+The examples use the site \fBberlin\fR of the realm \fBexample.org\fR.
+.SS Letting people onto the WLAN
 .TP
-.B otpme-role add admins
-Create a new role
+.B otpme-role add wlan\-users
+A role.
+By itself it does nothing \(em it is the next step that gives it a meaning.
 .TP
-.B otpme-role add \-\-groups sysadmins \-\-roles operators
-Create a role and add it to groups and roles
-.SS Token Assignment
+.B otpme-accessgroup add_role wlan wlan\-users
+Assign it to the access group the WLAN authenticates against.
+Now the tokens in the role may log in there, and nowhere else by way of this role.
+See
+.BR otpme\-accessgroup (1).
 .TP
-.B otpme-role add_token admins admin/totp
-Add admin's TOTP token to the role
+.B otpme-role add_token wlan\-users alice/laptop
+Put a token in.
+alice gets onto the WLAN with it from now on.
 .TP
-.B otpme-role add_token \-i ssh admins admin/ssh_key
-Add SSH key for SSH interface only
-.SS Role Nesting
+.B otpme-role remove_token wlan\-users alice/laptop
+Take it out again.
+What it reached through the role is gone with it, and the signature of the assignment too.
+.SS Letting a whole group of people on
 .TP
-.B otpme-role add_role super_admins admins
-Add admins role as child of super_admins
+.B otpme-role add_role wlan\-users office\-staff
+Put \fBoffice\-staff\fR into \fBwlan\-users\fR.
+Everybody in \fBoffice\-staff\fR is now on the WLAN, without a token of theirs being named here.
+The direction is from the outer role to the tokens of the inner one.
 .TP
-.B otpme-role list_roles \-r super_admins
-List all nested roles recursively
-.SS VLAN Assignment
+.B otpme-role list_roles \-r wlan\-users
+Which roles are inside it, all the way down.
 .TP
-.B otpme-vlan add_role employees_vlan employees
-Put every member of the role into a VLAN
+.B otpme-role find_roles \-r office\-staff
+And the other way: which roles \fBoffice\-staff\fR is in.
+.SS Device tokens from the SSO portal
+A device token is a password of its own for one device: a notebook on the WLAN, a phone fetching mail.
+The user makes it in the SSO portal, so nobody has to hand out a password for it.
 .TP
-.B otpme-vlan add_role admin_vlan admins
-Give a role nested in "employees" a VLAN of its own. Its members get it
-instead of the VLAN of "employees"
-.SS Policy Assignment
+.B otpme-role config wlan\-users device_token_suffix wlan
+This is the switch: without a suffix the role is not offered in the portal at all.
+A token of the device \fBiphone\fR is then called \fBiphone\-wlan\fR.
 .TP
-.B otpme-role add_policy admins require_2fa
-Attach a policy to the role
+.B otpme-role config wlan\-users device_token_mschap True
+WLAN with PEAP/MSCHAPv2 needs it.
+It keeps the NT hash of the password on the server, which is why it is off unless the role says so.
+.TP
+.B otpme-role config wlan\-users max_device_tokens 5
+Five devices per user.
+.TP
+.B otpme-site config berlin device_token_roles wlan\-users
+Offer the role to the users of this site.
+It can also be said per user or per unit, see
+.BR otpme (7).
+.TP
+.B otpme-role info \-\-language en wlan\-users
+What the portal tells the user about the role, in English.
+A text written without a language is your own note and is shown to nobody.
+.SS What does a role actually grant?
+.TP
+.B otpme-role show wlan\-users
+Its tokens, roles, access groups, groups, scopes and policies in one table.
+.TP
+.B otpme-role find_accessgroups wlan\-users
+Where its tokens may log in.
+.TP
+.B otpme-role find_shares \-r sw\-admins
+Which shares they can mount, the roles below it included.
+.SS An SSH key the hosts accept
+.TP
+.B otpme-role config sw\-admins auto_sign True
+Sign every token this role takes in from now on.
+Without it you sign one at a time with
+.BR "add_token \-\-sign" .
+.TP
+.B otpme-role add_token sw\-admins alice/ssh
+The key goes in and is signed with your own.
+A host told to trust you for token signatures lets it in; see \fBToken Assignment\fR above.
+.SS Machines in a role
+.TP
+.B otpme-vlan add_role office\-vlan office\-hosts
+Put the role into a VLAN.
+Its tokens, hosts and devices get it at port authentication.
+See
+.BR otpme\-vlan (1).
+.TP
+.B otpme-role add_host office\-hosts client1
+A host in the role reaches the shares the role is assigned to, and gets its VLAN.
+What tokens may log in to that host is the other way round,
+.B otpme\-host add_role\fR.
+.TP
+.B otpme-role add_device office\-hosts printer1
+The same for a device that is let onto the network by its MAC address.
+.SS Looking after one
+.TP
+.B otpme-role add_policy wlan\-users office\-hours
+Attach a policy.
+Three types fit a role; see \fBPolicy Management\fR above for when they take effect.
+.TP
+.B otpme-role remove_orphans wlan\-users
+Clean out what the role still points at although it is gone.
 .SH FILES
 .TP
 .I /var/lib/otpme/
-OTPme data directory
+The objects of the realm, on a node.
+A role lives in the unit it was created in.
+A host holds no full role, only the view it answers a login with: the UUIDs of the members, the login interfaces they may use, the dynamic groups and the policies on the role.
+.TP
+.I /var/cache/otpme/ssh/authorized_keys/\fIuser\fI/authorized_keys
+The SSH keys that may log in to this host, one file per user.
+A key is only written here while a role of the host holds the token \(em see \fBotpme\-host\fR(1) and \fBadd_role\fR there.
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme-user (1),
-.BR otpme-token (1),
-.BR otpme-group (1),
-.BR otpme-accessgroup (1),
-.BR otpme-vlan (1),
-.BR otpme-policy (1)
+.BR otpme\-acls (7),
+.BR otpme\-user (1),
+.BR otpme\-token (1),
+.BR otpme\-group (1),
+.BR otpme\-accessgroup (1),
+.BR otpme\-host (1),
+.BR otpme\-device (1),
+.BR otpme\-vlan (1),
+.BR otpme\-share (1),
+.BR otpme\-unit (1),
+.BR otpme\-policy (1),
+.BR otpme\-tool (1),
+.BR otpme\-trash (1)
 
 .SH AUTHOR
 the2nd <the2nd@otpme.org>
 .SH NOTE
 This manual page was created with AI assistance.
 .SH COPYRIGHT
-Copyright \(co 2014-2025 the2nd. License: GPLv3
+Copyright \(co 2014-2026 the2nd. License: GPLv3

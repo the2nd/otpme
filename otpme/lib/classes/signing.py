@@ -176,9 +176,18 @@ def get_signature_info(signature):
     return f"{signer_oid} for {sign_ref} (tags: {tags})"
 
 def verify_signatures(signer_type, signers, signatures, sign_data,
-    tags=None, login_interface=None, stop_on_fist_match=False):
+    tags=None, login_interface=None, stop_on_fist_match=False,
+    quiet=False):
     """
     Verify given signatures/data with the signers configured for this host.
+
+    <quiet> leaves out the two lines a signature that verifies writes
+    to the log. For a caller that runs again and again over the same
+    unchanged data -- ssh.update_authorized_keys() rebuilds the
+    authorized_keys of this host after every sync -- those say nothing
+    beyond what the last run said. Nothing that goes wrong is kept
+    quiet: a signature that does not verify is logged either way, and
+    so is the refusal at the end.
     """
     found_valid_signature = False
     # Signatures we actually verified (e.g. signed by a signer we know).
@@ -206,7 +215,8 @@ def verify_signatures(signer_type, signers, signatures, sign_data,
                     signer.verify_signature(signature=sig,
                                             sign_data=sign_data,
                                             tags=tags,
-                                            login_interface=login_interface)
+                                            login_interface=login_interface,
+                                            quiet=quiet)
                 except VerificationFailed as e:
                     # Resolved in the error paths only: it costs a lookup
                     # per signature and only a failure needs the details.
@@ -278,11 +288,15 @@ class OTPmeSigner(object):
                                 'service_mgmt',
                                 'file_mgmt',
                                 'host_mgmt',
+                                # A shell on the host. Its own type on
+                                # purpose: whoever may install a package
+                                # is not thereby allowed to log in.
+                                'remote_access',
                                 ]
 
     def __init__(self, uuid=None, object_uuid=None,
         signer_type=None, pinned=False, tags=None,
-        verify_token_opts=True):
+        verify_token_opts=True, allow_throwaway_key=False):
         # Handle UUID.
         if not uuid:
             uuid = stuff.gen_uuid()
@@ -311,6 +325,14 @@ class OTPmeSigner(object):
         # has no options tag to ask for, so this only applies to keys that
         # are used with options.
         self.verify_token_opts = verify_token_opts
+        # Indicates that this signer may ask for a remote access session
+        # on a key the job itself brings, instead of on a key this host
+        # already holds for the user. Two things are needed for the
+        # second kind -- the signature of the job and a key in
+        # authorized_keys -- and only one for the first, so the host
+        # says who may ask for it. Off unless somebody with root on this
+        # host said otherwise, see confd/job.py check_throwaway_key().
+        self.allow_throwaway_key = allow_throwaway_key
 
         # All signers with public keys.
         self.signers = {}
@@ -328,6 +350,7 @@ class OTPmeSigner(object):
         # them.
         self._optional_attributes = [
                             'verify_token_opts',
+                            'allow_throwaway_key',
                         ]
 
     def __repr__(self):
@@ -655,8 +678,13 @@ class OTPmeSigner(object):
         return role_members
 
     def verify_signature(self, signature, sign_data,
-        tags=None, login_interface=None):
-        """ Verify signature. """
+        tags=None, login_interface=None, quiet=False):
+        """ Verify signature.
+
+        <quiet> leaves out the two lines below, for a caller that
+        verifies the same thing again on every run, see
+        verify_signatures().
+        """
         if signature.signer_uuid not in self.signers:
             msg = _("Signature not singed by this signer.")
             raise VerificationFailed(msg)
@@ -688,18 +716,20 @@ class OTPmeSigner(object):
 
         tags = resolve_tags(signature.tags)
         tags_str = ", ".join(tags)
-        log_msg = _("Verifying signature: {oid} ({tags})", log=True)[1]
-        log_msg = log_msg.format(oid=object_oid, tags=tags_str)
-        self.logger.debug(log_msg)
+        if not quiet:
+            log_msg = _("Verifying signature: {oid} ({tags})", log=True)[1]
+            log_msg = log_msg.format(oid=object_oid, tags=tags_str)
+            self.logger.info(log_msg)
 
         signature.verify(signer_key,
                         sign_data,
                         tags=check_tags,
                         login_interface=login_interface)
 
-        log_msg = _("Found valid signature: {oid} ({tags})", log=True)[1]
-        log_msg = log_msg.format(oid=object_oid, tags=tags_str)
-        self.logger.debug(log_msg)
+        if not quiet:
+            log_msg = _("Found valid signature: {oid} ({tags})", log=True)[1]
+            log_msg = log_msg.format(oid=object_oid, tags=tags_str)
+            self.logger.info(log_msg)
 
 class OTPmeSignature(object):
     """ OTPme signature class. """

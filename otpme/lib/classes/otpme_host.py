@@ -282,50 +282,11 @@ class OTPmeHost(OTPmeClientObject):
 
         return super()._get_object_config(object_config=_object_config)
 
-    # The system the host runs, as confd on the host reports it (see
-    # update_os()). Kept in the index only, like last_backup: it is
-    # searchable there ("which hosts still run debian-12"), and it is not
-    # something an admin configures. The packages are not here but in
-    # host_inventory: host objects are synced to every host.
-    def _get_index_value(self, key):
-        """ The one value of an index attribute, or None. """
-        values = self.get_index(key)
-        if not values:
-            return None
-        return values[0]
-
-    @property
-    def os(self):
-        """ The operating system of the host (e.g. Linux). """
-        return self._get_index_value("os")
-
-    @property
-    def os_version(self):
-        """ The name and version of the system (e.g. debian-13). """
-        return self._get_index_value("os_version")
-
-    @object_lock(full_lock=True)
-    def update_os(
-        self,
-        os_name: Union[str,None]=None,
-        os_version: Union[str,None]=None,
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Take what confd on the host reports about its system.
-
-        Written without touching last_modified: nobody changed the host,
-        it only told us what it runs. When that was is in the host's
-        inventory (host_inventory). """
-        if os_name == self.os and os_version == self.os_version:
-            return callback.ok()
-        if os_name is not None:
-            self.update_index("os", os_name)
-        if os_version is not None:
-            self.update_index("os_version", os_version)
-        return self._write(update_last_modified=False,
-                            update_last_modified_by=False,
-                            callback=callback)
+    # The system the host runs is not here but in its inventory, with
+    # its packages and its hardware: all three are what the host
+    # reported about itself, and an inventory has to stand on its own
+    # where it is reported to a site other than the one the host
+    # belongs to. See host_inventory.py.
 
     @property
     def fqdn(self):
@@ -606,15 +567,20 @@ class OTPmeHost(OTPmeClientObject):
                     # The algo must be taken from the key (e.g. "ssh-dss",
                     # "ecdsa-sha2-nistp256"), it cannot be built from our short
                     # key type.
+                    #
+                    # The key comes from verify_token, as the checks above
+                    # take it: a link token carries none of its own, it
+                    # names the token that does. Asking the link token
+                    # ended in an AttributeError.
                     try:
-                        key_algo = ssh.get_ssh_key_algo(token.ssh_public_key)
+                        key_algo = ssh.get_ssh_key_algo(verify_token.ssh_public_key)
                     except OTPmeException as e:
                         log_msg = _("Ignoring SSH token with invalid public key: {token_path}: {error}", log=True)[1]
-                        log_msg = log_msg.format(token_path=token.rel_path,
+                        log_msg = log_msg.format(token_path=verify_token.rel_path,
                                                 error=e)
                         logger.warning(log_msg)
                         continue
-                    key_str = f"{key_algo} {token.ssh_public_key}"
+                    key_str = f"{key_algo} {verify_token.ssh_public_key}"
                     if token_options:
                         key_str = f"{token_options} {key_str}"
                     if not user_uuid:
@@ -736,7 +702,7 @@ class OTPmeHost(OTPmeClientObject):
         self.lotp_enabled = True
         if not self.lotp:
             self.lotp = self.gen_jotp()
-        msg = _("You can use the following LOTP to join the {host_type}: {lotp}")
+        msg = _("You can use the following LOTP to make the {host_type} leave the realm: {lotp}")
         msg = msg.format(host_type=self.type, lotp=self.lotp)
         callback.send(msg)
         return self._cache(callback=callback)
@@ -851,6 +817,21 @@ class OTPmeHost(OTPmeClientObject):
         self.allow_jotp_rejoin = False
         self.jotp = None
         return self._cache(callback=callback)
+
+    def get_public_key(self, _caller: str="API",
+        callback: JobCallback=default_callback, **kwargs):
+        """ The public key this host was joined with.
+
+        Public, and needed by anybody who has to tell this host from
+        another one: a remote access session begins with the host
+        vouching for its SSH host key, and what the other end holds
+        that against is this.
+        """
+        public_key = self.public_key
+        if not public_key:
+            msg = _("Host has no public key.")
+            return callback.error(msg)
+        return callback.ok(public_key)
 
     @check_acls(['edit:public_key'])
     @object_lock(full_lock=True)
@@ -1412,18 +1393,12 @@ class OTPmeHost(OTPmeClientObject):
         # Add join/leave ACLs to the user that creates this host.
         if config.auth_token:
             if not config.auth_token.is_admin():
-                if not self.add_acl(acl="join", owner_uuid=config.auth_token.uuid,
+                if not self.add_acl(acls=["join", "leave"],
+                                    owner_uuid=config.auth_token.uuid,
                                     force=True, verify_acls=False,
                                     apply_default_acls=False,
                                     callback=callback, **kwargs):
-                    msg = _("Unable to add ACL 'join' to new {host_type}.")
-                    msg = msg.format(host_type=self.type)
-                    callback.send(msg)
-                if not self.add_acl(acl="leave", owner_uuid=config.auth_token.uuid,
-                                    force=True, verify_acls=False,
-                                    apply_default_acls=False,
-                                    callback=callback, **kwargs):
-                    msg = _("Unable to add ACL 'leave' to new {host_type}.")
+                    msg = _("Unable to add ACLs 'join' and 'leave' to new {host_type}.")
                     msg = msg.format(host_type=self.type)
                     callback.send(msg)
 
@@ -1507,19 +1482,39 @@ class OTPmeHost(OTPmeClientObject):
         run_policies: bool=True,
         verbose_level: int=0,
         recursive: bool=False,
+        extra_ref_lists: Union[list,None]=None,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
-        """ Remove orphan UUIDs. """
-        extra_ref_lists = [
-                ('tokens', 'token', ['token_options']),
+        """ Remove orphan UUIDs.
+
+        Every list a host or a node holds by UUID, not just its tokens:
+        a role that is gone stays in the roles list otherwise, and
+        authorize_token() keeps walking it at every login. Child classes
+        add what only they have through <extra_ref_lists>.
+
+        The login interfaces go with the token, like its SSH options:
+        they live in a dict keyed by the token UUID, so an entry whose
+        token is gone is read by nobody and removed by nothing.
+
+        The join node and the join token stay as they are. Both keep a
+        cache of what they pointed at (JOIN_NODE_CACHE,
+        JOIN_TOKEN_CACHE) so that they can still be shown after the
+        object is gone: they are a record of what happened, not a
+        permission.
+        """
+        ref_lists = [
+                ('tokens', 'token', ['token_options',
+                                    'token_login_interfaces']),
+                ('roles', 'role', None),
                 ]
+        ref_lists += extra_ref_lists or []
         return super().remove_orphans(force=force,
                                     run_policies=run_policies,
                                     verbose_level=verbose_level,
                                     recursive=recursive,
-                                    extra_ref_lists=extra_ref_lists,
+                                    extra_ref_lists=ref_lists,
                                     callback=callback,
                                     _caller=_caller,
                                     **kwargs)
@@ -1550,18 +1545,26 @@ class OTPmeHost(OTPmeClientObject):
             if not join_token:
                 join_token = self.join_token_cache
         lines.append(f'JOIN_TOKEN="{join_token}"')
-        lines.append(f'OS="{self.os or ""}"')
-        lines.append(f'OS_VERSION="{self.os_version or ""}"')
-        # The packages are kept on the nodes of the host's site only.
+        # The system, the packages and when the host last reported are
+        # all in its inventory. Which site keeps that is the host's to
+        # say (inventory_site), so it is looked for here and left empty
+        # where it is kept elsewhere -- the same answer as for a host
+        # that has not reported yet.
+        os_name = ""
+        os_version = ""
         packages = ""
         last_inventory_update = ""
-        if self.site == config.site and self.realm == config.realm:
+        if self.realm == config.realm:
             from otpme.lib.classes.data_objects.host_inventory import get_host_inventory
             inventory = get_host_inventory(self.uuid)
             if inventory:
+                os_name = inventory.os or ""
+                os_version = inventory.os_version or ""
                 packages = len(inventory.packages)
                 if inventory.last_inventory_update:
                     last_inventory_update = datetime.datetime.fromtimestamp(inventory.last_inventory_update)
+        lines.append(f'OS="{os_name}"')
+        lines.append(f'OS_VERSION="{os_version}"')
         lines.append(f'PACKAGES="{packages}"')
         lines.append(f'LAST_INVENTORY_UPDATE="{last_inventory_update}"')
         return super().show_config(config_lines=lines,

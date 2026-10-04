@@ -389,8 +389,8 @@ OTPme data directory
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-user**(1), **otpme-role**(1),
-**otpme-token**(1), **otpme-policy**(1)
+**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-user**(1),
+**otpme-role**(1), **otpme-token**(1), **otpme-policy**(1)
 
 # AUTHOR
 

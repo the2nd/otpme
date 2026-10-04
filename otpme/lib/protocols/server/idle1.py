@@ -60,6 +60,9 @@ class OTPmeIdleP1(OTPmeServer1):
         # consecutive wait calls land in the queue instead of being
         # dropped on the floor while no q is registered.
         self.subscribed_username = None
+        # The host this connection waits for, where it is a host that
+        # waits. One connection is one or the other, never both.
+        self.subscribed_host = None
         self.q = None
         # Session of connected user.
         self.session = None
@@ -79,14 +82,22 @@ class OTPmeIdleP1(OTPmeServer1):
                                             self.q, self.peer.name)
             except Exception:
                 pass
+        if self.q is not None and self.subscribed_host:
+            try:
+                self.dispatcher.unsubscribe_host(self.subscribed_host,
+                                                self.q)
+            except Exception:
+                pass
         self.q = None
         self.subscribed_username = None
+        self.subscribed_host = None
 
     def _process(self, command, command_args, **kwargs):
         """ Handle connections from otpme-agent and notify producers. """
         self.logger = config.logger
 
-        valid_commands = ["wait", "notify", "who"]
+        valid_commands = ["wait", "notify", "who",
+                        "host_wait", "host_notify", "host_who"]
         if command not in valid_commands:
             message = _("Unknown command: {command}")
             message = message.format(command=command)
@@ -129,6 +140,15 @@ class OTPmeIdleP1(OTPmeServer1):
         if command == "who":
             return self._handle_who(username)
 
+        if command == "host_wait":
+            return self._handle_host_wait()
+
+        if command == "host_notify":
+            return self._handle_host_notify(command_args)
+
+        if command == "host_who":
+            return self._handle_host_who(command_args.get('host'))
+
     def _handle_notify(self, username, command_args):
         """ In-process fan-out: publish event to all subscriber queues of
         the given user. Producers call this via connections.get("idled")
@@ -154,6 +174,103 @@ class OTPmeIdleP1(OTPmeServer1):
         }
         self.dispatcher.publish(username, event)
         return self.build_response(True, "ok")
+
+    def _handle_host_wait(self):
+        """ Long-poll for a host: tell it when there is something for it.
+
+        What a host is told is never more than "look now". Everything
+        that decides whether it may do anything is checked where it was
+        always checked -- the job is fetched from syncd and verified
+        against the signers the host holds. So a message that reached
+        the wrong host, or reached one twice, costs a look and nothing
+        else.
+
+        Which host is asking comes from its certificate and not from
+        anything it says: this connection has no user authentication,
+        and a name a client writes into a request is signed by nobody.
+        """
+        if self.peer is None:
+            return self.build_response(False, "Who are you?")
+        if self.peer.type not in ("host", "node"):
+            return self.build_response(False, "Permission denied")
+        # Bound to our own site, like every other thing idled does: a
+        # host of a site we trust does not wait here for its jobs.
+        if self.peer.realm_uuid != config.realm_uuid \
+        or self.peer.site_uuid != config.site_uuid:
+            return self.build_response(False, "Permission denied")
+        host_uuid = self.peer.uuid
+        if self.q is None:
+            host_data = {
+                        'host'          : self.peer.name,
+                        'type'          : self.peer.type,
+                        'connect_time'  : time.time(),
+                        'client_ip'     : self.client,
+                        }
+            self.q = self.dispatcher.subscribe_host(host_uuid,
+                                                host_data=host_data)
+            self.subscribed_host = host_uuid
+        while True:
+            try:
+                event = self.q.get(timeout=WAIT_TIMEOUT)
+            except queue.Empty:
+                # The host asks again right away. Said rather than left
+                # silent so a host can tell a live connection from one
+                # that died on the way.
+                return self.build_response(False, "keepalive")
+            except ExitOnSignal:
+                return self.build_response(False, "shutdown")
+            except Exception as e:
+                log_msg = _("Error while waiting for host event: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
+                return self.build_response(False, str(e))
+            return self.build_response(True, event)
+
+    def _handle_host_notify(self, command_args):
+        """ Tell one host that there is something for it.
+
+        Sent by a node, which is where the job was made. The answer
+        says how many of the host's connections heard it, and zero is
+        an answer: a host that is not here picks the news up on its
+        next round.
+        """
+        if not self.peer.type == "node":
+            return self.build_response(False, "Permission denied")
+        if self.peer.realm_uuid != config.realm_uuid \
+        or self.peer.site_uuid != config.site_uuid:
+            return self.build_response(False, "Permission denied")
+        host_uuid = command_args.get('host_uuid')
+        if not host_uuid:
+            return self.build_response(False, "Missing host_uuid")
+        event_type = command_args.get('event_type')
+        if not event_type:
+            return self.build_response(False, "Missing event_type")
+        event = {
+                'event_type'    : event_type,
+                'data'          : command_args.get('data', {}),
+                }
+        told = self.dispatcher.publish_host(host_uuid, event)
+        return self.build_response(True, told)
+
+    def _handle_host_who(self, host=None):
+        """ The hosts that are here, waiting to be told something.
+
+        Read the way "who" is read, and fenced the same way: only from
+        a node of our own site, unless the site says otherwise.
+        """
+        own_site = backend.get_object(uuid=config.site_uuid)
+        allow_who_from_hosts = own_site.get_config_parameter("allow_who_from_hosts")
+        if not allow_who_from_hosts:
+            if not self.peer.type == "node":
+                return self.build_response(False, "Permission denied")
+        if self.peer.realm_uuid != config.realm_uuid \
+        or self.peer.site_uuid != config.site_uuid:
+            return self.build_response(False, "Permission denied")
+        host_data = self.dispatcher.get_host_data()
+        if host:
+            host_data = {x:host_data[x] for x in host_data
+                        if host_data[x].get('host') == host}
+        return self.build_response(True, host_data)
 
     def _handle_wait(self, username, login_token, login_time, session_uuid, version):
         """ Long-poll: subscribe the calling agent to its user's queue

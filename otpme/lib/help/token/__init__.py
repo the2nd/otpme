@@ -268,16 +268,16 @@ cmd_help = {
      #           },
 
     'add_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-token add_acl {token} {role|token} {role_path|token_path} {acl[:value]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-token add_acl {token} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
+                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to token.'),
                                 },
                 },
 
     'del_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-token del_acl {token} {acl}'),
-                    'cmd'   :   '<|object|> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-token del_acl {token} {acl[,acl]}'),
+                    'cmd'   :   '<|object|> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Delete ACL from token.'),
                                 },
@@ -392,10 +392,11 @@ cmd_help = {
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token export {token}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-token export --password <password> {token}'),
+                    'cmd'   :   '--password :password: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export token config to stdout.'),
+                                    '--password <password>' : _('Encrypt object config with password.'),
                                 },
                 },
 

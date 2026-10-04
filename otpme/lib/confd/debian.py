@@ -3,7 +3,7 @@
 """ Configuration management jobs on Debian and its relatives.
 
 What differs from other systems: packages and repositories (apt), and
-upgrading the whole host. The rest -- services, files -- is the same
+switching the host off. The rest -- services, files -- is the same
 everywhere and lives in base.py.
 """
 import os
@@ -105,6 +105,19 @@ class DebianHandler(ConfJobHandler):
         if action == "autoremove":
             command, apt_env = self.apt_command(["autoremove"])
             return self.run_command(command, log_file, env=apt_env)
+        if action == "dist_upgrade":
+            # The package lists first: without them the upgrade works
+            # from whatever the host last heard of, which on a host that
+            # has been quiet for a while is nothing.
+            command, apt_env = self.apt_command(["update"])
+            update_code, update_output = self.run_command(command, log_file,
+                                                        env=apt_env)
+            if update_code != 0:
+                return update_code, update_output
+            command, apt_env = self.apt_command(["dist-upgrade"])
+            upgrade_code, upgrade_output = self.run_command(command, log_file,
+                                                        env=apt_env)
+            return upgrade_code, f"{update_output}{upgrade_output}"
         packages = self.get_list_arg(args, "packages", PACKAGE_NAME_RE)
         if action == "install":
             command = ["install", "--"] + packages
@@ -199,25 +212,24 @@ class DebianHandler(ConfJobHandler):
         return update_code, f"{output}{update_output}"
 
     def run_host_mgmt(self, action, args, log_file):
-        """ Upgrade the whole host, or reboot it. """
-        if action == "dist_upgrade":
-            # The package lists first: without them the upgrade works
-            # from whatever the host last heard of, which on a host that
-            # has been quiet for a while is nothing.
-            command, apt_env = self.apt_command(["update"])
-            update_code, update_output = self.run_command(command, log_file,
-                                                        env=apt_env)
-            if update_code != 0:
-                return update_code, update_output
-            command, apt_env = self.apt_command(["dist-upgrade"])
-            upgrade_code, upgrade_output = self.run_command(command, log_file,
-                                                        env=apt_env)
-            return upgrade_code, f"{update_output}{upgrade_output}"
-        if action != "reboot":
+        """ Switch the host off, or off and on again.
+
+        Nothing else: upgrading it is the package manager's work and
+        lives with the other package actions (run_sw_mgmt).
+
+        In a minute, not now, for both: the result of this job still has
+        to reach the nodes, and once the host is down nobody would send
+        it. So the job ends with an answer and the host goes afterwards.
+        """
+        if action == "reboot":
+            how = "-r"
+            said = "Reboot by OTPme configuration job"
+        elif action == "shutdown":
+            how = "-h"
+            said = "Shutdown by OTPme configuration job"
+        else:
             msg = _("Unknown action: {action}")
             msg = msg.format(action=action)
             raise OTPmeException(msg)
-        # In a minute, not now: the result of this job still has to
-        # reach the nodes, and after a reboot nobody would send it.
-        command = ["shutdown", "-r", "+1", "Reboot by OTPme configuration job"]
+        command = ["shutdown", how, "+1", said]
         return self.run_command(command, log_file)

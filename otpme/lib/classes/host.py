@@ -422,6 +422,14 @@ commands = {
                     },
                 },
             },
+    'get_public_key'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'get_public_key',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'renew_cert'   : {
             'default'    : {
                 'exists'    : {
@@ -721,7 +729,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'cache_update_interval' : 30,
+                    'args'              : ['owner_type', 'owner_name', 'acls', 'recursive_acls', 'apply_default_acls',],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -731,7 +740,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['acls'],
                     'oargs'             : ['recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
@@ -1006,15 +1016,8 @@ def register():
     # sync users as well, see there.
     config.register_index_attribute("sync_user", sync=["node:untrusted"],
                                     object_types=host_types)
-    # The system a host (or node) runs, as its confd reports it. The
-    # packages are not here but in host_inventory, see there why.
-    # Reported to, and acted on by, the site the host belongs to.
-    # Written by OTPmeHost.update_os(), which a node runs as well, see
-    # node.py.
-    config.register_index_attribute("os", sync=[],
-                                    object_types=["host"])
-    config.register_index_attribute("os_version", sync=[],
-                                    object_types=["host"])
+    # The system a host runs is not here but in host_inventory, with
+    # its packages and its hardware, see there why.
     config.register_recursive_default_acl("site", "+host")
     config.register_default_acl("unit", "+host")
     config.register_recursive_default_acl("unit", "+host")
@@ -1811,6 +1814,24 @@ class Host(OTPmeHost, OTPmeDevice):
                             callback=callback)
             role._cache(callback=callback)
         return super().delete(callback=callback, **kwargs)
+
+    def remove_orphans(
+        self,
+        extra_ref_lists: Union[list,None]=None,
+        **kwargs,
+        ):
+        """ Remove orphan UUIDs.
+
+        The two lists only a host has. Both are read when the sync list
+        for this host is built (get_sync_parameters()), so a user or a
+        group that is gone is looked up there at every sync.
+        """
+        ref_lists = [
+                ('sync_users', 'user', None),
+                ('sync_groups', 'group', None),
+                ]
+        ref_lists += extra_ref_lists or []
+        return super().remove_orphans(extra_ref_lists=ref_lists, **kwargs)
 
     def show_config( self, callback: JobCallback=default_callback, **kwargs):
         """ Show host config. """

@@ -205,16 +205,16 @@ cmd_help = {
      #           },
 
     'add_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-node add_acl {node} {role|token} {role_path|token_path} {acl[:value]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-node add_acl {node} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
+                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to node'),
                                 },
                 },
 
     'del_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-node del_acl {node} {acl}'),
-                    'cmd'   :   '<|object|> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-node del_acl {node} {acl[,acl]}'),
+                    'cmd'   :   '<|object|> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Delete ACL from node'),
                                 },
@@ -431,6 +431,13 @@ cmd_help = {
                 },
 
     'renew_cert'   : {
+                    # This command is not intended to be used by the user
+                    # directly. It is called internally when running
+                    # otpme-tool renew_cert, which makes the certificate
+                    # request on the node itself. Without a request there
+                    # is nothing to sign, so it carries no help text and
+                    # is not offered.
+                    'internal'  : True,
                     'cmd'   :   '<|object|>',
                 },
 
@@ -439,6 +446,14 @@ cmd_help = {
                     'cmd'   :   '<|object|> [public_key]',
                     '_help' :   {
                                     'cmd'                   : _('Change node\'s public key.'),
+                                },
+                },
+
+    'get_public_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-node get_public_key {node}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show node\'s public key.'),
                                 },
                 },
 

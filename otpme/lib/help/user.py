@@ -112,6 +112,22 @@ cmd_help = {
                                 },
                 },
 
+    'enable_key_caching'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user enable_key_caching {user}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Send the users private keys to the hosts the user logs in on.'),
+                                },
+                },
+
+    'disable_key_caching'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user disable_key_caching {user}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Stop sending the users private keys to the hosts.'),
+                                },
+                },
+
     'get_sign_key_type'    : {
                     '_cmd_usage_help' : _('Usage: otpme-user get_sign_key_type {user}'),
                     'cmd'   :   '<|object|>',
@@ -238,10 +254,21 @@ cmd_help = {
                 },
 
     'gen_csr'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user gen_csr {user}'),
-                    'cmd'   :   '--stdin-pass :stdin_pass=True: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-user gen_csr [--cn common_name] [--country country] [--state state] [--locality locality] [--organization organization] [--ou ou] [--email email] [--san-email addresses] [--key-usage usages] [--ext-key-usage usages] [--slot slot] [--stdin-pass] {user}'),
+                    'cmd'   :   '--cn :common_name: --country :country: --state :state: --locality :locality: --organization :organization: --ou :ou: --email :email: --san-email :san_email: --key-usage :key_usage: --ext-key-usage :ext_key_usage: --slot :slot: --stdin-pass :stdin_pass=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Generate certificate signing request for user'),
+                                    '--cn'                  : _('Common name of the request (default: the user)'),
+                                    '--country'             : _('Country of the request (e.g. DE)'),
+                                    '--state'               : _('State or province of the request'),
+                                    '--locality'            : _('Locality of the request'),
+                                    '--organization'        : _('Organization of the request'),
+                                    '--ou'                  : _('Organizational unit of the request'),
+                                    '--email'               : _('E-mail address of the request'),
+                                    '--san-email'           : _('E-mail address(es) for the subject alternative name, comma separated'),
+                                    '--key-usage'           : _('Key usage of the request, comma separated (e.g. digital_signature,key_encipherment)'),
+                                    '--ext-key-usage'       : _('Extended key usage of the request, comma separated (e.g. email_protection)'),
+                                    '--slot'                : _('YubiKey PIV slot to request a certificate for'),
                                     '--stdin-pass'          : _('Read passphrase for RSA private key from stdin'),
                                 },
                 },
@@ -518,8 +545,8 @@ cmd_help = {
                 },
 
     'add_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-user add_acl [-r -a] {user} {role|token} {role_path|token_path} {acl[:value]}'),
-                    'cmd'   :   '-r :recursive_acls=True: -a :apply_default_acls=True: <|object|> <owner_type> <owner_name> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-user add_acl [-r -a] {user} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
+                    'cmd'   :   '-r :recursive_acls=True: -a :apply_default_acls=True: <|object|> <owner_type> <owner_name> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to user'),
                                     '-r'                    : _('Set ACL recursive (to user tokens)'),
@@ -528,8 +555,8 @@ cmd_help = {
                 },
 
     'del_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-user del_acl  [-r -a] {user} {acl}'),
-                    'cmd'   :   '-r :recursive_acls=True: -a :apply_default_acls=True: <|object|> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-user del_acl  [-r -a] {user} {acl[,acl]}'),
+                    'cmd'   :   '-r :recursive_acls=True: -a :apply_default_acls=True: <|object|> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Delete ACL from user'),
                                     '-r'                    : _('Delete ACL recursive (from user tokens)'),

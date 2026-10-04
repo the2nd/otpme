@@ -66,6 +66,9 @@ default_callback = config.get_callback()
 write_acls =  [
             "set_temp_password",
             "force_password",
+            # upgrade_pass_hash() asks for it and it was in no list, so
+            # only an admin could upgrade the hash of a token.
+            "upgrade_pass_hash",
         ]
 
 read_acls = []
@@ -458,7 +461,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'cache_update_interval' : 30,
+                    'args'              : ['owner_type', 'owner_name', 'acls', 'recursive_acls', 'apply_default_acls',],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -468,7 +472,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['acls'],
                     'oargs'             : ['recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
@@ -2531,6 +2536,7 @@ class Token(OTPmeObject):
     @object_changelog("enable PIN")
     def enable_pin(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2543,6 +2549,11 @@ class Token(OTPmeObject):
 
         if not self.pin:
             return callback.error(_("No PIN saved for thist token."))
+
+        msg = _("Enable PIN of token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -2573,6 +2584,7 @@ class Token(OTPmeObject):
     @object_changelog("disable PIN")
     def disable_pin(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2588,6 +2600,11 @@ class Token(OTPmeObject):
         # Check if PIN is already disabled.
         if not self.pin_enabled:
             return callback.error(_("PIN is already disabled for this token."))
+
+        msg = _("Disable PIN of token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -2631,6 +2648,37 @@ class Token(OTPmeObject):
             msg = _("SSO deploy not supported by this token.")
             return callback.error(msg)
 
+        # The type is checked before the question, so a typo is not
+        # answered with a confirmation prompt first.
+        if isinstance(deploy_token_type, str):
+            token_types = config.get_sub_object_types("token")
+            if deploy_token_type not in token_types:
+                msg = _("Unknown token type: {token_type}")
+                msg = msg.format(token_type=deploy_token_type)
+                return callback.error(msg)
+
+        # Only where nothing would change. The value is False, True (the
+        # user picks the type at the portal) or the name of one type, so
+        # enabling it again with another type is a change and goes
+        # through -- there is no other command to move it.
+        if self.sso_deploy == deploy_token_type:
+            if isinstance(deploy_token_type, str):
+                msg = _("SSO deploy of a '{token_type}' token is already enabled for this token.")
+                msg = msg.format(token_type=deploy_token_type)
+            else:
+                msg = _("SSO deploy is already enabled for this token.")
+            return callback.error(msg)
+
+        if isinstance(deploy_token_type, str):
+            msg = _("Enable SSO deploy of a '{token_type}' token for token '{token_path}'?: ")
+            msg = msg.format(token_type=deploy_token_type,
+                            token_path=self.rel_path)
+        else:
+            msg = _("Enable SSO deploy for token '{token_path}'?: ")
+            msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2641,13 +2689,6 @@ class Token(OTPmeObject):
                                 _caller=_caller)
             except Exception as e:
                 return callback.error()
-
-        if isinstance(deploy_token_type, str):
-            token_types = config.get_sub_object_types("token")
-            if deploy_token_type not in token_types:
-                msg = _("Unknown token type: {token_type}")
-                msg = msg.format(token_type=deploy_token_type)
-                return callback.error(msg)
 
         self.sso_deploy = deploy_token_type
 
@@ -2660,18 +2701,24 @@ class Token(OTPmeObject):
     @object_changelog("disable SSO deploy")
     def disable_sso_deploy(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
-        """ Disable optional MSCHAP authentication. """
+        """ Disable SSO token deploy. """
         if self.sso_deploy is None:
             msg = _("SSO deploy not supported by this token.")
             return callback.error(msg)
 
         if not self.sso_deploy:
             return callback.error(_("SSO deploy is already disabled for this token."))
+
+        msg = _("Disable SSO deploy for token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -2711,6 +2758,11 @@ class Token(OTPmeObject):
         if self.mschap_enabled:
             return callback.error(_("MSCHAP is already enabled for this token."))
 
+        msg = _("Enable MSCHAP authentication of token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2736,6 +2788,7 @@ class Token(OTPmeObject):
     @object_changelog("disable MSCHAP")
     def disable_mschap(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2748,6 +2801,11 @@ class Token(OTPmeObject):
         # Check if MSCHAP is already disabled.
         if not self.mschap_enabled:
             return callback.error(_("MSCHAP is already disabled for this token."))
+
+        msg = _("Disable MSCHAP authentication of token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:

@@ -288,13 +288,104 @@ Remove all four keys of the user: both private and both public ones. It
 asks first, and it refuses when the user has no keys at all. Needs the
 ACL **del_keys**.
 
-**gen_csr \[**--stdin-pass**\] *user***  
+**gen_csr \[*attributes*\] \[**--slot** *slot*\] \[**--stdin-pass**\] *user***  
 Make a certificate signing request with the private key of the user and
 write it to stdout. The key script does the work, so the key never
 leaves where it lies.  
 It stops there: OTPme does not hand the request to a CA and does not
-store a certificate. What happens with the request is up to you.
-**--stdin-pass** reads the key password from stdin.
+store a certificate. What happens with the request is up to you.  
+The subject is built from these, and an attribute you do not give is
+left out:
+
+**--cn *name***  
+The common name. Without it, the name of the user.
+
+**--country *country***  
+Two letters, for example **DE**.
+
+**--state *state***  
+
+**--locality *locality***  
+
+**--organization *organization***  
+
+**--ou *unit***  
+
+**--email *address***  
+
+For a certificate that is to be used for S/MIME, three more. Without
+them the request asks for nothing and what the certificate may be used
+for is whatever the CA puts in:
+
+**--san-email *address*\[**,***address*...\]**  
+The address in the subject alternative name. That is where a mail client
+looks for the address of the sender. **--email** puts it in the subject
+as well, but on its own that is the old way.
+
+**--key-usage *usage*\[**,***usage*...\]**  
+What the key may do. For S/MIME: **digital_signature** to sign and
+**key_encipherment** to be sent encrypted mail. Also
+**content_commitment**, **data_encipherment**, **key_agreement**,
+**key_cert_sign**, **crl_sign**, **encipher_only**, **decipher_only**.
+
+**--ext-key-usage *usage*\[**,***usage*...\]**  
+What the certificate is for. For S/MIME: **email_protection**. Also
+**client_auth**, **server_auth**, **code_signing**, **smartcard_logon**,
+**time_stamping**, **ocsp_signing**.
+
+Whether the signed certificate carries all of it is up to the CA: a
+request asks, it does not decide.
+
+A user whose private key is on a YubiKey in PIV mode gets a request
+signed by the card, because the key does not come off it. The card asks
+for its PIN. The key is the one the key script is set to
+(**--yubikey-piv**), and **--slot** asks for another one. Where neither
+says a slot, it is **AUTHENTICATION**, the same one signing uses.
+
+S/MIME needs two certificates, one for each key of the user. The sign
+key lies in slot **AUTHENTICATION**, the encrypt key in slot
+**KEY_MANAGEMENT**. So there are two requests. With RSA keys they read:
+
+>     $ otpme-user gen_csr --slot AUTHENTICATION \
+>         --email alice@example.org --san-email alice@example.org \
+>         --key-usage digital_signature \
+>         --ext-key-usage email_protection alice > alice-sign.csr
+>
+>     $ otpme-user gen_csr --slot KEY_MANAGEMENT \
+>         --email alice@example.org --san-email alice@example.org \
+>         --key-usage key_encipherment \
+>         --ext-key-usage email_protection alice > alice-encrypt.csr
+
+> Hand both to your CA. Each signed certificate then has to go back into
+> the slot its key sits in:
+
+>     $ otpme-yk-piv --import-cert --slot AUTHENTICATION < alice-sign.crt
+>     $ otpme-yk-piv --import-cert --slot KEY_MANAGEMENT < alice-encrypt.crt
+
+> A PKCS#11 module shows the key of a slot only together with the
+> certificate that sits in it, so that is what a mail client or a
+> browser needs. Writing a slot asks for the management key, not for the
+> PIN. A card that was deployed keeps that key on itself, and then the
+> PIN reads it out.
+>
+> With 25519 keys the second request does not work. Ed25519 only signs,
+> X25519 only does key agreement, and a request is signed by the very
+> key it is for. An X25519 key cannot do that (RFC 8410). Two things
+> follow. First, the encrypt key needs **--key-usage key_agreement**,
+> not **key_encipherment**: that bit is the RSA one. Second, there is no
+> request for it at all. The CA has to issue the certificate from the
+> public key alone:
+
+>     $ otpme-yk-piv --public-key-out --slot KEY_MANAGEMENT > alice-encrypt.pub
+
+> Not every CA does that, and whether a mail client reads X25519 in
+> S/MIME at all (RFC 8418) is another question. Use RSA where you are
+> not sure.
+>
+> **--stdin-pass** reads the key password from stdin.  
+> A request without any of the S/MIME parts:
+
+>     $ otpme-user gen_csr --organization 'Example Ltd' --country DE --email alice@example.org alice
 
 **key_mode *user* *mode***  
 Where the private keys of the user are kept.
@@ -324,6 +415,43 @@ a plain number of seconds or a time string such as *5m*. The default *0*
 means no timeout, the key stays cached as long as the agent runs. The
 agent gets the value with the login session, so a change takes effect on
 the next login.
+
+**enable_key_caching *user***  
+Let the hosts hold the private keys of the user. Needs key mode
+**client** and refuses otherwise.
+
+The login then sends the keys to the host the user logs in on. They
+travel as they are stored: wrapped with the key password of the user. A
+host that holds one can do no more with it than it could before, because
+without that password it is of no use. The host writes it to its offline
+tokens and hands it to otpme-agent.
+
+Two things follow. The key script does not ask the servers for the key
+on every call, and it asks for the key password once per session instead
+of once per signature: it unwraps the key and leaves the result with the
+agent for **key_cache_time**. And the user can sign without the servers,
+which is what an offline login needs.
+
+It also lets the agent sign the SOTP for a user whose login token does
+not own the keys, see **sotp_signing** in **otpme-accessgroup**(1).
+Without a key it holds, the agent has nothing to sign with.
+
+Off by default. Which hosts hold a copy of a private key is not
+something to decide by accident. In key mode **server** nothing is ever
+sent: there the key that wraps the private key is on the server too, and
+a host that got both would have the key itself.
+
+**otpme-user show** says whether it is on, as **key-caching**. It says
+**N/A** where the key mode is not **client**, because there it cannot be
+turned on at all.
+
+**disable_key_caching *user***  
+Stop sending the private keys of the user to the hosts.
+
+This is about the next login. What a host has already got stays in its
+offline tokens until the user logs in there again, and in its agent
+until the user logs out. A key that must be gone everywhere has to be
+replaced, see **key_pass** and **gen_keys**.
 
 **key_pass \[**--stdin-pass**\] *user***  
 Change the password of the private keys of the user. **--stdin-pass**
@@ -807,6 +935,17 @@ Generate them for carol on the 25519 curves, where the length is fixed
 **otpme-user key_pass alice**  
 Change the password of alice's private keys
 
+**otpme-user enable_key_caching alice**  
+Let the hosts alice logs in on hold her private keys, so the key script
+asks her for the password once per session and works without the servers
+
+**otpme-user key_cache_time alice 5m**  
+Have otpme-agent drop the unwrapped key five minutes after it was last
+needed
+
+**otpme-user disable_key_caching alice**  
+Send them no more, from her next login on
+
 **otpme-user dump_sign_key alice**  
 Write alice's sign public key to stdout
 
@@ -867,9 +1006,10 @@ Create bob using the developer template
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-token**(1), **otpme-group**(1),
-**otpme-role**(1), **otpme-policy**(1), **otpme-script**(1),
-**otpme-vlan**(1), **otpme-unit**(1), **otpme-trash**(1)
+**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-token**(1),
+**otpme-group**(1), **otpme-role**(1), **otpme-policy**(1),
+**otpme-script**(1), **otpme-vlan**(1), **otpme-unit**(1),
+**otpme-trash**(1)
 
 # AUTHOR
 

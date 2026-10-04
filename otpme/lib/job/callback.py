@@ -98,6 +98,12 @@ class JobCallback(object):
         self.enabled = True
         # Will hold all (modified objects this callback was used. in.
         self.modified_objects = []
+        # The same by read OID, to answer "do we know this one" without
+        # walking the list. A recursive add_acl puts every object of a
+        # tree in here, and searching a list of some thousand OIDs for
+        # every next object is what made such a run slower the further
+        # it got (OID.__eq__() per entry).
+        self._modified_object_ids = set()
         # Will hold all locked objects.
         self.locked_objects = []
         # Indicates that a job should stop.
@@ -131,16 +137,36 @@ class JobCallback(object):
         self._lock = None
 
     def add_locked_object(self, o):
-        """ Add modified object to callback. """
+        """ Add modified object to callback.
+
+        Asked of the list and not of a set of OIDs beside it, unlike
+        the modified objects below. Renaming an object changes its OID
+        while it is cached here, and a set keyed by the old one would
+        take it for a second object and let the same lock be released
+        twice. See ObjectTransaction.cache_locked_object().
+        """
         if o in self.locked_objects:
             return
         self.locked_objects.append(o)
         self.last_used = time.time()
 
+    def get_modified_object_id(self, object_id):
+        """ What we know a modified object by.
+
+        Its read OID, which names it without the site, the same key the
+        object cache uses (cache.add_modified_object()). A string,
+        because OIDs are made to be compared and not to be hashed: a
+        resolved and an unresolved OID of the same object are equal but
+        hash differently, see oid.OID.__hash__().
+        """
+        return object_id.read_oid or str(object_id)
+
     def add_modified_object(self, o):
         """ Add modified object to callback. """
-        if o.oid in self.modified_objects:
+        object_id = self.get_modified_object_id(o.oid)
+        if object_id in self._modified_object_ids:
             return
+        self._modified_object_ids.add(object_id)
         self.modified_objects.append(o.oid)
         self.last_used = time.time()
         self.job.objects_written.value = True
@@ -169,9 +195,10 @@ class JobCallback(object):
     def forget_modified_objects(self):
         """ Forget objects modified by this callback. """
         from otpme.lib import cache
-        for object_id in list(self.modified_objects):
+        for object_id in self.modified_objects:
             cache.remove_modified_object(object_id)
-            self.modified_objects.remove(object_id)
+        self.modified_objects = []
+        self._modified_object_ids = set()
 
     def release_cache_locks(self):
         """ Release all 'cached' locks. """

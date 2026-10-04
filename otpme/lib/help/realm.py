@@ -218,16 +218,16 @@ cmd_help = {
                 },
 
     'add_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm add_acl {realm} {role|token} {role_path|token_path} {acl[:value]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-realm add_acl {realm} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
+                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to realm'),
                                 },
                 },
 
     'del_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm del_acl {realm} {acl}'),
-                    'cmd'   :   '<|object|> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-realm del_acl {realm} {acl[,acl]}'),
+                    'cmd'   :   '<|object|> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Delete ACL from realm'),
                                 },
@@ -386,24 +386,6 @@ cmd_help = {
                                     'cmd'                   : _('Update realm CA data (Certs and CRLs)'),
                                 },
                 },
-
-
-    #'add_alias'   : {
-    #                '_cmd_usage_help' : _('Usage: otpme-realm add_alias {realm} {alias}'),
-    #                'cmd'   :   '<|object|> <alias>',
-    #                '_help' :   {
-    #                                'cmd'                   : _('Add realm alias'),
-    #                            },
-    #            },
-
-
-    #'del_alias'   : {
-    #                '_cmd_usage_help' : _('Usage: otpme-realm del_alias {realm} {alias}'),
-    #                'cmd'   :   '<|object|> <alias>',
-    #                '_help' :   {
-    #                                'cmd'                   : _('Delete realm alias'),
-    #                            },
-    #            },
 
 
     'enable_auth'    : {

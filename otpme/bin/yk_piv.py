@@ -28,6 +28,7 @@ if os.path.exists(PYTHONPATH_FILE):
         fd.close()
 
 from cryptography.hazmat.primitives.serialization import Encoding
+from cryptography.hazmat.primitives.serialization import PublicFormat
 from cryptography.hazmat.primitives.serialization import NoEncryption
 from cryptography.hazmat.primitives.serialization import PrivateFormat
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
@@ -39,6 +40,9 @@ from otpme.lib.smartcard.yubikey.piv import change_pin
 from otpme.lib.smartcard.yubikey.piv import change_puk
 from otpme.lib.smartcard.yubikey.piv import decrypt
 from otpme.lib.smartcard.yubikey.piv import sign
+from otpme.lib.smartcard.yubikey.piv import gen_csr
+from otpme.lib.smartcard.yubikey.piv import import_certificate
+from otpme.lib.smartcard.yubikey.piv import export_public_key
 from otpme.lib.smartcard.yubikey.piv import verify
 from otpme.lib.smartcard.yubikey.piv import list_keys
 from otpme.lib.smartcard.yubikey.piv import import_private_key
@@ -66,6 +70,14 @@ def _resolve_pin(pin_arg):
     if pin_arg.startswith("env:"):
         return os.environ[pin_arg[4:]]
     return pin_arg
+
+
+def _split_list(value):
+    """A comma separated option as a list, empty ones dropped."""
+    if not value:
+        return None
+    items = [x.strip() for x in value.split(",")]
+    return [x for x in items if x] or None
 
 
 def _get_agent():
@@ -112,6 +124,20 @@ def main():
     parser.add_argument("--info", default=None,
                         help="HPKE info string (default: otpme-hpke-x25519-v1)")
     parser.add_argument("--sign", action="store_true", help="Sign stdin, write signature to stdout")
+    parser.add_argument("--csr", action="store_true",
+                    help="Write a certificate signing request for the slot's key to stdout")
+    parser.add_argument("--subject", default=None,
+                    help="Subject of the request, RFC 4514 (for --csr), e.g. 'CN=alice,O=OTPme'")
+    parser.add_argument("--san-email", default=None,
+                    help="E-mail address(es) for the subject alternative name (for --csr), comma separated")
+    parser.add_argument("--key-usage", default=None,
+                    help="Key usage of the request (for --csr), e.g. 'digital_signature,key_encipherment'")
+    parser.add_argument("--ext-key-usage", default=None,
+                    help="Extended key usage of the request (for --csr), e.g. 'email_protection'")
+    parser.add_argument("--import-cert", action="store_true",
+                    help="Put the certificate on stdin (PEM) into the slot")
+    parser.add_argument("--public-key-out", action="store_true",
+                    help="Write the public key of the slot to stdout (PEM). For a key that cannot sign a request of its own, e.g. X25519 in slot 9d.")
     parser.add_argument("--verify", action="store_true", help="Verify stdin against --signature")
     parser.add_argument("--signature", default=None, help="Signature file (for --verify)")
     parser.add_argument("--public-key", default=None, help="Public key PEM (for --verify, otherwise from YubiKey)")
@@ -226,9 +252,6 @@ def main():
             from otpme.lib.encryption.x25519 import (
                 hpke_decap_x25519_aes256gcm, HPKE_INFO_DEFAULT,
             )
-            from cryptography.hazmat.primitives.serialization import (
-                Encoding, PublicFormat,
-            )
             info = args.info.encode() if args.info else HPKE_INFO_DEFAULT
             pin = _resolve_pin(args.pin) or getpass.getpass("PIN: ")
             # Recipient pubkey for the KEM context. Read from the same slot
@@ -295,6 +318,55 @@ def main():
                 serial=args.serial,
             )
         sys.stdout.buffer.write(signature)
+
+    elif args.csr:
+        if not args.subject:
+            parser.error("--csr requires --subject")
+        # No --use-agent: the agent signs data, and a request has to be
+        # built around the signature. The card is asked directly, which
+        # means the PIN is asked for here.
+        pin = _resolve_pin(args.pin) or getpass.getpass("PIN: ")
+        csr = gen_csr(
+            subject=args.subject,
+            slot=args.slot or SIGN_SLOT_DEFAULT,
+            pin=pin,
+            san_email=_split_list(args.san_email),
+            key_usage=_split_list(args.key_usage),
+            ext_key_usage=_split_list(args.ext_key_usage),
+            serial=args.serial,
+        )
+        sys.stdout.write(csr)
+
+    elif args.public_key_out:
+        # No PIN: the public key is read from the slot metadata, or
+        # from the certificate of the slot where there is one.
+        sys.stdout.write(export_public_key(
+            slot=args.slot or SIGN_SLOT_DEFAULT,
+            serial=args.serial,
+        ))
+
+    elif args.import_cert:
+        if not args.slot:
+            parser.error(
+                "--import-cert requires --slot — the certificate belongs "
+                "to the key of one slot."
+            )
+        # The management key, not the PIN: writing to a slot is a
+        # management operation, the same as importing a key. Resolved
+        # the way --import resolves it, so "file:" and the rest work
+        # here too.
+        kwargs = dict(slot=args.slot, serial=args.serial)
+        if args.mgmt_key:
+            kwargs["mgmt_key"] = bytes.fromhex(_resolve_pin(args.mgmt_key))
+        else:
+            # A card that was deployed keeps its management key on
+            # itself, and the PIN is what reads it out.
+            kwargs["pin"] = _resolve_pin(args.pin) or getpass.getpass("PIN: ")
+        cert = import_certificate(
+            certificate=sys.stdin.buffer.read(),
+            **kwargs,
+        )
+        print(f"Certificate imported to slot {args.slot}: {cert.subject.rfc4514_string()}")
 
     elif args.import_key:
         if not args.slot:

@@ -94,7 +94,11 @@ write_acls = []
 
 read_value_acls = {
                     "view"      : [
-                                "trust",
+                                # Plural, because what they show is a
+                                # list. The one that names a single
+                                # thing keeps the singular, so it is
+                                # "view:trusts" but "add:trust".
+                                "trusts",
                                 "address",
                                 "auth_fqdn",
                                 "mgmt_fqdn",
@@ -103,7 +107,7 @@ read_value_acls = {
                                 "sso_fqdn",
                                 "sso_cert",
                                 "sso_key",
-                                "sso_host",
+                                "sso_hosts",
                                 "site_cert",
                                 "radius_cert",
                                 "radius_key",
@@ -144,9 +148,13 @@ write_value_acls = {
                     "delete"    : [
                                 "unit",
                                 "trust",
-                                "sso_host",
                                 "fido2_ca_cert",
                                 "sso_logo",
+                                ],
+                    # An SSO host is taken off the site again, the host
+                    # itself stays, so "remove" and not "delete".
+                    "remove"    : [
+                                "sso_host",
                                 ],
                     "enable"    : [
                                 "auth",
@@ -490,7 +498,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'oargs'             : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls', 'object_types'],
+                    'cache_update_interval' : 30,
+                    'oargs'             : ['owner_type', 'owner_name', 'acls', 'recursive_acls', 'apply_default_acls', 'object_types', 'procs'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -500,8 +509,13 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl'],
-                    'pargs'              : ['recursive_acls', 'apply_default_acls', 'object_types'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['acls'],
+                    # "oargs", not "pargs": nothing reads the latter, it
+                    # was the only one in the tree, so "otpme-site
+                    # del_acl -r" quietly deleted the ACL off the site
+                    # and walked nothing.
+                    'oargs'              : ['recursive_acls', 'apply_default_acls', 'object_types', 'procs'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -826,10 +840,10 @@ commands = {
                     },
                 },
             },
-    'del_sso_host'   : {
+    'remove_sso_host'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'del_sso_host',
+                    'method'            : 'remove_sso_host',
                     'args'              : ['host_name'],
                     'job_type'          : 'process',
                     },
@@ -2245,6 +2259,16 @@ def register_config():
                                     setter=admin_access_trusts_setter,
                                     getter=admin_access_trusts_getter,
                                     object_types=['site'])
+    # Run auth scripts of users from other sites?
+    #
+    # A user from another site brings their auth scripts with them: script
+    # objects of that site, written by its administrators. Running one means
+    # running that code on our node, as one of our users, on every login.
+    # A site that wants it says so; off by default.
+    config.register_config_parameter(name="run_foreign_user_auth_scripts",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=['site'])
     # Passkeys allowed trusts.
     def sso_allow_passkeys_trusts_setter(sites, callback=JobCallback, **kwargs):
         if isinstance(sites, str):
@@ -2981,9 +3005,18 @@ def register_config():
                                     ctype=int,
                                     default_value=1024,
                                     object_types=['site', 'unit', 'node'])
+    # One per host and node (hostd waits here for news of a job) plus
+    # one per logged in session. A few thousand hosts fit, and the
+    # connections are cheap because idled is in daemon_socket_buffer.
     config.register_config_parameter(name="idled_max_conn",
                                     ctype=int,
-                                    default_value=1024,
+                                    default_value=4096,
+                                    object_types=['site', 'unit', 'node'])
+    # Two per remote access session, and a session stands as long as
+    # somebody works in it.
+    config.register_config_parameter(name="racd_max_conn",
+                                    ctype=int,
+                                    default_value=256,
                                     object_types=['site', 'unit', 'node'])
     config.register_config_parameter(name="backupd_max_conn",
                                     ctype=int,
@@ -3035,7 +3068,9 @@ def register_config():
                                     default_value=1024,
                                     setter=socket_backlog_setter,
                                     object_types=['site', 'unit', 'node', 'host'])
-    # Allow otpme-tool who from hosts.
+    # Allow otpme-tool who and host_who from hosts. Both answer the
+    # same kind of question -- who is connected to idled right now --
+    # so they are allowed or refused together.
     config.register_config_parameter(name="allow_who_from_hosts",
                                     ctype=bool,
                                     default_value=False,
@@ -3143,7 +3178,7 @@ def register_hooks():
     config.register_auth_on_action_hook("site", "add_trust")
     config.register_auth_on_action_hook("site", "del_trust")
     config.register_auth_on_action_hook("site", "add_sso_host")
-    config.register_auth_on_action_hook("site", "del_sso_host")
+    config.register_auth_on_action_hook("site", "remove_sso_host")
     config.register_auth_on_action_hook("site", "add_sso_logo")
     config.register_auth_on_action_hook("site", "del_sso_logo")
     config.register_auth_on_action_hook("site", "dump_sso_logo")
@@ -3689,11 +3724,20 @@ class Site(OTPmeObject):
     def _handle_acl(
         self,
         action: str,
-        acl: object,
+        acls: List,
         recursive_acls: bool=False,
         apply_default_acls: bool=False,
         object_types: List=None,
         verify_acls: bool=True,
+        # Named, and not left to **kwargs: handle_acl() hands it to us,
+        # and the call below passes both force=True and **kwargs. With
+        # force sitting in kwargs that is the same argument twice, and
+        # python refuses it -- which broke "realm init", the one command
+        # that reaches this with apply_default_acls set.
+        force: bool=False,
+        # Handed on to the units, which is where the members are and
+        # therefore where workers are started.
+        procs: Union[int,None]=None,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -3717,26 +3761,51 @@ class Site(OTPmeObject):
                                     return_type="instance",
                                     realm=config.realm,
                                     site=self.name)
-        for unit in all_units:
-            # Skip all non top level units.
-            if unit and unit.unit:
-                continue
+        # The top level units, which is what we walk. Counted first so
+        # every message can say where in them it is, see
+        # Unit._handle_acl().
+        top_units = [x for x in all_units if x and not x.unit]
+        unit_count = len(top_units)
+        unit_pos = 0
+
+        for unit in top_units:
+            unit_pos += 1
+            unit_progress = {
+                            'pos'   : unit_pos,
+                            'total' : unit_count,
+                            }
 
             if recursive_acls:
-                # Get ACL apply IDs.
-                apply_id, recursive_apply_id = unit.get_acl_apply_ids(acl=acl)
+                # All apply IDs at once, as raw ACLs, see
+                # Unit._handle_acl().
+                unit_acls = []
+                for x_acl in acls:
+                    apply_id = unit.get_acl_apply_ids(acl=x_acl)[0]
+                    if not apply_id:
+                        continue
+                    unit_acl = f"{x_acl.owner_type}:{x_acl.owner_uuid}:{apply_id}"
+                    unit_acls.append(unit_acl)
 
-                if apply_id:
+                if unit_acls:
+                    unit_kwargs = dict(kwargs)
+                    unit_kwargs['ignore_unknown_owner'] = True
                     add_status = unit.handle_acl(action=action,
-                                        acl=apply_id,
-                                        owner_uuid=acl.owner_uuid,
+                                        raw_acls=unit_acls,
                                         object_types=object_types,
                                         recursive_acls=recursive_acls,
                                         apply_default_acls=apply_default_acls,
+                                        _acl_progress=unit_progress,
                                         verify_acls=verify_acls,
+                                        # Named now that _handle_acl()
+                                        # names it and it no longer rides
+                                        # along in kwargs. It used to
+                                        # reach a unit that way and still
+                                        # should.
+                                        force=force,
+                                        procs=procs,
                                         verbose_level=verbose_level,
                                         callback=callback,
-                                        **kwargs)
+                                        **unit_kwargs)
                     if not add_status:
                         exception = True
 
@@ -3746,16 +3815,25 @@ class Site(OTPmeObject):
                     inherit_acl = False
                 if inherit_acl:
                     unit_inherit_method = getattr(unit, inherit_method)
-                    add_status = unit_inherit_method(acl=acl,
-                                    recursive_acls=recursive_acls,
-                                    apply_default_acls=apply_default_acls,
-                                    object_types=object_types,
-                                    verify_acls=verify_acls,
-                                    verbose_level=verbose_level,
-                                    callback=callback,
-                                    **kwargs)
-                    if not add_status:
-                        exception = True
+                    for x_acl in acls:
+                        # force, see Unit._handle_acl().
+                        add_status = unit_inherit_method(acl=x_acl,
+                                        force=True,
+                                        procs=procs,
+                                        recursive_acls=recursive_acls,
+                                        apply_default_acls=apply_default_acls,
+                                        object_types=object_types,
+                                        _acl_progress=unit_progress,
+                                        verify_acls=verify_acls,
+                                        verbose_level=verbose_level,
+                                        callback=callback,
+                                        **kwargs)
+                        if not add_status:
+                            exception = True
+
+            # Done with this unit, see Unit._handle_acl().
+            if not unit.write_acl_changes(callback=callback):
+                exception = True
         if exception:
             return callback.error()
 
@@ -5284,6 +5362,69 @@ class Site(OTPmeObject):
 
         return self._write(callback=callback)
 
+    @check_acls(['remove:sso_host'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    @object_changelog("remove SSO host {host_name}")
+    def remove_sso_host(
+        self,
+        host_name: str,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Remove site sso_host relationship. """
+        if self.uuid != config.site_uuid:
+            msg = _("Permission denied.")
+            return callback.error(msg, exception=PermissionDenied)
+
+        # By UUID as well, so a host that was deleted while it was an
+        # SSO host can be taken off the site (see del_trust()).
+        if stuff.is_uuid(host_name):
+            host_uuid = host_name
+        else:
+            result = backend.search(object_type="host",
+                                    attribute="name",
+                                    value=host_name,
+                                    realm=self.realm,
+                                    site=self.name,
+                                    return_type="uuid")
+            if not result:
+                msg = _("Unknown host: {host_name}")
+                msg = msg.format(host_name=host_name)
+                return callback.error(msg)
+            host_uuid = result[0]
+
+        if host_uuid not in self.sso_hosts:
+            msg = _("Host is not an SSO host of this site: {host_name}")
+            msg = msg.format(host_name=host_name)
+            return callback.error(msg)
+
+        msg = _("Remove SSO host '{host_name}' from site '{site_name}'?: ")
+        msg = msg.format(host_name=host_name, site_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("remove_sso_host",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.sso_hosts.remove(host_uuid)
+        # Update index.
+        self.del_index("sso_host", host_uuid)
+
+        return self._write(callback=callback)
+
     @check_acls(['add:trust'])
     @object_lock()
     @backend.transaction
@@ -5946,45 +6087,47 @@ class Site(OTPmeObject):
             object_type = acl.replace("+", "")
             view_objects.append(object_type)
 
-        # Get realm user role.
+        # Get realm user role. All ACLs in one call: each of them walks
+        # the whole site, and the walk is what this costs.
         realm_user_role = backend.get_object(uuid=self.user_role_uuid)
+        view_acls = []
         for o in view_objects:
-            acl = f"role:{realm_user_role.uuid}:++{o}:view_public"
-            self.add_acl(acl=acl,
-                        force=True,
-                        recursive_acls=True,
-                        apply_default_acls=True,
-                        object_types=view_objects,
-                        verify_acls=False,
-                        verbose_level=1,
-                        callback=callback)
+            view_acls.append(f"role:{realm_user_role.uuid}:++{o}:view_public")
+        self.add_acl(acls=view_acls,
+                    force=True,
+                    recursive_acls=True,
+                    apply_default_acls=True,
+                    object_types=view_objects,
+                    verify_acls=False,
+                    verbose_level=1,
+                    callback=callback)
 
         # Add ACLs to view LDIF attributes.
         view_objects = [ "site", "unit", "user", "group" ]
+        view_acls = []
         for o in view_objects:
-            acl = f"role:{realm_user_role.uuid}:++{o}:view:attribute"
-            self.add_acl(acl=acl,
-                        force=True,
-                        recursive_acls=True,
-                        apply_default_acls=True,
-                        object_types=view_objects,
-                        verify_acls=False,
-                        verbose_level=1,
-                        callback=callback)
+            view_acls.append(f"role:{realm_user_role.uuid}:++{o}:view:attribute")
+        self.add_acl(acls=view_acls,
+                    force=True,
+                    recursive_acls=True,
+                    apply_default_acls=True,
+                    object_types=view_objects,
+                    verify_acls=False,
+                    verbose_level=1,
+                    callback=callback)
 
         # Get site admin role.
         site_admin_role = backend.get_object(uuid=self.admin_role_uuid)
         # Add ACLs to view public site infos.
         view_roles = [ realm_user_role, site_admin_role ]
-        for r in view_roles:
-            acl = f"role:{r.uuid}:view_public"
-            self.add_acl(acl=acl,
-                        force=True,
-                        recursive_acls=False,
-                        apply_default_acls=False,
-                        verify_acls=False,
-                        verbose_level=1,
-                        callback=callback)
+        view_acls = [f"role:{r.uuid}:view_public" for r in view_roles]
+        self.add_acl(acls=view_acls,
+                    force=True,
+                    recursive_acls=False,
+                    apply_default_acls=False,
+                    verify_acls=False,
+                    verbose_level=1,
+                    callback=callback)
 
         # Add "dump" ACLs for default scripts.
         acl = f"role:{realm_user_role.uuid}:dump"
@@ -5997,7 +6140,7 @@ class Site(OTPmeObject):
                                     return_type="instance",
                                     realm=self.realm,
                                     site=self.name)[0]
-            _script.add_acl(acl=acl,
+            _script.add_acl(acls=[acl],
                         force=True,
                         recursive_acls=False,
                         apply_default_acls=False,
@@ -7022,7 +7165,7 @@ class Site(OTPmeObject):
         lines.append(f'SYNC_ENABLED="{sync_enabled}"')
 
         trusted_sites = []
-        if self.verify_acl("view:trust") \
+        if self.verify_acl("view:trusts") \
         or self.verify_acl("add:trust") \
         or self.verify_acl("delete:trust"):
             for x in self.trusted_sites:
@@ -7126,9 +7269,13 @@ class Site(OTPmeObject):
         lines.append(f'CLUSTER_KEY="{cluster_key}"')
 
         sso_hosts = []
-        if self.verify_acl("view:trust") \
-        or self.verify_acl("add:trust") \
-        or self.verify_acl("delete:trust"):
+        # The SSO hosts, so the ACLs of the SSO hosts. This asked for
+        # the ones of the trusted sites, which is the block above: who
+        # was given view:sso_hosts saw nothing here, and who was given
+        # view:trusts saw something they were not given.
+        if self.verify_acl("view:sso_hosts") \
+        or self.verify_acl("add:sso_host") \
+        or self.verify_acl("remove:sso_host"):
             for x in self.sso_hosts:
                 s = backend.get_object(object_type="host", uuid=x)
                 if s:

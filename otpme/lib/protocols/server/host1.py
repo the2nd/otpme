@@ -158,6 +158,7 @@ class OTPmeHostP1(OTPmeServer1):
                             "get_user_uuid",
                             "get_user_name",
                             "get_user_site",
+                            "get_host_public_key",
                             "get_host_status",
                             "get_pass_strength",
                             "authorize_token",
@@ -569,6 +570,45 @@ class OTPmeHostP1(OTPmeServer1):
                     message = _("Error getting UUID: {object_id}: {error}")
                     message = message.format(object_id=object_id, error=e)
                     status = False
+
+        elif command == "get_host_public_key":
+            # The key a host was joined with, out of this host's own
+            # copy of the realm. Needed by otpme-shell, which holds the
+            # vouch of a remote access session against it, and that must
+            # not be asked of a management daemon over the network: the
+            # answer decides which host the session may be with.
+            #
+            # Public by its own name and on every host object, so no
+            # more of a secret than the OID and UUID resolution next to
+            # it (see the note on root_only_commands above).
+            try:
+                object_uuid = command_args['object_uuid']
+                status = True
+            except Exception:
+                message = "INCOMPLETE_COMMAND"
+                status = False
+            if status:
+                status = False
+                message = _("Unknown host: {object_uuid}")
+                message = message.format(object_uuid=object_uuid)
+                for object_type in ["host", "node"]:
+                    try:
+                        x_host = backend.get_object(object_type=object_type,
+                                                uuid=object_uuid)
+                    except Exception as e:
+                        message, log_msg = _("Error getting host public key", log=True)
+                        log_msg = f"{log_msg}: {object_uuid}: {e}"
+                        self.logger.warning(log_msg)
+                        break
+                    if not x_host:
+                        continue
+                    if not x_host.public_key:
+                        message = _("Host has no public key: {oid}")
+                        message = message.format(oid=x_host.oid)
+                        break
+                    message = x_host.public_key
+                    status = True
+                    break
 
         elif command == "get_host_status":
             myhost = backend.get_object(object_type=self.host_type,

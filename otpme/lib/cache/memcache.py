@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-"""Module for handling memcached/memcachedb caching.
+"""Module for handling memcached caching.
 
 http://sendapatch.se/projects/pylibmc/reference.html
 """
 import os
+import re
 import sys
 import time
+import zlib
 try:
     import pylibmc
 except ImportError:
@@ -41,6 +43,31 @@ from otpme.lib.multiprocessing import SharedList
 from otpme.lib.exceptions import *
 
 NC_BIN = "nc"
+
+# The list of keys a dict holds lives in this many items, not in one.
+# memcached takes at most a megabyte per item, and the list of a well
+# filled cache goes past that: 12800 keys of 80 characters already do.
+# Spreading it lifts that ceiling, and two processes writing different
+# keys mostly append to different items.
+KEY_LIST_SHARDS = 16
+# How many keys go into one get_multi()/delete_multi().
+MULTI_BLOCK_SIZE = 500
+# Rewrite one of those items once it holds this many lines that are not
+# needed any more. Appending a key again is cheaper than first asking
+# whether it is already in there, so lines repeat and lines of deleted
+# keys stay; both are cleaned up here instead of being avoided.
+KEY_LIST_SPARE_LINES = 128
+# What memcached takes as a key: no longer than this, and no space, no
+# control character and nothing above ascii in it. The two brackets were
+# replaced before this was written down and stay replaced.
+MAX_KEY_LEN = 250
+INVALID_KEY_CHARS = re.compile(r"[^!-'*-~]")
+
+def get_blocks(items, size):
+    """ The items in blocks of at most the given size. """
+    items = list(items)
+    for start in range(0, len(items), size):
+        yield items[start:start + size]
 
 class MemcacheHandler(object):
     """ Memcache handler. """
@@ -114,7 +141,11 @@ class MemcacheHandler(object):
     def get_pool(self):
         """ Get connection pool. """
         def pool_getter():
-            mc = pylibmc.Client([self.socket])
+            # With cas, so the list of keys a dict holds can be
+            # rewritten without losing a key that another process
+            # appended while we were reading it. It costs nothing
+            # measurable on the other commands.
+            mc = pylibmc.Client([self.socket], behaviors={"cas": True})
             pool = pylibmc.ThreadMappedPool(mc)
             return pool
         return pool_getter
@@ -142,7 +173,6 @@ class MemcacheHandler(object):
         return _dict
 
     def flushall(self):
-        #mc = memcache.Client(["unix:/tmp/memcachedb.sock"], debug=False)
         mc = pylibmc.Client([self.socket])
         mc.flush_all()
 
@@ -211,7 +241,32 @@ class MemcacheClient(object):
         self.connection_error_logged = False
         return result
 
+    @classmethod
+    def sanitize_key(cls, key):
+        """ A key memcached will take.
+
+        It refuses a space, a control character and anything longer than
+        250 characters, and it does so by failing the whole command. That
+        used to be handled in set() alone, and only for three characters:
+        a key with a space in it was written under one name and looked
+        for under another -- a miss every time, and a silent one.
+
+        A key that had to be changed gets a checksum of the original
+        behind it, so that two keys that differ only in the characters
+        replaced here do not turn into one, and a key cut to length keeps
+        what told it apart from the others.
+        """
+        if len(key) <= MAX_KEY_LEN and not INVALID_KEY_CHARS.search(key):
+            return key
+        checksum = f"{zlib.crc32(key.encode()):08x}"
+        key = INVALID_KEY_CHARS.sub("_", key)
+        # The checksum and the dot in front of it have to fit, too.
+        if len(key) > MAX_KEY_LEN - 9:
+            key = key[:MAX_KEY_LEN - 9]
+        return f"{key}.{checksum}"
+
     def get(self, key):
+        key = self.sanitize_key(key)
         try:
             value = self.run("get", key)
         except pylibmc.Error as e:
@@ -242,17 +297,22 @@ class MemcacheClient(object):
             value = json.loads(value)
         return value
 
-    def get_multi(self, keys):
-        """ Get many keys in one roundtrip.
+    def get_multi_raw(self, keys):
+        """ Get many keys in one roundtrip, values as they lie there.
 
         Missing keys are simply not in the result, same as memcached
-        answers them.
+        answers them. Answered by the names the caller gave, not by the
+        ones memcached was asked for: sanitize_key() may have changed
+        them.
         """
         keys = list(keys)
         if not keys:
             return {}
+        key_map = {}
+        for x_key in keys:
+            key_map[self.sanitize_key(x_key)] = x_key
         try:
-            values = self.run("get_multi", keys)
+            values = self.run("get_multi", list(key_map))
         except (pylibmc.Error, pylibmc.ConnectionError) as e:
             if not self.connection_error_logged:
                 self.connection_error_logged = True
@@ -264,6 +324,13 @@ class MemcacheClient(object):
         for x_key, x_value in values.items():
             if x_value is None:
                 continue
+            result[key_map.get(x_key, x_key)] = x_value
+        return result
+
+    def get_multi(self, keys):
+        """ Get many keys in one roundtrip. """
+        result = {}
+        for x_key, x_value in self.get_multi_raw(keys).items():
             if self.compression:
                 x_value = stuff.decompress(x_value, self.compression)
             if self.pickle:
@@ -273,10 +340,16 @@ class MemcacheClient(object):
             result[x_key] = x_value
         return result
 
+    def exists_multi(self, keys):
+        """ Which of these keys are still there, in one roundtrip.
+
+        The values are not wanted, only whether they are there, so
+        nothing is decompressed or decoded on the way.
+        """
+        return set(self.get_multi_raw(keys))
+
     def set(self, key, value, **kwargs):
-        key = key.replace(" ", "_")
-        key = key.replace("(", "_")
-        key = key.replace(")", "_")
+        key = self.sanitize_key(key)
         # Pickle data.
         if self.pickle:
             value = self.pickle_handler.dumps(value)
@@ -312,7 +385,110 @@ class MemcacheClient(object):
             self.connection_error_logged = True
             self.logger.critical(log_msg)
 
+    def raw_gets(self, key):
+        """ A value as it lies there, with the cas id memcached has for it.
+
+        The list of keys a dict holds is bookkeeping and not something
+        anybody cached, and it is appended to as text, so it does not go
+        through the encoding the values get.
+
+        The cas id says which version of the item we read. Handing it
+        back to raw_cas() writes only if nobody changed the item since,
+        which is how the list can be rewritten without losing a key that
+        somebody appended in the meantime. It is None when the client was
+        built without cas support; a caller that needs it has to leave
+        the item alone then.
+        """
+        key = self.sanitize_key(key)
+        try:
+            value, cas_id = self.run("gets", key)
+        except ValueError:
+            # "gets without cas behavior".
+            try:
+                value = self.run("get", key)
+            except (pylibmc.Error, pylibmc.ConnectionError):
+                return None, None
+            cas_id = None
+        except (pylibmc.Error, pylibmc.ConnectionError) as e:
+            if not self.connection_error_logged:
+                self.connection_error_logged = True
+                log_msg = _("Memcache raw get error: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
+            return None, None
+        if isinstance(value, bytes):
+            value = value.decode()
+        return value, cas_id
+
+    def raw_cas(self, key, value, cas_id):
+        """ Write a raw value if the item is still the one we read.
+
+        Says whether it was written. See raw_gets().
+        """
+        key = self.sanitize_key(key)
+        try:
+            return bool(self.run("cas", key, value, cas_id))
+        except (pylibmc.Error, pylibmc.ConnectionError) as e:
+            if not self.connection_error_logged:
+                self.connection_error_logged = True
+                log_msg = _("Memcache cas error: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
+            return False
+
+    def raw_add(self, key, value):
+        """ Write a raw value, but only if nobody else did first.
+
+        Says whether it was us. Where two processes start the list of
+        keys at the same time, one of them learns that it lost and
+        appends to the other's instead of writing over it.
+        """
+        key = self.sanitize_key(key)
+        try:
+            return bool(self.run("add", key, value))
+        except (pylibmc.Error, pylibmc.ConnectionError) as e:
+            if not self.connection_error_logged:
+                self.connection_error_logged = True
+                log_msg = _("Memcache add error: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
+            return False
+
+    def raw_append(self, key, value):
+        """ Put a raw value after what is there, in one atomic call.
+
+        Says whether there was something to append to. memcached does
+        this itself, so two processes appending at the same time both
+        get their line in -- which a read, a change and a write back
+        cannot promise.
+        """
+        key = self.sanitize_key(key)
+        try:
+            return bool(self.run("append", key, value))
+        except (pylibmc.Error, pylibmc.ConnectionError) as e:
+            if not self.connection_error_logged:
+                self.connection_error_logged = True
+                log_msg = _("Memcache append error: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
+            return False
+
+    def delete_multi(self, keys):
+        """ Take many keys out, in as few roundtrips as it takes. """
+        keys = [self.sanitize_key(x) for x in keys]
+        for block in get_blocks(keys, MULTI_BLOCK_SIZE):
+            try:
+                self.run("delete_multi", block)
+            except (pylibmc.Error, pylibmc.ConnectionError) as e:
+                if not self.connection_error_logged:
+                    self.connection_error_logged = True
+                    log_msg = _("Memcache delete_multi error: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.critical(log_msg)
+                return
+
     def delete(self, key, **kwargs):
+        key = self.sanitize_key(key)
         try:
             self.run("delete", key, **kwargs)
         except pylibmc.Error as e:
@@ -336,6 +512,10 @@ class MemcacheDict(SharedDict):
         clear=False, refresh_keys=False, compression=None, pickle=False):
         super().__init__(name)
         self.client = MemcacheClient(pool, compression=compression, pickle=pickle)
+        # The keys we wrote. memcached has nothing to walk its keys with,
+        # so the dict has to write down what it put in. The name below is
+        # a prefix: the list itself sits in KEY_LIST_SHARDS items beside
+        # each other and is appended to.
         self.dict_keys_key = f"{self.name}.dict_keys"
         self.refresh_keys = refresh_keys
         self.lock_type = lock_type
@@ -359,96 +539,188 @@ class MemcacheDict(SharedDict):
         self._lock.release_lock()
 
     def clear(self):
-        for x in self.keys():
-            try:
-                self.delete(x)
-            except KeyError:
-                pass
-        dict_keys_key = self.dict_keys_key
-        self.client.delete(dict_keys_key)
+        keys = self.get_dict_keys()
+        if keys:
+            # A key that expired in the meantime is gone already and
+            # deleting it does nothing, so the list does not have to be
+            # kept free of them. It goes with them anyway.
+            value_keys = [self.get_key_id(x) for x in keys]
+            if self.refresh_keys:
+                value_keys += [self.get_key_expire_id(x) for x in keys]
+            self.client.delete_multi(value_keys)
+        # The last one is where the list used to live before it was
+        # split up; an upgraded memcached still holds it.
+        self.client.delete_multi(self.get_dict_keys_keys()
+                                + [self.dict_keys_key])
 
     def keys(self):
         keys = self.get_dict_keys()
-        for x in list(keys):
-            key = self.get_key_id(x)
-            try:
-                self.client.get(key)
-            except Exception:
-                keys.remove(x)
-        return keys
+        if not keys:
+            return []
+        gone = self.get_gone_keys(keys)
+        if not gone:
+            return keys
+        # Now we know which of the remembered keys expired or were
+        # deleted. Taking them out of the list is what keeps it from
+        # growing for as long as memcached runs.
+        if len(gone) > KEY_LIST_SPARE_LINES:
+            self.drop_dict_keys(gone)
+        return [x for x in keys if x not in gone]
 
     def values(self):
-        values = []
-        for x in self.keys():
-            # Ignore keys removed while selecting items.
-            try:
-                value = self.get(x)
-            except KeyError:
-                continue
-            values.append(value)
-        return values
+        return list(self.get_multi(self.get_dict_keys()).values())
 
     def items(self):
-        items = []
-        for key in self.keys():
-            # Ignore keys removed while selecting items.
-            try:
-                value = self.get(key)
-            except KeyError:
+        return list(self.get_multi(self.get_dict_keys()).items())
+
+    def get_dict_keys_key(self, shard):
+        return f"{self.dict_keys_key}.{shard}"
+
+    def get_dict_keys_keys(self):
+        return [self.get_dict_keys_key(x) for x in range(KEY_LIST_SHARDS)]
+
+    @staticmethod
+    def get_key_shard(key):
+        # crc32 and not hash(): every process has to put a key in the
+        # same place, and hash() of a string does not.
+        #
+        # Not every key is a string. The cluster queues use a timestamp
+        # (float) as the key, and a dict takes anything hashable. Such a
+        # key goes in the way it is written to the list, so both ways to
+        # that list agree on the shard.
+        if not isinstance(key, str):
+            key = json.dumps(key)
+        return zlib.crc32(key.encode()) % KEY_LIST_SHARDS
+
+    def read_dict_keys_shard(self, raw):
+        """ The keys of one item of the list, each one once.
+
+        Answers with the keys and with how many lines they came from,
+        which is what tells the callers whether it is worth rewriting.
+        """
+        keys = []
+        seen = set()
+        lines = 0
+        for line in raw.split("\n"):
+            if not line:
                 continue
-            item = (key, value)
-            items.append(item)
-        return items
+            lines += 1
+            try:
+                key = json.loads(line)
+            except Exception:
+                # A line memcached cut off because the item was full.
+                continue
+            if key in seen:
+                continue
+            seen.add(key)
+            keys.append(key)
+        return keys, lines
 
     def get_dict_keys(self):
-        dict_keys_key = self.dict_keys_key
-        try:
-            dict_keys = self.client.get(dict_keys_key)
-            keys = dict_keys[self.name]
-        except Exception:
-            keys = []
+        """ The keys the writes remembered, each one once.
+
+        The lines are read as they were appended, so a key can be in
+        there more than once. Where that got out of hand the item is
+        rewritten, which is also what gets rid of the lines of keys that
+        were deleted since.
+        """
+        raw_values = self.client.get_multi_raw(self.get_dict_keys_keys())
+        keys = []
+        for shard in range(KEY_LIST_SHARDS):
+            raw = raw_values.get(self.get_dict_keys_key(shard))
+            if not raw:
+                continue
+            if isinstance(raw, bytes):
+                raw = raw.decode()
+            shard_keys, lines = self.read_dict_keys_shard(raw)
+            keys += shard_keys
+            if lines - len(shard_keys) > KEY_LIST_SPARE_LINES:
+                self.rewrite_dict_keys(shard)
         return keys
 
-    def set_dict_keys(self, keys):
-        dict_keys_key = self.dict_keys_key
-        try:
-            dict_keys = self.client.get(dict_keys_key)
-        except Exception:
-            dict_keys = {}
-        dict_keys[self.name] = keys
-        self.client.set(key=dict_keys_key,
-                        value=dict_keys,
-                        min_compress_len=1024000,
-                        compress_level=1)
+    def rewrite_dict_keys(self, shard, check=None):
+        """ Write one item of the list again, with each key in it once.
+
+        Reads it again to get the cas id memcached has for it, so the
+        write only happens if nobody appended to it in between. If
+        somebody did, this does nothing and the next caller tries again.
+
+        The keys in check are the ones a reader found nothing under any
+        more. They are asked for once more here, after the read, and only
+        those still not there are left out. Both of those are what makes
+        this safe: a key another process is writing right now is either
+        already there when we ask -- then we keep it -- or its write
+        appends to this item afterwards, and then our cas does not go
+        through. Dropping a key that is in fact live would take a live
+        entry out of the dict without deleting it, and nothing would ever
+        hand it out or clear it again.
+        """
+        shard_key = self.get_dict_keys_key(shard)
+        raw, cas_id = self.client.raw_gets(shard_key)
+        if not raw or cas_id is None:
+            return False
+        keys, lines = self.read_dict_keys_shard(raw)
+        if check:
+            gone = self.get_gone_keys([x for x in keys if x in check])
+            if gone:
+                keys = [x for x in keys if x not in gone]
+        if len(keys) == lines:
+            return False
+        if not keys:
+            # Nothing left to remember, so the item itself can go. A
+            # delete cannot say "only if unchanged", but a write of an
+            # empty one can, and an empty item is appended to just like a
+            # missing one.
+            return self.client.raw_cas(shard_key, "", cas_id)
+        new_raw = "".join([json.dumps(x) + "\n" for x in keys])
+        return self.client.raw_cas(shard_key, new_raw, cas_id)
+
+    def get_gone_keys(self, keys):
+        """ Which of these keys there is nothing under any more. """
+        gone = set()
+        for block in get_blocks(keys, MULTI_BLOCK_SIZE):
+            key_ids = {}
+            for x_key in block:
+                key_ids[self.get_key_id(x_key)] = x_key
+            there = self.client.exists_multi(key_ids)
+            for x_key_id, x_key in key_ids.items():
+                if x_key_id in there:
+                    continue
+                gone.add(x_key)
+        return gone
+
+    def drop_dict_keys(self, keys):
+        """ Forget the given keys, wherever in the list they sit. """
+        shards = set()
+        for x_key in keys:
+            shards.add(self.get_key_shard(x_key))
+        for shard in shards:
+            self.rewrite_dict_keys(shard, check=keys)
 
     def add_dict_key(self, key):
-        from otpme.lib import locking
-        if self.locking:
-            _lock = locking.acquire_lock(lock_type=self.lock_type, lock_id=self.name)
-        try:
-            our_keys = self.get_dict_keys()
-            if key in our_keys:
-                return
-            our_keys.append(key)
-            self.set_dict_keys(our_keys)
-        finally:
-            if self.locking:
-                _lock.release_lock()
+        """ Remember a key, without reading the list first.
 
-    def del_dict_key(self, key):
-        from otpme.lib import locking
-        if self.locking:
-            _lock = locking.acquire_lock(lock_type=self.lock_type, lock_id=self.name)
-        try:
-            our_keys = self.get_dict_keys()
-            try:
-                our_keys.remove(key)
-            except Exception:
-                return
-            self.set_dict_keys(our_keys)
-        finally:
-            if self.locking:
-                _lock.release_lock()
+        One append, which memcached does by itself and does not have to
+        be locked. It used to read the whole list, put the key in it and
+        write it back: a roundtrip of the whole list per write, so it got
+        slower the fuller the dict was, and of two processes doing it at
+        the same time one lost its key. The price is that the same key
+        can end up in there twice, which the readers sort out.
+        """
+        shard = self.get_key_shard(key)
+        shard_key = self.get_dict_keys_key(shard)
+        line = json.dumps(key) + "\n"
+        if self.client.raw_append(shard_key, line):
+            return
+        # Nothing there to append to, so we are the first.
+        if self.client.raw_add(shard_key, line):
+            return
+        # Either somebody else was first between those two calls, or the
+        # item is as full as memcached takes. Rewriting it drops the
+        # repeated lines and makes room; if that was not it either, the
+        # append says so in the log.
+        self.rewrite_dict_keys(shard)
+        self.client.raw_append(shard_key, line)
 
     def add(self, key, value, expire=None):
         from otpme.lib import locking
@@ -492,32 +764,37 @@ class MemcacheDict(SharedDict):
         return value
 
     def get_multi(self, keys):
-        """ Get many keys in one roundtrip.
+        """ Get many keys in as few roundtrips as it takes.
 
         Returns what is there, missing keys are simply not in the
         result. Callers that need all of them have to check. No expiry
         refresh here: that would be a touch per key and undo the point
         of asking for them together.
         """
-        keys = list(keys)
-        if not keys:
-            return {}
-        key_map = {}
-        for x_key in keys:
-            key_map[self.get_key_id(x_key)] = x_key
-        try:
-            values = self.client.get_multi(list(key_map))
-        except Exception:
-            return {}
         result = {}
-        for x_key, x_value in values.items():
-            result[key_map[x_key]] = x_value
+        for block in get_blocks(keys, MULTI_BLOCK_SIZE):
+            key_map = {}
+            for x_key in block:
+                key_map[self.get_key_id(x_key)] = x_key
+            try:
+                values = self.client.get_multi(list(key_map))
+            except Exception:
+                continue
+            for x_key, x_value in values.items():
+                result[key_map[x_key]] = x_value
         return result
 
     def delete(self, key):
+        """ Take a key out.
+
+        The key stays in the list of keys we wrote; keys() and clear()
+        both cope with a key that has nothing under it any more, and
+        keys() takes it out of the list once enough of them have piled
+        up. Doing it here would mean reading and writing a part of that
+        list per delete.
+        """
         try:
             deleted_item = self.get(key)
-            self.del_dict_key(key)
             _key = self.get_key_id(key)
             self.client.delete(_key)
         finally:

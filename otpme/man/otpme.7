@@ -515,6 +515,15 @@ On the client the share is mounted below the mount root (\fBMOUNT_ROOT_DIR\fR, d
 .I /otpme/<user>/<realm>/<site>/<share>
 .RE
 .PP
+A share has an ID, and that is what
+.B otpme\-mount
+takes:
+.RS
+.I <realm>/<site>/<share>
+.RE
+The realm is part of it because two realms may have a site of the same name.
+You can leave it out and write \fI<site>/<share>\fR; then it is a share of your own realm.
+.PP
 A
 .B home share
 is a special share which gives every user an own directory.
@@ -651,6 +660,10 @@ Objects that are already there do not, unless you say so: \fB\-a\fR applies the 
 .PP
 An object can refuse inherited ACLs with \fBdisable_acl_inheritance\fR.
 \fBenable_acl_inheritance\fR turns it on again.
+.PP
+Which ACLs a kind of object knows is in
+.BR otpme\-acls (7).
+\fBlist_acls\fR shows the ACLs an object has, and the shell completion offers the ones it takes after \fBadd_acl\fR.
 .SH OFFLINE AUTHENTICATION
 When a host can not reach the OTPme server, it can check logins against data it saved at the last login.
 This has to be switched on for each token (\fBenable_offline\fR).
@@ -775,12 +788,18 @@ Object types: site, unit, token
 .B auto_sign \fR(bool, default: false)
 Offer to sign the object after each change.
 .br
-Object types: site, unit, user, token
+On an object a token can be assigned to \(em a role, a group, an access group, a client, a host or a node \(em it says to sign the token for that assignment, which is what
+.B add_token \-\-sign
+does by hand.
+A host can be told to let an SSH key in only with such a signature, see
+.BR otpme\-role (1).
+.br
+Object types: site, unit, user, token, script, role, group, accessgroup, client, host, node
 .TP
 .B auto_revoke \fR(bool, default: true)
 Revoke the signatures of an object when it is changed.
 .br
-Object types: site, unit, token, script
+Object types: site, unit, user, token, script
 .TP
 .B force_site_config_parameters \fR(list)
 Config parameters that the site enforces for all of its objects.
@@ -968,6 +987,18 @@ Object types: site, unit
 Runs on the host at the login through PAM, so you can do things there.
 .br
 Object types: site, unit
+.TP
+.B run_foreign_user_auth_scripts \fR(bool, default: false)
+If enabled, a login of a user of another site may run the auth scripts of that user.
+.br
+The auth script of a user, and the auth script of their token, are scripts of the site of that user.
+Running one means running code of that site here, on your node, at every login of that user.
+.br
+Off by default.
+The login then goes on without these scripts.
+The auth scripts of your own users always run.
+.br
+Object types: site
 .SS User Management
 .TP
 .B user_photo_dimensions \fR(str, default: 300x450)
@@ -1214,8 +1245,23 @@ How long configuration jobs and their results are kept on the nodes.
 It takes time units, e.g. \fB180D\fR.
 The lowest value is one day.
 Jobs that worked are kept too, so you can see which jobs were already sent.
-A job that failed on a host is kept until it is acknowledged with \fBotpme\-deploy ack\fR.
+A job that failed on a host is kept until it is acknowledged with \fBotpme\-deploy ack\fR, unless it was taken back with \fBotpme\-deploy cancel\fR \(em that answers it as well.
 The \fBconfd\fR daemon on the master node removes old jobs once an hour.
+.br
+A remote access job goes by
+.B remote_access_job_max_age
+instead.
+.br
+Object types: site
+.TP
+.B remote_access_job_max_age \fR(time, default: 1h)
+How long a remote access job is kept after it expired.
+It takes time units, e.g. \fB30m\fR, and \fB0\fR means as soon as it expires.
+.br
+Its own value, because such a job is a different kind of record: \fBotpme\-shell\fR makes one for every shell, it is good for five minutes, and it says nothing afterwards \(em whoever asked for the shell stood there while it happened.
+Kept as long as every other job they would pile up for three months.
+.br
+Counted from the expiry and not from the creation, because that is when the job stopped being of use to anybody.
 .br
 Object types: site
 .TP
@@ -1387,7 +1433,10 @@ Makes a role usable for SSO device tokens.
 A role without this parameter is not shown in the SSO portal at all, so it works as the opt\-in switch for
 .BR device_token_roles .
 .br
-The value is appended to the token name when the portal registers a device token under this role.
+The value is appended to the token name when the portal registers a device token under this role, with a \fB\-\fR in between: the device \fBiphone\fR under a role whose suffix is \fBwlan\fR becomes the token \fBiphone\-wlan\fR.
+So the suffix is written without a leading dash.
+.br
+It is what tells two tokens of the same device apart where a user is in more than one of the \fBdevice_token_roles\fR \(em \fBiphone\-wlan\fR and \fBiphone\-vpn\fR.
 .br
 Object types: role
 .TP
@@ -2071,6 +2120,10 @@ How long such an authentication stays fresh is
 .br
 The recovery deploy is not covered by this.
 It runs from the link in the recovery mail and has no session to prove anything with, so the link itself is the proof.
+.br
+Neither is the enrollment a token asks for itself, the one \fBotpme-token enable_sso_deploy\fR sets \(em whatever this parameter says.
+There the token the user signed in with is the only credential they have, and it is a password token, so the re\-auth would ask for the same password a second time and say nothing.
+It stays for every other flow, where a token of their own already exists: an OTP is good for one authentication, so whoever phished one gets a session and is then asked for a second OTP they do not have.
 .br
 The value is looked up on the user, then on the user's unit and the units above it, then on the site.
 The first one found wins.
@@ -3292,6 +3345,7 @@ The log files, one per daemon.
 The settings of one user, e.g. which agent to talk to.
 .SH SEE ALSO
 .BR otpme (1),
+.BR otpme\-acls (7),
 .BR otpme.conf (5),
 .BR pam_otpme (8),
 .BR otpme-accessgroup (1),

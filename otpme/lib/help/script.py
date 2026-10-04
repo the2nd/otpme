@@ -155,6 +155,22 @@ cmd_help = {
                                     'cmd'                   : _('Get config parameter.'),
                                 },
                 },
+    'config'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-script config -d -a {script} {param} [value]'),
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
+                    '_help' :   {
+                                    'cmd'                   : _('Add config parameter to script.'),
+                                    '-a'                    : _('Append value to config parameter.'),
+                                    '-d'                    : _('Delete config parameter.'),
+                                },
+                },
+    'show_config'      : {
+                    '_cmd_usage_help' : _('Usage: otpme-script show_config {script} [parameter]'),
+                    'cmd'   :   '<|object|> [parameter]',
+                    '_help' :   {
+                                    'cmd'                   : _('Show script config parameters'),
+                                },
+                },
     'changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script changelog {script}'),
                     'cmd'   :   '<|object|>',
@@ -218,16 +234,16 @@ cmd_help = {
 
 
     'add_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-script add_acl {script} {role|token} {role_path|token_path} {acl[:value]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-script add_acl {script} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
+                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to script'),
                                 },
                 },
 
     'del_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-script del_acl {script} {acl}'),
-                    'cmd'   :   '<|object|> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-script del_acl {script} {acl[,acl]}'),
+                    'cmd'   :   '<|object|> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Delete ACL from script'),
                                 },

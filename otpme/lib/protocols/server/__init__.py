@@ -22,6 +22,7 @@ modules = [
             'otpme.lib.protocols.server.sso1',
             'otpme.lib.protocols.server.backup1',
             'otpme.lib.protocols.server.cluster1',
+            'otpme.lib.protocols.server.rac1',
         ]
 
 def register():

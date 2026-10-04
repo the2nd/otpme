@@ -169,9 +169,12 @@ See
 .BR otpme.conf (5).
 .RE
 .TP
-.B del_sso_host \fIsite\fR \fIhost_name\fR
+.B remove_sso_host \fIsite\fR \fIhost_name\fR
 Remove the SSO host role from a host. The SSO data will no longer be
 synchronized to this host.
+The host itself stays as it is.
+Takes a UUID as well, so a host that was deleted while it was an SSO host can still be taken off the site.
+Needs the ACL \fBremove:sso_host\fR.
 .TP
 .B sso_logo \fIsite\fR \fIimage_path\fR
 Set the logo the SSO portal of this site shows on its login and
@@ -366,11 +369,16 @@ Use \fB\-\-policy\-types\fR to list only policies of the given types; these are 
 Needs the ACL \fBview:policies\fR.
 .SS ACL Management
 .TP
-.B add_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] \fIsite\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+.B add_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] [\fB\-\-procs\fR \fInum\fR] \fIsite\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
 Add an access control entry. Use \fB\-r\fR for recursive, \fB\-a\fR to apply default ACLs to existing objects.
+.RS
+.PP
+A recursive run walks every unit of the site and every object in them. Where a unit holds many, its objects are shared out over several processes.
+\fB\-\-procs\fR says how many. Without it a quarter of the cores of the node, which leaves the rest for the daemons that go on serving logins while this runs.
+.RE
 .TP
-.B del_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] \fIsite\fR \fIacl\fR
-Remove an access control entry.
+.B del_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] [\fB\-\-procs\fR \fInum\fR] \fIsite\fR \fIacl\fR
+Remove an access control entry. \fB\-\-procs\fR as above.
 .TP
 .B list_acls \fIsite\fR
 Display all ACLs for the site.
@@ -523,6 +531,7 @@ OTPme data directory
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
+.BR otpme\-acls (7),
 .BR otpme-realm (1),
 .BR otpme-node (1),
 .BR otpme-ca (1)

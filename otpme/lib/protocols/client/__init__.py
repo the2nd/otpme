@@ -17,6 +17,7 @@ modules = [
             'otpme.lib.protocols.client.sync1',
             'otpme.lib.protocols.client.agent1',
             'otpme.lib.protocols.client.backup1',
+            'otpme.lib.protocols.client.rac1',
         ]
 
 def register():

@@ -660,7 +660,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'cache_update_interval' : 30,
+                    'args'              : ['owner_type', 'owner_name', 'acls', 'recursive_acls', 'apply_default_acls',],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -670,7 +671,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['acls'],
                     'oargs'             : ['recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
@@ -3024,7 +3026,8 @@ class AccessGroup(OTPmeObject):
 
         timeout_pass_on = ""
         if self.verify_acl("view:timeout_pass_on") \
-        or self.verify_acl("edit:timeout_pass_on"):
+        or self.verify_acl("enable:timeout_pass_on") \
+        or self.verify_acl("disable:timeout_pass_on"):
             timeout_pass_on = str(self.timeout_pass_on)
         lines.append(f'PASS_ON_TIMEOUTS="{timeout_pass_on}"')
 

@@ -820,18 +820,43 @@ class OTPmeSyncP1(OTPmeServer1):
         self.logger.info(log_msg)
         return True, {'status':True}
 
-    def peer_is_own_host(self):
-        """ Whether the peer is a host or node of our own site.
+    def peer_may_report_inventory(self):
+        """ Whether the peer may keep its inventory with us.
 
-        Only those report their inventory to us: the inventory of a host
-        is kept on the nodes of its own site. """
+        A host or node of our own site always may: that is where an
+        inventory went before there was a choice.
+
+        A host of another site of our realm may when our site says so,
+        in inventory_trusts. The host saying where it wants to report
+        (inventory_site) is not enough: a site has to agree to keep the
+        packages and the hardware of machines it does not own.
+
+        Another realm never: an inventory is kept per realm, and a peer
+        of another realm is not one of ours to begin with.
+        """
         if self.peer.type not in ("host", "node"):
             return False
         if self.peer.realm != config.realm:
             return False
-        if self.peer.site != config.site:
+        if self.peer.site == config.site:
+            return True
+        own_site = backend.get_object(object_type="site",
+                                    uuid=config.site_uuid)
+        if not own_site:
             return False
-        return True
+        try:
+            trusts = own_site.get_config_parameter("inventory_trusts",
+                                                apply_getter=False)
+        except Exception:
+            trusts = None
+        if not trusts:
+            return False
+        peer_site = backend.get_object(object_type="site",
+                                    realm=self.peer.realm,
+                                    name=self.peer.site)
+        if not peer_site:
+            return False
+        return peer_site.uuid in trusts
 
     def get_host_inventory(self, packages_checksum, hardware_checksum=None):
         """ What we know about the asking host: its system, and its
@@ -844,21 +869,26 @@ class OTPmeSyncP1(OTPmeServer1):
         The hardware takes no such round: it is a dozen values, so the
         answer only says whether ours is the same, and the host sends
         all of it again when it is not. """
-        if not self.peer_is_own_host():
+        if not self.peer_may_report_inventory():
             return False, "SYNC_PERMISSION_DENIED"
-        peer = backend.get_object(uuid=self.peer.uuid)
-        if not peer:
+        # Asked again although we have the peer: it may have been
+        # deleted while this connection was up.
+        if not backend.get_object(uuid=self.peer.uuid):
             return False, "SYNC_UNKNOWN_HOST"
         inventory = get_host_inventory(self.peer.uuid)
         packages = {}
         hardware = {}
+        os_name = None
+        os_version = None
         if inventory:
             packages = inventory.packages
             hardware = inventory.hardware
+            os_name = inventory.os
+            os_version = inventory.os_version
         checksum = get_packages_checksum(packages)
         response = {
-                    'os'                : peer.os,
-                    'os_version'        : peer.os_version,
+                    'os'                : os_name,
+                    'os_version'        : os_version,
                     'packages_checksum' : checksum,
                     'packages'          : None,
                     'hardware_checksum' : get_hardware_checksum(hardware),
@@ -871,11 +901,11 @@ class OTPmeSyncP1(OTPmeServer1):
         set_packages, del_packages, hardware=None):
         """ Take what the asking host reports about itself.
 
-        The host object is written without touching last_modified: the
-        host told us what it runs, nobody changed it. The packages and
-        the hardware go to its inventory, not to the host object, see
-        host_inventory.py. """
-        if not self.peer_is_own_host():
+        All of it goes to the inventory of the host and none of it to
+        the host object: the system it runs is what it reported, like
+        its packages and its hardware, and an inventory has to stand on
+        its own. See host_inventory.py. """
+        if not self.peer_may_report_inventory():
             return False, "SYNC_PERMISSION_DENIED"
         if set_packages is None:
             set_packages = {}
@@ -895,19 +925,12 @@ class OTPmeSyncP1(OTPmeServer1):
             log_msg = log_msg.format(host=self.peer.fqdn, e=e)
             self.logger.warning(log_msg)
             return False, "SYNC_INVALID_INVENTORY"
-        peer = backend.get_object(uuid=self.peer.uuid)
-        if not peer:
+        nothing_to_do = not set_packages and not del_packages
+        if nothing_to_do and hardware is None:
+            if os_name is None and os_version is None:
+                return True, {'status':True}
+        if not backend.get_object(uuid=self.peer.uuid):
             return False, "SYNC_UNKNOWN_HOST"
-        if os_name is not None or os_version is not None:
-            try:
-                peer.update_os(os_name=os_name, os_version=os_version)
-            except Exception as e:
-                log_msg = _("Failed to update system of host '{host}': {e}", log=True)[1]
-                log_msg = log_msg.format(host=self.peer.fqdn, e=e)
-                self.logger.critical(log_msg)
-                return False, "SYNC_FAILED_TO_UPDATE_INVENTORY"
-        if not set_packages and not del_packages and hardware is None:
-            return True, {'status':True}
         inventory = get_host_inventory(self.peer.uuid)
         exists = True
         if not inventory:
@@ -915,6 +938,10 @@ class OTPmeSyncP1(OTPmeServer1):
             inventory = HostInventory(realm=config.realm,
                                     site=config.site,
                                     host_uuid=self.peer.uuid)
+        os_changed = inventory.update_os(os_name=os_name,
+                                        os_version=os_version)
+        if nothing_to_do and hardware is None and not os_changed:
+            return True, {'status':True}
         packages_count = len(inventory.packages) + len(set_packages)
         if packages_count > MAX_PACKAGES:
             log_msg = _("Host '{host}' reports too many packages.", log=True)[1]
@@ -1335,6 +1362,36 @@ class OTPmeSyncP1(OTPmeServer1):
             status = status_codes.SYNC_DISABLED
             return self.build_response(status, message)
 
+        # The inventory commands, before the sync parameters below.
+        #
+        # Those describe an object sync: which object types this peer
+        # gets, which objects to leave out, whether it gets the admin
+        # objects. An inventory is none of that -- it travels the other
+        # way, it is one object of the peer's own, and who may send it
+        # is peer_may_report_inventory() and nothing else.
+        #
+        # Going through them refused every node of another site with
+        # "Permission denied: <admin user>": a node that does not get
+        # the admin objects is refused outright there, which is right
+        # for an object sync and has nothing to do with an inventory.
+        if command == "get_host_inventory":
+            # confd asks what we know about its host, see
+            # daemon/confd.py and confd/inventory.py.
+            packages_checksum = command_args.get('packages_checksum')
+            hardware_checksum = command_args.get('hardware_checksum')
+            status, response = self.get_host_inventory(packages_checksum,
+                                            hardware_checksum=hardware_checksum)
+            return self.build_response(status, response)
+
+        if command == "update_host_inventory":
+            status, response = self.update_host_inventory(
+                                    os_name=command_args.get('os'),
+                                    os_version=command_args.get('os_version'),
+                                    set_packages=command_args.get('set_packages'),
+                                    del_packages=command_args.get('del_packages'),
+                                    hardware=command_args.get('hardware'))
+            return self.build_response(status, response)
+
         # Get sync realm/site.
         try:
             sync_realm = command_args['realm']
@@ -1524,24 +1581,6 @@ class OTPmeSyncP1(OTPmeServer1):
                 self.logger.warning(log_msg)
                 return self.build_response(status, response)
             status, response = self.add_conf_result(result)
-            return self.build_response(status, response)
-
-        if command == "get_host_inventory":
-            # confd asks what we know about its host, see
-            # daemon/confd.py and confd/inventory.py.
-            packages_checksum = command_args.get('packages_checksum')
-            hardware_checksum = command_args.get('hardware_checksum')
-            status, response = self.get_host_inventory(packages_checksum,
-                                            hardware_checksum=hardware_checksum)
-            return self.build_response(status, response)
-
-        if command == "update_host_inventory":
-            status, response = self.update_host_inventory(
-                                    os_name=command_args.get('os'),
-                                    os_version=command_args.get('os_version'),
-                                    set_packages=command_args.get('set_packages'),
-                                    del_packages=command_args.get('del_packages'),
-                                    hardware=command_args.get('hardware'))
             return self.build_response(status, response)
 
         if command == "sync_offline_token_data":

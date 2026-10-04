@@ -27,6 +27,7 @@ root only); what travels to the nodes is the tail of it.
 """
 import os
 import time
+import random
 import shutil
 import subprocess
 import setproctitle
@@ -55,6 +56,12 @@ REGISTER_AFTER = []
 
 # How often we ask for jobs.
 JOB_CHECK_INTERVAL = 60
+# How long a host waits before asking after its site told it there is
+# a job. A job for a unit is a job for every host in it, and all of
+# them hear about it in the same second -- so each picks a moment of
+# its own somewhere in here. Short enough that it still feels
+# immediate, long enough to spread a thousand hosts thinly.
+NOTIFY_JITTER = 10
 # How often we look for the result of a job that is running. A job may
 # be over in a second, and its result should not wait a minute for the
 # next round.
@@ -116,6 +123,10 @@ class ConfDaemon(OTPmeDaemon):
         self.result_check_interval = RESULT_CHECK_INTERVAL
         self.cleanup_interval = CLEANUP_INTERVAL
         self.last_cleanup = 0.0
+        # When to ask for jobs because our site said there is one, as
+        # opposed to because the round came. None where nobody said
+        # anything.
+        self.next_job_check = None
         # What the nodes last confirmed about our inventory, and when.
         self.inventory_check_interval = INVENTORY_CHECK_INTERVAL
         self.reported_inventory = None
@@ -129,9 +140,11 @@ class ConfDaemon(OTPmeDaemon):
         # whoever made the job can see why nothing happened, but still
         # asked for every round -- see get_jobs().
         self.retry_jobs = []
-        # The job a runner is busy with. Only one at a time: two package
-        # managers on one host wait for each other at best.
-        self.running_job = None
+        # The jobs the runners are busy with, as {job uuid: job type}.
+        # The type is in here because what may run beside what is
+        # decided by it (confd_job.job_in_the_way): most job types want
+        # the host to themselves, a remote access session does not.
+        self.running_jobs = {}
         # When the signers of this host last changed. A job we refused
         # for want of a signer is worth another look after that, see
         # signers_changed().
@@ -267,17 +280,22 @@ class ConfDaemon(OTPmeDaemon):
         """ The marker that says a runner has the job. """
         return os.path.join(get_started_dir(), job_uuid)
 
-    def add_started_job(self, job_uuid, unit=None, pid=None):
+    def add_started_job(self, job_uuid, job_type=None, unit=None, pid=None):
         """ Note that a job was handed to a runner, before it is.
 
         Written first, not after the run: a job that restarts OTPme
         takes this daemon with it while its runner keeps going, and a
         marker written afterwards would never be written at all -- the
         job would be handed out again on the next round, and again, and
-        the host would restart itself forever. """
+        the host would restart itself forever.
+
+        The type is written down with it because the marker is all that
+        is left after a restart, and what may run beside this job is
+        decided by its type. """
         started_file = self.get_started_file(job_uuid)
         started_info = {
                     'started'   : time.time(),
+                    'job_type'  : job_type,
                     'unit'      : unit,
                     'pid'       : pid,
                     }
@@ -303,8 +321,7 @@ class ConfDaemon(OTPmeDaemon):
 
     def del_started_job(self, job_uuid):
         """ Forget that a runner had the job: it is finished. """
-        if self.running_job == job_uuid:
-            self.running_job = None
+        self.running_jobs.pop(job_uuid, None)
         for x_file in [self.get_started_file(job_uuid),
                         confd_job.get_job_file(job_uuid)]:
             if not os.path.exists(x_file):
@@ -399,7 +416,9 @@ class ConfDaemon(OTPmeDaemon):
                     job_file,
                     ]
             # The marker before the start: see add_started_job().
-            self.add_started_job(job_uuid, unit=unit)
+            self.add_started_job(job_uuid,
+                                job_type=job['job_type'],
+                                unit=unit)
             try:
                 subprocess.run(command, check=True)
             except Exception as e:
@@ -422,11 +441,13 @@ class ConfDaemon(OTPmeDaemon):
                 msg = _("Failed to start job runner: {e}")
                 msg = msg.format(e=e)
                 raise OTPmeException(msg) from e
-            self.add_started_job(job_uuid, pid=proc.pid)
+            self.add_started_job(job_uuid,
+                                job_type=job['job_type'],
+                                pid=proc.pid)
             log_msg = _("Started job {job_uuid} as process {pid}.", log=True)[1]
             log_msg = log_msg.format(job_uuid=job_uuid, pid=proc.pid)
             self.logger.info(log_msg)
-        self.running_job = job_uuid
+        self.running_jobs[job_uuid] = job['job_type']
 
     def collect_results(self):
         """ Send what the runners left behind.
@@ -507,14 +528,19 @@ class ConfDaemon(OTPmeDaemon):
         -- the host was rebooted while it worked, or something killed
         it. That is reported once, like a refusal, and the job counts as
         run: what it did before it was cut short is unknown, and doing
-        it again unasked could be worse than not doing it. """
-        self.running_job = None
+        it again unasked could be worse than not doing it.
+
+        What is still running is taken from the markers rather than from
+        what we remember, so a daemon that was restarted while its
+        runners kept going knows what the host is busy with. """
+        self.running_jobs = {}
         for job_uuid in self.get_started_jobs():
             if os.path.exists(confd_job.get_result_file(job_uuid)):
                 # Picked up by collect_results() on the next round.
                 continue
             if self.runner_active(job_uuid):
-                self.running_job = job_uuid
+                started_info = self.read_started_job(job_uuid) or {}
+                self.running_jobs[job_uuid] = started_info.get('job_type')
                 continue
             log_msg = _("Job {job_uuid} was interrupted.", log=True)[1]
             log_msg = log_msg.format(job_uuid=job_uuid)
@@ -747,13 +773,16 @@ class ConfDaemon(OTPmeDaemon):
         nodes only say whether theirs is the same, and if it is not we
         send all of it with the next update.
 
-        Not while a job runs: a package manager at work is no moment to
-        take stock, the next round after it will. """
+        Not while a job that has the host to itself runs: a package
+        manager at work is no moment to take stock, the next round after
+        it will. A session is no reason to wait -- it changes nothing
+        about the host by itself, and it can last for hours. """
         from otpme.lib import confd as os_handlers
         from otpme.lib.confd import inventory
         from otpme.lib.confd import hardware as hardware_mod
-        if self.running_job:
-            return
+        for x_type in self.running_jobs.values():
+            if confd_job.runs_alone(x_type):
+                return
         os_name, os_version = os_handlers.get_os_info()
         packages = {}
         try:
@@ -777,7 +806,11 @@ class ConfDaemon(OTPmeDaemon):
         if local_inventory == self.reported_inventory:
             if (now - self.last_inventory_check) < self.inventory_check_interval:
                 return
-        sync_conn = self.get_sync_connection()
+        # The inventory may go to another site than the rest, see
+        # get_inventory_site(). Asked every round rather than once at
+        # start: the parameter reaches the host through the ordinary
+        # sync, and a host should not have to be restarted for it.
+        sync_conn = self.get_sync_connection(site=self.get_inventory_site())
         try:
             command_args = {
                         'packages_checksum' : checksum,
@@ -857,16 +890,49 @@ class ConfDaemon(OTPmeDaemon):
             updates.append((x_set, x_del))
         return updates
 
-    def get_sync_connection(self):
-        """ Connection to the syncd of our site. """
+    def get_sync_connection(self, site=None):
+        """ Connection to the syncd of our site, or of another one. """
+        if site is None:
+            site = config.site
         log_msg = _("Connecting to syncd: {realm}/{site}", log=True)[1]
-        log_msg = log_msg.format(realm=config.realm, site=config.site)
+        log_msg = log_msg.format(realm=config.realm, site=site)
         self.logger.debug(log_msg)
         return connections.get("syncd",
                             realm=config.realm,
-                            site=config.site,
+                            site=site,
                             timeout=60,
                             interactive=False)
+
+    def get_inventory_site(self):
+        """ The site this host reports its inventory to.
+
+        The inventory_site config parameter of this host, which resolves
+        at the host, then its unit, then its site. Unset, or a site we
+        cannot name, means our own -- where it went before there was a
+        choice, and the answer that keeps a host reporting rather than
+        stopping over a parameter.
+        """
+        from otpme.lib import backend
+        host = backend.get_object(uuid=config.uuid)
+        if not host:
+            return config.site
+        try:
+            site_uuid = host.get_config_parameter("inventory_site",
+                                                apply_getter=False)
+        except Exception:
+            site_uuid = None
+        if not site_uuid:
+            return config.site
+        result = backend.search(object_type="site",
+                                attribute="uuid",
+                                value=site_uuid,
+                                return_type="name")
+        if not result:
+            log_msg = _("Unknown inventory site, reporting to our own: {site_uuid}", log=True)[1]
+            log_msg = log_msg.format(site_uuid=site_uuid)
+            self.logger.warning(log_msg)
+            return config.site
+        return result[0]
 
     def get_jobs(self):
         """ The jobs our site has for us, oldest first.
@@ -902,6 +968,51 @@ class ConfDaemon(OTPmeDaemon):
             msg = _("Got invalid answer for jobs.")
             raise OTPmeException(msg) from err
         return sorted(jobs, key=lambda x: x.get('created') or 0)
+
+    def handle_job_notification(self, job_type=None):
+        """ Our site says there is a job for us.
+
+        It says nothing more than that, and nothing here takes its word
+        for anything: the job is still fetched from syncd and verified
+        against the signers this host holds, the way it is when we find
+        one by ourselves. What a notification buys is when we look.
+
+        Not right away. A job for a unit is a job for every host in it,
+        and all of them would be told in the same second -- so each
+        waits a moment of its own first, or they would arrive at syncd
+        together. The wait is short enough that it still feels
+        immediate and long enough to spread a thousand hosts over it.
+
+        A remote access job is the exception: it is for this one host,
+        somebody is standing at a terminal waiting for it, and there is
+        no crowd to spread. So that one is looked for at once.
+
+        <job_type> is what the notification said it is about, and it is
+        believed for this and nothing else -- all it can buy is a look
+        without the wait, which costs one request to syncd.
+
+        A second message while one is pending changes nothing: one look
+        finds every job there is for us. A remote access job that comes
+        in while a wait is pending shortens it, because waiting out a
+        delay meant for a crowd is exactly what it must not do.
+        """
+        if job_type == "remote_access":
+            delay = 0
+        else:
+            if self.next_job_check is not None:
+                return
+            delay = random.uniform(0, NOTIFY_JITTER)
+        next_job_check = time.time() + delay
+        if self.next_job_check is not None \
+        and self.next_job_check <= next_job_check:
+            return
+        self.next_job_check = next_job_check
+        if not delay:
+            log_msg = _("Our site says there is a shell waiting for us, asking now.", log=True)[1]
+        else:
+            log_msg = _("Our site says there is a job for us, asking in {delay}s.", log=True)[1]
+            log_msg = log_msg.format(delay=round(delay, 1))
+        self.logger.info(log_msg)
 
     def send_result(self, result):
         """ Send the result of a run to our site. """
@@ -1003,17 +1114,22 @@ class ConfDaemon(OTPmeDaemon):
         last_job_check = 0.0
         while True:
             try:
-                # While a job runs we only wait for its result, and that
-                # is worth looking for more often than once a minute:
-                # a job that is over in a second should not have its
-                # result sit here for the rest of the round.
+                # While a job runs we look for its result more often
+                # than once a minute: a job that is over in a second
+                # should not have its result sit here for the rest of
+                # the round.
                 if process_jobs:
-                    if self.running_job:
+                    if self.running_jobs:
                         recv_timeout = self.result_check_interval
                     else:
                         recv_timeout = self.job_check_interval
                 else:
                     recv_timeout = self.result_check_interval
+                # A job we were told about is due before the next round
+                # would come anyway, so do not sleep past it.
+                if self.next_job_check is not None:
+                    due_in = self.next_job_check - time.time()
+                    recv_timeout = min(recv_timeout, max(0.1, due_in))
                 try:
                     sender, \
                     daemon_command, \
@@ -1033,33 +1149,43 @@ class ConfDaemon(OTPmeDaemon):
                 process_jobs = False
                 if config.host_type == "node":
                     if config.cluster_status:
-                        if config.master_node:
-                            if config.cluster_ip:
-                                if not config.master_failover:
+                        if not config.master_failover:
+                            if config.master_node is True:
+                                if config.cluster_ip:
                                     process_jobs = True
-                        elif config.master_node is False:
-                            if not config.master_failover:
+                            elif config.master_node is False:
                                 process_jobs = True
                 else:
                     process_jobs = True
 
                 if process_jobs:
                     now = time.time()
-                    if self.running_job:
-                        # Nothing but looking for the result file: what the
-                        # runner is doing, and whether it still is, belongs
-                        # to the full round below.
+                    if self.running_jobs:
+                        # Nothing but looking for the result files: what
+                        # the runners are doing, and whether they still
+                        # are, belongs to the full round below.
+                        was_running = len(self.running_jobs)
                         try:
                             self.collect_results()
                         except Exception as e:
                             log_msg = _("Failed to collect job results: {e}", log=True)[1]
                             log_msg = log_msg.format(e=e)
                             self.logger.warning(log_msg)
-                        if not self.running_job:
-                            # It is finished and its result is out, so the
-                            # next job can start right away.
+                        if len(self.running_jobs) < was_running:
+                            # One of them is finished and its result is
+                            # out, so whatever waited for it can start
+                            # right away.
                             last_job_check = 0.0
-                    if (now - last_job_check) >= self.job_check_interval:
+                    # The round that comes anyway, or one our site asked
+                    # for. Both end up in the same place: what a
+                    # notification buys is when we look, never what we
+                    # do with what we find.
+                    check_jobs = (now - last_job_check) >= self.job_check_interval
+                    if self.next_job_check is not None:
+                        if now >= self.next_job_check:
+                            self.next_job_check = None
+                            check_jobs = True
+                    if check_jobs:
                         try:
                             self.process_jobs()
                         except Exception as e:
@@ -1089,6 +1215,13 @@ class ConfDaemon(OTPmeDaemon):
                 if daemon_command is None:
                     continue
 
+                if daemon_command == "new_conf_job":
+                    job_type = None
+                    if isinstance(data, dict):
+                        job_type = data.get('job_type')
+                    self.handle_job_notification(job_type=job_type)
+                    continue
+
                 # Check if command can be handled by parent class.
                 try:
                     self._handle_daemon_command(sender, daemon_command, data)
@@ -1116,18 +1249,18 @@ class ConfDaemon(OTPmeDaemon):
 
         In this order: what the runners left behind goes out first, then
         the jobs that are still on their way are looked after, and only
-        then is the next job handed out. """
+        then are the next jobs handed out.
+
+        Asked for even while something runs, which is what lets a second
+        session start while the first one is still open: what may run
+        beside what is decided per job below, and a job that has to wait
+        is simply left for a later round. """
         self.collect_results()
         self.check_running_jobs()
         if self.signers_changed():
             log_msg = _("Signers changed, asking for refused jobs again.", log=True)[1]
             self.logger.info(log_msg)
             self.clear_refused_jobs()
-        if self.running_job:
-            log_msg = _("Waiting for job {job_uuid} to finish.", log=True)[1]
-            log_msg = log_msg.format(job_uuid=self.running_job)
-            self.logger.debug(log_msg)
-            return
         log_msg = _("Asking for jobs ({done} done, {refused} refused)...", log=True)[1]
         log_msg = log_msg.format(done=len(self.done_jobs),
                                 refused=len(self.refused_jobs))
@@ -1161,11 +1294,19 @@ class ConfDaemon(OTPmeDaemon):
             if os.path.exists(self.get_started_file(job_uuid)):
                 # A runner has it, we just do not have its result yet.
                 continue
+            # What this job has to wait for, by its type. The type it
+            # claims, which is as much as we know before the signature
+            # is checked -- and the signature covers the type, so a job
+            # that lies about it to be looked at sooner is then refused
+            # for the lie (confd/job.py verify_job).
+            in_the_way = confd_job.job_in_the_way(job.get('job_type'),
+                                                self.running_jobs)
+            if in_the_way:
+                log_msg = _("Job {job_uuid} waits for job {other} to finish.", log=True)[1]
+                log_msg = log_msg.format(job_uuid=job_uuid, other=in_the_way)
+                self.logger.debug(log_msg)
+                continue
             self.process_job(job)
-            if self.running_job:
-                # One job at a time. The rest comes with the next round,
-                # when this one has left its result behind.
-                break
 
     def process_job(self, job):
         """ Check one job and hand it to a runner.

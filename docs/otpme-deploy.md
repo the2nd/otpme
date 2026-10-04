@@ -50,10 +50,14 @@ its hosts.
 ## How jobs run
 
 On every host, the **confd** daemon asks the nodes of its site for new
-jobs every 60 seconds. It runs one job at a time. Each job runs as its
-own transient systemd service (**otpme-confd-job-***uuid***.service**).
-This way a job keeps running when OTPme is restarted, even if the job
-restarts OTPme itself.
+jobs every 60 seconds. It runs one job at a time. A **remote_access**
+job is the exception. It is a shell for a user, not work on the host. So
+it runs beside other jobs, and other jobs run beside it. A host runs up
+to 8 sessions at the same time.
+
+Each job runs as its own transient systemd service
+(**otpme-confd-job-***uuid***.service**). This way a job keeps running
+when OTPme is restarted, even if the job restarts OTPme itself.
 
 A job runs only once on each host. If the result can not be sent, confd
 sends it again later. It does not run the job again.
@@ -96,9 +100,42 @@ withdrawn.
 
 Jobs and their results stay on the nodes for 90 days (site parameter
 **conf_job_max_age**). This also applies to jobs that worked, so you can
-see which jobs were already sent. A job that failed or was refused on a
-host stays until you acknowledge it with **ack**. After that it is
-removed when it is older than **conf_job_max_age**.
+see which jobs were already sent.
+
+A job with something unanswered about it stays until you acknowledge it
+with **ack**, however old it is. After that it is removed when it is
+older than **conf_job_max_age**.
+
+Unanswered is a host where the job failed, a host that refused it, and a
+host that never reported at all. The last one is what nothing else would
+tell you about: a host that was switched off for three months is still
+waiting for that job, and the job waits with it.
+
+Two kinds of job are not kept that way.
+
+One you took back with **cancel**: you looked at it when you did that,
+and the hosts that never ran it were never meant to. That answers the
+whole job, a host where it failed before you took it back included —
+what that host did is in its result either way, and a job that shows as
+over must not be the one line that is still waiting for somebody.
+
+And a **remote_access** job, which is a shell somebody was waiting for.
+**otpme-shell** stands there until the host comes and says what came of
+it, so there is nothing to find out later — and a job is made for every
+shell, so held like the others they would pile up.
+
+Such a job is not kept for 90 days either. It is removed an hour after
+it expired, which is the site parameter **remote_access_job_max_age**;
+counted from the expiry, because that is when the shell stopped being
+anybody's business. Set it to **0** to have them go as soon as they
+expire.
+
+For every other job type an expired job is not an exception. Every job
+has an **--expiry** and the default is 30 days, which is less than the
+90 a job is kept — so by the time anything looks at an old job it has
+expired, and that says nothing about whether anybody saw it.
+
+**otpme-deploy list --pending** shows what is still waiting for a host.
 
 If a host is deleted before it ran a job, the job does not wait for it.
 The host is shown as deleted.
@@ -123,6 +160,10 @@ needed are removed too.
 
 **upgrade packages=*pkg1,pkg2***  
 Upgrade installed packages.
+
+**dist_upgrade**  
+Update the package lists, then upgrade every package. Stops if the
+update fails.
 
 **autoremove**  
 Remove packages that are no longer needed.
@@ -150,11 +191,20 @@ Show the signers the host holds, or only those of one type. The answer
 is the output of the job, so **otpme-deploy results** shows it. This
 action changes nothing.
 
-**add_signer type=*signer_type* signer=*object_id* \[**tags=***tag1,tag2*\]**  
+**add_signer type=*signer_type* signer=*object_id* \[**tags=***tag1,tag2*\] \[**verify_token_opts=***yes*\] \[**allow_throwaway_key=***yes*\]**  
 Add a system-wide signer. *object_id* is the OID of a user or role, for
 example **role\|example.org/berlin/sw-admins**. The signer is pinned to
 the current key of the user or role. If the signer exists already,
 nothing changes.
+
+**verify_token_opts** (default yes) requires the signature of an SSH
+token to cover the key options the key is used with, for example
+**command=**.
+
+**allow_throwaway_key** (default no) is only for a **remote_access**
+signer. It lets that signer ask for a shell on a key the job brings
+along, instead of on a key the host already holds. See
+**otpme-shell**(1).
 
 The host needs the user or the role itself for this, not only its name:
 it pins a key, and the key is in the object. A host that has not synced
@@ -166,18 +216,33 @@ A name nobody ever had is a different thing, and **add** says so right
 away instead of letting every host refuse the job for ever.
 
 **del_signer type=*signer_type* signer=*object_id* \[**remove_last_own_signer=***yes*\]**  
-Remove a signer. If there is no such signer, nothing changes.
+Remove a signer. If there is no such signer, nothing changes.  
+The user or role does not have to exist any more — see below.
 
-**update_signer type=*signer_type* signer=*object_id* \[**remove_gone=***yes*\] \[**remove_last_own_signer=***yes*\]**  
+**update_signer type=*signer_type* signer=*object_id* \[**remove_gone=***yes*\] \[**remove_last_own_signer=***yes*\] \[**verify_token_opts=***yes*\] \[**allow_throwaway_key=***yes*\]**  
 Pin the current key of the user or role again, for example after a key
 change.
 
+**verify_token_opts** and **allow_throwaway_key** change what the signer
+may ask for. A job that does not name them leaves them as they are: an
+update is usually about the pinned key, and saying nothing must not take
+a permission away. This is the only way to change one of them without
+removing the signer and adding it again.
+
 **del_signer** and **update_signer** also take the UUID of the signer
 entry, as **show_signer** prints it in its first column. They name an
-entry on the host, and an entry outlives its user or role. A signer
-whose role was deleted has no OID left to name it with, and the UUID is
-the only way to remove it. **add_signer** does not take a UUID: it needs
-the object.
+entry on the host, and an entry outlives its user or role.
+**add_signer** does not take a UUID: it needs the object.
+
+**del_signer** takes the OID of a user or role that was deleted as well.
+Each entry carries the OID it was added under, so the host finds it by
+that name even when nothing answers to it any more. An object that was
+only renamed is found by its UUID as before, so the new name works and
+the old one does too.
+
+**update_signer** is the one that needs the object: it pins the key the
+object has now. For a signer whose user or role is gone, name the entry
+by its UUID.
 
 A signer whose user or role was deleted is kept, and so is the key a
 role pinned for a member it does not have anymore. What they signed is
@@ -217,19 +282,51 @@ Write a file on the host. The content comes from *source_file*.
 Remove a file.
 
 **host_mgmt**  
-Manage the host itself.
-
-**dist_upgrade**  
-Update the package lists, then upgrade all packages. Stops if the update
-fails.
+Switch the host.
 
 **reboot**  
-Reboot the host after one minute. The delay lets the host send the
-result first.
+Reboot the host after one minute.
 
-The job types **file_mgmt**, **signer_mgmt** and **host_mgmt** give full
-control over the host. Only add signers for them that you trust with
-root access.
+**shutdown**  
+Switch the host off after one minute. It stays off until somebody is
+standing next to it.
+
+The delay lets the host send the result first. Once the host is down,
+nobody would send it.
+
+Upgrading the host is not here. That is the package manager's work, see
+**sw_mgmt dist_upgrade**.
+
+**remote_access**  
+Hand out a shell on the host.
+
+**shell \[**user=***user*\] \[**command=***command*\] \[**pubkey=***key*\]**  
+The host connects out to the master node of its site and speaks SSH
+through it. Without **pubkey** the host allows the keys of its own
+**authorized_keys** for *user*. With **pubkey** it allows that one key
+and no other, and then the signature of the job is the only thing that
+gets somebody in. The host takes such a job only from a signer added
+with **allow_throwaway_key**.
+
+Do not create this job by hand. Use **otpme-shell**(1), which creates it
+and then takes the shell.
+
+Most of these job types give full control over the host, not only the
+ones that look like it.
+
+**file_mgmt** writes any file as root. **signer_mgmt** decides who may
+command the host at all. **remote_access** hands out a root shell.
+
+**sw_mgmt** and **repo_mgmt** belong in the same group, which is less
+obvious: the maintainer scripts of a package run as root, and a
+repository says where packages come from. Being allowed to install a
+package is being allowed to run code as root.
+
+**service_mgmt** starts and stops what is already on the host, and
+**host_mgmt** only switches it off. Those two cannot take the host over,
+but they can stop it doing its work.
+
+So add signers only for users you trust with root access on that host.
 
 # COMMANDS
 
@@ -244,20 +341,22 @@ signer that is not a user or a role, or one that does not exist at all.
 **list \[**--host** *host*\] \[**--failed**\] \[**--pending**\]**  
 List jobs. Shows the time, the job type and action, the arguments, the
 number of hosts, the signer and the state of the job. The colour says
-how the job stands, the worst state first: red when a host ran it and it
-did not work, yellow when a host would not run it, grey when the job was
-taken back, cyan when a host failed or refused and that was acknowledged
-with **ack**, orange while a host has not run it yet, green when every
-host ran it.
+how the job stands: grey when the job was taken back, and otherwise the
+worst state first — red when a host ran it and it did not work, yellow
+when a host would not run it, cyan when a host failed or refused and
+that was acknowledged with **ack**, orange while a host has not run it
+yet, green when every host ran it.
+
+Grey comes first because a job you took back is over and there is
+nothing to do about it. Red would read as something going wrong, which
+is the opposite of what happened. A host that ran the job before you
+took it back and failed is still in the state of the line (**cancelled,
+2 ok, 1 failed**) and in **results**. Nothing waits for an **ack** after
+that, see **How long jobs are kept**.
 
 **ack** takes the place of red and yellow, so what somebody has already
 seen does not hide the line that is new. It changes nothing about a job
 that worked or one that is still running.
-
-A job that was taken back is over, and grey says that better than what
-it was over of. But not while a host reported something nobody has
-looked at yet: cancelling a job does not undo what it did on the hosts
-that already had it, so an unacknowledged failure keeps its colour.
 
 **show *job_uuid***  
 Show a job and the state on each host: **ok**, **failed**, **refused**
@@ -271,8 +370,9 @@ the job worked, yellow when the host refused it, red when it ran and did
 not work.
 
 **ack *job_uuid***  
-Acknowledge a job that failed or was refused. Without this, such a job
-is never removed (see **How long jobs are kept**).
+Say that you have seen how a job went. Without this a job that failed,
+was refused, or is still waiting for a host is never removed (see **How
+long jobs are kept**).
 
 **cancel *job_uuid***  
 Cancel a job. Hosts that did not run the job yet will not run it. The
@@ -311,6 +411,28 @@ The signing key of a repository for **repo_mgmt add_repo**.
 How long hosts may run the job, for example **7D**. The units are **s**,
 **m**, **h**, **D**, **W**, **M** and **Y**, see **otpme**(7). Default:
 30 days. A host that comes online later does not run an expired job.
+
+**--on-demand**  
+Tell the hosts to look now. Without it they find the job on their next
+round, which is at most a minute away.
+
+A host told this way does not look at once. A job for a unit is a job
+for every host in it, they are all told in the same second, and they
+would reach the node together — so each waits a moment of its own first,
+up to 10 seconds.
+
+A **remote_access** job is the exception: it is for one host and
+somebody is waiting at a terminal for the shell, so that one is fetched
+at once.
+
+It says how many hosts heard it. A host that was not listening is not a
+failure — it asks on its next round — but it is why a job can take a
+minute to start.
+
+**--return-uuid**  
+Print the UUID of the job and nothing else. For a script that has to go
+on working with the job; it is what **otpme-shell**(1) uses to find the
+host at the node.
 
 Global options are available for all commands. See **otpme**(1) for
 details.
@@ -457,6 +579,9 @@ Remove two packages and the packages that are no longer needed.
 **otpme-deploy add --host client1 sw_mgmt autoremove**  
 Remove packages that are no longer needed.
 
+**otpme-deploy add --unit hosts sw_mgmt dist_upgrade**  
+Upgrade every package on all hosts of the unit **hosts**.
+
 ## repo_mgmt
 
 **otpme-deploy add --host client1 --arg name=example --arg 'line=deb https://repo.example.org/debian bookworm main' --key example.asc repo_mgmt add_repo**  
@@ -493,9 +618,10 @@ Ask client1 which sw_mgmt signers it holds. The answer comes with
 entry.
 
 **otpme-deploy add --host client1 --arg type=sw_mgmt --arg signer=fea7dc2d-3c41-4a0e-9d2f-1b6c8e5a7d90 signer_mgmt del_signer**  
-Remove a signer by the UUID of its entry. This is the way to get rid of
-a signer whose user or role was deleted: there is no OID left to name it
-with.
+Remove a signer by the UUID of its entry. Use this where the OID does
+not say which entry you mean — a name that was given to a second object,
+or an entry **show_signer** lists and you cannot place. A signer whose
+user or role was deleted can be removed by its OID as well.
 
 ## service_mgmt
 
@@ -521,12 +647,13 @@ Remove a file.
 
 ## host_mgmt
 
-**otpme-deploy add --unit hosts host_mgmt dist_upgrade**  
-Upgrade all hosts of the unit **hosts**.
-
 **otpme-deploy add --host client1 --expiry 1h host_mgmt reboot**  
 Reboot client1. If the host is offline for more than one hour, it does
 not reboot later.
+
+**otpme-deploy add --host client1 --expiry 10m host_mgmt shutdown**  
+Switch client1 off. Give it a short expiry: a host that was offline and
+comes back should not switch itself off hours later.
 
 ## Jobs and results
 
@@ -552,7 +679,7 @@ Show the results of a job.
 Show all results of client1.
 
 **otpme-deploy ack 8a1e1207-f626-42ff-b538-60b7b4223f31**  
-Acknowledge a job that failed or was refused.
+Say that you have seen how a job went, so it can be removed.
 
 **otpme-deploy cancel 8a1e1207-f626-42ff-b538-60b7b4223f31**  
 Cancel a job.
@@ -568,7 +695,7 @@ Jobs, results and markers of confd, on the host.
 # SEE ALSO
 
 **otpme**(7), **otpme-tool**(1), **otpme-host**(1), **otpme-unit**(1),
-**otpme-inventory**(1)
+**otpme-inventory**(1), **otpme-shell**(1)
 
 # AUTHOR
 

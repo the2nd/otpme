@@ -1728,8 +1728,33 @@ class AuthHandler(object):
             if self.auth_client and self.auth_client.dot1x_auth:
                 self.password_hash = mschap_status[2]
 
+        # A user from another site brings their auth scripts with them:
+        # script objects of that site, written by its administrators and
+        # run here, on our node, as one of our users. Our site says with
+        # run_foreign_user_auth_scripts whether it wants that. It does not
+        # by default, and then both scripts below are skipped.
+        run_auth_scripts = True
+        if self.user.site != config.site:
+            run_auth_scripts = None
+            my_site = backend.get_object(object_type="site",
+                                        uuid=config.site_uuid)
+            if my_site:
+                try:
+                    run_auth_scripts = my_site.get_config_parameter("run_foreign_user_auth_scripts")
+                except Exception:
+                    run_auth_scripts = None
+            if run_auth_scripts is None:
+                para_data = config.get_config_parameter("run_foreign_user_auth_scripts")
+                run_auth_scripts = para_data['default']
+            if not run_auth_scripts:
+                if self.user.auth_script_enabled \
+                or self.verify_token.auth_script_enabled:
+                    log_msg = _("Not running the auth script of a user from another site: {user_name} ({user_site})", log=True)[1]
+                    log_msg = log_msg.format(user_name=self.user.name, user_site=self.user.site)
+                    self.logger.info(log_msg)
+
         # Check if the user has an auth script enabled.
-        if self.user.auth_script_enabled:
+        if self.user.auth_script_enabled and run_auth_scripts:
             # Set auth type idependent values.
             user_script_parms = {
                     'options'           : self.user.auth_script_options,
@@ -1796,7 +1821,7 @@ class AuthHandler(object):
                 return False
 
         # Check if the token has an auth script enabled.
-        if self.verify_token.auth_script_enabled:
+        if self.verify_token.auth_script_enabled and run_auth_scripts:
             # Set auth type idependent values.
             token_script_parms = {
                     'options'           : self.verify_token.auth_script_options,
@@ -3532,6 +3557,21 @@ class AuthHandler(object):
                 auth_response['key_script_opts'] = key_script_opts
                 auth_response['key_script_signs'] = key_script_signs
                 auth_response['key_mode'] = self.user.key_mode
+                # Get the users private keys, if the user wants the
+                # hosts to hold them (enable_key_caching).
+                #
+                # Only with key mode "client", where the key is stored
+                # as the client wrapped it, with the users key password.
+                # So what travels here is what the key script would
+                # fetch itself on its first call (otpme-user
+                # dump_sign_key -p), and the host can no more use it
+                # than it could before -- it saves the round trip and
+                # the wait, not the password.
+                #
+                # In key mode "server" the key never leaves this side:
+                # there the server holds the AES key that wraps it, and
+                # handing both out would hand out the key itself.
+                auth_response['private_keys'] = self.user.get_cacheable_keys()
                 # Get shares to mount on client.
                 if self.user.auto_mount:
                     shares = stuff.get_user_shares(auth_token=self.auth_token,

@@ -24,15 +24,12 @@ what changed. It does not take stock while a job is running on the host.
 A package manager at work is no good moment for it, the next round does
 it.
 
-The data is stored in two places:
-
--   The OS and the OS version are stored on the host object (**os**,
-    **os_version**). They are shown by **otpme-host show**.
-
--   The packages and the hardware are stored in a separate inventory
-    object for each host. Host objects are synced to all hosts, and the
-    package lists of all hosts should not be. The inventory stays on the
-    nodes of the host's site.
+The OS, the OS version, the packages and the hardware are stored in a
+separate inventory object for each host, not on the host object. All
+four are what the host reported about itself, and an inventory has to
+stand on its own. Host objects are synced to all hosts, and the package
+lists of all hosts should not be, so the inventory stays on the nodes of
+the host's site.
 
 Changing the inventory does not change the last modified time of the
 host.
@@ -41,7 +38,8 @@ To see the inventory of a host your token has to be named in the
 **allow_inventory** config parameter of that host. Hosts you may not see
 are left out of search results. See **PERMISSIONS** below.
 
-Only hosts of the own site are shown.
+Shown are the hosts whose inventory this site keeps: its own, and those
+of other sites that report here, see **A CENTRAL INVENTORY**.
 
 The hardware is read on any Linux host. Package lists need a package
 manager the host knows, which today means Debian and Ubuntu. A host
@@ -72,7 +70,9 @@ the package and its version, one line per package. With **--hardware**
 it is the value that matched. A host has several disks, and then only
 the disks that match are shown, with their name. So a search for
 **'disk_size\>=100G'** shows **sdb=150.0G** and not all disks of the
-host.
+host. Behind the size comes what says which disk it is, the vendor, the
+model and the serial, where the host knows them: **sdb=150.0G(SEAGATE
+ST1000NM0055 ZA12345)**.
 
 # OPTIONS
 
@@ -132,6 +132,56 @@ Example:
 > otpme-host config client1 allow_inventory
 > 'role\|example.org/berlin/it-support'
 
+For a host of another site that reports here, see **A CENTRAL
+INVENTORY**, there is a second parameter:
+
+**allow_foreign_inventory (list)**  
+Who may read the inventories of hosts that are not ours. Set on the site
+that keeps them, it holds tokens and roles like **allow_inventory** and
+decides instead of the **allow_inventory** of the host.  
+Unset means the host decides, with its own **allow_inventory** at the
+host, its unit and its site of origin.  
+It does not touch the hosts of this site, those always go by
+**allow_inventory**.  
+Object types: site
+
+# A CENTRAL INVENTORY
+
+By default a host reports to the site it belongs to, and that site
+answers for it. A realm that wants one place to ask "which machines do
+we have" points its hosts somewhere else.
+
+Two parameters, one at each end, because a host saying where it wants to
+report is not the same as a site agreeing to keep it.
+
+**inventory_site (str)**  
+Where a host reports its inventory. Set it on a host, a unit or a site;
+the most specific one wins, like every config parameter. Unset means the
+site the host belongs to.  
+Object types: site, unit, host, node
+
+**inventory_trusts (list)**  
+The sites whose hosts this site keeps inventories for. Unset means none,
+and then a host of another site is refused.  
+Object types: site
+
+Example, with every host of *berlin* reporting to *munich*:
+
+>     otpme-site config berlin inventory_site munich
+>     otpme-site config munich inventory_trusts berlin
+
+Both sites have to be in the same realm. An inventory is kept per realm,
+and a host of another realm is refused whatever is set here.
+
+Who may read them is the **allow_foreign_inventory** of this site, and
+where that is unset the **allow_inventory** of the host, which resolves
+at that host, its unit and its site of origin. So either end can decide:
+set it here and this site says who reads, leave it and the site the data
+is about keeps saying. See **PERMISSIONS**.
+
+A host that reported to its own site before keeps that inventory there.
+It is not moved and not deleted, and it stops being updated.
+
 # OS AND OS VERSION
 
 **os** is **Linux**, **Windows** or **MacOS**. **os_version** is the ID
@@ -149,15 +199,24 @@ installed packages are listed.
 
 The host reads all of this from files, so nothing has to be installed
 for it. A field that a host cannot read is left out. On a virtual
-machine most of the DMI fields are empty.
+machine most of the DMI fields are empty.  
+The one thing that is nicer with a package installed is the name of a
+controller: it comes from the PCI ID database (**pciutils** or
+**hwdata**), and without it a controller is its IDs and its driver.
 
-These fields can be searched with **--hardware**:
+Everything a host reports can be searched with **--hardware**. These are
+the fields:
 
 **vendor, **model**, **serial**, **asset_tag**, **sku****  
-What the board says about itself, from */sys/class/dmi/id*. **serial**
+What the machine says about itself, from */sys/class/dmi/id*. **serial**
 is what Dell calls the Service Tag. You can also write **service_tag**
 in a search, it means the same field. **asset_tag** is the tag your own
 IT sets, it is a different field.
+
+**board_vendor, **board_model**, **board_serial****  
+The same three for the mainboard. Useful when a board series turns out
+to be faulty: the machine can carry the name of the maker who built it,
+the board carries the name of who made the board.
 
 **cpu_model, **cpu_count****  
 The CPU and how many logical CPUs there are, from */proc/cpuinfo*.
@@ -167,22 +226,57 @@ The CPU and how many logical CPUs there are, from */proc/cpuinfo*.
 How much memory the host has, from */proc/meminfo*. Can be compared.
 Write it as a size, for example **8G**.
 
-**disk, **disk_size****  
+**disk, **disk_size**, **disk_serial**, **disk_vendor**, **disk_model****  
 One entry per disk, from */sys/block*. **disk** is the name, for example
-**sda**. **disk_size** is the size and can be compared. A host matches
-when any of its disks matches.
+**sda**. **disk_size** is the size and can be compared. **disk_serial**
+is the serial number of the disk, the one on the sticker.
+**disk_vendor** and **disk_model** are who made it and what it is
+called, for example **ATA** and **OCZ-VERTEX3 MI**. Use them when a
+whole series of disks turns out to be faulty.  
+A SATA disk says **ATA** as its vendor, whatever is written on it: that
+is the name of the interface and not of the maker, and the maker is part
+of the model. A SAS or SCSI disk says **SEAGATE** or **DELL**. So search
+a SATA disk by its model.  
+A host matches when any of its disks matches, and the answer names the
+disks that did.  
+The serial is read from the disk itself, so not every disk has one: NVMe
+disks report it directly, SCSI and SATA disks through their serial
+number page.
+
+**nic**  
+The network cards, from */sys/class/net*. Only what has hardware behind
+it, so the loopback, the bridges, the bonds, the VLAN interfaces and the
+tunnels are left out: those are not hardware and are named after whoever
+configured them.  
+Matches the name the kernel gave a card (**eno1**), its MAC, its vendor,
+the name on the card or the name of the chip on it. Search it by MAC
+when a DHCP lease or a switch port is all you have and the question is
+which host that is.
+
+**controller**  
+The storage controllers, from */sys/bus/pci/devices*: every PCI device
+of the mass storage class. Matches the PCI address of a controller
+(**0000:18:00.0**), its vendor, the name on the card (**PERC H730P
+Mini**) or the name of the chip on it (**MegaRAID SAS-3 3108**).  
+The answer is the disks that hang on the controller, because that is
+what a controller is looked for.  
+The names come from the PCI ID database of the host
+(*/usr/share/misc/pci.ids* or */usr/share/hwdata/pci.ids*). A host
+without one reports the IDs and the driver, and then only those can be
+searched.
 
 **virtual, **virt_type****  
 Whether the host is a virtual machine, and on what. **virtual** is
 **yes** or **no**. **virt_type** is **kvm**, **vmware**, **virtualbox**,
 **xen**, **hyperv** and so on.
 
-**bios_version, **chassis_type****  
-The BIOS version, and what kind of case this is (**rack-mount-chassis**,
-**laptop**, **desktop** and so on).
+**bios_vendor, **bios_version**, **bios_date****  
+The BIOS. **bios_date** is written the way the board writes it, usually
+**mm/dd/yyyy**, so search it with a wildcard.
 
-**hardware** also shows the board, the BIOS vendor and the BIOS date.
-Those are not searched, they are only read off the host.
+**chassis_type**  
+What kind of case this is (**rack-mount-chassis**, **laptop**,
+**desktop** and so on).
 
 # EXAMPLES
 
@@ -213,8 +307,10 @@ Show what it is made of:
 >     serial: ABC1234
 >     vendor: Dell Inc.
 >     virtual: no
->     disk: sda 223.6G PERC H730P
->     disk: sdb 1.8T PERC H730P
+>     disk: sda 223.6G DELL PERC H730P serial=6F4EE0803A2E4900 controller=0000:18:00.0
+>     disk: sdb 1.8T DELL PERC H730P serial=6F4EE0803A2E4901 controller=0000:18:00.0
+>     controller: 0000:18:00.0 Broadcom / LSI PERC H730P Mini MegaRAID SAS-3 3108 vendor_id=1000 device_id=005d subsystem_id=1028:1f47 driver=megaraid_sas
+>     nic: eno1 ec:f4:bb:11:22:33 Intel Corporation I350 Gigabit Network Connection vendor_id=8086 device_id=1521 driver=igb
 
 List its packages, all of them or only some:
 
@@ -253,9 +349,6 @@ Show all hosts that run Debian 12.
 **otpme-inventory search --os-version 'debian-\*'**  
 Show all Debian hosts, whatever the version.
 
-**otpme-tool search object_type=host attribute=os_version value=debian-12 return_type=name**  
-The same search with **otpme-tool**, which gives the names only.
-
 ## Find hosts by hardware
 
 **otpme-inventory search --hardware service_tag=ABC1234**  
@@ -283,17 +376,41 @@ The line says what matched, so a search for memory shows the memory:
 A host has several disks, so only the disks that match are shown:
 
 >     $ otpme-inventory search --hardware 'disk_size>=100G'
->     client1 sda=223.6G
->     dev1 sdc=100.0G
->     server1 sdb=150.0G
+>     client1 sda=223.6G(DELL PERC H730P 6F4EE0803A2E4900)
+>     dev1 sdc=100.0G(QEMU QEMU HARDDISK)
+>     server1 sdb=150.0G(SEAGATE ST1000NM0055 ZA12345)
+
+The other way round, to find the host a disk sits in when all you have
+is the disk:
+
+>     $ otpme-inventory search --hardware disk_serial=ZA12345
+>     server1 sdb=150.0G(SEAGATE ST1000NM0055 ZA12345)
+
+Or every host that has a disk of a model, when a series turns out to be
+faulty:
+
+>     $ otpme-inventory search --hardware 'disk_model=ST1000NM*'
+>     server1 sdb=150.0G(SEAGATE ST1000NM0055 ZA12345)
+>     server2 sdb=150.0G(SEAGATE ST1000NM0055 ZA67890)
+
+Ask for a controller, and the answer is the disks that hang on it:
+
+>     $ otpme-inventory search --hardware 'controller=PERC H730P*'
+>     server1 PERC H730P Mini(sda=223.6G,sdb=1.8T)
+>     server2 PERC H730P Mini(sda=223.6G)
+
+Which host a MAC belongs to:
+
+>     $ otpme-inventory search --hardware nic=ec:f4:bb:11:22:33
+>     server1 eno1=ec:f4:bb:11:22:33(Intel Corporation I350 Gigabit Network Connection)
 
 Search by disk name the same way. **disk=sda** shows the **sda** of
 every host with its size:
 
 >     $ otpme-inventory search --hardware disk=sda
->     client1 sda=223.6G
->     dev1 sda=48.0G
->     server1 sda=32.0G
+>     client1 sda=223.6G(DELL PERC H730P 6F4EE0803A2E4900)
+>     dev1 sda=48.0G(QEMU QEMU HARDDISK)
+>     server1 sda=32.0G(QEMU QEMU HARDDISK)
 
 ## Narrow it down
 

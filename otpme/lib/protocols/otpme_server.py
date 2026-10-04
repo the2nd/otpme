@@ -991,6 +991,15 @@ class OTPmeServer1(object):
             response = self._process(command=command,
                                     command_args=command_args,
                                     binary_data=binary_data)
+        except ConnectionHijacked:
+            # The handler has stopped speaking our protocol on this
+            # connection and handed the socket to something else (racd
+            # splices two of them and what travels is SSH). Passed on to
+            # the connection handler, which knows not to answer: a
+            # response built here would be written into the middle of
+            # whatever is using the socket now, and the far end would
+            # see our framing in its own stream.
+            raise
         except Exception as e:
             config.raise_exception()
             log_msg = _("Error in OTPmeServer1._process(): {error}", log=True)[1]
@@ -1257,14 +1266,16 @@ class OTPmeServer1(object):
         return self.build_response(status, response, encrypt=False)
 
     def get_share_instance(self, share):
-        """ Get share instance by share ID (<site>/<share>). """
+        """ Get share instance by share ID (<realm>/<site>/<share>). """
         try:
-            share_site, share_name = share.split("/")
+            share_realm, \
+            share_site, \
+            share_name = stuff.split_share_id(share)
         except Exception:
             msg = _("Failed to parse share ID: {share}")
             msg = msg.format(share=share)
             raise OTPmeException(msg)
-        share_oid = f"share|{config.realm}/{share_site}/{share_name}"
+        share_oid = f"share|{share_realm}/{share_site}/{share_name}"
         share_oid = oid.get(share_oid)
         share_instance = backend.get_object(share_oid)
         if not share_instance:

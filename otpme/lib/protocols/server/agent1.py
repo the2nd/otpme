@@ -25,6 +25,7 @@ from otpme.lib import multiprocessing
 #from otpme.lib.encoding.base import encode
 #from otpme.lib.encoding.base import decode
 from otpme.lib.protocols import status_codes
+from otpme.lib.offline_token import PRIVATE_KEY_ROLES
 from otpme.lib.fuse import get_share_realm
 from otpme.lib.fuse import remove_mount_dirs
 from otpme.lib.classes.otpme_agent import mount_share
@@ -148,6 +149,31 @@ class OTPmeAgentP1(object):
                                             lock_id=login_pid)
         return session_lock
 
+    def get_session_private_key(self, key_role, decrypted=False):
+        """ A private key of this login session, if we have it.
+
+        The unwrapped one only while it may be kept: key_cache_time of
+        the user, which came with the session (add_rsp). The sweep in
+        OTPmeAgent.run() drops it as well, but a key is not handed out
+        on the word of a sweep that may be a second away -- here is
+        where it would be given to somebody.
+        """
+        if not self.session:
+            return
+        if not decrypted:
+            private_keys = self.session.get('private_keys') or {}
+            return private_keys.get(key_role)
+        cached_keys = self.session.get('cached_keys') or {}
+        cached_key = cached_keys.get(key_role)
+        if not cached_key:
+            return
+        key_cache_time = self.session.get('key_cache_time') or 0
+        if key_cache_time:
+            key_age = time.monotonic() - cached_key['cache_time']
+            if key_age > key_cache_time:
+                return
+        return cached_key['private_key']
+
     def send_command(self, command, request, timeout=None):
         """ Send request to agent parent process. """
         # Send request to parent process.
@@ -260,6 +286,9 @@ class OTPmeAgentP1(object):
                             "check_ssh_key_pass",
                             "get_ssh_key_pass",
                             "del_ssh_key_pass",
+                            "add_private_key",
+                            "get_private_key",
+                            "del_private_key",
                             "add_rsp",
                             "add_acl",
                             "del_acl",
@@ -300,6 +329,9 @@ class OTPmeAgentP1(object):
                         "check_ssh_key_pass",
                         "get_ssh_key_pass",
                         "del_ssh_key_pass",
+                        "add_private_key",
+                        "get_private_key",
+                        "del_private_key",
                         "add_rsp",
                         "piv_login",
                         "piv_check",
@@ -968,6 +1000,104 @@ class OTPmeAgentP1(object):
                 finally:
                     session_lock.release_lock()
 
+        elif command == "add_private_key":
+            # A private key of the user, for the key script. Two kinds:
+            # the one the login brought, which is wrapped with the users
+            # key password, and the one the key script puts back once it
+            # has unwrapped it. The second is what saves the password
+            # prompt on every call, and it is the one with a lifetime.
+            key_role = command_args.get('key_role')
+            private_key = command_args.get('private_key')
+            decrypted = command_args.get('decrypted', False)
+            if key_role not in PRIVATE_KEY_ROLES:
+                message = _("Unknown key role: {key_role}")
+                message = message.format(key_role=key_role)
+                status = False
+            elif not private_key:
+                message = "Got empty private key."
+                status = False
+            elif not self.session:
+                message = "No login session."
+                status = False
+            else:
+                session_lock = self.acquire_session_lock(self.session_id)
+                try:
+                    session = self.login_sessions[self.login_pid]
+                    # A copy and back, because what we hold is shared
+                    # between processes and changing it in place does
+                    # not reach them (multiprocessing.get_dict()).
+                    if decrypted:
+                        cached_keys = dict(session.get('cached_keys') or {})
+                        cached_keys[key_role] = {
+                                        'private_key'   : private_key,
+                                        'cache_time'    : time.monotonic(),
+                                        }
+                        session['cached_keys'] = cached_keys
+                    else:
+                        private_keys = dict(session.get('private_keys') or {})
+                        private_keys[key_role] = private_key
+                        session['private_keys'] = private_keys
+                    self.login_sessions[self.login_pid] = session
+                    self.session = session
+                except KeyError:
+                    message = "No login session."
+                    status = False
+                else:
+                    log_msg = _("Added {key_role} private key for user '{user}'.", log=True)[1]
+                    log_msg = log_msg.format(key_role=key_role, user=self.login_user)
+                    self.logger.debug(log_msg)
+                    message = "Added private key"
+                    status = True
+                finally:
+                    session_lock.release_lock()
+
+        elif command == "get_private_key":
+            key_role = command_args.get('key_role')
+            decrypted = command_args.get('decrypted', False)
+            if key_role not in PRIVATE_KEY_ROLES:
+                message = _("Unknown key role: {key_role}")
+                message = message.format(key_role=key_role)
+                status = False
+            else:
+                private_key = self.get_session_private_key(key_role,
+                                                        decrypted=decrypted)
+                if private_key:
+                    message = private_key
+                    status = True
+                else:
+                    message = "No private key"
+                    status = False
+
+        elif command == "del_private_key":
+            # Both kinds at once: they are the same key, and a caller
+            # that wants one of them gone wants the other gone too.
+            key_role = command_args.get('key_role')
+            if key_role not in PRIVATE_KEY_ROLES:
+                message = _("Unknown key role: {key_role}")
+                message = message.format(key_role=key_role)
+                status = False
+            elif not self.session:
+                message = "No login session."
+                status = False
+            else:
+                session_lock = self.acquire_session_lock(self.session_id)
+                try:
+                    session = self.login_sessions[self.login_pid]
+                    for x_key in ("private_keys", "cached_keys"):
+                        x_keys = dict(session.get(x_key) or {})
+                        x_keys.pop(key_role, None)
+                        session[x_key] = x_keys
+                    self.login_sessions[self.login_pid] = session
+                    self.session = session
+                except KeyError:
+                    message = "No login session."
+                    status = False
+                else:
+                    message = "Private key removed"
+                    status = True
+                finally:
+                    session_lock.release_lock()
+
         elif command == "add_rsp":
             status = True
             try:
@@ -1321,43 +1451,59 @@ class OTPmeAgentP1(object):
                 share = command_args['share']
             except KeyError:
                 share = None
-            if site:
+            realm = self.realm
+            share_error = None
+            if share:
+                # A share ID names the realm and the site of the share, so
+                # a caller asking for a share does not name them again. And
+                # a share of another realm needs the RSP of that realm, not
+                # the one of ours.
                 try:
-                    rsp = self.session['server_sessions'][self.realm][site]['rsp']
+                    realm, site, share_name = stuff.split_share_id(share)
                 except Exception:
-                    # If no RSP exists for this site, try login to the site.
-                    login_request = {
-                                'login_pid' : self.login_pid,
-                                'realm'     : self.realm,
-                                'site'      : site,
-                                'daemon'    : 'agent',
-                                }
-                    try:
-                        self.send_command(command="login_user",
-                                        request=login_request)
-                    except Exception as e:
-                        message = str(e)
-                        status = False
-                    # Re-load session.
-                    try:
-                        self.session = self.login_sessions[self.login_pid]
-                    except KeyError:
-                        pass
-                    # Try to get RSP.
-                    try:
-                        rsp = self.session['server_sessions'][self.realm][site]['rsp']
-                    except Exception:
-                        rsp = None
-            else:
-                rsp = self.rsp
-            if rsp:
-                rsp_hash = otpme_pass.gen_one_iter_hash(self.login_user, rsp)
-                otp = sotp.gen(password_hash=rsp_hash, share=share)
-                message = {'username':self.login_user, 'sotp':otp}
-                status = True
-            else:
-                message = _("No server session.")
+                    share_error = _("Invalid share ID: {share}")
+                    share_error = share_error.format(share=share)
+            if share_error:
+                message = share_error
                 status = False
+            else:
+                if site:
+                    try:
+                        rsp = self.session['server_sessions'][realm][site]['rsp']
+                    except Exception:
+                        # If no RSP exists for this site, try login to the site.
+                        login_request = {
+                                    'login_pid' : self.login_pid,
+                                    'realm'     : realm,
+                                    'site'      : site,
+                                    'daemon'    : 'agent',
+                                    }
+                        try:
+                            self.send_command(command="login_user",
+                                            request=login_request)
+                        except Exception as e:
+                            message = str(e)
+                            status = False
+                        # Re-load session.
+                        try:
+                            self.session = self.login_sessions[self.login_pid]
+                        except KeyError:
+                            pass
+                        # Try to get RSP.
+                        try:
+                            rsp = self.session['server_sessions'][realm][site]['rsp']
+                        except Exception:
+                            rsp = None
+                else:
+                    rsp = self.rsp
+                if rsp:
+                    rsp_hash = otpme_pass.gen_one_iter_hash(self.login_user, rsp)
+                    otp = sotp.gen(password_hash=rsp_hash, share=share)
+                    message = {'username':self.login_user, 'sotp':otp}
+                    status = True
+                else:
+                    message = _("No server session.")
+                    status = False
 
         elif command == "get_slp":
             if self.slp:

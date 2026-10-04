@@ -44,7 +44,7 @@ def recv(socket_handler, recv_buffer=None, **kwargs):
     if recv_buffer:
         max_len = recv_buffer
     else:
-        max_len = config.socket_receive_buffer
+        max_len = config.max_request_size
     if data_len > max_len:
         msg = _("Message size {data_len} exceeds maximum {max_len}")
         msg = msg.format(data_len=data_len, max_len=max_len)

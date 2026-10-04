@@ -20,6 +20,17 @@ from otpme.lib.socket.send_recv1 import sendall
 
 from otpme.lib.exceptions import *
 
+# How much one raw read takes off the socket when the caller does not
+# say. Not a limit on anything: how large a message may be is decided
+# in send_recv1.recv(), which reads the length off the header and asks
+# for exactly that.
+#
+# It matters because recv(n) allocates n: measured, recv(104857600)
+# took 104857633 bytes to receive ten. The two callers that leave this
+# to us are the socket protocol negotiation, on both sides of every
+# connection, and what they read is "socket_protos:1" -- fifteen bytes.
+RAW_RECV_SIZE = 65536
+
 SOCKET_PROTOS = {
                     '1' : {
                             'send'      : send,
@@ -79,7 +90,7 @@ class SocketProtoHandler(object):
             totalsent = totalsent + sent
         return totalsent
 
-    def raw_recv(self, recv_buffer=config.socket_receive_buffer):
+    def raw_recv(self, recv_buffer=RAW_RECV_SIZE):
         """ Actually receive data. """
         # Restart data receiving on EINTR.
         # https://stackoverflow.com/questions/14136195/what-is-the-proper-way-to-handle-in-python-ioerror-errno-4-interrupted-syst

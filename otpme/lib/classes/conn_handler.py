@@ -38,7 +38,7 @@ class ConnHandler(object):
         # daemons (authd etc.) are tight; bulk daemons stay generous.
         # Falls back to the global socket buffer for unlisted daemons.
         self.max_request_size = config.daemon_max_request_size.get(
-                                name, config.socket_receive_buffer)
+                                name, config.max_request_size)
         # How long we wait for the next request before hanging up. None
         # for the daemons that have no timeout configured, which is what
         # recv() wants for "wait as long as it takes".
@@ -99,6 +99,20 @@ class ConnHandler(object):
                 try:
                     handler_response = self.proto_handler.process(data)
                     status = True
+                except ConnectionHijacked as e:
+                    # The handler has stopped speaking our protocol on
+                    # this connection and used the socket for something
+                    # else (racd splices two of them and what travels
+                    # is SSH). No final response: a closing frame would
+                    # land in the middle of that. And the connection is
+                    # told, so that closing it does not say "quit" on it
+                    # for the same reason.
+                    log_msg = _("Connection handed over by protocol handler: {reason}", log=True)[1]
+                    log_msg = log_msg.format(reason=e)
+                    self.logger.debug(log_msg)
+                    self.connection.hand_over()
+                    final_response = None
+                    break
                 except ServerQuit as e:
                     final_response = f"{e}"
                     status = status_codes.SERVER_QUIT

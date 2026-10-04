@@ -68,9 +68,14 @@ write_value_acls = {
                             ],
                 "enable"    : [
                             "id_check",
+                            # enable_id_range_recheck() asks for it and
+                            # it was in no list, so the re-check could
+                            # be switched by an admin only.
+                            "id_range_recheck",
                             ],
                 "disable"   : [
                             "id_check",
+                            "id_range_recheck",
                             ],
                 }
 

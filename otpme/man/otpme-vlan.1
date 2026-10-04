@@ -122,9 +122,12 @@ Remove a token from the VLAN.
 Add a role to the VLAN. Every token, host and device of the role is then in
 the VLAN, and so is every role nested in it, unless a VLAN names one of them
 more closely.
+.br
+The role is looked for in the site of the VLAN, or written as \fIsite\fB/\fIrole\fR to take one from another site of the realm.
 .TP
 .B remove_role \fIvlan\fR \fIrole\fR
 Remove a role from the VLAN.
+A UUID is taken as well, which is how a reference to a role that is gone is cleared out.
 .TP
 .B add_host \fIvlan\fR \fIhost\fR
 Add a host to the VLAN. Used for MAB port authentication.
@@ -328,6 +331,7 @@ OTPme data directory
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
+.BR otpme\-acls (7),
 .BR otpme-token (1),
 .BR otpme-host (1),
 .BR otpme-device (1)

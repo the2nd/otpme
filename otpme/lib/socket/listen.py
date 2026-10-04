@@ -239,9 +239,20 @@ class ListenSocket(object):
                 log_msg = log_msg.format(code=e[0], message=e[1])
                 self.logger.error(log_msg)
                 return False
-            # Set send/recv buffer.
-            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, config.socket_send_buffer)
-            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, config.socket_receive_buffer)
+            # Set send/recv buffer, for the daemons that move data in
+            # bulk. On the listening socket, which is where an accepted
+            # connection inherits it from, so one place covers them all.
+            #
+            # Only for those: setting the option turns the kernel's own
+            # sizing off, and a daemon whose connections carry a
+            # keepalive would then hold the size for nothing. See
+            # daemon_socket_buffer in otpme/lib/otpme_config.py.
+            buffer_size = config.daemon_socket_buffer.get(self.name)
+            if buffer_size:
+                self._socket.setsockopt(socket.SOL_SOCKET,
+                                    socket.SO_SNDBUF, buffer_size)
+                self._socket.setsockopt(socket.SOL_SOCKET,
+                                    socket.SO_RCVBUF, buffer_size)
             # Disable Nagle's algorithm for lower latency.
             if self.protocol == "tcp":
                 self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -1054,6 +1065,7 @@ class ListenSocket(object):
                                     join=False)
                 except Exception as e:
                     log_msg = _("Failed to start connection handler: {e}", log=True)[1]
+                    log_msg = log_msg.format(e=e)
                     self.logger.warning(log_msg)
                 else:
                     # Add process to dict.
@@ -1070,6 +1082,7 @@ class ListenSocket(object):
                                     daemon=True)
                 except Exception as e:
                     log_msg = _("Failed to start connection handler: {e}", log=True)[1]
+                    log_msg = log_msg.format(e=e)
                     self.logger.warning(log_msg)
                 else:
                     # Add process to dict.
@@ -1462,6 +1475,9 @@ class Connection(object):
         self.peer_cert = peer_cert
         # Connection status.
         self.connected = True
+        # Whether the socket has been given to something else, see
+        # hand_over().
+        self.handed_over = False
         if logger:
             self.logger = logger
         else:
@@ -1547,7 +1563,7 @@ class Connection(object):
             if timeout is not None and self.connected:
                 self.set_timeout(org_timeout)
 
-    def recv(self, recv_buffer=config.socket_receive_buffer, timeout=None):
+    def recv(self, recv_buffer=config.max_request_size, timeout=None):
         """ Receive data from connection. """
         org_timeout = self.timeout
         if timeout is not None:
@@ -1580,6 +1596,18 @@ class Connection(object):
             if timeout is not None and self.connected:
                 self.set_timeout(org_timeout)
 
+    def hand_over(self):
+        """ The connection has stopped being one of ours.
+
+        A protocol handler may give the socket to something else -- racd
+        gives one to a remote access session, and what travels through it
+        from then on is SSH. After this we neither speak on it nor shut it
+        down, because "quit" on the way out would land in the middle of
+        that session and a shutdown would take it down. Closing it stays
+        ours to do, since the session is over by the time we get here.
+        """
+        self.handed_over = True
+
     def close(self):
         """ Close connection. """
         if not self.connected:
@@ -1588,10 +1616,14 @@ class Connection(object):
             log_msg = _("Closing connection to '{client}'", log=True)[1]
             log_msg = log_msg.format(client=self.client)
             self.logger.debug(log_msg)
-        try:
-            self.send("quit", timeout=0.01)
-        except OSError:
-            pass
+        if not self.handed_over:
+            # Four bytes that say the OTPme protocol is done with this
+            # connection. Not said on one that something else is using,
+            # where they would arrive in the middle of it.
+            try:
+                self.send("quit", timeout=0.01)
+            except Exception:
+                pass
         self.connected = False
         self._close()
 

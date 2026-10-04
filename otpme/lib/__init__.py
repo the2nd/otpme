@@ -229,10 +229,11 @@ def init_otpme(use_backend=None, load_host_data=True):
     from otpme.lib.register import register_module
     register_module('otpme.lib.host')
     register_module('otpme.lib.cache')
-    # FIXME: Migrate to register_at_fork() when on python3.
-    #from otpme.lib.multiprocessing import atfork
-    ## Register forking stuff.
-    #os.register_at_fork(atfork)
+    # The connection cache registers its own at-fork handler, see
+    # otpme/lib/connections.py. The rest of what multiprocessing.atfork()
+    # does is still left to whoever forks: it wants to know whether to
+    # keep locks, it refuses to run from a thread, and it is not needed
+    # by a child that only reads.
     # Get logger.
     logger = config.logger
 

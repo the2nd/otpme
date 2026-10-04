@@ -18,7 +18,12 @@ SCRIPT_LINES_OFFSET="5"
 TMP_DIR="/tmp/otpme-key-script.$RANDOM"
 mkdir -p "$TMP_DIR"
 
-if (exec < /dev/tty) ; then
+# Quiet, because the failing case is a normal one: started from a
+# daemon there is no controlling terminal, and bash says so on stderr
+# even though the "if" is here to handle it. That line then travels
+# with whatever error the caller reports (stuff.sign_sotp()) and reads
+# like the cause of it.
+if (exec < /dev/tty) 2>/dev/null ; then
 	export TTY="/dev/tty"
 fi
 
@@ -52,6 +57,10 @@ KEY_MODE="client"
 # Asymmetric key algorithm. "rsa" today; later "ed25519" (sign) or
 # "x25519" (encrypt). Overridable per call via --algo.
 ALGO="rsa"
+# How long we wait for otpme-agent to answer about a private key. It is
+# a shortcut and not the only way to the key, so an agent that does not
+# answer must cost us this much and then the server, not the signature.
+AGENT_TIMEOUT="5"
 
 PASS_DECRYPT_SCRIPT='#!/bin/bash
 SELF_LINES="$(head -n '$SCRIPT_LINES_OFFSET' "$0" | grep "#OTPME_SCRIPT_LINES:" | cut -d ":" -f 2)"
@@ -366,6 +375,56 @@ get_public_key () {
 	echo "$PUBLIC_KEY" | base64 -d
 }
 
+get_agent_private_key () {
+	# A private key of the user from otpme-agent. With --decrypted the
+	# unwrapped one the last call left there, without it the one the
+	# login brought, wrapped with the users key password.
+	#
+	# Quiet, and never fatal: an agent that holds no key is the normal
+	# case on the first call, and one that is not running at all is
+	# the normal case on a host the user did not log in on. Both end
+	# non-zero, and "set -e" up there would take the whole script down
+	# with them.
+	local ROLE="$1"
+	local DECRYPTED_OPT="$2"
+	timeout "$AGENT_TIMEOUT" otpme-tool get_private_key --role "$ROLE" $DECRYPTED_OPT 2>/dev/null || true
+}
+
+add_agent_private_key () {
+	# Leave the unwrapped key with otpme-agent, which keeps it for the
+	# users key cache time. This is what saves the password prompt on
+	# every call. Failing to leave it there costs the next call a
+	# password and nothing else, so it is not an error either.
+	local ROLE="$1"
+	local PRIVATE_KEY="$2"
+	echo "$PRIVATE_KEY" | timeout "$AGENT_TIMEOUT" otpme-tool add_private_key --role "$ROLE" --decrypted >/dev/null 2>&1 || true
+}
+
+get_key_algo () {
+	# The algorithm of a private key, read off the key itself.
+	#
+	# Asking the server for it (otpme-user get_sign_key_type) is a
+	# connection, and when we run inside otpme-agent that connection
+	# goes through the agent -- which is waiting for this signature
+	# and holds the connection lock while it does. It would be waiting
+	# for an answer only it can give. The key we already hold says the
+	# same thing and says it here.
+	local PRIVATE_KEY="$1"
+	local KEY_TEXT=""
+	KEY_TEXT="$(echo "$PRIVATE_KEY" | openssl pkey -noout -text 2>/dev/null | head -n 1)" || true
+	case "$KEY_TEXT" in
+		*ED25519*)
+			echo "ed25519"
+		;;
+		*X25519*)
+			echo "x25519"
+		;;
+		*Private-Key*)
+			echo "rsa"
+		;;
+	esac
+}
+
 dump_private_key () {
 	# Role arg: "sign" or "encrypt". Picks the matching cache env var
 	# and otpme-user subcommand.
@@ -390,6 +449,26 @@ dump_private_key () {
 		echo "$CACHE_VAR"
 		return
 	fi
+	# From otpme-agent, where the login left it. The same key the
+	# server would hand out below, without asking it and without
+	# needing it to be reachable at all.
+	AGENT_KEY="$(get_agent_private_key "$ROLE")"
+	if [ "$AGENT_KEY" != "" ] ; then
+		echo "$AGENT_KEY"
+		return
+	fi
+	# Everything below this line asks the servers, and there are
+	# callers that must not (otpme-agent, see run_key_script()). Say
+	# so and stop, instead of waiting for an answer that cannot come.
+	if [ "$_OTPME_KEYSCRIPT_NO_SERVER" != "" ] ; then
+		# Asked again, loud this time. What the agent says is the
+		# difference between "no key for this session", "I do not know
+		# that session" and "no agent here at all", and whoever reads
+		# this error has no other way to tell them apart.
+		AGENT_ERROR="$(timeout "$AGENT_TIMEOUT" otpme-tool get_private_key --role "$ROLE" 2>&1 || true)"
+		echo "dump_private_key: no $ROLE key from otpme-agent ($AGENT_ERROR), and asking the server is not allowed here" 1>&2
+		return 1
+	fi
 	tty_message "Loading $ROLE private key..."
 	PRIVATE_KEY="$(otpme-user $OTPME_OPTS $DUMP_CMD -p "$_OTPME_KEYSCRIPT_USER")"
 	echo $PRIVATE_KEY
@@ -397,10 +476,23 @@ dump_private_key () {
 
 get_private_key () {
 	local ROLE="${1:-sign}"
+	# The unwrapped key from otpme-agent first. It is there when this
+	# script has already been asked to use the key and the cache time
+	# of the user has not run out -- which is what this is for: one
+	# password for a session, not one per signature.
+	CACHED_KEY="$(get_agent_private_key "$ROLE" "--decrypted")"
+	if [ "$CACHED_KEY" != "" ] ; then
+		echo "$CACHED_KEY"
+		return
+	fi
 	if ! PRIVATE_KEY="$(dump_private_key "$ROLE")" ; then
 		return 1
 	fi
-	echo "$PRIVATE_KEY" | base64 -d | decrypt_key
+	if ! PRIVATE_KEY="$(echo "$PRIVATE_KEY" | base64 -d | decrypt_key)" ; then
+		return 1
+	fi
+	add_agent_private_key "$ROLE" "$PRIVATE_KEY"
+	echo "$PRIVATE_KEY"
 }
 
 yk_derive_aes_key () {
@@ -835,11 +927,86 @@ case "$COMMAND" in
 	;;
 
 	gen_csr)
-		PRIVATE_KEY="$(get_private_key sign)"
-		CSR_SUBJECT="/C=DE/ST=BE/L=Berlin/O=OTPme/OU=Development/CN=otpme.org"
-		OPENSSL_CSR_CMD="openssl req -new -nodes -key /dev/stdin -subj "$CSR_SUBJECT""
-		if ! CSR="$(echo "$PRIVATE_KEY" | $OPENSSL_CSR_CMD)" ; then
+		# Two forms of the same subject, because the two tools below
+		# take different ones and escape differently: openssl wants
+		# "/O=OTPme/CN=alice", ykman wants "CN=alice,O=OTPme". Both are
+		# built where the attributes are known, in
+		# otpme/lib/pki/utils.py, rather than turned into one another
+		# here with a shell and a hope.
+		# Named and not positional: what a request asks for beside the
+		# subject is optional, and leaving one of them out must not
+		# move the next one.
+		CSR_SUBJECT_OPENSSL=""
+		CSR_SUBJECT_RFC4514=""
+		# The slot to make the request for. Empty means the one this
+		# script was configured with (--yubikey-piv), which is the key
+		# the user signs with.
+		CSR_SLOT=""
+		CSR_SAN_EMAIL=""
+		CSR_KEY_USAGE=""
+		CSR_EXT_KEY_USAGE=""
+		# What openssl needs said its own way, one -addext each.
+		CSR_OPENSSL_EXT=()
+		CSR_INDEX=0
+		while [ "${PARAMETERS[$CSR_INDEX]}" != "" ] ; do
+			CSR_ARG="${PARAMETERS[$CSR_INDEX]}"
+			CSR_INDEX=$((CSR_INDEX+1))
+			CSR_VAL="${PARAMETERS[$CSR_INDEX]}"
+			CSR_INDEX=$((CSR_INDEX+1))
+			case "$CSR_ARG" in
+				--openssl-subject)	CSR_SUBJECT_OPENSSL="$CSR_VAL" ;;
+				--rfc4514-subject)	CSR_SUBJECT_RFC4514="$CSR_VAL" ;;
+				--slot)				CSR_SLOT="$CSR_VAL" ;;
+				--san-email)		CSR_SAN_EMAIL="$CSR_VAL" ;;
+				--key-usage)		CSR_KEY_USAGE="$CSR_VAL" ;;
+				--ext-key-usage)	CSR_EXT_KEY_USAGE="$CSR_VAL" ;;
+				--openssl-ext)		CSR_OPENSSL_EXT+=(-addext "$CSR_VAL") ;;
+				*)
+					echo "gen_csr: unknown argument: $CSR_ARG" 1>&2
+					exit 1
+				;;
+			esac
+		done
+		if [ "$CSR_SUBJECT_OPENSSL" = "" ] || [ "$CSR_SUBJECT_RFC4514" = "" ] ; then
+			echo "gen_csr: missing subject." 1>&2
 			exit 1
+		fi
+		if [ "$YUBIKEY_PIV" = "true" ] ; then
+			# The private key is on the card and does not come off it,
+			# so the card signs the request.
+			export PIN="$(read_pass_from_tty "Token PIN: ")"
+			if [ "$PIN" = "" ] ; then
+				exit 1
+			fi
+			if [ "$CSR_SLOT" = "" ] ; then
+				CSR_SLOT="$YUBIKEY_SLOT"
+			fi
+			# An array, so an empty slot adds no word at all and a slot
+			# with a space in it stays one. Unquoted "$SLOT_OPT" would
+			# hand "--slot" over on its own where the value is blank.
+			# Arrays, so an option that was not given adds no word at
+			# all and a value with a space in it stays one word.
+			CSR_OPTS=()
+			if [ "$CSR_SLOT" != "" ] ; then
+				CSR_OPTS+=(--slot "$CSR_SLOT")
+			fi
+			if [ "$CSR_SAN_EMAIL" != "" ] ; then
+				CSR_OPTS+=(--san-email "$CSR_SAN_EMAIL")
+			fi
+			if [ "$CSR_KEY_USAGE" != "" ] ; then
+				CSR_OPTS+=(--key-usage "$CSR_KEY_USAGE")
+			fi
+			if [ "$CSR_EXT_KEY_USAGE" != "" ] ; then
+				CSR_OPTS+=(--ext-key-usage "$CSR_EXT_KEY_USAGE")
+			fi
+			if ! CSR="$(otpme-yk-piv --csr --subject "$CSR_SUBJECT_RFC4514" "${CSR_OPTS[@]}" --pin "env:PIN")" ; then
+				exit 1
+			fi
+		else
+			PRIVATE_KEY="$(get_private_key sign)"
+			if ! CSR="$(echo "$PRIVATE_KEY" | openssl req -new -nodes -key /dev/stdin -subj "$CSR_SUBJECT_OPENSSL" "${CSR_OPENSSL_EXT[@]}")" ; then
+				exit 1
+			fi
 		fi
 		if [ "$CSR" = "" ] ; then
 			exit 1
@@ -948,7 +1115,11 @@ case "$COMMAND" in
 			cat - | otpme-user $OTPME_OPTS decrypt --stdin-data "$_OTPME_KEYSCRIPT_USER" | base64 -d
 		elif [ "$KEY_MODE" = "client" ] ; then
 			PRIVATE_KEY="$(get_private_key encrypt)"
-			ALGO="$(otpme-user $OTPME_OPTS get_enc_key_type "$_OTPME_KEYSCRIPT_USER")"
+			# From the key and not from the server, see get_key_algo().
+			KEY_ALGO="$(get_key_algo "$PRIVATE_KEY")"
+			if [ -n "$KEY_ALGO" ] ; then
+				ALGO="$KEY_ALGO"
+			fi
 			case "$ALGO" in
 				rsa)
 					cat - | base64 -d | openssl pkeyutl -decrypt -inkey <(echo -n "$PRIVATE_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
@@ -1003,9 +1174,10 @@ case "$COMMAND" in
 			fi
 		elif [ "$KEY_MODE" = "client" ] ; then
 			PRIVATE_KEY="$(get_private_key sign)"
-			# Like pkey_encrypt/pkey_decrypt ask the server for the key
-			# algo instead of trusting --algo (which defaults to rsa).
-			SIGN_ALGO="$(otpme-user $OTPME_OPTS get_sign_key_type "$_OTPME_KEYSCRIPT_USER")"
+			# The key algo instead of trusting --algo (which defaults
+			# to rsa). From the key and not from the server, see
+			# get_key_algo().
+			SIGN_ALGO="$(get_key_algo "$PRIVATE_KEY")"
 			if [ -z "$SIGN_ALGO" ] ; then
 				SIGN_ALGO="$ALGO"
 			fi

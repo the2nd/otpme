@@ -37,6 +37,56 @@ class _IdleDispatcher:
         self.lock = threading.Lock()
         self.subscribers = {}
         self.login_data = {}
+        # Hosts keep a keyspace of their own. A user is reached by its
+        # name and a host by its uuid, and the two must not meet in the
+        # middle: a user named like a host would otherwise be handed
+        # what the host was meant to hear.
+        self.host_subscribers = {}
+        self.host_data = {}
+
+    def subscribe_host(self, host_uuid, host_data):
+        """ A host that wants to be told when there is something for it.
+
+        Keyed by uuid and not by name: a host is named within its site,
+        the uuid is the thing that is one host and no other.
+        """
+        q = queue.Queue()
+        with self.lock:
+            self.host_subscribers.setdefault(host_uuid, []).append(q)
+            self.host_data[host_uuid] = host_data
+        return q
+
+    def unsubscribe_host(self, host_uuid, q):
+        with self.lock:
+            try:
+                self.host_subscribers[host_uuid].remove(q)
+            except (KeyError, ValueError):
+                pass
+            if not self.host_subscribers.get(host_uuid):
+                self.host_subscribers.pop(host_uuid, None)
+                self.host_data.pop(host_uuid, None)
+
+    def publish_host(self, host_uuid, event):
+        """ Tell a host. Returns how many of its connections heard it.
+
+        Zero is an answer and not an error: a host that is not here
+        picks the news up on its next round, which is what it did
+        before anybody was told anything.
+        """
+        with self.lock:
+            queues = list(self.host_subscribers.get(host_uuid, ()))
+        told = 0
+        for q in queues:
+            try:
+                q.put_nowait(copy.deepcopy(event))
+                told += 1
+            except Exception:
+                pass
+        return told
+
+    def get_host_data(self):
+        with self.lock:
+            return copy.deepcopy(self.host_data)
 
     def subscribe(self, username, host, login_data):
         q = queue.Queue()

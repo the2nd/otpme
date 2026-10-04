@@ -324,12 +324,13 @@ class TokenaclsPolicy(Policy):
         # Get user ACLs from policy and token itself.
         user_acls = set(self.user_acls + token.user_acls)
 
-        # Add user ACLs.
-        for acl in user_acls:
+        # Add user ACLs. All of them in one call: each one would
+        # otherwise read and write the object again.
+        if user_acls:
             exception = _("Failed to {action} user ACL")
             exception = exception.format(action=action)
             try:
-                acl_status = user_acl_method(acl=acl,
+                acl_status = user_acl_method(acls=list(user_acls),
                                             owner_uuid=token.uuid,
                                             owner_type="token",
                                             ignore_unknown_owner=True,
@@ -356,11 +357,11 @@ class TokenaclsPolicy(Policy):
         token_acls = set(self.token_acls + token.token_acls)
 
         # Add ACL to new token to access itself.
-        for acl in token_acls:
+        if token_acls:
             exception = _("Failed to {action} token ACL")
             exception = exception.format(action=action)
             try:
-                acl_status = token_acl_method(acl=acl,
+                acl_status = token_acl_method(acls=list(token_acls),
                                             owner_uuid=token.uuid,
                                             owner_type="token",
                                             ignore_unknown_owner=True,
@@ -383,12 +384,12 @@ class TokenaclsPolicy(Policy):
         if not x_token:
             return callback.ok()
 
-        for acl in self.token_acls:
+        if self.token_acls:
             exception = _("Failed to {action} token ACL")
             exception = exception.format(action=action)
             # Add ACL to new token to be accessed by default token.
             try:
-                token_acl_method(acl=acl,
+                token_acl_method(acls=list(self.token_acls),
                                 owner_uuid=x_token.uuid,
                                 owner_type="token",
                                 ignore_unknown_owner=True,
@@ -415,12 +416,12 @@ class TokenaclsPolicy(Policy):
         creator_acls = self.creator_acls + token.creator_acls
 
         # Add token creator ACLs.
-        for acl in creator_acls:
+        if creator_acls:
             exception = _("Failed to {action} creator ACL")
             exception = exception.format(action=action)
             # Add ACL to new token to be accessed by token creator.
             try:
-                token_acl_method(acl=acl,
+                token_acl_method(acls=list(creator_acls),
                                 owner_uuid=config.auth_token.uuid,
                                 owner_type="token",
                                 ignore_unknown_owner=True,

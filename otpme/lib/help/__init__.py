@@ -24,6 +24,7 @@ command_map = {
     # :{name}:      = opt is a dict (e.g. arg1=val1,arg2=val2,...)
     # <>            = required para
     # []            = optional para
+    # <[name]>      = required para is a list (e.g. val1,val2,val3,...)
     # |object|      = OTPme object
     # :+name+:      = Allow multiple occurance of the opt.
     # <file:name>   = Read file
@@ -132,7 +133,8 @@ register_global_opt("--print-raw-sign-data", "When asked to sign, show the raw d
 #register_global_opt("--ignore-changed-objects", "Sync objects even if they changed while syncing.")
 register_global_opt("--version", "Show version")
 register_global_opt("-v", "Enable verbose mode")
-register_global_opt("-dd", "Enable debug output (log level DEBUG). -d always needs a topic letter, see otpme(1).")
+register_global_opt("-dd", "Show the log on stdout, at the log level it already has. -d always needs a topic letter, see otpme(1).")
+register_global_opt("-ddd", "Show the log on stdout at log level DEBUG.")
 register_global_opt("-da", "Debug function cache adds")
 register_global_opt("-dA", "Enable debug of transactions.")
 register_global_opt("-dA1", "Debug reading/writing transactions on disk.")
@@ -145,7 +147,7 @@ register_global_opt("-dr", "Print file reads")
 register_global_opt("-dw", "Print file writes")
 register_global_opt("-dC", "Enable debug logging for client messages")
 register_global_opt("-dC1", "Debug client side crypto (keys, DH, signatures).")
-register_global_opt("-dD", "Do not go to background and log to stdout.")
+register_global_opt("-dD", "Do not go to background. Add -dd to see the log.")
 register_global_opt("-de", "Print tracebacks.")
 register_global_opt("-dee", "Raise debug exceptions.")
 register_global_opt("-dE", "Include exception info in warning/error/critical/fatal log records.")

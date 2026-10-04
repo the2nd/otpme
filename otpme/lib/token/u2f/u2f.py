@@ -58,6 +58,9 @@ write_acls =  []
 read_value_acls = {
                 "view"      : [
                             "attestation_cert",
+                            # show_config() offers it to whoever holds
+                            # it, and it was in no list.
+                            "key_handle",
                             "auth_script",
                             "offline_status",
                             "offline_expiry",

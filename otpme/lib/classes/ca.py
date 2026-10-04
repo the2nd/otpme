@@ -77,8 +77,15 @@ write_value_acls = {
                     "renew"     : [ "cert" ],
                     "revoke"    : [ "cert" ],
                     "edit"      : [
-                                "config"
-                                "crl_validity"
+                                # One list entry and not two: the comma
+                                # was missing, so this read
+                                # "edit:configcrl_validity" and
+                                # set_crl_validity(), which asks for
+                                # "edit:crl_validity", could be run by
+                                # nobody but an admin. "config" itself
+                                # is asked for nowhere ("set:config" is
+                                # the one every object has), so it goes.
+                                "crl_validity",
                                 ],
         }
 
@@ -412,7 +419,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'cache_update_interval' : 30,
+                    'args'              : ['owner_type', 'owner_name', 'acls', 'recursive_acls', 'apply_default_acls',],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -422,7 +430,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['acls'],
                     'oargs'             : ['recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',

@@ -33,7 +33,6 @@ from otpme.lib import config
 from otpme.lib import locking
 from otpme.lib import backend
 from otpme.lib import otpme_acl
-from otpme.lib import encryption
 from otpme.lib.humanize import units
 from otpme.lib.audit import audit_log
 from otpme.lib import multiprocessing
@@ -78,6 +77,11 @@ DEFAULT_INFO_LANGUAGE = "info"
 logger = config.logger
 default_callback = config.get_callback()
 
+# How many lines of a listing go over the connection in one message.
+# One send() per line is one message per line, and a listing of some
+# thousand of them pays that for each.
+ACL_SEND_BLOCK = 100
+
 # Default value of the "ldif_whitelist_attributes" site config parameter:
 # LDIF attributes every authenticated user may read, without needing a
 # "view:attribute:<attr>" ACL. These are the ones an LDAP client needs to
@@ -100,6 +104,13 @@ global_read_acls = [
                     "view_all",
                     "view",
                     "export",
+                    # verify_signature() asks for it and it was in no
+                    # list, so nobody but an admin could verify the
+                    # signatures of an object. Its own ACL on purpose:
+                    # the method says one may want to let somebody
+                    # check a signature without letting them see the
+                    # object.
+                    "verify_signature",
                 ]
 global_write_acls = [
                     "all",
@@ -113,6 +124,13 @@ global_write_acls = [
                     "disable",
                     "import",
                     "touch",
+                    # move() asks for it, here and in Unit.move(), and
+                    # it was in no list: moving an object to another
+                    # unit could be done by an admin only. Global,
+                    # because the method is, and a write ACL, so a site
+                    # we only have a copy of refuses it like the others
+                    # (see write_acl_types below).
+                    "move",
                 ]
 # ACL types that change the object (e.g. the "edit" of
 # "edit:description"). The ones missing in global_write_acls are only
@@ -203,6 +221,12 @@ global_write_value_acls = {
                                 "attribute",
                                 "info",
                                 "changelog",
+                                # change_description() asks for
+                                # "edit:description" and every object
+                                # has one, but it was in no list, so
+                                # nobody but an admin could ever hold
+                                # it.
+                                "description",
                                 ],
                     "set"      : [
                                 "config",
@@ -258,6 +282,14 @@ def get_recursive_default_acls(recursive_default_acls):
                                 global_recursive_default_acls)
     return _acls
 
+def get_acls_string(acls):
+    """ One ACL or a list of them, for a message to read. """
+    if not acls:
+        return ""
+    if isinstance(acls, str):
+        return acls
+    return ", ".join([str(x) for x in acls])
+
 def get_global_acls(split=False):
     """ Get all supported object ACLs """
     if split:
@@ -279,6 +311,47 @@ def get_global_default_acls():
 def get_global_recursive_default_acls():
     """ Get all supported object recursive default ACLs """
     return global_recursive_default_acls
+
+def get_auth_roles(object_roles, token_uuid, nested_roles):
+    """ The roles a token authenticates to an object through.
+
+    A policy on a role has to apply to the logins that role lets
+    through, and to no others: login times on a role the token does not
+    reach this host by would refuse a login the role has nothing to do
+    with. So a role counts here when both halves hold -- it is assigned
+    to the object, and it holds the token.
+
+    Both halves can run through nesting, and both ends of a chain are
+    not enough to find the roles in the middle of it. A token in role C,
+    C in B, B in A, A assigned to the host: the roles of the token are
+    [C], the roles of the host are [A], and B is in neither list while
+    being just as much a part of how the token gets in. So this walks
+    down from the roles of the object -- which is where every role
+    assigned to it is reachable from -- and keeps those that hold the
+    token.
+
+    This used to take the roles of the token and the roles of the
+    object, each filtered by both halves, and intersect them. Each list
+    says the whole thing by itself, so the intersection added nothing
+    and dropped every chain longer than one role: a login times policy
+    was silently skipped as soon as the token sat in a nested role.
+
+    <object_roles> are the roles of the object, <nested_roles> hands
+    over the roles nested inside one of them, all the way down.
+    """
+    auth_roles = []
+    for role in object_roles:
+        for x_role in [role] + list(nested_roles(role)):
+            if not x_role.enabled:
+                continue
+            if x_role in auth_roles:
+                continue
+            # Nested as well: a role holds the token when any role
+            # inside it does.
+            if not x_role.is_assigned_token(token_uuid):
+                continue
+            auth_roles.append(x_role)
+    return auth_roles
 
 def run_pre_post_add_policies():
     """ Decorator to run pre/post-add policies. """
@@ -954,18 +1027,39 @@ def register_config_parameters():
                                     setter=confirmation_policy_setter,
                                     valid_values=valid_confirmation_polies,
                                     object_types=object_types)
-    # Object types our config parameters are valid for.
+    # Object types our config parameters are valid for. A script is one
+    # of them because a script carries signatures of its own (see
+    # classes/script.py), so it is an object these two say something
+    # about.
     object_types = [
                     'site',
                     'unit',
                     'user',
                     'token',
+                    'script',
+                    ]
+    # The objects that can have a token assigned to them and sign that
+    # assignment: add_token() signs the token, with tags that say which
+    # of them the token was put into (see add_token() further down), and
+    # it asks auto_sign of the object the token goes into -- that object
+    # owns the assignment, and otpme-role add_token --sign sits there
+    # too. So each of them can say "sign what I take in", which it could
+    # not while the parameter was not registered for it: the value was
+    # then looked for on the unit above it and on the site, which was
+    # nobody's decision.
+    assignment_types = [
+                    'role',
+                    'group',
+                    'accessgroup',
+                    'client',
+                    'host',
+                    'node',
                     ]
     # With the auto sign parameter enabled the user gets offered to sign the object she changes.
     config.register_config_parameter(name="auto_sign",
                                     ctype=bool,
                                     default_value=False,
-                                    object_types=object_types)
+                                    object_types=object_types + assignment_types)
     # Auto-revoke object signatures.
     config.register_config_parameter(name="auto_revoke",
                                     ctype=bool,
@@ -1591,7 +1685,8 @@ class OTPmeBaseObject(OTPmeLockObject):
         """ Get last used timestamp. """
         if not self.track_last_used:
             return
-        last_used_timestamp = backend.get_last_used(self.uuid)
+        last_used_timestamp = backend.get_last_used(self.uuid,
+                                                object_type=self.type)
         return last_used_timestamp
 
     @last_used.setter
@@ -1792,10 +1887,10 @@ class OTPmeBaseObject(OTPmeLockObject):
             return []
 
         checksum_data = self.object_config.get_checksum_data()
-        try:
-            stored_checksums = dict(self.object_config['SYNC_CHECKSUMS'])
-        except KeyError:
-            stored_checksums = {}
+        #try:
+        #    stored_checksums = dict(self.object_config['SYNC_CHECKSUMS'])
+        #except KeyError:
+        #    stored_checksums = {}
 
         sync_checksums = {}
         for audience in self.get_sync_audiences():
@@ -1809,7 +1904,7 @@ class OTPmeBaseObject(OTPmeLockObject):
             sync_checksums[audience] = audience_checksum
 
         self.object_config['SYNC_CHECKSUMS'] = sync_checksums
-        self.log_moved_sync_views(stored_checksums, sync_checksums)
+        #self.log_moved_sync_views(stored_checksums, sync_checksums)
 
         now = time.time_ns()
         index_journal = []
@@ -3321,7 +3416,6 @@ class OTPmeObject(OTPmeBaseObject):
             return self
         return site_object
 
-    @config_cache.cache_method()
     def get_config_parameter(
         self,
         parameter: str,
@@ -3340,28 +3434,56 @@ class OTPmeObject(OTPmeBaseObject):
         callers that need to resolve the referenced object want. Pass False
         to get the raw stored value.
         """
-        # Try to get config parameter.
-        try:
-            para_data = config.get_config_parameter(parameter)
-        except Exception as e:
-            if _caller == "API":
-                raise
-            return callback.error(str(e))
-        # Check if parameter is valid for this object type.
-        if _caller == "CLIENT":
+        if _caller != "API":
+            # Try to get config parameter.
             try:
-                object_types = para_data['object_types']
-            except Exception:
-                object_types = []
-            if self.type not in object_types:
-                msg = _("Config parameter not valid for object type: {parameter}: {object_type}")
-                msg = msg.format(parameter=parameter, object_type=self.type)
-                return callback.error(msg)
+                para_data = config.get_config_parameter(parameter)
+            except Exception as e:
+                return callback.error(str(e))
+            # Check if parameter is valid for this object type.
+            if _caller == "CLIENT":
+                try:
+                    object_types = para_data['object_types']
+                except Exception:
+                    object_types = []
+                if self.type not in object_types:
+                    msg = _("Config parameter not valid for object type: {parameter}: {object_type}")
+                    msg = msg.format(parameter=parameter, object_type=self.type)
+                    return callback.error(msg)
         # Verify ACLs. Used on get_config command.
+        #
+        # Here and not in _get_config_parameter(): that one is cached
+        # and who is asking is no part of its key, so a decision made
+        # for one of them would be handed to the next.
         if verify_acls:
             if not self.verify_acl(f'view:config:{parameter}'):
                 msg = "Permission denied."
                 return callback.error(msg)
+        value = self._get_config_parameter(parameter,
+                                        recursive=recursive,
+                                        apply_getter=apply_getter)
+        # The answer goes out here and not in _get_config_parameter().
+        # That one is cached, and a cached answer is handed back
+        # without anything being sent.
+        if _caller == "API":
+            return value
+        callback.send(value)
+        return callback.ok()
+
+    @config_cache.cache_method()
+    def _get_config_parameter(
+        self,
+        parameter: str,
+        recursive: bool=True,
+        apply_getter: bool=True,
+        ):
+        """ The value of one config parameter, and nothing else.
+
+        Whoever asked for it is answered by get_config_parameter(), and
+        that one also decides whether they may see it. This is cached,
+        and a cached answer is handed back without any of that.
+        """
+        para_data = config.get_config_parameter(parameter)
         # Try to get getter.
         try:
             para_getter = para_data['getter']
@@ -3400,12 +3522,7 @@ class OTPmeObject(OTPmeBaseObject):
             if not parent_object:
                 break
 
-        if _caller == "API":
-            return value
-
-        callback.send(value)
-
-        return callback.ok()
+        return value
 
     def _check_max_name_len(self, name, callback=default_callback):
         """ Enforce the configurable max_<type>_name_len policy for this
@@ -3820,27 +3937,36 @@ class OTPmeObject(OTPmeBaseObject):
         """
         The auto-sign config parameter to configre if the object should be
         signed automatically on change.
+
+        A setting on the acting token itself wins, so a token can say it
+        signs whatever it changes. Everything else comes from this
+        objects cascade, which is what lets an object ask to be signed.
         """
         # Disable auto-sign while adding a site.
         if config.site_init:
             return False
         if config.auth_token:
-            auto_sign = config.auth_token.get_config_parameter("auto_sign")
-        else:
-            auto_sign = self.get_config_parameter("auto_sign")
-        return auto_sign
+            auto_sign = config.auth_token.get_config_parameter("auto_sign",
+                                                            recursive=False)
+            if auto_sign is not None:
+                return auto_sign
+        return self.get_config_parameter("auto_sign")
 
     @property
     def auto_revoke(self):
         """
         The auto-revoke config parameter to configre if object signatures should
         be revoked automatically on object delete/update.
+
+        Read the way auto_sign is read: the acting token first, and only
+        where it says nothing this objects cascade.
         """
         if config.auth_token:
-            auto_revoke = config.auth_token.get_config_parameter("auto_revoke")
-        else:
-            auto_revoke = self.get_config_parameter("auto_revoke")
-        return auto_revoke
+            auto_revoke = config.auth_token.get_config_parameter("auto_revoke",
+                                                            recursive=False)
+            if auto_revoke is not None:
+                return auto_revoke
+        return self.get_config_parameter("auto_revoke")
 
     def get_share_notifications(self):
         """ Whether share notifications should be sent.
@@ -4225,7 +4351,19 @@ class OTPmeObject(OTPmeBaseObject):
         key_salt = None
         if password is not None:
             fake = False
-            x = encryption.derive_key(password, hash_type=config.object_export_hash_type)
+            # Derived through the module that will do the encrypting, not
+            # through the generic hash: a key is only a key for the thing
+            # that uses it. The generic one hands out a hex string, and
+            # FERNET wants 32 base64 bytes, so an export with a password
+            # ended in "Fernet key must be 32 url-safe base64-encoded
+            # bytes" and no export was ever encrypted.
+            #
+            # The same module the values are encrypted with below
+            # (ObjectConfig.encrypt_object_config asks the type of each
+            # value, and that is disk_encryption everywhere), and the
+            # same way the master key of a host is derived.
+            x = config.disk_encryption_mod.derive_key(password,
+                                    hash_type=config.object_export_hash_type)
             enc_key = x['key']
             key_salt = x['salt']
 
@@ -7882,16 +8020,33 @@ class OTPmeObject(OTPmeBaseObject):
         ldif_cache.invalidate()
         ldap_search_cache.invalidate()
 
-    @ldif_cache.cache_method()
     def get_ldif(
         self,
-        attributes: str=None,
         _caller: str="API",
-        verify_acls: bool=True,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Return objects LDIF. """
+        # The answer goes out here and not in _get_ldif(). That one is
+        # cached, and callback.ok() hands the answer to the job instead
+        # of returning it, so the cache would hold what that returned
+        # and every later call would answer with nothing.
+        ldif = self._get_ldif(_caller=_caller, **kwargs)
+        return callback.ok(ldif, return_value=True)
+
+    @ldif_cache.cache_method()
+    def _get_ldif(
+        self,
+        attributes: str=None,
+        _caller: str="API",
+        verify_acls: bool=True,
+        **kwargs,
+        ):
+        """ The LDIF of the object, and nothing else.
+
+        Whoever asked for it is answered by get_ldif(). This is cached,
+        and a cached answer is handed back without anything being sent.
+        """
         text = False
         if _caller == "CLIENT":
             text = True
@@ -7911,12 +8066,11 @@ class OTPmeObject(OTPmeBaseObject):
             photo = read_photo(self.uuid)
             if photo:
                 object_ldif['jpegPhoto'] = [photo]
-        ldif = get_ldif(ldif=object_ldif, text=text,
+        return get_ldif(ldif=object_ldif, text=text,
                         attributes=attributes,
                         verify_acl_func=verify_acl_func,
                         truncate_jpeg_photo=truncate_jpeg_photo,
                         **kwargs)
-        return callback.ok(ldif, return_value=True)
 
     def get_object_classes(
         self,
@@ -8061,18 +8215,30 @@ class OTPmeObject(OTPmeBaseObject):
         result = backend.search(attribute="acl",
                                 value=acl_search_regex,
                                 return_raw_acls=True,
-                                return_type="uuid")
+                                return_attributes=['uuid', 'read_oid'])
         acls = []
+        acls_callback_result = []
         for x_uuid in result['acls']:
-            x_oid = backend.get_oid(x_uuid)
+            x_oid = result['objects'][x_uuid]['read_oid']
             for raw_acl in result['acls'][x_uuid]:
                 _acl = otpme_acl.decode(raw_acl)
                 if _acl.owner_uuid != self.uuid:
                     continue
                 _acl_string = f"{x_oid} {_acl.id}"
                 if _caller == "CLIENT":
-                    callback.send(_acl_string)
+                    # Appended first, then the block checked: the other
+                    # way round the entry that fills the block is the
+                    # one the send() happens for, and it goes nowhere --
+                    # every hundred-and-first ACL was missing from what
+                    # the client saw, while the list returned here was
+                    # complete.
+                    acls_callback_result.append(_acl_string)
+                    if len(acls_callback_result) >= ACL_SEND_BLOCK:
+                        callback.send("\n".join(acls_callback_result))
+                        acls_callback_result = []
                 acls.append(_acl_string)
+        if acls_callback_result:
+            callback.send("\n".join(acls_callback_result))
 
         if _caller == "CLIENT":
             return callback.ok()
@@ -8292,7 +8458,9 @@ class OTPmeObject(OTPmeBaseObject):
             else:
                 acl_types = ['default_acls']
 
-        supported_acls = self.get_supported_acls(acl_types=acl_types)
+        # The cached one: nobody is waiting for an answer here, and
+        # this runs once per ACL of every object an ACL walk touches.
+        supported_acls = self._get_supported_acls(acl_types=acl_types)
         if acl.id in supported_acls:
             return True
 
@@ -8310,15 +8478,35 @@ class OTPmeObject(OTPmeBaseObject):
 
         return False
 
-    @supported_acls_cache.cache_method()
     def get_supported_acls(
         self,
-        acl_types: List=None,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Get all supported ACLs of object """
+        # The answer goes out here and not in _get_supported_acls().
+        # That one is cached, and callback.ok() sends the answer to a
+        # client instead of returning it, so the cache would hold what
+        # the sending returned and every later call would answer with
+        # nothing.
+        acls = self._get_supported_acls(**kwargs)
+        if _caller == "CLIENT":
+            acls = "\n".join(acls)
+        return callback.ok(acls)
+
+    @supported_acls_cache.cache_method()
+    def _get_supported_acls(
+        self,
+        acl_types: List=None,
+        **kwargs,
+        ):
+        """ The ACLs the object supports, and nothing else.
+
+        Whoever asked for them is answered by get_supported_acls().
+        This is cached, and a cached answer is handed back without
+        anything being sent.
+        """
         if acl_types is None:
             acl_types = ['acls']
         from otpme.lib.extensions import utils
@@ -8445,10 +8633,7 @@ class OTPmeObject(OTPmeBaseObject):
                     default_acl = f"++{i}"
                     acls.append(default_acl)
 
-        if _caller == "CLIENT":
-            acls = "\n".join(acls)
-
-        return callback.ok(acls)
+        return acls
 
     @object_lock()
     def inherit_default_acl(
@@ -8484,30 +8669,12 @@ class OTPmeObject(OTPmeBaseObject):
         apply_id, recursive_apply_id = self.get_acl_apply_ids(acl=acl,
                                                             inherit=True)
 
-        # Add recursive default ACL.
-        if recursive_apply_id:
+        # Both at once: each of them would otherwise walk the tree of
+        # this object on its own.
+        apply_ids = [x for x in (recursive_apply_id, apply_id) if x]
+        if apply_ids:
             try:
-                add_status = self.add_acl(acl=recursive_apply_id,
-                                        owner_uuid=acl.owner_uuid,
-                                        force=True,
-                                        verify_acls=verify_acls,
-                                        raise_exception=True,
-                                        verbose_level=verbose_level,
-                                        callback=callback,
-                                        **kwargs)
-                if not add_status:
-                    exception = "Failed to add recursive ACL: {acl}"
-                    exception = exception.format(acl=acl.id)
-            except ValueError as e:
-                pass
-            except Exception as e:
-                if not exception:
-                    exception = str(e)
-
-        # Add default ACL.
-        if apply_id:
-            try:
-                add_status = self.add_acl(acl=apply_id,
+                add_status = self.add_acl(acls=apply_ids,
                                         owner_uuid=acl.owner_uuid,
                                         force=True,
                                         verify_acls=verify_acls,
@@ -8561,26 +8728,15 @@ class OTPmeObject(OTPmeBaseObject):
         apply_id, recursive_apply_id = self.get_acl_apply_ids(acl=acl,
                                                             inherit=True)
 
-        # Remove recursive default ACL.
-        if recursive_apply_id:
-            del_acl = f"{acl.owner_type}:{acl.owner_uuid}:{recursive_apply_id}"
+        # Both at once, see inherit_default_acl().
+        del_acls = []
+        for x_apply_id in (recursive_apply_id, apply_id):
+            if not x_apply_id:
+                continue
+            del_acls.append(f"{acl.owner_type}:{acl.owner_uuid}:{x_apply_id}")
+        if del_acls:
             try:
-                del_status = self.del_acl(acl=del_acl,
-                                        force=True,
-                                        verify_acls=verify_acls,
-                                        verbose_level=verbose_level,
-                                        callback=callback,
-                                        **kwargs)
-                if not del_status:
-                    exception = True
-            except Exception as e:
-                if not exception:
-                    exception = str(e)
-
-        if apply_id:
-            del_acl = f"{acl.owner_type}:{acl.owner_uuid}:{apply_id}"
-            try:
-                del_status = self.del_acl(acl=del_acl,
+                del_status = self.del_acl(acls=del_acls,
                                         force=True,
                                         verify_acls=verify_acls,
                                         verbose_level=verbose_level,
@@ -8723,88 +8879,105 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok()
 
     @object_lock()
+    @one_time_policy_run
     @object_changelog("add acl {acl}")
-    def add_acl(self, acl: str=None, *args,
+    def add_acl(self, acls: Union[List,str,None]=None, *args,
         callback=default_callback, **kwargs):
-        """ Add ACL to object. """
-        if acl is not None:
-            kwargs['acl'] = acl
+        """ Add ACL(s) to object.
+
+        The policies of this hook run once for the command and not once
+        per object. That is what one_time_policy_run is for, and it sat
+        on write_acl_changes(), which is per object -- so a walk asked
+        them again for every one of them. An auth_on_action policy
+        would then want the user to authenticate again in the middle of
+        a walk over fourteen thousand of them, over and over. Whoever
+        runs the command answers for the command.
+        """
+        if acls is not None:
+            kwargs['acls'] = acls
         # Ask here and not in handle_acl(): recursive ACLs and default
         # ACLs call handle_acl() once per object, this method once per
         # command.
-        msg = _("Add ACL '{acl}' to {object_type} '{object_name}'?: ")
-        msg = msg.format(acl=acl or kwargs.get("raw_acl"),
+        msg = _("Add ACL '{acls}' to {object_type} '{object_name}'?: ")
+        msg = msg.format(acls=get_acls_string(acls or kwargs.get("raw_acls")),
                         object_type=self.type,
                         object_name=self.name)
         if not self.ask_change_confirmation(msg,
                                         force=kwargs.get("force", False),
                                         callback=callback):
             return callback.abort()
-        try:
-            recursive_acls = kwargs['recursive_acls']
-        except Exception:
-            recursive_acls = False
-        begin_transaction = False
-        if recursive_acls:
-            begin_transaction = True
-        # Do not start a new transaction if one exists.
-        if self.no_transaction:
-            begin_transaction = False
-        else:
-            transaction = backend.get_transaction()
-            if transaction:
-                begin_transaction = False
-        if begin_transaction:
-            backend.begin_transaction(name="add_acl", callback=callback)
-        result = self.handle_acl("add", *args, callback=callback, **kwargs)
-        if begin_transaction:
-            backend.end_transaction()
-
-        return result
-
-    @object_lock()
-    @object_changelog("del acl {acl}")
-    def del_acl(self, acl: str=None, *args,
-        callback=default_callback, **kwargs):
-        """ Delete ACL from object. """
-        if acl is not None:
-            kwargs['acl'] = acl
-        # Ask here and not in handle_acl(): recursive ACLs and default
-        # ACLs call handle_acl() once per object, this method once per
-        # command.
-        msg = _("Delete ACL '{acl}' from {object_type} '{object_name}'?: ")
-        msg = msg.format(acl=acl or kwargs.get("raw_acl"),
-                        object_type=self.type,
-                        object_name=self.name)
-        if not self.ask_change_confirmation(msg,
-                                        force=kwargs.get("force", False),
-                                        callback=callback):
-            return callback.abort()
-        try:
-            recursive_acls = kwargs['recursive_acls']
-        except Exception:
-            recursive_acls = False
-        begin_transaction = False
-        if recursive_acls:
-            begin_transaction = True
-        # Do not start a new transaction if one exists.
-        if self.no_transaction:
-            begin_transaction = False
-        else:
-            transaction = backend.get_transaction()
-            if transaction:
-                begin_transaction = False
-        if begin_transaction:
-            backend.begin_transaction(name="del_acl", callback=callback)
-        result = self.handle_acl("del", *args, callback=callback, **kwargs)
-        if begin_transaction:
-            backend.end_transaction()
-
-        return result
+        # No transaction for recursive ACLs: it would hold every object
+        # of the tree until the end of the walk, and a tree is as big as
+        # it is. handle_acl() writes each object as soon as it is done
+        # with it instead.
+        #
+        # Blocks of two hundred under one transaction were tried and
+        # bought nothing (19:53 against 19:36 over 28095 users): a
+        # transaction defers the writes, it does not batch them.
+        # write_cached_objects() still calls _write() per object, so the
+        # index update and the cache invalidation are paid per object
+        # either way.
+        return self.handle_acl("add", *args, callback=callback, **kwargs)
 
     @object_lock()
     @one_time_policy_run
-    def handle_acl(
+    @object_changelog("del acl {acl}")
+    def del_acl(self, acls: Union[List,str,None]=None, *args,
+        callback=default_callback, **kwargs):
+        """ Delete ACL(s) from object. See add_acl() for the policies. """
+        if acls is not None:
+            kwargs['acls'] = acls
+        # Ask here and not in handle_acl(): recursive ACLs and default
+        # ACLs call handle_acl() once per object, this method once per
+        # command.
+        msg = _("Delete ACL '{acls}' from {object_type} '{object_name}'?: ")
+        msg = msg.format(acls=get_acls_string(acls or kwargs.get("raw_acls")),
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg,
+                                        force=kwargs.get("force", False),
+                                        callback=callback):
+            return callback.abort()
+        # No transaction, see add_acl().
+        return self.handle_acl("del", *args, callback=callback, **kwargs)
+
+    @object_lock()
+    @one_time_policy_run
+    def write_acl_changes(self, callback=default_callback):
+        """ Write what an ACL walk changed here, and let go of it.
+
+        A walk reads and changes every object below the one it was
+        called on. An object that is only marked as modified stays in
+        memory until somebody writes it (cache.add_modified_object()),
+        which for a walk means the whole tree, until the command ends --
+        and a command that does not end writes nothing at all.
+
+        So whoever is done with an object writes it here. Nothing to do
+        where it was not changed, or where a transaction is running:
+        what it collects and when it writes is its business.
+        """
+        if not self._modified:
+            return True
+        if not self.no_transaction:
+            if backend.get_transaction():
+                return True
+        try:
+            #self._write(callback=callback, wait_for_cluster_writes=False)
+            self._write(callback=callback)
+        except Exception as e:
+            log_msg = _("Error writing {object_type} config: {object_oid}: {e}", log=True)[1]
+            log_msg = log_msg.format(object_type=self.type,
+                                    object_oid=self.oid, e=e)
+            logger.critical(log_msg)
+            return False
+        # Written, so nothing has to hold it anymore. Whoever ends the
+        # command walks its own list of OIDs and finds this one gone
+        # (JobCallback.write_modified_objects()).
+        self.reset_modified()
+        cache.remove_modified_object(self.oid)
+        return True
+
+    def handle_one_acl(
         self,
         action: str,
         acl: str=None,
@@ -8815,60 +8988,69 @@ class OTPmeObject(OTPmeBaseObject):
         ignore_unknown_owner: str=False,
         object_types: Union[List,None]=None,
         recursive_acls: bool=False,
-        apply_default_acls: bool=False,
-        _acl_objects: List=None,
+        valid_acl: bool=True,
+        first_call: bool=True,
         raise_exception: bool=False,
-        force: bool=False,
-        verify_acls: bool=True,
-        run_policies: bool=True,
+        progress: str="",
+        acl_owners: Union[dict,None]=None,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
-        _caller: str="API",
-        **kwargs,
         ):
-        """ Handle ACL add/del. """
-        if object_types is None:
-            object_types = []
-        if _acl_objects is None:
-            _acl_objects = []
-        valid_acl = True
+        """ Put one ACL on this object, or take it off again.
+
+        The part of handle_acl() that is about a single ACL: work out
+        who it belongs to, whether this object supports it, and write it
+        into self.acls. Everything that is about the object rather than
+        the ACL -- the permission check, the policies, the walk into the
+        members, the writing -- stays there and happens once, however
+        many ACLs there are.
+
+        Returns whether the object changed, the decoded ACL, and the
+        error text of an ACL this object does not support (which is not
+        always an error, see below).
+
+        Raises where handle_acl() used to answer with callback.error():
+        one bad ACL in a list must not look like a result.
+        """
         exception = None
+        object_modified = False
+        if acl_owners is None:
+            acl_owners = {}
 
-        if action == "add":
-            check_acl = "add:acl"
-            policy_hook = "add_acl"
-        else:
-            check_acl = "delete:acl"
-            policy_hook = "del_acl"
+        def lookup_acl_owner(uuid, object_type=None):
+            """ The type and the name of an ACL owner.
 
-        if verify_acls:
-            if not self.verify_acl(check_acl):
-                exception = _("Permission denied: {obj}")
-                exception = exception.format(obj=self)
-                valid_acl = False
-                if _acl_objects and verbose_level > 1:
-                    callback.send(exception, exception=PermissionDenied)
+            Three things below want it: whether it exists at all,
+            which type it is where the ACL carries only the UUID, and
+            its name for the message. Each of them asked the index
+            again, for every ACL and every object of a walk, although
+            the owner of an ACL does not change while the walk runs.
+            And the lookup is cached, but writing an object throws
+            that cache away (cache.add_instance()), so a walk that
+            writes all the time never hits it.
 
-        first_recursive_call = True
-        if _acl_objects:
-            # If we where called with non-empty _acl_objects this is not the
-            # first call in the recurisive call stack of this method. So we
-            # do not write objects.
-            first_recursive_call = False
-        else:
-            if run_policies:
-                try:
-                    self.run_policies("modify",
-                                    force=force,
-                                    callback=callback,
-                                    _caller=_caller)
-                    self.run_policies(policy_hook,
-                                    force=force,
-                                    callback=callback,
-                                    _caller=_caller)
-                except Exception as e:
-                    msg = str(e)
-                    return callback.error(msg)
+            So it is asked once and remembered in a dict that travels
+            with the walk. Returns (type, name), both None where there
+            is no such object.
+            """
+            try:
+                return acl_owners[uuid]
+            except KeyError:
+                pass
+            owner = (None, None)
+            if object_type:
+                object_id = backend.get_oid(uuid=uuid,
+                                            object_type=object_type,
+                                            instance=True)
+            else:
+                # Only these two can own an ACL, see otpme_acl.decode().
+                object_id = backend.get_oid(uuid=uuid,
+                                            object_types=['role', 'token'],
+                                            instance=True)
+            if object_id:
+                owner = (object_id.object_type, object_id.rel_path)
+            acl_owners[uuid] = owner
+            return owner
 
         if raw_acl:
             # Load raw ACL.
@@ -8879,16 +9061,15 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = msg.format(raw_acl=raw_acl, exception=e)
                 log_msg = log_msg.format(raw_acl=raw_acl, exception=e)
                 logger.critical(log_msg)
-                return callback.error(msg)
+                raise OTPmeException(msg) from e
             owner_type = _acl.owner_type
             owner_uuid = _acl.owner_uuid
             if not ignore_unknown_owner:
                 if action == "add":
-                    owner_oid = backend.get_oid(uuid=owner_uuid)
-                    if not owner_oid:
+                    if not lookup_acl_owner(owner_uuid, owner_type)[0]:
                         msg = _("Cannot add ACL for unknown owner: {owner_uuid}: {acl}")
                         msg = msg.format(owner_uuid=owner_uuid, acl=raw_acl)
-                        return callback.error(msg)
+                        raise OTPmeException(msg)
         # Try to get object type and UUID from ACL.
         elif not owner_type and not owner_uuid:
             try:
@@ -8898,7 +9079,7 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = msg.format(acl=acl, exception=e)
                 log_msg = log_msg.format(acl=acl, exception=e)
                 logger.critical(log_msg)
-                return callback.error(msg)
+                raise OTPmeException(msg) from e
 
             owner_type = _acl.owner_type
             owner_uuid = _acl.owner_uuid
@@ -8929,35 +9110,22 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = msg.format(owner_type=owner_type, owner_name=owner_name)
                 log_msg = log_msg.format(owner_type=owner_type, owner_name=owner_name)
                 logger.critical(log_msg)
-                return callback.error(msg)
+                raise OTPmeException(msg)
             if len(result) > 1:
                 msg, log_msg = _("Found multiple objects for '{owner_name}': {result_list}", log=True)
                 msg = msg.format(owner_name=owner_name, result_list=', '.join(result))
                 log_msg = log_msg.format(owner_name=owner_name, result_list=', '.join(result))
                 logger.critical(log_msg)
-                return callback.error(msg)
+                raise OTPmeException(msg)
             owner_uuid = result[0]
 
         # Try to get owner type from backend.
         if owner_uuid and not owner_type:
-            for t in [ 'role', 'token']:
-                result = backend.search(attribute="uuid",
-                                        value=owner_uuid,
-                                        object_type=t)
-                if not result:
-                    continue
-                if len(result) > 1:
-                    msg, log_msg = _("Found multiple {t}'s for UUID '{owner_uuid}': {result}", log=True)
-                    msg = msg.format(t=t, owner_uuid=owner_uuid, result=", ".join(result))
-                    log_msg = log_msg.format(t=t, owner_uuid=owner_uuid, result=", ".join(result))
-                    logger.critical(log_msg)
-                    return callback.error(msg)
-                owner_type = t
-                break
+            owner_type = lookup_acl_owner(owner_uuid)[0]
             if not owner_type:
                 msg = _("Unknown object: {owner_uuid}")
                 msg = msg.format(owner_uuid=owner_uuid)
-                return callback.error(msg)
+                raise OTPmeException(msg)
 
         # If we got the required values not as attributes and not from
         # the ACL string we cannot continue.
@@ -8976,7 +9144,7 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = msg.format(acl=acl, exception=e)
                 log_msg = log_msg.format(acl=acl, exception=e)
                 logger.critical(log_msg)
-                return callback.error(msg)
+                raise OTPmeException(msg) from e
 
         # Check if this object supports the ACL.
         if valid_acl:
@@ -8989,7 +9157,7 @@ class OTPmeObject(OTPmeBaseObject):
                 # ACL "+token:edit" recursive to a site is a valid call because
                 # the ACL will be added to all supported objects of the site
                 # but not to the site itself.
-                if not recursive_acls or (recursive_acls and _acl_objects):
+                if not recursive_acls or (recursive_acls and not first_call):
                     exception = _("Unsupported ACL: {object_oid}: {acl_id}")
                     exception = exception.format(object_oid=self.oid, acl_id=_acl.id)
                     if raise_exception:
@@ -8997,21 +9165,22 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Add ACL (or default ACL) to the object if there was no exception.
         if valid_acl and raw_acl:
-            # FIXME: add full object path or OID instead of rel_path!!!?
-            # Build resolved ACL string.
-            object_desc = owner_uuid
-            object_id = backend.get_oid(object_type=owner_type,
-                                        uuid=owner_uuid,
-                                        instance=True)
-            if object_id:
-                object_desc = object_id.rel_path
-            resolved_acl = f"{owner_type}:{object_desc}:{_acl.id}"
+            def get_resolved_acl():
+                """ The ACL with the name of its owner, for the message.
+
+                Built where the message is sent and nowhere else,
+                because that is all it is for, see lookup_acl_owner().
+                """
+                # FIXME: add full object path or OID instead of rel_path!!!?
+                object_desc = lookup_acl_owner(owner_uuid, owner_type)[1]
+                if not object_desc:
+                    object_desc = owner_uuid
+                return f"{owner_type}:{object_desc}:{_acl.id}"
 
             object_match = True
             if object_types and self.type not in object_types:
                 object_match = False
 
-            object_modified = False
             if object_match:
                 if action == "add":
                     # Add ACL.
@@ -9019,31 +9188,191 @@ class OTPmeObject(OTPmeBaseObject):
                         self.acls.append(raw_acl)
                         now = time.time_ns()
                         self.acl_journal.append([now, action, raw_acl])
-                        msg = _("Adding ACL {resolved_acl} to {object_oid}")
-                        msg = msg.format(resolved_acl=resolved_acl, object_oid=self.oid)
                         object_modified = True
                         if verbose_level > 0:
-                            callback.send(msg)
+                            msg = _("Adding ACL {resolved_acl} to {object_oid}")
+                            msg = msg.format(resolved_acl=get_resolved_acl(),
+                                            object_oid=self.oid)
+                            callback.send(f"{progress}{msg}")
                 else:
                     # Remove ACL.
                     if raw_acl in self.acls:
-                        msg = _("Removing ACL {resolved_acl} from {object_oid}")
-                        msg = msg.format(resolved_acl=resolved_acl, object_oid=self.oid)
                         object_modified = True
                         if verbose_level > 0:
-                            callback.send(msg)
+                            msg = _("Removing ACL {resolved_acl} from {object_oid}")
+                            msg = msg.format(resolved_acl=get_resolved_acl(),
+                                            object_oid=self.oid)
+                            callback.send(f"{progress}{msg}")
                         self.acls.remove(raw_acl)
                         now = time.time_ns()
                         self.acl_journal.append([now, action, raw_acl])
 
-            # Add this object to be written at the end of this
-            # method call (loop).
-            if object_modified:
-                if self not in _acl_objects:
-                    _acl_objects.append(self)
+        return object_modified, _acl, exception
+
+    def handle_acl(
+        self,
+        action: str,
+        acls: Union[List,str,None]=None,
+        raw_acls: Union[List,str,None]=None,
+        owner_type: Union[str,None]=None,
+        owner_name: Union[str,None]=None,
+        owner_uuid: Union[str,None]=None,
+        ignore_unknown_owner: str=False,
+        object_types: Union[List,None]=None,
+        recursive_acls: bool=False,
+        apply_default_acls: bool=False,
+        _acl_objects_changed: int=0,
+        _acl_progress: Union[dict,None]=None,
+        _acl_owners: Union[dict,None]=None,
+        raise_exception: bool=False,
+        force: bool=False,
+        # How many workers walk the members, where a walk has any and
+        # there are enough of them (Unit.get_acl_workers()). Carried
+        # through because the command says it and the unit uses it.
+        procs: Union[int,None]=None,
+        verify_acls: bool=True,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Handle ACL add/del.
+
+        Takes a list of ACLs and not one, because a walk is what costs:
+        every object of the tree is read and written once per call, so
+        somebody who wants three ACLs on every user of a site should not
+        pay for three walks (see site.py, which used to ask for one ACL
+        at a time).
+        """
+        if object_types is None:
+            object_types = []
+        if _acl_owners is None:
+            # The names of the ACL owners, for the messages. Made here
+            # and handed down, so a walk looks each of them up once
+            # and not once per object, see handle_one_acl().
+            _acl_owners = {}
+        # One ACL is a list of one.
+        if isinstance(acls, str):
+            acls = [acls]
+        if isinstance(raw_acls, str):
+            raw_acls = [raw_acls]
+        if acls is None:
+            acls = []
+        if raw_acls is None:
+            raw_acls = []
+        valid_acl = True
+        exception = None
+        object_modified = False
+
+        if action == "add":
+            check_acl = "add:acl"
+            policy_hook = "add_acl"
+        else:
+            check_acl = "delete:acl"
+            policy_hook = "del_acl"
+
+        if verify_acls:
+            if not self.verify_acl(check_acl):
+                exception = _("Permission denied: {obj}")
+                exception = exception.format(obj=self)
+                valid_acl = False
+                # Whatever the verbosity: this is the reason an object
+                # of a walk was left out, and a walk that silently does
+                # less than it was asked to looks like one that worked.
+                if _acl_objects_changed:
+                    callback.send(exception, exception=PermissionDenied)
+
+        # A count above zero means somebody above us in the recursion
+        # has already changed an object, so this is not the first call
+        # and the policies of the command have run.
+        if not _acl_objects_changed:
+            if run_policies:
+                try:
+                    self.run_policies("modify",
+                                    force=force,
+                                    callback=callback,
+                                    _caller=_caller)
+                    self.run_policies(policy_hook,
+                                    force=force,
+                                    callback=callback,
+                                    _caller=_caller)
+                except Exception as e:
+                    msg = str(e)
+                    return callback.error(msg)
+
+        # Where we are in the list of objects the caller walks. Said
+        # with every message, because a walk over some thousand objects
+        # that only names them says nothing about how far it got.
+        progress = ""
+        if _acl_progress:
+            progress = "[{pos}/{total}] "
+            progress = progress.format(pos=_acl_progress['pos'],
+                                    total=_acl_progress['total'])
+
+        # Put every ACL on this object while we have it. The walk below
+        # then happens once, however many there are.
+        first_call = not _acl_objects_changed
+        decoded_acls = []
+        for x_raw_acl in raw_acls:
+            try:
+                x_modified, x_acl, x_exception = self.handle_one_acl(action,
+                                        raw_acl=x_raw_acl,
+                                        owner_type=owner_type,
+                                        owner_name=owner_name,
+                                        owner_uuid=owner_uuid,
+                                        ignore_unknown_owner=ignore_unknown_owner,
+                                        object_types=object_types,
+                                        recursive_acls=recursive_acls,
+                                        valid_acl=valid_acl,
+                                        first_call=first_call,
+                                        raise_exception=raise_exception,
+                                        progress=progress,
+                                        acl_owners=_acl_owners,
+                                        verbose_level=verbose_level,
+                                        callback=callback)
+            except OTPmeException as e:
+                return callback.error(str(e))
+            if x_modified:
+                object_modified = True
+            if x_exception and not exception:
+                exception = x_exception
+            decoded_acls.append(x_acl)
+        for x_acl_id in acls:
+            try:
+                x_modified, x_acl, x_exception = self.handle_one_acl(action,
+                                        acl=x_acl_id,
+                                        owner_type=owner_type,
+                                        owner_name=owner_name,
+                                        owner_uuid=owner_uuid,
+                                        ignore_unknown_owner=ignore_unknown_owner,
+                                        object_types=object_types,
+                                        recursive_acls=recursive_acls,
+                                        valid_acl=valid_acl,
+                                        first_call=first_call,
+                                        raise_exception=raise_exception,
+                                        progress=progress,
+                                        acl_owners=_acl_owners,
+                                        verbose_level=verbose_level,
+                                        callback=callback)
+            except OTPmeException as e:
+                return callback.error(str(e))
+            if x_modified:
+                object_modified = True
+            if x_exception and not exception:
+                exception = x_exception
+            decoded_acls.append(x_acl)
+
+        # Note that this object was touched. As a count and not as a
+        # list of what was touched: the only question anybody asks of
+        # it is whether it is still zero, and a list that grows with
+        # every object of a tree is searched once per object -- which
+        # is a walk that gets slower the further it gets.
+        if object_modified:
+            _acl_objects_changed += 1
 
         # Call child class method (e.g. to inherit ACLs)
-        add_status = self._handle_acl(action, _acl,
+        add_status = self._handle_acl(action, decoded_acls,
                                     force=force,
                                     _caller=_caller,
                                     run_policies=run_policies,
@@ -9051,14 +9380,16 @@ class OTPmeObject(OTPmeBaseObject):
                                     object_types=object_types,
                                     recursive_acls=recursive_acls,
                                     apply_default_acls=apply_default_acls,
-                                    _acl_objects=_acl_objects,
+                                    _acl_objects_changed=_acl_objects_changed,
+                                    _acl_owners=_acl_owners,
+                                    procs=procs,
                                     verbose_level=verbose_level,
                                     callback=callback, **kwargs)
         if not add_status and not exception:
             exception = True
 
         if exception:
-            if _acl_objects:
+            if _acl_objects_changed:
                 if exception is True:
                     return callback.error()
             else:
@@ -9067,25 +9398,37 @@ class OTPmeObject(OTPmeBaseObject):
                 #        when calling e.g.  otpme-unit -vv del_acl -r hosts token user1/pass "view:hosts"
                 #if verbose_level <= 1 or exception is True:
                 if exception is True:
-                    exception = _("Command failed. Please try (-vv) to see all errors.")
+                    # What went wrong was said where it went wrong, so
+                    # there is nothing to ask the user to turn on.
+                    exception = _("Command failed.")
             return callback.error(exception)
 
-        if first_recursive_call:
-            for o in list(_acl_objects):
-                # Write/cache modified objects.
-                if o._cache(callback=callback):
-                    # Trigger ACL cache clearing.
-                    cache.clear_acl_cache(object_uuid=self.uuid)
-                else:
-                    log_msg = _("Error writing {object_type} config: {object_oid}", log=True)[1]
-                    log_msg = log_msg.format(object_type=self.type, object_oid=self.oid)
-                    logger.critical(log_msg)
-                    exception = True
-                # Remove object from list because this list may be passed via
-                # kwargs to different handle_acl() calls e.g. in
-                # inherit_default_acl().
-                _acl_objects.remove(o)
+        if object_modified:
+            # Every object clears its own ACL cache, at the point where
+            # its ACLs are settled: the child class method above had
+            # its turn, and what it did to this object is in it.
+            cache.clear_acl_cache(object_uuid=self.uuid)
+        elif _acl_progress:
+            # An object of a walk whose ACLs are already what they
+            # should be is not marked as modified. It used to be,
+            # whatever happened here, so every object a walk touched
+            # was written: the same command run twice wrote the whole
+            # tree a second time, every write goes into the cluster
+            # journal, and the write waits for the other nodes to take
+            # it (Transaction.handle_cluster_journal()). All of that
+            # for an ACL that was already there.
+            #
+            # Only for an object of a walk, which is what _acl_progress
+            # says: the object the command names keeps being written
+            # either way, so its changelog entry has something to be
+            # written with (add_changelog_entry() adds to the instance
+            # and leaves the writing to the command).
+            return callback.ok()
 
+        # Written by whoever walked us into this: it loaded us and it
+        # knows when it is done with us, which is after the default
+        # ACLs above as well. The object the command names is written
+        # like any other single object, at the end of the command.
         return self._cache(callback=callback)
 
     def check_auto_disable(self, log=True, **kwargs):
@@ -10134,10 +10477,11 @@ class OTPmeObject(OTPmeBaseObject):
         try:
             signature = self.load_sign(user.uuid, sign_id)
         except Exception:
-            config.raise_exception()
+            from otpme.lib.classes.signing import resolve_tags
             if sign_tags:
+                tags_str = resolve_tags(sign_tags)
                 msg = _("No signature with given tags found: {tags}")
-                msg = msg.format(tags=','.join(sign_tags))
+                msg = msg.format(tags=','.join(tags_str))
             else:
                 msg = _("No signature without tags found.")
             return callback.error(msg)
@@ -11228,13 +11572,14 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.abort()
 
         object_changed = False
-        for i in acl_list:
+        if acl_list:
             if verbose_level > 0:
-                msg = _("Removing orphan ACL: {acl}")
-                msg = msg.format(acl=i)
-                callback.send(msg)
+                for i in acl_list:
+                    msg = _("Removing orphan ACL: {acl}")
+                    msg = msg.format(acl=i)
+                    callback.send(msg)
             object_changed = True
-            self.del_acl(raw_acl=i,
+            self.del_acl(raw_acls=list(acl_list),
                         force=True,
                         verify_acls=False,
                         callback=callback)
@@ -12423,7 +12768,12 @@ class OTPmeClientObject(OTPmeObject):
                 if pos_opts:
                     login_interface_valid_by = auth_ag.oid
 
-        # Check roles the token is a member of.
+        # Check roles the token is a member of. The direct ones, and
+        # for the login interfaces below only: those are an option of
+        # one assignment (add_token -i), so they sit on the role the
+        # token was put into and nowhere else. Which roles a policy of
+        # the chain comes from is another question, see get_auth_roles()
+        # further down.
         token_assigned_roles = []
         token_roles = token.get_roles(return_type="instance")
         for role in token_roles:
@@ -12453,17 +12803,6 @@ class OTPmeClientObject(OTPmeObject):
                     continue
                 login_interface_valid_by = role.oid
 
-        # Check roles directly assigned to this object.
-        object_assigned_roles = []
-        object_roles = self.get_roles(return_type="instance")
-        for role in object_roles:
-            if not role.enabled:
-                continue
-            # Skip roles the token is not a member of.
-            if not role.is_assigned_token(token.uuid):
-                continue
-            object_assigned_roles.append(role)
-
         # Log some useful debug message.
         if login_interface_valid_by:
             log_msg = _("Login interface valid by: {login_interface_valid_by}: {login_interface}", log=True)[1]
@@ -12475,8 +12814,14 @@ class OTPmeClientObject(OTPmeObject):
         self.run_policies("authorize", token=token)
 
         # Check role policies.
-        auth_roles = list(set(token_assigned_roles)
-                        & set(object_assigned_roles))
+        from otpme.lib.classes.role import get_roles
+        def nested_roles(role):
+            return get_roles(role.uuid,
+                            recursive=True,
+                            return_type="instance")
+        auth_roles = get_auth_roles(self.get_roles(return_type="instance"),
+                                    token.uuid,
+                                    nested_roles)
         for role in auth_roles:
             success_policy_types += role.run_policies("authenticate")
             success_policy_types += role.run_policies("authorize",

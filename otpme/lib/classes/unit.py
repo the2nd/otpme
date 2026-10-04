@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import time
 import importlib
 from typing import List
 from typing import Union
@@ -15,6 +16,7 @@ except Exception:
 
 from otpme.lib import oid
 from otpme.lib import cli
+from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
@@ -45,6 +47,80 @@ from otpme.lib.exceptions import *
 default_callback = config.get_callback()
 
 logger = config.logger
+
+# From how many members on it is worth starting workers at all. Below
+# that the forking and the queues cost more than they save.
+ACL_WORKER_MIN_MEMBERS = 500
+
+# How many progress lines go over the connection in one message. One
+# message per line is more than the connection takes where the walk is
+# quick: five ACLs on fourteen thousand objects are seventy thousand of
+# them, and the walk outruns the client.
+ACL_MESSAGE_BLOCK = 100
+
+# How many seconds may pass without anything going to the client, in
+# seconds. Whatever has piled up goes then, and if there is nothing --
+# with verbose off there are no progress lines at all -- a keepalive goes
+# instead, or the connection of the job times out. Same cadence the mass
+# add uses (see mgmt1.py).
+ACL_KEEPALIVE_INTERVAL = 1
+
+
+def get_acl_workers(procs=None):
+    """ How many workers walk the members of a unit.
+
+    A quarter of the cores, and not more, because the node goes on
+    answering logins while this runs: authd and ldapd want cores too,
+    and a bulk ACL change is not more urgent than somebody signing in.
+    A quarter is also where the measurements sit -- four workers on
+    sixteen cores took a walk over 28095 users from 19:36 to 7:26,
+    which is a factor of 2.6 and so 65% of what four could give. The
+    curve is flat enough by then that taking half would not buy half
+    again. Whoever knows the node has nothing else to do says --procs.
+
+    The cores this process may actually use, which on a machine that
+    was given a subset is not what os.cpu_count() answers.
+    """
+    if procs:
+        return max(1, int(procs))
+    try:
+        cores = len(os.sched_getaffinity(0))
+    except AttributeError:
+        cores = os.cpu_count() or 1
+    return max(1, int(cores / 4))
+
+# Set in a worker, so it does not start a pool of its own: a member that
+# is a unit is walked where it was handed to, and a sub unit with enough
+# members below it would otherwise fork four more workers per worker.
+# A module level name, which is per process, which is what a worker is.
+in_acl_worker = False
+
+
+class AclWorkerCallback(JobCallback):
+    """ A callback that keeps the messages instead of sending them.
+
+    A worker has no business writing to the connection of the job: the
+    workers of one walk would be writing to the same socket, and what
+    the client reads would be their output cut into each other. So a
+    worker collects what it would have said and hands it back with its
+    result, and the process that owns the connection sends it.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.messages = []
+
+    def send(self, message='\0OTPME_NULL\0', error=False, **kwargs):
+        if message == '\0OTPME_NULL\0':
+            return True
+        self.messages.append((bool(error), str(message)))
+        return True
+
+    def take_messages(self):
+        """ What was said since the last time somebody asked. """
+        messages = self.messages
+        self.messages = []
+        return messages
+
 
 read_acls = []
 write_acls = []
@@ -383,8 +459,9 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl'],
-                    'oargs'             : ['recursive_acls', 'apply_default_acls', 'object_types'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['owner_type', 'owner_name', 'acls'],
+                    'oargs'             : ['recursive_acls', 'apply_default_acls', 'object_types', 'procs'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -394,8 +471,9 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl'],
-                    'oargs'              : ['recursive_acls', 'apply_default_acls', 'object_types'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['acls'],
+                    'oargs'              : ['recursive_acls', 'apply_default_acls', 'object_types', 'procs'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -851,11 +929,16 @@ class Unit(OTPmeObject):
     def _handle_acl(
         self,
         action: str,
-        acl: object,
+        acls: List,
         recursive_acls: bool=False,
         apply_default_acls: bool=False,
         object_types: Union[List,None]=None,
         verify_acls: bool=True,
+        # Named, like everything else handle_acl() hands down, so it
+        # cannot ride along in kwargs and be passed a second time by
+        # name further down. That is what broke Site._handle_acl().
+        force: bool=False,
+        procs: Union[int,None]=None,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -892,54 +975,481 @@ class Unit(OTPmeObject):
             self._acl_msg = True
             multiprocessing.start_thread("print_msg", print_msg)
 
-        # Get members.
-        members = self.get_members(return_type="instance")
+        # Get members. By UUID, and loaded one at a time below: this
+        # walks the whole tree, and a member list of objects would be
+        # the tree in memory.
+        members = self.get_members(return_type="uuid", object_types=object_types)
 
         # Disable printing of "Reading objects..."
         self._acl_msg = False
 
+        # How many objects this unit holds, so every message can say
+        # where in them it is. Per unit and not per tree: a sub unit is
+        # walked as one of these and counts its own, and counting the
+        # whole tree first would mean reading it twice.
+        member_count = 0
+        for object_type in members:
+            member_count += len(members[object_type])
+        member_pos = 0
+
+        member_kwargs = {
+                    'inherit_method'        : inherit_method,
+                    'recursive_acls'        : recursive_acls,
+                    'apply_default_acls'    : apply_default_acls,
+                    'object_types'          : object_types,
+                    'verify_acls'           : verify_acls,
+                    'force'                 : force,
+                    # A member that is a unit of its own walks its own
+                    # members, and is told the same as we were.
+                    'procs'                 : procs,
+                    'verbose_level'         : verbose_level,
+                    }
+        member_kwargs.update(kwargs)
+
+        # Many members are worth sharing out. The objects of a unit are
+        # independent of each other -- each is read, changed and written
+        # on its own -- so the only thing a worker needs is which one to
+        # do, and the time goes into the index and the caches, which
+        # take more than one process at a time.
+        if member_count >= ACL_WORKER_MIN_MEMBERS and not in_acl_worker:
+            return self.handle_acl_members_in_workers(members,
+                                            member_count=member_count,
+                                            action=action,
+                                            acls=acls,
+                                            callback=callback,
+                                            **member_kwargs)
+
         for object_type in members:
             try:
-                objects = members[object_type]
+                object_uuids = members[object_type]
             except Exception:
                 continue
-            for o in objects:
-                # Make sure we inherit ACLs recursive through all units.
-                if recursive_acls:
-                    # Get ACL apply IDs.
-                    apply_id, recursive_apply_id = o.get_acl_apply_ids(acl=acl)
-
-                    if apply_id:
-                        add_status = o.handle_acl(action=action,
-                                            acl=apply_id,
-                                            owner_uuid=acl.owner_uuid,
-                                            object_types=object_types,
-                                            recursive_acls=recursive_acls,
-                                            apply_default_acls=apply_default_acls,
-                                            verify_acls=verify_acls,
-                                            verbose_level=verbose_level,
-                                            callback=callback,
-                                            **kwargs)
-                        if not add_status:
-                            exception = True
-
-                if apply_default_acls:
-                    inherit_acl = True
-                    if object_types and o.type not in object_types:
-                        inherit_acl = False
-                    if inherit_acl:
-                        o_inherit_method = getattr(o, inherit_method)
-                        add_status = o_inherit_method(acl=acl,
-                                        object_types=object_types,
-                                        verify_acls=verify_acls,
-                                        verbose_level=verbose_level,
-                                        callback=callback)
-                        if not add_status:
-                            exception = True
+            for x_uuid in object_uuids:
+                member_pos += 1
+                member_progress = {
+                                'pos'   : member_pos,
+                                'total' : member_count,
+                                }
+                if not self.handle_acl_member(action, acls,
+                                    object_type=object_type,
+                                    member_uuid=x_uuid,
+                                    member_progress=member_progress,
+                                    callback=callback,
+                                    **member_kwargs):
+                    exception = True
         if exception:
             return callback.error()
 
         return callback.ok()
+
+    def handle_acl_members_in_workers(self, members, member_count, action,
+        acls, callback=default_callback, **member_kwargs):
+        """ Walk the members of this unit with a pool of workers.
+
+        Built like the one that merges a sync (sync1.py): a pool that
+        stays for the whole walk, work and results over POSIX message
+        queues, and a parent that counts what it pushed against what
+        came back so a worker that dies does not make it wait for ever.
+
+        What travels the queue is the type and the UUID of a member,
+        which is small. Everything a worker needs besides -- the ACLs of
+        this walk, what to do with them, who is asking -- it inherits
+        when it is forked; none of that changes while the walk runs.
+
+        The messages come back with the results and are sent from here.
+        A worker must not write to the connection of the job: they would
+        all be writing to the same socket.
+        """
+        from otpme.lib.multiprocessing import MessageQueue
+
+        queue_id = stuff.gen_uuid()
+        work_queue = MessageQueue(name="acl_work", identifier=queue_id)
+        result_queue = MessageQueue(name="acl_result", identifier=queue_id)
+
+        workers = []
+        # Out of the kwargs of the members and not a named argument of
+        # our own: they carry it down to a member that is a unit, and
+        # naming it here as well would be the same argument twice.
+        worker_count = get_acl_workers(member_kwargs.get("procs"))
+        for x in range(worker_count):
+            worker = multiprocessing.start_process(
+                                name=f"acl_worker_{x}",
+                                target=self._acl_worker_loop,
+                                hard_exit=True,
+                                target_args=(work_queue, result_queue,
+                                            action, acls, member_count,
+                                            member_kwargs),
+                                daemon=True,
+                                start=True)
+            workers.append(worker)
+
+        exception = False
+        pushed = 0
+        seen = 0
+        # The messages of a member that is done, by its place in the
+        # walk. A worker answers when it is done, so the answers do not
+        # come back in the order the members went out, and the lines the
+        # user reads would count up and down again. They are kept here
+        # until the one before them has been said. What is held back is
+        # what the workers have in their hands, so a handful of members.
+        waiting_messages = {}
+        next_pos = 1
+
+        # The lines on their way to the client, and when something last
+        # went. They go in blocks, and where nothing goes for a while a
+        # keepalive goes instead.
+        message_block = []
+        last_sent = [time.time()]
+
+        def flush_messages():
+            if not message_block:
+                return
+            callback.send("\n".join(message_block))
+            message_block.clear()
+            last_sent[0] = time.time()
+
+        def say(messages):
+            for is_error, text in messages:
+                if not is_error:
+                    message_block.append(text)
+                    continue
+                # An error goes on its own and at once, but in its place:
+                # what was said before it goes first.
+                flush_messages()
+                callback.send(text, error=True)
+                last_sent[0] = time.time()
+            if len(message_block) >= ACL_MESSAGE_BLOCK:
+                flush_messages()
+
+        def keep_the_line_open():
+            """ Let the client hear something now and then.
+
+            Whatever has piled up, or a keepalive where nothing has. With
+            verbose off no progress lines are made at all, and then this is
+            the only thing that travels -- without it the job's connection
+            times out on a long walk.
+            """
+            if time.time() - last_sent[0] < ACL_KEEPALIVE_INTERVAL:
+                return
+            if message_block:
+                flush_messages()
+                return
+            callback.keepalive()
+            last_sent[0] = time.time()
+
+        def say_in_order(pos, messages):
+            """ Say this one once everything before it has been said. """
+            nonlocal next_pos
+            if pos is None:
+                say(messages)
+                return
+            waiting_messages[pos] = messages
+            while next_pos in waiting_messages:
+                say(waiting_messages.pop(next_pos))
+                next_pos += 1
+
+        def say_the_rest():
+            """ Say what is left, whatever is missing before it. """
+            nonlocal next_pos
+            for pos in sorted(waiting_messages):
+                say(waiting_messages.pop(pos))
+                next_pos = pos + 1
+
+        def drain(timeout=0):
+            """ Take what came back and say it. """
+            nonlocal seen, exception
+            drained = 0
+            while True:
+                x_timeout = timeout if drained == 0 else 0
+                try:
+                    msg = result_queue.recv(timeout=x_timeout)
+                except TimeoutReached:
+                    break
+                except (QueueClosed, ExitOnSignal):
+                    break
+                if msg is None:
+                    break
+                drained += 1
+                seen += 1
+                say_in_order(msg.get("pos"), msg.get("messages") or [])
+                if not msg.get("status"):
+                    exception = True
+            return drained
+
+        try:
+            for object_type in members:
+                try:
+                    object_uuids = members[object_type]
+                except Exception:
+                    continue
+                for x_uuid in object_uuids:
+                    pushed += 1
+                    work_queue.send({
+                                'type'  : object_type,
+                                'uuid'  : x_uuid,
+                                'pos'   : pushed,
+                                })
+                    drain()
+                    keep_the_line_open()
+
+            # Ten seconds without a single result, at half a second a
+            # look. A worker takes one member at a time, so one that
+            # dies takes that one with it and no result for it is ever
+            # sent -- waiting for all of them to die first would mean
+            # waiting while the others sit idle.
+            quiet_rounds = 0
+            while seen < pushed:
+                if drain(timeout=0.5) > 0:
+                    quiet_rounds = 0
+                    keep_the_line_open()
+                    continue
+                keep_the_line_open()
+                quiet_rounds += 1
+                alive = sum(1 for w in workers if w.is_alive())
+                dead = len(workers) - alive
+                outstanding = pushed - seen
+                if alive > 0:
+                    if dead < outstanding:
+                        continue
+                    if quiet_rounds < 20:
+                        continue
+                drain()
+                lost = pushed - seen
+                if lost > 0:
+                    exception = True
+                    # Whatever was being held back for the members that
+                    # never came back has to be said now, out of order or
+                    # not, or it would be dropped. And before the line
+                    # below it, which does not go through say().
+                    say_the_rest()
+                    flush_messages()
+                    msg = _("Lost {count} object(s): {dead} worker(s) gone.")
+                    msg = msg.format(count=lost, dead=dead)
+                    callback.send(msg, error=True)
+                break
+        finally:
+            # Whatever is still held back goes now, whichever way this was
+            # left -- the lines are of no use to anybody in here.
+            say_the_rest()
+            flush_messages()
+            # One sentinel per worker, and a timeout on it: a worker
+            # that is already gone takes none, and the queue would fill
+            # up and hold us here.
+            for _worker in workers:
+                try:
+                    work_queue.send({'stop': True}, timeout=5)
+                except Exception:
+                    pass
+            for worker in workers:
+                try:
+                    worker.join(timeout=10)
+                    if worker.is_alive():
+                        worker.terminate()
+                        worker.join(timeout=5)
+                except Exception:
+                    pass
+            # Closed and unlinked: a posix message queue outlives the
+            # process that made it until somebody takes it out of the
+            # kernel.
+            for queue in [work_queue, result_queue]:
+                for method in ["close", "unlink"]:
+                    try:
+                        getattr(queue, method)()
+                    except Exception:
+                        pass
+
+        if exception:
+            return callback.error()
+
+        return callback.ok()
+
+    def _acl_worker_loop(self, work_queue, result_queue, action, acls,
+        member_count, member_kwargs):
+        """ Take one member at a time and put the ACLs of the walk on it.
+
+        Every turn ends in exactly one result, whatever happened, or the
+        parent waits for one that is never coming.
+        """
+        import signal
+        import setproctitle
+
+        global in_acl_worker
+        in_acl_worker = True
+
+        # A worker has nobody to ask. The policies that want an answer
+        # from whoever gave the command -- an auth_on_action wanting
+        # them to authenticate again -- ran once before the walk
+        # started, in the process that has the connection (see
+        # add_acl()). Asking again from here would be asking the void.
+        if "interactive" not in config.ignore_policy_tags:
+            config.ignore_policy_tags.append("interactive")
+
+        parent_pid = os.getppid()
+
+        proctitle = setproctitle.getproctitle()
+        setproctitle.setproctitle(f"{proctitle}: ACL worker")
+
+        # Our own database and cache connections, once per worker.
+        multiprocessing.atfork()
+
+        # Remembered and acted on between two members, so a write that
+        # was running when the signal came is finished first.
+        stop_flag = [False]
+        def signal_handler(_signal, _frame):
+            stop_flag[0] = True
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
+        while True:
+            if stop_flag[0] and not config.active_transactions:
+                return
+            if os.getppid() != parent_pid:
+                # A note and not a warning. Nobody is waiting for this
+                # worker any more, so there is nothing wrong with it going;
+                # whether anything was lost is counted by the process that
+                # handed the members out, and that one says so ("Lost N
+                # object(s)"). As a warning it made the end of every walk
+                # look like a fault, once per worker.
+                log_msg = _("ACL worker ending: the process that started it is gone.", log=True)[1]
+                logger.debug(log_msg)
+                return
+            try:
+                msg = work_queue.recv(timeout=1)
+            except TimeoutReached:
+                continue
+            except (QueueClosed, ExitOnSignal):
+                return
+            if msg is None:
+                continue
+            if msg.get("stop"):
+                return
+            member_uuid = msg.get("uuid")
+            worker_callback = AclWorkerCallback(name="acl_worker")
+            status = False
+            try:
+                status = self.handle_acl_member(action, acls,
+                                    object_type=msg.get("type"),
+                                    member_uuid=member_uuid,
+                                    member_progress={
+                                                'pos'   : msg.get("pos"),
+                                                'total' : member_count,
+                                                },
+                                    callback=worker_callback,
+                                    **member_kwargs)
+            except Exception as e:
+                log_msg = _("Failed to handle ACLs of {uuid}: {error}", log=True)[1]
+                log_msg = log_msg.format(uuid=member_uuid, error=e)
+                logger.critical(log_msg)
+                worker_callback.send(str(e), error=True)
+            try:
+                result_queue.send({
+                            'uuid'      : member_uuid,
+                            'pos'       : msg.get("pos"),
+                            'status'    : bool(status),
+                            'messages'  : worker_callback.take_messages(),
+                            })
+            except (QueueClosed, ExitOnSignal):
+                return
+
+    def handle_acl_member(self, action, acls, object_type, member_uuid,
+        member_progress, inherit_method, recursive_acls=False,
+        apply_default_acls=False, object_types=None, verify_acls=True,
+        force=False, verbose_level=0, callback=default_callback, **kwargs):
+        """ Put the ACLs of this walk on one member of this unit.
+
+        Its own method and not the body of the loop above, because it is
+        everything that happens to one object and nothing else: it takes
+        the UUID of a member, reads it, changes it and writes it, and
+        says whether that worked. Whoever calls it decides how many are
+        done at a time.
+        """
+        exception = False
+        if object_types is None:
+            object_types = []
+        # Not into the cache: we touch every object once, so what it
+        # would keep is of no use to anybody and the walk would leave an
+        # instance of the whole tree there.
+        o = backend.get_object(object_type=object_type,
+                            uuid=member_uuid,
+                            add_to_cache=False)
+        if not o:
+            return True
+        # Make sure we inherit ACLs recursive through all units.
+        if recursive_acls:
+            # Get the ACL apply IDs, all of them, so this member is read
+            # and written once and not once per ACL.
+            #
+            # As raw ACLs and not as IDs with one owner beside them: the
+            # ACLs of a list can belong to different owners --
+            # inherit_acls() hands us the ACLs of a parent object -- and
+            # a raw ACL carries its own.
+            member_acls = []
+            for x_acl in acls:
+                apply_id = o.get_acl_apply_ids(acl=x_acl)[0]
+                if not apply_id:
+                    continue
+                member_acl = f"{x_acl.owner_type}:{x_acl.owner_uuid}:{apply_id}"
+                member_acls.append(member_acl)
+
+            if member_acls:
+                # The owner is not looked up here, because it was not
+                # looked up before either: this path used to hand over
+                # the owner UUID, which skips the check a raw ACL would
+                # run into.
+                member_kwargs = dict(kwargs)
+                member_kwargs['ignore_unknown_owner'] = True
+                add_status = o.handle_acl(action=action,
+                                    raw_acls=member_acls,
+                                    object_types=object_types,
+                                    recursive_acls=recursive_acls,
+                                    apply_default_acls=apply_default_acls,
+                                    _acl_progress=member_progress,
+                                    verify_acls=verify_acls,
+                                    # Named now that _handle_acl() names
+                                    # it and it no longer rides along in
+                                    # kwargs. It used to reach a member
+                                    # that way and still should.
+                                    force=force,
+                                    verbose_level=verbose_level,
+                                    callback=callback,
+                                    **member_kwargs)
+                if not add_status:
+                    exception = True
+
+        if apply_default_acls:
+            inherit_acl = True
+            if object_types and o.type not in object_types:
+                inherit_acl = False
+            if inherit_acl:
+                o_inherit_method = getattr(o, inherit_method)
+                for x_acl in acls:
+                    # force, because somebody asked for this.
+                    # acl_inheritance_enabled says whether an object
+                    # follows its unit by itself, and it is off for most
+                    # types -- which made an explicit "-a" do nothing at
+                    # all, without saying so. Adding an object does the
+                    # same thing for the same reason, see
+                    # OTPmeObject.add().
+                    add_status = o_inherit_method(acl=x_acl,
+                                    force=True,
+                                    procs=kwargs.get("procs"),
+                                    object_types=object_types,
+                                    _acl_progress=member_progress,
+                                    _acl_owners=kwargs.get("_acl_owners"),
+                                    verify_acls=verify_acls,
+                                    verbose_level=verbose_level,
+                                    callback=callback)
+                    if not add_status:
+                        exception = True
+
+        # Done with this member: written here, because we loaded it and
+        # nothing else holds it. Its own handle_acl() writes it where it
+        # can tell that it is part of a walk, but the default ACLs above
+        # reach it through inherit_default_acl(), which cannot.
+        if not o.write_acl_changes(callback=callback):
+            exception = True
+
+        return not exception
 
     @members_cache.cache_method()
     def get_members(
@@ -954,39 +1464,41 @@ class Unit(OTPmeObject):
         if not object_types:
             object_types = config.tree_object_types
 
+        # The index answers every return type but "instance" by itself,
+        # so a caller that only wants names or UUIDs costs no objects at
+        # all. Where we need the objects we ask for UUIDs: an OID is
+        # built per row (see the file backend), and a member list of
+        # OIDs pays that for everything at once, while loading pays it
+        # one object at a time -- which is how _handle_acl() walks a
+        # unit that has many members.
+        search_return_type = return_type
+        if return_type == "instance" or recursive:
+            search_return_type = "uuid"
+
         for object_type in object_types:
-            object_oids = backend.search(realm=self.realm,
+            search_result = backend.search(realm=self.realm,
                                         site=self.site,
                                         attribute="unit",
                                         value=self.uuid,
                                         object_type=object_type,
-                                        return_type="oid")
-            if not object_oids:
+                                        return_type=search_return_type)
+            if not search_result:
                 continue
-            _members[object_type] = object_oids
+            _members[object_type] = search_result
 
+        if not recursive and search_return_type == return_type:
+            return _members
+
+        # From here on we need the objects themselves: to hand them out,
+        # or to ask them for their own members below.
         members = {}
         for t in _members:
             objects = []
-            for o_id in _members[t]:
-                if return_type == "instance" or recursive:
-                    o = backend.get_object(object_type=t, object_id=o_id)
-                    if o:
-                        objects.append(o)
-                elif return_type == "oid":
-                    objects.append(o_id)
-                elif return_type == "full_oid":
-                    objects.append(o_id.full_oid)
-                elif return_type == "uuid":
-                    o_uuid = backend.get_uuid(o_id)
-                    objects.append(o_uuid)
-                elif return_type == "name":
-                    o_name = o_id.name
-                    objects.append(o_name)
-                elif return_type == "path":
-                    o_path = o_id.path
-                    objects.append(o_path)
-
+            for x_uuid in _members[t]:
+                o = backend.get_object(object_type=t, uuid=x_uuid)
+                if not o:
+                    continue
+                objects.append(o)
             members[t] = objects
 
         if not recursive:
@@ -1027,13 +1539,14 @@ class Unit(OTPmeObject):
                 elif return_type == "full_oid":
                     objects.append(o.oid.full_oid)
                 elif return_type == "uuid":
-                    o_uuid = backend.get_uuid(o.oid)
-                    objects.append(o_uuid)
+                    # The object is here, so its UUID is too. Asking the
+                    # backend for it is one lookup per member.
+                    objects.append(o.uuid)
                 elif return_type == "name":
                     o_name = o.name
                     objects.append(o_name)
                 elif return_type == "path":
-                    o_path = o_id.path
+                    o_path = o.path
                     objects.append(o_path)
             recursive_members[t] = objects
 
@@ -1298,7 +1811,7 @@ class Unit(OTPmeObject):
 
             # Add ACL.
             try:
-                self.add_acl(acl=_acl.id,
+                self.add_acl(acls=[_acl.id],
                             owner_uuid=_acl.owner_uuid,
                             force=True,
                             verify_acls=False,

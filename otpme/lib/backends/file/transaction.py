@@ -1386,6 +1386,11 @@ class ObjectTransaction(BaseTransaction):
         self.journal_oid_uuid = {}
         # Modified objects.
         self.modified_objects = []
+        # The same by read OID, to answer "do we know this one" without
+        # walking the list. A transaction that touches many objects
+        # searched a list that grew with every one of them, which made
+        # it slower the longer it ran (OID.__eq__() per entry).
+        self._modified_object_ids = set()
         self.locked_objects = []
         self.lock_caller = "transaction"
         self.reset_modified_objects = []
@@ -1423,12 +1428,29 @@ class ObjectTransaction(BaseTransaction):
         if o.uuid:
             self.journal_oid_uuid[o.uuid] = o.oid.full_oid
             self.journal_oid_uuid[o.oid.read_oid] = o.uuid
-        if o.oid in self.modified_objects:
+        object_id = o.oid.read_oid or str(o.oid)
+        if object_id in self._modified_object_ids:
             return
+        self._modified_object_ids.add(object_id)
         self.modified_objects.append(o.oid)
 
     def cache_locked_object(self, o):
-        """ Add locked object to transaction cache. """
+        """ Add locked object to transaction cache.
+
+        Asked of the list and not of a set of OIDs beside it, unlike
+        the modified objects above. The OID of an object changes when
+        it is renamed, and an object is cached here more than once
+        while that happens: a set keyed by the OID it had the first
+        time does not recognise it the second time, puts it in again,
+        and the release below then releases the same lock twice --
+        which is not a lock this caller holds anymore, so the second
+        one raises. The list compares whole objects, and an object
+        compares by the OID it has now (OTPmeObject.__eq__()), so it
+        recognises itself throughout.
+
+        It costs a walk over the list per call, and that is affordable
+        here: only objects locked with full=True land in it.
+        """
         if o in self.locked_objects:
             return
         self.locked_objects.append(o)
@@ -1591,6 +1613,7 @@ class ObjectTransaction(BaseTransaction):
             self.modified_objects.remove(object_id)
         except Exception:
             pass
+        self._modified_object_ids.discard(read_oid)
         try:
             self.journal_objects.pop(read_oid)
         except Exception:

@@ -58,6 +58,44 @@ if config.debug_level("debug_timings") > 0:
 if add_decorators:
     add_debug_decorators()
 
+def on_a_terminal():
+    """ Whether what we write goes to a terminal.
+
+    What decides whether there is anything to page, and whether colour
+    means anything. Asked here and not of the stream by whoever writes,
+    because stdout can be replaced with something that is not a stream
+    at all.
+    """
+    try:
+        return sys.stdout.isatty()
+    except Exception:
+        return False
+
+def page(text):
+    """ Show text in the pager, with its colours intact.
+
+    pydoc picks the pager and runs it with no options of its own, so on
+    Debian that is "pager" (less) with nothing said to it, and less then
+    prints the escape sequences instead of acting on them. Measured
+    under a pty: "\\033[31m" arrived as ESC in reverse video followed by
+    a literal "[31m", and a listing that says in colour which host
+    failed read as a mess.
+
+    less takes its own options from LESS, which is where -R goes. That
+    reaches it whichever way pydoc gets there -- "pager", "less", or
+    whatever PAGER says -- and it leaves the choice of pager to whoever
+    made that choice.
+
+    Not set where something already asks for raw output. The test is
+    crude on purpose: the only thing a false match costs is leaving a
+    value alone that already has an R in it, and that value is somebody
+    else's anyway.
+    """
+    less = os.environ.get("LESS", "")
+    if "R" not in less:
+        os.environ['LESS'] = f"{less} -R".strip()
+    pydoc.pager(text)
+
 class CommandHandler(object):
     """ Handle OTPme commands. """
     def __init__(self, interactive=True):
@@ -349,9 +387,16 @@ class CommandHandler(object):
             raise OTPmeException(response)
 
         # Make sure we start pager (less) if result exceeds terminal size.
-        if daemon == "mgmtd" and client_type == "CLIENT":
+        #
+        # Only where this is going to a terminal. There is nothing to
+        # page into a pipe, and whoever reads it there wants the text --
+        # which messages.message() then writes without the colours.
+        if daemon == "mgmtd" and client_type == "CLIENT" and on_a_terminal():
             if config.use_pager is True:
-                pydoc.pager(response)
+                page(response)
+                # Shown already, so it is not handed back to be shown
+                # again: whoever called this prints what it returns.
+                return
             elif config.use_pager == "auto":
                 try:
                     lines = config.term_size['lines']
@@ -370,7 +415,7 @@ class CommandHandler(object):
                         line_lines = line_len / columns
                         response_len += line_lines
                     if response_len > lines:
-                        pydoc.pager(response)
+                        page(response)
                         return
 
         return response
@@ -628,6 +673,9 @@ class CommandHandler(object):
         if command == "mount":
             return self.handle_mount(command, subcommand)
 
+        if command == "shell":
+            return self.handle_shell(command_line)
+
         # Get password from stdin if --stdin-pass was given.
         if config.read_stdin_pass:
             self.user_password = config.stdin_pass
@@ -878,7 +926,8 @@ class CommandHandler(object):
             return self.handle_trash_command(command, subcommand, command_line)
 
         if command == "deploy":
-            return self.handle_deploy_command(command, subcommand, command_line)
+            return self.handle_deploy_command(command, subcommand, command_line,
+                                            client_type=client_type)
 
         if command == "inventory":
             return self.handle_inventory_command(command, subcommand, command_line)
@@ -1943,6 +1992,9 @@ class CommandHandler(object):
         if subcommand == "who":
             return self.who()
 
+        if subcommand == "host_who":
+            return self.host_who()
+
         if subcommand == "get_login_token":
             login_token = self.get_login_token()
             if not login_token:
@@ -1980,6 +2032,9 @@ class CommandHandler(object):
         or subcommand == "disable_signer" \
         or subcommand == "update_signer":
             return self.handle_sign_command(command, subcommand, command_line)
+
+        if subcommand == "update_host_keys":
+            return self.handle_update_host_keys_command(command, command_line)
 
         if subcommand == "dump" or subcommand == "sync" or subcommand == "resync":
             if config.use_api:
@@ -2097,6 +2152,11 @@ class CommandHandler(object):
 
         if subcommand == "get_srp":
             return self.get_srp()
+
+        if subcommand == "get_private_key" \
+        or subcommand == "add_private_key" \
+        or subcommand == "del_private_key":
+            return self.handle_private_key_command(command, subcommand)
 
         if subcommand == "get_tty":
             return self.get_tty()
@@ -2287,7 +2347,8 @@ class CommandHandler(object):
                                 command_args=command_args)
         return response
 
-    def handle_deploy_command(self, command, subcommand, command_line):
+    def handle_deploy_command(self, command, subcommand, command_line,
+        client_type="CLIENT"):
         """ Handle deploy command: the configuration management of
         hosts. The job is signed with the sign key of the user asking
         for it, which is why this goes through the same callback as
@@ -2305,7 +2366,8 @@ class CommandHandler(object):
         response = self.send_command(daemon="mgmtd",
                                 command=command,
                                 command_args=command_args,
-                                username=login_user)
+                                username=login_user,
+                                client_type=client_type)
         return response
 
     def handle_inventory_command(self, command, subcommand, command_line):
@@ -3112,6 +3174,121 @@ class CommandHandler(object):
             return self.get_help()
         object_id = command_line[0]
         return self.dump_object(object_id)
+
+    def handle_update_host_keys_command(self, command, command_line):
+        """ Take over the public keys of hosts whose key changed.
+
+        The sync writes down the key of a host it has not seen before,
+        and leaves one that differs from what is written down where it
+        is (host_key_pins.py). This is where somebody says yes to the
+        new one, and nothing else does.
+
+        The keys come off the host objects, which is where the sync put
+        them: nothing is parked in between, so what is shown is the tree
+        as it is now and not what some sync saw.
+
+        Shown before anything is changed, with both fingerprints, and
+        what is shown is what will be taken over.
+        """
+        from otpme.lib import cli
+        from otpme.lib import help
+        from otpme.lib import host_key_pins
+        help_dict = help.get_cmd_help(command)
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            command_args = cli.get_opts(
+                                command_syntax=help_dict['update_host_keys']['cmd'],
+                                command_line=list(command_line))
+        except Exception as e:
+            if str(e) == "help":
+                return self.get_help()
+            return self.get_help(str(e))
+        list_only = bool(command_args.get('list_only'))
+        if config.system_user() != "root":
+            # Root for the looking as well: the keys come off the host
+            # objects, which means reading the tree here, and the
+            # backend wants the master key -- which is only read for
+            # root and for the OTPme user.
+            msg = _("You must be root to look at or update host keys.")
+            raise OTPmeException(msg)
+        if not config.pin_host_keys:
+            msg = _("Host keys are not pinned here. See PIN_HOST_KEYS in otpme.conf(5).")
+            raise OTPmeException(msg)
+        # The tree itself, not hostd: there is no asking hostd for an
+        # object, and the keys of every host are what this is about.
+        # Which is why it is root's -- see above.
+        register_module("otpme.lib.classes.host")
+        register_module("otpme.lib.classes.node")
+        self.init(use_backend=True)
+
+        only_host = command_args.get('host_name')
+        hosts = backend.search(object_types=["host", "node"],
+                            attribute="uuid",
+                            value="*",
+                            return_type="instance")
+        if not hosts:
+            return _("No host here to take a key from.")
+
+        table_headers = [
+                    "host",
+                    "written down",
+                    "wants to be",
+                    ]
+        table = PrettyTable(table_headers,
+                            header_style="title",
+                            vrules=NONE,
+                            hrules=FRAME)
+        table.align = "l"
+        table.padding_width = 0
+        table.right_padding_width = 1
+
+        take_over = {}
+        for x_host in sorted(hosts, key=lambda x: x.name):
+            if only_host and x_host.name != only_host:
+                continue
+            new_key = x_host.public_key
+            if not new_key:
+                continue
+            pinned = host_key_pins.get_pin(x_host.uuid)
+            # A key that is already the one we hold the host to is
+            # nothing to say yes to. One that is not is shown, and that
+            # includes a host with nothing written down yet: the sync
+            # writes those, and this is what gets a realm that was
+            # running before PIN_HOST_KEYS was switched on its keys
+            # without waiting for one.
+            if pinned is not None and pinned == new_key.strip():
+                continue
+            take_over[x_host.uuid] = new_key
+            table.add_row([
+                        x_host.name,
+                        host_key_pins.fingerprint(pinned),
+                        host_key_pins.fingerprint(new_key),
+                        ])
+        if not take_over:
+            if only_host:
+                msg = _("No host key changed for: {host}")
+                msg = msg.format(host=only_host)
+                return msg
+            return _("No host key changed.")
+
+        message(table.get_string(border=True, fields=table_headers))
+        if list_only:
+            return ""
+        if not config.force:
+            msg = _("Hold these hosts to the keys above?: ")
+            answer = cli.user_input(msg)
+            if str(answer).lower() != "y":
+                return _("Nothing changed.")
+
+        done = []
+        for host_uuid in sorted(take_over):
+            host_key_pins.write_pin(host_uuid, take_over[host_uuid])
+            done.append(host_uuid)
+        msg = _("Host keys updated: {count}")
+        msg = msg.format(count=len(done))
+        return msg
 
     def handle_force_sync_command(self, command_line):
         """ Handle force sync command. """
@@ -4516,6 +4693,95 @@ class CommandHandler(object):
 
         return sotp
 
+    def handle_private_key_command(self, command, subcommand):
+        """ Get a private key of the user from otpme-agent, or put one there.
+
+        What the key script uses. It asks for the unwrapped key first,
+        and if the agent has none it asks for the wrapped one, unwraps
+        it with the users key password and hands that back -- so the
+        password is asked for once and not once per signature.
+
+        Both kinds are the users own key and the agent only gives them
+        to the login session they belong to, which is the same door the
+        SSH key passphrase goes through.
+        """
+        from otpme.lib import connections
+        from otpme.lib.offline_token import PRIVATE_KEY_ROLES
+
+        # Create otpme-agent instance
+        from otpme.lib.classes.otpme_agent import OTPmeAgent
+        otpme_agent = OTPmeAgent()
+
+        try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except Exception as e:
+            msg = _("Unknown command: {subcommand}")
+            msg = msg.format(subcommand=subcommand)
+            help_text = self.get_help(msg)
+            raise OTPmeException(help_text) from e
+
+        # Parse command line.
+        object_cmd, \
+        object_required, \
+        object_identifier, \
+        command_args = cli.get_opts(command_syntax=command_syntax,
+                                    command_line=self.command_line,
+                                    command_args=self.command_args)
+
+        try:
+            key_role = command_args['key_role']
+        except KeyError:
+            msg = _("Need --role.")
+            raise OTPmeException(msg) from None
+        # Here and not only in the agent, which answers a role it does
+        # not know the same way it answers a key it does not have --
+        # and a typo would then read as "no key".
+        if key_role not in PRIVATE_KEY_ROLES:
+            msg = _("Unknown key role: {key_role}")
+            msg = msg.format(key_role=key_role)
+            raise OTPmeException(msg)
+        decrypted = command_args.get('decrypted', False)
+
+        # Check if otpme-agent is running
+        agent_status, pid = otpme_agent.status(quiet=True)
+        if not agent_status:
+            msg = "No running otpme-agent found..."
+            raise OTPmeException(msg)
+
+        # Try to get agent connection
+        try:
+            agent_conn = connections.get("agent")
+        except Exception as e:
+            msg = _("Error getting agent connection: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg) from e
+
+        try:
+            if subcommand == "add_private_key":
+                # From stdin, because a private key on a command line
+                # is a private key in the process list.
+                private_key = sys.stdin.read().strip()
+                if not private_key:
+                    msg = _("Got empty private key.")
+                    raise OTPmeException(msg)
+                agent_conn.add_private_key(key_role=key_role,
+                                        private_key=private_key,
+                                        decrypted=decrypted)
+                return ""
+            if subcommand == "del_private_key":
+                agent_conn.del_private_key(key_role=key_role)
+                return ""
+            private_key = agent_conn.get_private_key(key_role=key_role,
+                                                    decrypted=decrypted)
+        finally:
+            agent_conn.close()
+
+        if not private_key:
+            msg = _("No private key.")
+            raise OTPmeException(msg)
+
+        return private_key
+
     def get_srp(self):
         """ Get SRP from agent. """
         from otpme.lib import connections
@@ -5060,8 +5326,14 @@ class CommandHandler(object):
 
     def add_signer(self, signer_type, object_oid,
         private=False, pin=True, tags=None,
-        verify_token_opts=True, **kwargs):
-        """ Add signer. """
+        verify_token_opts=True, allow_throwaway_key=False,
+        **kwargs):
+        """ Add signer.
+
+        <allow_throwaway_key> is only for remote_access signers: it says
+        this one may ask for a shell on a key the job brings along. See
+        OTPmeSigner and confd/job.py check_throwaway_key().
+        """
         from otpme.lib.classes.signing import OTPmeSigner
         from otpme.lib.classes.signing import resolve_tags
         #init_otpme()
@@ -5086,6 +5358,13 @@ class CommandHandler(object):
         #
         if signer_type not in OTPmeSigner.supported_signer_types:
             msg = f"Invalid signer type: {signer_type}"
+            raise OTPmeException(msg)
+
+        if allow_throwaway_key and signer_type != "remote_access":
+            # It says what may be asked for in a remote_access job and
+            # nothing else, so a signer of another type carrying it
+            # would read as a permission that is not there.
+            msg = _("Only a remote_access signer takes --allow-throwaway-key.")
             raise OTPmeException(msg)
 
         # FIXME: do we want to allow this command to run as user?
@@ -5119,7 +5398,8 @@ class CommandHandler(object):
                             signer_type=signer_type,
                             pinned=pin,
                             tags=resolved_tags,
-                            verify_token_opts=verify_token_opts)
+                            verify_token_opts=verify_token_opts,
+                            allow_throwaway_key=allow_throwaway_key)
         signer.load()
 
         # Save signer to file.
@@ -5191,7 +5471,8 @@ class CommandHandler(object):
             raise OTPmeException(msg) from e
 
     def update_signer(self, signer_uuid=None, private=False,
-        signer_type=None, remove_gone=False, **kwargs):
+        signer_type=None, remove_gone=False, verify_token_opts=None,
+        allow_throwaway_key=None, **kwargs):
         """ Update signer. One by its UUID, or all of a signer type.
 
         A user who left must not take their signatures with them. What
@@ -5204,6 +5485,12 @@ class CommandHandler(object):
         deleted is refused, and a role drops the members it does not
         have anymore. That is how their keys are taken out once nothing
         needs them.
+
+        <verify_token_opts> and <allow_throwaway_key> are what a signer
+        may ask for. None leaves them as they are, which is what an
+        update that is only about the keys wants: they are set when a
+        signer is added, and this is the only way to change one of them
+        without taking the signer away and putting it back.
         """
         if not signer_uuid and not signer_type:
             msg = "Need <signer_uuid> or <signer_type>."
@@ -5223,8 +5510,19 @@ class CommandHandler(object):
         if signer_uuid:
             signers = [result]
 
+        if allow_throwaway_key:
+            not_remote_access = [x for x in signers
+                                if x.signer_type != "remote_access"]
+            if not_remote_access:
+                msg = _("Only a remote_access signer takes --allow-throwaway-key.")
+                raise OTPmeException(msg)
+
         for signer in signers:
             signer.load(keep_gone=not remove_gone)
+            if verify_token_opts is not None:
+                signer.verify_token_opts = verify_token_opts
+            if allow_throwaway_key is not None:
+                signer.allow_throwaway_key = allow_throwaway_key
             self.del_signer(signer.uuid, private=private)
             self.save_signer(signer=signer, private=private)
 
@@ -5343,6 +5641,7 @@ class CommandHandler(object):
                     "status",
                     "type",
                     "verify opts",
+                    "throwaway key",
                     "user/role",
                     "signers",
                     #"realm",
@@ -5394,6 +5693,15 @@ class CommandHandler(object):
             if x_signer.verify_token_opts:
                 verify_token_opts = "yes"
             current_row.append(verify_token_opts)
+
+            # Whether this signer may ask for a shell on a key the job
+            # brings along. Shown because it is the one thing about a
+            # signer that nobody can see from the outside, and it is a
+            # permission that only root on this host can hand out.
+            allow_throwaway_key = "no"
+            if x_signer.allow_throwaway_key:
+                allow_throwaway_key = "yes"
+            current_row.append(allow_throwaway_key)
 
             # Get user/signer OID. A deleted user still has a signer, so
             # the OID cached in it is what names them: the UUID alone
@@ -5680,6 +5988,67 @@ class CommandHandler(object):
 
         return table.get_string()
 
+    def host_who(self, host=None):
+        """ The hosts waiting to be told that there is a job for them.
+
+        The same question "who" asks, about hosts instead of users. A
+        host that is here learns of a new job right away; one that is
+        not picks it up on its next round, so this says who is quick
+        and who is not.
+        """
+        self.init()
+        try:
+            idled_conn = connections.get("idled",
+                                        auto_auth=False,
+                                        auto_preauth=False,
+                                        handle_host_auth=False,
+                                        handle_user_auth=False,
+                                        encrypt_session=False)
+            command_args = {'host':host}
+            status, \
+            status_code, \
+            response, \
+            binary_data = idled_conn.send(command="host_who",
+                                        command_args=command_args)
+        except Exception as e:
+            msg = _("Failed to connect to idled: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg)
+
+        table = PrettyTable(["host",
+                            "type",
+                            "ip",
+                            "connect time"],
+                            header_style="title",
+                            vrules=NONE,
+                            hrules=HEADER)
+        table.align = "l"
+        table.padding_width = 0
+        table.right_padding_width = 1
+
+        if not status:
+            return response
+        if not response:
+            return table.get_string()
+
+        # Sorted by name and not by uuid: the uuid is the key the
+        # dispatcher needs, the name is the thing anybody reads.
+        entries = sorted(response.values(),
+                        key=lambda x: str(x.get("host", "")))
+        for entry in entries:
+            connect_time = entry.get("connect_time")
+            if connect_time is None:
+                connect_time_str = "-"
+            else:
+                connect_time_str = datetime.datetime.fromtimestamp(
+                    connect_time).strftime("%Y-%m-%d %H:%M:%S")
+            table.add_row([entry.get("host", "-"),
+                        entry.get("type", "-"),
+                        entry.get("client_ip", "-"),
+                        connect_time_str])
+
+        return table.get_string()
+
     def get_ssh_key_pass(self):
         """ Get SSH key passphrase from running otpme-agent. """
         from otpme.lib import connections
@@ -5778,53 +6147,15 @@ class CommandHandler(object):
                      pinentry_bin=pinentry_bin)
 
     def get_authorized_keys(self, username):
-        """ Get authorized keys for the given user. """
-        # Limit server requests to 1/30 seconds.
-        now = time.time()
-        try:
-            last_update = os.path.getmtime(config.authorized_keys_dir)
-        except FileNotFoundError:
-            last_update = time.time()
-        authorized_keys_age = now - last_update
-        if authorized_keys_age > 30:
-            try:
-                hostd_conn = connections.get("hostd")
-            except Exception as e:
-                hostd_conn = None
+        """ Get authorized keys for the given user.
 
-            if hostd_conn:
-                # Sync SSH keys assigned to this host.
-                hostd_conn.send("sync_ssh_authorized_keys")
-                # Wait a maximum of 5 seconds for hostd to update
-                # authorized_keys file.
-                wait_counter = 0
-                current_timestamp = last_update
-                while current_timestamp == last_update:
-                    try:
-                        current_timestamp = os.path.getmtime(config.authorized_keys_dir)
-                    except FileNotFoundError:
-                        current_timestamp = time.time()
-                    wait_counter += 1
-                    time.sleep(0.1)
-                    if wait_counter == 50:
-                        break
-
-        authorized_keys_dir = f"{config.authorized_keys_dir}/{username}"
-        authorized_keys_file = f"{authorized_keys_dir}/authorized_keys"
-
-        if not os.path.exists(authorized_keys_file):
-            return ""
-
-        try:
-            fd = open(authorized_keys_file, "r")
-            authorized_keys = fd.read()
-            fd.close()
-        except Exception as e:
-            msg = _("Unable to read current authorized_keys file: {e}")
-            msg = msg.format(e=e)
-            raise OTPmeException(msg) from e
-
-        return authorized_keys
+        The reading of them lives in otpme/lib/ssh.py, because this is
+        not the only thing on a host that lets an SSH key in: a remote
+        access session asks the same question (confd/base.py
+        run_remote_access), and one host has to have one answer.
+        """
+        from otpme.lib import ssh
+        return ssh.get_authorized_keys(username)
 
     def handle_token_add_del_command(self, command, subcommand):
         """ Handle token add/del command. """
@@ -6220,10 +6551,87 @@ class CommandHandler(object):
             # Get key passphrase from stdin.
             self.user_key_pass = sys.stdin.readline().replace("\n", "")
 
+        from otpme.lib.pki.utils import SUBJECT_ATTRIBUTE_ORDER
+        from otpme.lib.pki.utils import build_openssl_subject
+        from otpme.lib.pki.utils import build_rfc4514_subject
+        from otpme.lib.pki.utils import build_openssl_extensions
+
+        def split_list(value):
+            """ A comma separated option as a list. """
+            if not value:
+                return None
+            items = [x.strip() for x in value.split(",")]
+            return [x for x in items if x] or None
+
         # Init otpme.
         #init_otpme()
         self.init()
+
+        # The subject of the request. The common name is the user unless
+        # another one was given: a request has to say who it is for, and
+        # this one is for a user.
+        common_name = local_command_args.get('common_name')
+        if not common_name:
+            common_name = object_identifier
+        subject_attributes = {}
+        for x_name in SUBJECT_ATTRIBUTE_ORDER:
+            x_value = local_command_args.get(x_name)
+            if not x_value:
+                continue
+            subject_attributes[x_name] = x_value
+        # Both forms of it, because the key script hands the request to
+        # openssl or to the card and the two take different ones, see
+        # pki/utils.py.
+        openssl_subject = build_openssl_subject(common_name,
+                                                **subject_attributes)
+        rfc4514_subject = build_rfc4514_subject(common_name,
+                                                **subject_attributes)
+        # What a request has to ask for to be of use for S/MIME: the
+        # address in the subject alternative name, and the two usages.
+        # The subject carries the address as well (--email), but on its
+        # own that is the old way and a CA following current practice
+        # wants it here.
+        san_email = split_list(local_command_args.get('san_email'))
+        key_usage = split_list(local_command_args.get('key_usage'))
+        ext_key_usage = split_list(local_command_args.get('ext_key_usage'))
+        try:
+            openssl_extensions = build_openssl_extensions(
+                                            san_email=san_email,
+                                            key_usage=key_usage,
+                                            ext_key_usage=ext_key_usage)
+        except OTPmeException as e:
+            raise OTPmeException(str(e)) from None
+
         script_command = [ "gen_csr" ]
+        # The arguments of the command go last, the way they do for
+        # "sign": run_key_script() puts script_command first, the
+        # options of the key script after it, and these at the end. An
+        # argument in between throws the option parsing of the script
+        # off, because it shifts over the positional list while it walks
+        # the options.
+        #
+        # Named, because all of them but the subject are optional and
+        # leaving one out must not move the next one.
+        script_options = [
+                    "--openssl-subject", openssl_subject,
+                    "--rfc4514-subject", rfc4514_subject,
+                    ]
+        # The PIV slot, for a user whose key is on a card. Left out
+        # means the slot the key script was configured with -- and it
+        # has to be left out rather than passed empty, because the
+        # script stops collecting its arguments at the first empty one.
+        for x_name, x_value in (('slot', local_command_args.get('slot')),
+                                ('san-email', ",".join(san_email or [])),
+                                ('key-usage', ",".join(key_usage or [])),
+                                ('ext-key-usage',
+                                    ",".join(ext_key_usage or []))):
+            if not x_value:
+                continue
+            script_options += [ f"--{x_name}", x_value ]
+        # And the same extensions the way openssl takes them, for a key
+        # that is not on a card.
+        for x_extension in openssl_extensions:
+            script_options += [ "--openssl-ext", x_extension ]
 
         # Run key script to generate a CSR with users private key.
         script_status, \
@@ -6231,6 +6639,7 @@ class CommandHandler(object):
         script_stderr, \
         script_pid = stuff.run_key_script(username=object_identifier,
                                         script_command=script_command,
+                                        script_options=script_options,
                                         key_pass=self.user_key_pass,
                                         call=False)
 
@@ -6708,6 +7117,170 @@ class CommandHandler(object):
 
         return ""
 
+    def handle_shell(self, command_line):
+        """ Get a shell on a host.
+
+        A key pair is made for this one session, a remote_access job is
+        asked for that names its public half, and the two sides meet at
+        the broker under the uuid of that job. The host is checked
+        before a word of SSH is spoken -- see lib/rac_client.py, which
+        does the work so it can be read and driven without a daemon.
+
+        The session is nothing but SSH between here and the host, so
+        whatever carries it cannot read it.
+        """
+        from otpme.lib import help
+        from otpme.lib import rac_client
+        help_dict = help.get_cmd_help("shell")
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            command_args = cli.get_opts(command_syntax=help_dict['cmd'],
+                                    command_line=list(command_line))
+        except Exception as e:
+            if str(e) == "help":
+                return self.get_help()
+            return self.get_help(str(e))
+        host = command_args.get('host_name')
+        if not host:
+            return self.get_help(_("Need a host."))
+
+        login_status = self.get_login_status()
+        if not login_status:
+            # A shell is asked for by somebody: the job that hands it
+            # out is signed with the sign key of whoever asked.
+            msg = _("Not logged in. Log in first: otpme-tool login <user>")
+            raise OTPmeException(msg)
+        self.init()
+
+        if command_args.get('throwaway_key'):
+            # A key of its own for this session, and the job carries its
+            # public half: the host then lets in that key and no other.
+            # It is also the way in that needs nothing but the signature
+            # of the job, so the host takes it only from a signer that
+            # was given the permission -- otpme-tool add_signer
+            # --allow-throwaway-key.
+            throwaway_key, public_key = rac_client.generate_throwaway_key()
+            session_keys = [throwaway_key]
+        else:
+            # What the agent holds, which is what ssh would offer. The
+            # job names no key, and the host holds them against its own
+            # authorized_keys for the user the shell runs as.
+            #
+            # Only that there is an agent with a key in it is asked
+            # here, so a missing one is said before a job is made for
+            # nothing. The keys themselves are taken where they are
+            # signed with: a connection to an agent does not survive
+            # the making of a job (rac_client.get_agent_keys).
+            rac_client.check_agent()
+            session_keys = None
+            public_key = None
+        # Asked for before the job is made: a host we cannot tell apart
+        # from another is one we must not meet, and finding that out
+        # after the job exists would leave one lying around.
+        host_public_key = rac_client.get_host_public_key(host)
+        job_command = rac_client.build_job_command(host=host,
+                                public_key=public_key,
+                                user=command_args.get('user'),
+                                command=command_args.get('command'),
+                                job_ttl=command_args.get('job_ttl'))
+        # RAPI: we need the uuid of the job, and the usual client type
+        # would write it to the terminal instead of handing it over.
+        job_uuid = self.handle_command(command="deploy",
+                                    command_line=job_command,
+                                    client_type="RAPI")
+        if not job_uuid:
+            msg = _("No job was made.")
+            raise OTPmeException(msg)
+        job_uuid = str(job_uuid).strip()
+
+        def cancel_request():
+            """ Take the job back, see rac_client.take_job_back().
+
+            All this side has is the way to say it: a command to mgmtd
+            over the connection the job was made on.
+            """
+            def cancel():
+                self.handle_command(command="deploy",
+                                command_line=["cancel", job_uuid],
+                                client_type="RAPI")
+            rac_client.take_job_back(job_uuid, cancel=cancel)
+
+        try:
+            # Waiting for the host to turn up at the broker, which it
+            # does not do at all when it is not there -- and then this
+            # waits out the two minutes the broker gives it. So Ctrl+C
+            # has to get out of here, and after the job was signed for
+            # it did not: see rac_client.interruptible().
+            with rac_client.interruptible():
+                sock, host_key_blob = rac_client.connect_to_host(job_uuid,
+                                        host_public_key=host_public_key)
+        except KeyboardInterrupt:
+            msg = _("Gave up waiting for a shell on {host}.")
+            msg = msg.format(host=host)
+            error_message(msg)
+            cancel_request()
+            sys.exit(rac_client.ABORTED)
+        except Exception:
+            # The wait ran out, or what turned up was not the host the
+            # job was for. Either way nobody is going to meet it here.
+            cancel_request()
+            raise
+        try:
+            exit_status, \
+            ended_by, \
+            reason = rac_client.run_session(sock,
+                                    session_keys=session_keys,
+                                    host_key_blob=host_key_blob,
+                                    host_public_key=host_public_key,
+                                    job_uuid=job_uuid,
+                                    command=command_args.get('command'))
+        except KeyboardInterrupt:
+            msg = _("Gave up on the session with {host}.")
+            msg = msg.format(host=host)
+            error_message(msg)
+            cancel_request()
+            sys.exit(rac_client.ABORTED)
+        except Exception:
+            # The handshake, the keys or the binding -- a session that
+            # never came about. The host it was for is at the other end
+            # already, so this says nothing to that one, but the job is
+            # spent and must not be waiting for the next host to ask.
+            cancel_request()
+            raise
+        finally:
+            try:
+                sock.close()
+            except Exception:
+                pass
+        # Said the way ssh says it, and on stderr: a session that ends
+        # without a word leaves the user wondering whether the shell
+        # exited or the line broke.
+        if ended_by == rac_client.ENDED_LOST:
+            if reason:
+                msg = _("Connection to {host} closed by remote host: {reason}")
+                msg = msg.format(host=host, reason=reason)
+            else:
+                msg = _("Connection to {host} closed by remote host.")
+                msg = msg.format(host=host)
+            # What the connection itself has to say about it, where it
+            # has anything: a read of nothing on a connection the kernel
+            # still calls established is not an end at all.
+            if sock.quiet_because:
+                msg = f"{msg}\n  {sock.quiet_because}"
+            error_message(msg)
+            # What ssh exits with when it was the connection and not the
+            # command that failed. A lost session has no exit status of
+            # its own, so without this it would end as a success.
+            sys.exit(rac_client.CONNECTION_FAILED)
+        msg = _("Connection to {host} closed.")
+        msg = msg.format(host=host)
+        message(msg, stderr=True)
+        if exit_status:
+            sys.exit(exit_status)
+        return ""
+
     def handle_mount(self, command, subcommand):
         import argparse
         parser = argparse.ArgumentParser()
@@ -6729,6 +7302,12 @@ class CommandHandler(object):
             raise OTPmeException(_("Not logged in."))
 
         share_id = args.share
+        if share_id:
+            # Written without the realm it is one of ours. Done here as
+            # well as in mount_share(), because unmounting needs the full
+            # ID too: the agent knows a mounted share under the ID the
+            # server gave it.
+            share_id = stuff.get_share_id(*stuff.split_share_id(share_id))
         mount_point = args.mount
         master_password_mount = args.master_password_mount
         add_share_key = args.add_share_key
@@ -6855,12 +7434,17 @@ class CommandHandler(object):
         except Exception as e:
             msg = f"Unable to get login session ID: {e}"
             raise OTPmeException(msg) from e
+        # A share ID is <realm>/<site>/<share>. Written without the realm
+        # it is one of ours, and that is the form this fills in -- the
+        # server answers under the full ID, so the response is keyed by it.
         try:
-            share_site = share_id.split("/")[0]
-            share_name = share_id.split("/")[1]
+            share_realm, \
+            share_site, \
+            share_name = stuff.split_share_id(share_id)
         except Exception:
             msg = f"Invalid share: {share_id}"
             raise OTPmeException(msg) from None
+        share_id = stuff.get_share_id(share_realm, share_site, share_name)
         if nodes is None or mount_point is None:
             command_args = {'share_id':share_id}
             response = self.send_command(daemon="mgmtd",
@@ -6904,6 +7488,7 @@ class CommandHandler(object):
                         mount_point,
                         nodes,
                         encrypted,
+                        share_realm=share_realm,
                         hard=hard,
                         sotp_signing=sotp_signing,
                         mount_timeout=mount_timeout,
@@ -6915,6 +7500,7 @@ class CommandHandler(object):
                                                     target=mount_share,
                                                     target_args=(share_name, share_site, mount_point, nodes, encrypted),
                                                     target_kwargs={
+                                                                    'share_realm'       : share_realm,
                                                                     'master_password'   : master_password,
                                                                     'add_share_key'     : add_share_key,
                                                                     'hard'              : hard,
@@ -7097,6 +7683,13 @@ class CommandHandler(object):
                                                     no_token_write=no_token_write,
                                                     pre_deploy_result=pre_deploy_result,
                                                     command_args=local_command_args)
+        # A handler that answers with nothing called the deploy off. That
+        # happens when the question whether the slot may be overwritten
+        # was not answered with yes (yubikey_hotp, yubikey_hmac). Sending
+        # it on would encode it as JSON null, and the server would hand
+        # that to the deploy method of the token.
+        if deploy_args is None:
+            return _("Token deploy aborted.")
 
         # Encode token deploy data (e.g. token keys)
         deploy_data = json.encode(deploy_args, encoding="hex")

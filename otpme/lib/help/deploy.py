@@ -21,8 +21,8 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-deploy {command} [job]"),
 
     'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-deploy add [--host <host1,host2>] [--unit <unit>] [--recursive] [--role <role1,role2>] [--group <group1,group2>] [--arg <name=value>] [--file <path>] [--key <path>] [--expiry <time>] {job_type} {action}'),
-                    'cmd'   :   '--host :hosts: --unit :units: --recursive :recursive=True: --role :roles: --group :groups: --arg :+job_args+: --file :file:job_file: --key :file:job_key: --expiry :job_ttl: <job_type> <action>',
+                    '_cmd_usage_help' : _('Usage: otpme-deploy add [--host <host1,host2>] [--unit <unit>] [--recursive] [--role <role1,role2>] [--group <group1,group2>] [--arg <name=value>] [--file <path>] [--key <path>] [--expiry <time>] [--on-demand] [--return-uuid] {job_type} {action}'),
+                    'cmd'   :   '--host :hosts: --unit :units: --recursive :recursive=True: --role :roles: --group :groups: --arg :+job_args+: --file :file:job_file: --key :file:job_key: --expiry :job_ttl: --on-demand :on_demand=True: --return-uuid :return_uuid=True: <job_type> <action>',
                     '_help' :   {
                                     'cmd'                       : _('Add configuration management job.'),
                                     '--host <host1,host2>'      : _('Hosts (or nodes) the job is for.'),
@@ -34,6 +34,8 @@ cmd_help = {
                                     '--file <path>'             : _('File whose content the job carries (file_mgmt put_file).'),
                                     '--key <path>'              : _('File with the signing key of a repository (repo_mgmt add_repo).'),
                                     '--expiry <time>'           : _('How long the job may be run (e.g. 7d). Default 30d.'),
+                                    '--on-demand'               : _('Tell the hosts to look now. Without it they ask on their next round.'),
+                                    '--return-uuid'             : _('Print the UUID of the new job instead of a message. Useful in scripts.'),
                                 },
                 },
 

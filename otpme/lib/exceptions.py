@@ -179,6 +179,17 @@ class ServerQuit(ConnectionQuit):
 class ClientQuit(ConnectionQuit):
     pass
 
+class ConnectionHijacked(ConnectionQuit):
+    """ A protocol handler has taken the connection over.
+
+    Raised when a handler has stopped speaking the OTPme protocol on a
+    connection and used the socket for something else -- racd splices
+    two of them together and what travels is SSH. Nothing more may be
+    written to such a connection: a closing frame after the handover
+    would land in the middle of somebody else's protocol.
+    """
+    pass
+
 class DaemonQuit(OTPmeException):
     pass
 
@@ -288,6 +299,10 @@ class ServiceShutdown(OTPmeException):
     pass
 
 class MasterFailover(OTPmeException):
+    pass
+
+class MasterNodeWrite(OTPmeException):
+    """ The peer will not take this object because it is the master node. """
     pass
 
 class ClusterQuorum(OTPmeException):

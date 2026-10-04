@@ -169,8 +169,7 @@ ROOT_SCRIPT_GROUP="nogroup"
 # supported are "pickle" and "larch"
 PICKLE_CACHE_MODULE="pickle"
 
-# Cache daemon to use. Currently supported is redis, memcached and memcachedb.
-# Please note that memcachedb stores sensitive data on disk (see MEMCACHEDB_CACHE_DIR).
+# Cache daemon to use. Currently supported is redis and memcached.
 # NOTE: Please make sure you run "otpme-tool cache stop" BEFORE changing this parameter!
 CACHE="redis"
 # Autostart cache on daemon start.
@@ -229,16 +228,6 @@ FLUSH_CACHE_ON_START="True"
 # Please note. If you uncomment MEMCACHED_OPTS any other memcached option is ignored.
 #MEMCACHED_OPTS="-d -P /var/run/otpme/pidfiles/memcached.pid -I 8m -m 128 -t 32 -c 4096 -U off -s /var/run/otpme/sockets/memcached.sock -a 700 -o lru_maintainer,lru_crawler,hash_algorithm=murmur3 -o expirezero_does_not_evict -v"
 
-# Memcachedb binary.
-#MEMCACHEDB_BIN="memcachedb"
-# Memcache settings.
-#MEMCACHEDB_MAXMEM="128"
-#MEMCACHEDB_THREADS="32"
-#MEMCACHEDB_CACHE_DIR="/var/cache/otpme/memcachedb"
-#MEMCACHEDB_SOCKET="/var/run/otpme/sockets/memcachedb/memcachedb.sock"
-# Please note. If you uncomment MEMCACHEDB_OPTS any other memcachedb option is ignored.
-#MEMCACHEDB_OPTS="-d -m 128 -t 32 -A 4096 -H /var/cache/otpme/memcachedb -U off -s /var/run/otpme/sockets/memcachedb/memcachedb.sock -a 700 -v"
-
 # Compress object JSON files.
 #OBJECT_JSON_COMPRESSSION="lz4"
 # Prettify object JSON files.
@@ -261,9 +250,15 @@ RLIMIT_MSGQUEUE="2621440000"
 # system is left alone.
 RLIMIT_NOFILE="65536"
 
-# The socket receive buffer. This should be a high value like 100MiB to speedup OTPme fuse module.
-SOCKET_SEND_BUFFER="104857600"
-SOCKET_RECEIVE_BUFFER="104857600"
+# The largest single request OTPme accepts from the other side.
+#
+# This is a safety limit, not a speed setting. A request larger than this is
+# refused. Raise it only if a backup, a sync or a restore fails because
+# something you move is bigger than this.
+#
+# Most daemons have their own, smaller limit. This value is used where a daemon
+# has none of its own.
+MAX_REQUEST_SIZE="104857600"
 
 # Max interval in seconds the backend executes object policies (e.g. autodisable).
 # Setting this value to low will result in poor performance because the backend
@@ -429,6 +424,20 @@ SYNC_RETRY_COUNT="5"
 # will help with sync problems if objects do change to frequently on the master
 # node to get to an consistend sync state.
 SYNC_IGNORE_CHANGED_OBJECTS="False"
+# Write down the public key of every host that is synced here, and hold the host
+# to it. A remote access session (otpme-shell) is checked against the key a host
+# was joined with, read from this host's copy of the tree, so whoever can change
+# the tree can change which key a session is checked against. With this they
+# cannot change it here.
+# The first key of a host is written down by the sync that brings it: it comes
+# from the realm and not from the host, so there is nobody to ask. A key that
+# differs from the one written down does not replace it. The sync says so in its
+# log, and you take the new key over by hand as root with "otpme-tool
+# update_host_keys", which shows you what changed. Until then a session to that
+# host does not open, and a host that was never synced here gets none either.
+# The keys live in /var/spool/otpme/host_keys/. Default False, because it means
+# a command for every host whose key changes.
+PIN_HOST_KEYS="False"
 
 # Heartbeat interval in seconds controld sends a 'ping' message to all child deamons.
 CONTROLD_HEARTBEAT_INTERVAL="15"

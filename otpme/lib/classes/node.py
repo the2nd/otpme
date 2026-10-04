@@ -400,6 +400,14 @@ commands = {
                     },
                 },
             },
+    'get_public_key'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'get_public_key',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'renew_cert'   : {
             'default'    : {
                 'exists'    : {
@@ -609,7 +617,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'cache_update_interval' : 30,
+                    'args'              : ['owner_type', 'owner_name', 'acls', 'recursive_acls', 'apply_default_acls',],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -619,7 +628,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['acls'],
                     'oargs'             : ['recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
@@ -854,6 +864,18 @@ REGISTER_AFTER = ["otpme.lib.classes.unit"]
 
 DEFAULT_UNIT = "nodes"
 
+def cluster_write_procs_setter(value, **kwargs):
+    """ Setter for cluster_write_procs. """
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        msg = _("Number of processes must be an integer.")
+        raise ValueError(msg) from None
+    if value < 0:
+        msg = _("Number of processes cannot be negative.")
+        raise ValueError(msg)
+    return value
+
 def register():
     register_oid()
     config.register_config_parameter(name="max_node_name_len",
@@ -861,6 +883,18 @@ def register():
                                     default_value=64,
                                     setter=name_len_setter,
                                     object_types=['site', 'unit'])
+    # How many processes this node uses to write the cluster journal to
+    # one of its peers, for objects and for sessions alike. A peer writes
+    # an object away before it answers, and one connection carries one
+    # object at a time, so a bulk change crosses over at the speed of a
+    # single write however many cores either side has. Zero means work it
+    # out from the cores. Settable on a unit or the site as well, so a
+    # cluster of alike nodes is configured once.
+    config.register_config_parameter(name="cluster_write_procs",
+                                    ctype=int,
+                                    default_value=0,
+                                    setter=cluster_write_procs_setter,
+                                    object_types=['site', 'unit', 'node'])
     register_hooks()
     register_backend()
     register_object_unit()
@@ -873,12 +907,8 @@ def register():
     # own site hold a vote about it.
     config.register_index_attribute("vote_script", sync=[],
                                     object_types=node_types)
-    # The system a node runs, as its confd reports it. Written by
-    # OTPmeHost.update_os(), which a host runs as well, see host.py.
-    config.register_index_attribute("os", sync=[],
-                                    object_types=node_types)
-    config.register_index_attribute("os_version", sync=[],
-                                    object_types=node_types)
+    # The system a node runs is not here but in host_inventory, with
+    # its packages and its hardware, see there why.
     # Written by OTPmeClientObject, which the client and the host stand
     # behind as well.
     config.register_index_attribute("logins_limited", sync=True,
@@ -1070,7 +1100,7 @@ class Node(OTPmeHost):
             return node_vote
 
         try:
-            node_vote = os.path.getmtime(config.node_sync_file)
+            node_vote = os.path.getmtime(config.node_sync_time_file)
         except FileNotFoundError:
             # Get node vote (daemon start time).
             node_vote = config.node_vote
@@ -1322,23 +1352,23 @@ class Node(OTPmeHost):
 
     def enable(self, *args, offline: bool=False,
         callback: JobCallback=default_callback, **kwargs):
-        enable_status = super().enable(*args, callback=callback, **kwargs)
-        if not enable_status:
-            return enable_status
-        if config.use_api or offline:
-            return enable_status
-        # The node services are shutdown while the node is disabled. This
-        # will only work while the node is still reachable (e.g. it did not
-        # yet notice that it was disabled). A node that noticed its disabled
-        # status starts its services again when it notices that it is
-        # enabled again (see clusterd.enable_node()).
-        try:
-            self.stop_service_shutdown()
-        except Exception as e:
-            log_msg = _("Failed to start node services: {node}: {error}", log=True)[1]
-            log_msg = log_msg.format(node=self.name, error=e)
-            logger.warning(log_msg)
-        return enable_status
+        # Nothing is asked of the node itself here. Its services were shut
+        # down while it was disabled, and it starts them again on its own:
+        # a disabled node asks the master once a second whether it still
+        # is, and clears the shutdown as soon as it is not (clusterd,
+        # start_node_disabled_check() -> enable_node()).
+        #
+        # Asking it from here only worked in the moment before the node
+        # noticed it was disabled. After that it refuses our clusterd
+        # connection -- which is what being disabled means -- and all this
+        # produced was a warning on every enable:
+        #
+        #   Failed to start node services: <node>: Failed to get clusterd
+        #   connection: <node>: No cluster serivce on this node.
+        #
+        # <offline> is taken and dropped, so a caller can enable a node
+        # the same way it disables one.
+        return super().enable(*args, callback=callback, **kwargs)
 
     @backend.transaction
     def add(
@@ -1374,6 +1404,23 @@ class Node(OTPmeHost):
                             value=default_excludes,
                             callback=callback)
         return add_result
+
+    def remove_orphans(
+        self,
+        extra_ref_lists: Union[list,None]=None,
+        **kwargs,
+        ):
+        """ Remove orphan UUIDs.
+
+        The vote script is the one reference only a node has. A script
+        that is gone makes get_node_vote() log an unknown vote script
+        and vote 1 at every election, so it is cleared here as well.
+        """
+        ref_lists = [
+                ('vote_script', 'script', None, 'value'),
+                ]
+        ref_lists += extra_ref_lists or []
+        return super().remove_orphans(extra_ref_lists=ref_lists, **kwargs)
 
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show host config. """

@@ -57,6 +57,9 @@ write_acls =  [
 read_value_acls = {
                 "view"      : [
                             "secret",
+                            # show_config() offers it to whoever holds
+                            # it, and it was in no list.
+                            "server_secret",
                             "pin",
                             "auth_script",
                             "mode",

@@ -72,6 +72,22 @@ cmd_help = {
                                     'cmd'                   : _('Get config parameter.'),
                                 },
                 },
+    'config'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-dictionary config -d -a {dictionary} {param} [value]'),
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
+                    '_help' :   {
+                                    'cmd'                   : _('Add config parameter to dictionary.'),
+                                    '-a'                    : _('Append value to config parameter.'),
+                                    '-d'                    : _('Delete config parameter.'),
+                                },
+                },
+    'show_config'      : {
+                    '_cmd_usage_help' : _('Usage: otpme-dictionary show_config {dictionary} [parameter]'),
+                    'cmd'   :   '<|object|> [parameter]',
+                    '_help' :   {
+                                    'cmd'                   : _('Show dictionary config parameters'),
+                                },
+                },
     'changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-dictionary changelog {dictionary}'),
                     'cmd'   :   '<|object|>',
@@ -134,16 +150,16 @@ cmd_help = {
                 },
 
     'add_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-dictionary add_acl {dict_name} {role|token} {role_path|token_path} {acl[:value]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-dictionary add_acl {dict_name} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
+                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to dictionary'),
                                 },
                 },
 
     'del_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-dictionary del_acl {dict_name} {acl}'),
-                    'cmd'   :   '<|object|> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-dictionary del_acl {dict_name} {acl[,acl]}'),
+                    'cmd'   :   '<|object|> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Delete ACL from dictionary'),
                                 },

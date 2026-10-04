@@ -113,6 +113,7 @@ def mount_share(username, share_id, share_realm, share_site, share_name,
                                             sotp_signing),
                                 target_kwargs={
                                                 'logger'        : logger,
+                                                'share_realm'   : share_realm,
                                                 'mount_timeout' : mount_timeout,
                                                 'foreground'    : False,
                                             },
@@ -157,9 +158,17 @@ class OTPmeAgent(UnixDaemon):
             pidfile = config.get_agent_pidfile(user)
         # Set our name.
         self.name = "agent"
-        # Set daemon mode.
-        config.daemon_mode = True
-        config.daemon_name = self.name
+        # Not "we are the agent daemon" here: this class is built to ask
+        # whether the agent runs (LoginHandler.get_agent_status(),
+        # stuff.start_otpme_agent()) at least as often as it is built to
+        # be one, and saying it in the constructor said it in every
+        # process that asked. A command line tool then took itself for
+        # the agent for the rest of its life, with get_key_script()
+        # reading the key script off the disk although --fetch-scripts
+        # asked for the opposite.
+        #
+        # It is said in run(), which is where this process really
+        # becomes the daemon, the way controld does it.
         # Set user we run as.
         self.user = user
         self.pid = None
@@ -210,6 +219,68 @@ class OTPmeAgent(UnixDaemon):
         self.piv_conn = None
         self.piv_session = None
         self.piv_start = 0
+
+    def have_key_script(self, login_user):
+        """ Whether we can run the users key script without the servers.
+
+        Signing goes through the key script, and inside us the script
+        has to come off the disk: fetching it would be a connection of
+        ours through ourselves while we hold the connection lock (see
+        stuff.get_key_script()). So a session whose key script is not
+        cached cannot sign, and saying so is the difference between an
+        error and a wait.
+        """
+        try:
+            offline_token = OfflineToken()
+            offline_token.set_user(user=login_user)
+            script_file = offline_token.get_script_file_path("key")
+        except Exception as e:
+            log_msg = _("Failed to look for key script of user '{user}': {e}", log=True)[1]
+            log_msg = log_msg.format(user=login_user, e=e)
+            self.logger.debug(log_msg)
+            return False
+        return os.path.exists(script_file)
+
+    def expire_cached_keys(self):
+        """ Drop the unwrapped private keys whose time is up.
+
+        The key script leaves them here so it does not have to ask for
+        the key password once per signature (OTPmeAgentP1
+        "add_private_key"), and key_cache_time of the user says how long
+        that may last -- the same value that decides how long the PIV
+        handler above stays open. A cache time of 0 means until the user
+        logs out, which is when the whole session goes.
+
+        The wrapped key that came with the login is not touched: it is
+        of no use to anybody without the password, and the key script
+        needs it to fill the cache again.
+        """
+        for login_pid in list(self.login_sessions.keys()):
+            try:
+                session = self.login_sessions[login_pid]
+            except KeyError:
+                continue
+            cached_keys = session.get('cached_keys')
+            if not cached_keys:
+                continue
+            key_cache_time = session.get('key_cache_time') or 0
+            if not key_cache_time:
+                continue
+            now = time.monotonic()
+            kept_keys = {}
+            for key_role in cached_keys:
+                cached_key = cached_keys[key_role]
+                key_age = now - cached_key['cache_time']
+                if key_age > key_cache_time:
+                    log_msg = _("Cache time of {key_role} key reached, dropping it: {pid}", log=True)[1]
+                    log_msg = log_msg.format(key_role=key_role, pid=login_pid)
+                    self.logger.debug(log_msg)
+                    continue
+                kept_keys[key_role] = cached_key
+            if len(kept_keys) == len(cached_keys):
+                continue
+            session['cached_keys'] = kept_keys
+            self.login_sessions[login_pid] = session
 
     def _check_piv(self):
         """ Check if PIV session is still alive. """
@@ -1692,9 +1763,36 @@ class OTPmeAgent(UnixDaemon):
             except Exception:
                 token_owns_keys = False
 
+            # Or because we hold the sign key ourselves: the login sent
+            # it along (User.get_cacheable_keys()) and the key script
+            # asks us for it instead of the servers. Whether the login
+            # token owns the keys says nothing then -- the key is here
+            # either way, and the signing works.
+            try:
+                private_keys = self.login_sessions[login_pid]['private_keys']
+            except Exception:
+                private_keys = {}
+            can_sign_sotp = token_owns_keys or bool(private_keys.get("sign"))
+            # And only if the key script is here, because that is what
+            # does the signing. Checked before we say we can rather than
+            # found out in the middle of it: we hold the connection lock
+            # of this session by then, and everything else that wants it
+            # waits behind us.
+            if can_sign_sotp and not self.have_key_script(login_user):
+                log_msg = _("No key script for user '{user}', cannot sign SOTP.", log=True)[1]
+                log_msg = log_msg.format(user=login_user)
+                self.logger.warning(log_msg)
+                can_sign_sotp = False
+
             sotp_sign_method = None
-            if token_owns_keys:
+            if can_sign_sotp:
+                try:
+                    tty = self.login_sessions[login_pid]['tty']
+                except Exception:
+                    tty = None
                 def sotp_sign_method(sotp):
+                    if tty:
+                        os.environ['GPG_TTY'] = tty
                     os.environ['OTPME_LOGIN_SESSION'] = session_id
                     sotp_sign = stuff.sign_sotp(login_user,
                                                 sotp,
@@ -2315,6 +2413,10 @@ class OTPmeAgent(UnixDaemon):
         from otpme.lib import connections
         # Set PID.
         self.pid = os.getpid()
+        # Set daemon mode. Here and not in the constructor: this is
+        # where the process really becomes the daemon.
+        config.daemon_mode = True
+        config.daemon_name = self.name
         # Init otpme.
         init_otpme(use_backend=False)
         # Close connections (e.g. to hostd).
@@ -2650,6 +2752,8 @@ class OTPmeAgent(UnixDaemon):
                 piv_age = now - self.piv_start
                 if piv_age > self.piv_timeout:
                     self._close_piv()
+
+            self.expire_cached_keys()
 
             # FIXME: Changing the sleep time also affects the idle timer!
             time.sleep(1)

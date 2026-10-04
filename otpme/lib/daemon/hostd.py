@@ -27,6 +27,7 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import locking
+from otpme.lib import filetools
 from otpme.lib import protocols
 from otpme.lib import connections
 from otpme.lib import multiprocessing
@@ -44,6 +45,27 @@ LOCK_TYPE = "hostd.sync"
 
 REGISTER_BEFORE = ['otpme.lib.daemon.controld']
 REGISTER_AFTER = ['otpme.lib.offline_token']
+
+# How long to wait before trying the connection for news again, and how
+# long at most. Doubling, so a site that is down is not hammered by
+# every host it has; capped, so a host is not deaf for long once the
+# site is back.
+NEWS_RETRY_BASE = 5
+NEWS_RETRY_MAX = 300
+
+# How long a sync child gets to end itself on SIGTERM, and how long we
+# then wait for it to be gone after the SIGKILL. A sync that is in the
+# middle of writing objects should be given the chance to stop between
+# two of them; one that cannot answer the signal at all must not hold
+# the shutdown of the daemon.
+SYNC_CHILD_TERMINATE_WAIT = 10
+SYNC_CHILD_KILL_WAIT = 5
+
+# The same for the child that waits for news. It sits in a poll with no
+# timeout, so it has nothing to finish off: a moment to leave the poll
+# is all it needs.
+NEWS_CHILD_TERMINATE_WAIT = 3
+NEWS_CHILD_KILL_WAIT = 5
 
 def register():
     """ Register OTPme daemon. """
@@ -86,7 +108,226 @@ class HostDaemon(OTPmeDaemon):
         self.auto_disabled_run_child = None
         self.remove_outdated_tokens_child = None
         self.clear_outdated_cache_objects_child = None
+        self.news_child = None
         super().__init__(*args, **kwargs)
+
+    def start_news_watcher(self):
+        """ Start the process that waits for news from our site.
+
+        A process and not a thread, although a thread is all the waiting
+        needs. This daemon forks a child for every sync it starts, and a
+        fork takes a copy of the locks of the whole process without the
+        threads that would free them again: a child forked while another
+        thread was inside OpenSSL -- which a long poll over TLS is, every
+        time a record arrives -- blocks on that lock the first time it
+        speaks TLS itself, and nothing in the child can ever free it.
+        That is a sync that never runs and a shutdown that waits for it.
+
+        So the only thread the main process had is gone. The ones left
+        are the joiners that start_process() puts there for a child it
+        is told to wait on, and those sit in waitpid and never go near
+        the crypto library.
+
+        What this daemon talks to the others with are POSIX message
+        queues by name (lib/multiprocessing.py), so telling confd about
+        a job works from a process just as well as from a thread.
+
+        Called again on every round of the main loop, so a child that
+        died is replaced. Without one this host is only deaf, not
+        broken -- confd asks by itself anyway -- so a failure here is a
+        warning and nothing more.
+        """
+        if self.news_child is not None:
+            if self.news_child.is_alive():
+                return
+            log_msg = _("The wait for news ended, starting it again.", log=True)[1]
+            self.logger.warning(log_msg)
+            try:
+                self.news_child.close()
+            except (OSError, ValueError):
+                pass
+            self.news_child = None
+        try:
+            self.news_child = multiprocessing.start_process(
+                                        name=self.name,
+                                        target=self.wait_for_news)
+        except Exception as e:
+            log_msg = _("Failed to start the wait for news: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
+
+    def stop_news_watcher(self):
+        """ Stop the process that waits for news from our site. """
+        news_child = self.news_child
+        self.news_child = None
+        if news_child is None:
+            return
+        if not news_child.is_alive():
+            try:
+                news_child.join()
+            except OSError:
+                pass
+            return
+        try:
+            news_child.terminate()
+        except OSError:
+            pass
+        try:
+            news_child.join(timeout=NEWS_CHILD_TERMINATE_WAIT)
+        except OSError:
+            pass
+        if news_child.is_alive():
+            try:
+                news_child.kill()
+            except OSError:
+                pass
+            try:
+                news_child.join(timeout=NEWS_CHILD_KILL_WAIT)
+            except OSError:
+                pass
+
+    def wait_for_news(self):
+        """ Wait for our site to tell us that there is something for us.
+
+        A long poll against idled, which runs on the node that holds
+        the floating IP -- and the mgmt FQDN we connect to points
+        there, so a failover needs to tell us nothing: the next
+        connection lands wherever the role went.
+
+        What we are told is never more than "look now". Nothing here
+        decides whether anything may happen: confd fetches the job from
+        syncd and verifies it against the signers this host holds, the
+        way it does when it finds one by itself. So a message that was
+        made up, or repeated, costs a look and nothing else -- which is
+        what lets this run without being a way in.
+
+        Without it everything still works, only slower: confd asks
+        every JOB_CHECK_INTERVAL seconds anyway.
+
+        Runs as a child process of its own, see start_news_watcher().
+        """
+        # Handle multiprocessing stuff. Our own connections, our own
+        # locks: what the parent had open is none of our business.
+        multiprocessing.atfork(exit_on_signal=True)
+        log_banner = f"{config.log_name}:(news)"
+        self.logger = log.setup_logger(pid=True, banner=log_banner)
+        self.set_proctitle(proctitle="waiting for news")
+        # Until we are stopped, which is a signal and not a flag: the
+        # handler of a child process ends it where it stands.
+        #
+        # A signal that never arrives is what this watches for. Whoever
+        # waits for news is of no use to a hostd that is gone, and the
+        # retry below would keep asking a site nobody is listening on
+        # for as long as the machine runs.
+        parent_pid = os.getppid()
+        failures = 0
+        while True:
+            if os.getppid() != parent_pid:
+                log_msg = _("The wait for news is ending: the process that started it is gone.", log=True)[1]
+                self.logger.warning(log_msg)
+                return
+
+            # Make sure, floating IP is ready on master nodes.
+            start_connection = False
+            if config.host_type == "node":
+                if config.cluster_status:
+                    if not config.master_failover:
+                        if config.master_node is True:
+                            if config.cluster_ip:
+                                start_connection = True
+                        elif config.master_node is False:
+                            start_connection = True
+            else:
+                start_connection = True
+
+            if not start_connection:
+                time.sleep(1)
+                continue
+
+            idled_conn = None
+            try:
+                idled_conn = connections.get("idled",
+                                        auto_auth=False,
+                                        auto_preauth=False,
+                                        handle_host_auth=False,
+                                        handle_user_auth=False,
+                                        encrypt_session=False)
+                failures = 0
+                log_msg = _("Waiting for news from our site.", log=True)[1]
+                self.logger.debug(log_msg)
+                while True:
+                    status, \
+                    status_code, \
+                    response, \
+                    binary_data = idled_conn.send(command="host_wait",
+                                                command_args={},
+                                                timeout=None)
+                    # Here as well as above: idled sends a keepalive of
+                    # its own, so this is where a long poll notices
+                    # that there is nobody left to tell.
+                    if os.getppid() != parent_pid:
+                        log_msg = _("The wait for news is ending: the process that started it is gone.", log=True)[1]
+                        self.logger.warning(log_msg)
+                        return
+                    if not status:
+                        # "keepalive" and the like: ask again.
+                        if response in ("shutdown",):
+                            break
+                        continue
+                    self.handle_news(response)
+            except Exception as e:
+                failures += 1
+                log_msg = _("Lost the connection for news: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.debug(log_msg)
+            finally:
+                if idled_conn is not None:
+                    try:
+                        idled_conn.close()
+                    except Exception:
+                        pass
+            # Backing off, so a site that is down is not hammered by
+            # every host it has. Capped, so a host does not stay deaf
+            # for long once it is back.
+            delay = min(NEWS_RETRY_MAX, NEWS_RETRY_BASE * (2 ** (failures - 1)))
+            time.sleep(delay)
+
+    def handle_news(self, event):
+        """ Pass on what our site told us.
+
+        Only confd for now, and only "there is a job": the daemon that
+        acts on it is the one that has to be woken, and nothing else
+        here needs to know.
+        """
+        try:
+            event_type = event['event_type']
+        except (KeyError, TypeError):
+            log_msg = _("Got news without an event type.", log=True)[1]
+            self.logger.warning(log_msg)
+            return
+        if event_type != "conf_job":
+            log_msg = _("News we do not know: {event_type}", log=True)[1]
+            log_msg = log_msg.format(event_type=event_type)
+            self.logger.debug(log_msg)
+            return
+        # What kind of job it is, if we were told. confd waits a moment
+        # of its own before it asks, so that a job for a unit does not
+        # bring every host of it to syncd in the same second -- and a
+        # shell somebody is waiting for must not wait that out.
+        job_type = None
+        try:
+            job_type = event['data'].get('job_type')
+        except (KeyError, TypeError, AttributeError):
+            pass
+        log_msg = _("Our site says there is a job for us.", log=True)[1]
+        self.logger.info(log_msg)
+        try:
+            self.comm_handler.send("confd", command="new_conf_job",
+                                data={'job_type':job_type})
+        except Exception as e:
+            log_msg = _("Failed to tell confd about a new job: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
 
     def signal_handler(self, _signal, frame):
         """ Exit on signal. """
@@ -97,6 +338,8 @@ class HostDaemon(OTPmeDaemon):
             return
         log_msg = _("Received SIGTERM.", log=True)[1]
         self.logger.info(log_msg)
+        # Stop waiting for news.
+        self.stop_news_watcher()
         # Stop resolver runs.
         self.stop_resolvers()
         # Stop auto disable childs.
@@ -1146,6 +1389,7 @@ class HostDaemon(OTPmeDaemon):
             # We have to continue without sync connection to get policies
             # handled (e.g. update SSH authorized_keys files when login
             # times are restricted).
+            objects_sync_status = None
             if can_sync:
                 resync_token_data = False
                 if sync_type == "objects":
@@ -1196,12 +1440,12 @@ class HostDaemon(OTPmeDaemon):
                 # Start sync job.
                 try:
                     sync_status = proto_handler.do_sync(sync_type=sync_type,
-                                    realm=realm,
-                                    site=site,
-                                    resync=resync,
-                                    offline=offline,
-                                    sync_last_used=sync_last_used,
-                                    ignore_changed_objects=ignore_changed_objects)
+                                            realm=realm,
+                                            site=site,
+                                            resync=resync,
+                                            offline=offline,
+                                            sync_last_used=sync_last_used,
+                                            ignore_changed_objects=ignore_changed_objects)
                 except SyncDisabled:
                     log_msg = _("Synchronization disabled by site: {realm}/{site}", log=True)[1]
                     log_msg = log_msg.format(realm=realm, site=site)
@@ -1238,6 +1482,8 @@ class HostDaemon(OTPmeDaemon):
                 if resync_token_data:
                     self._send_local_daemon_msg("sync_token_data")
                     self._send_local_daemon_msg("sync_ssh_authorized_keys")
+                if sync_type == "objects" and sync_status is not None:
+                    objects_sync_status = sync_status
 
         # Make sure nsscache is up-to-date.
         start_nsscache_sync = False
@@ -1312,7 +1558,16 @@ class HostDaemon(OTPmeDaemon):
                 sync_status = nsscache_sync_status
 
         # Make sure SSH authorized keys files are up-to-date.
-        if sync_type == "objects" or sync_type == "ssh_authorized_keys":
+        sync_ssh_authorized_keys = False
+        if sync_type == "objects":
+            # Set last sync time even if we dont have to sync.
+            filetools.touch(config.authorized_keys_dir)
+            if objects_sync_status:
+                sync_ssh_authorized_keys = True
+        if sync_type == "ssh_authorized_keys":
+            sync_ssh_authorized_keys = True
+
+        if sync_ssh_authorized_keys:
             # Acquire sync lock. We use the same lock ID to prevent a race
             # condition with sync when updating SSH authorized_keys.
             sync_lock = self.acquire_sync_lock("sync_ssh_authorized_keys")
@@ -1331,6 +1586,9 @@ class HostDaemon(OTPmeDaemon):
 
             if sync_status is None:
                 sync_status = ssh_sync_status
+
+            # Set last sync time even if we dont have to sync.
+            filetools.touch(config.authorized_keys_dir)
 
         # Make sure we sent sync notifications to unsynchronized peers.
         if sync_type == "notify" and self.host_type == "node" and config.master_node:
@@ -1909,6 +2167,9 @@ class HostDaemon(OTPmeDaemon):
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
 
+        # Wait for news from our site, in a process of its own.
+        self.start_news_watcher()
+
         log_msg = _("{full_name} started", log=True)[1]
         log_msg = log_msg.format(full_name=self.full_name)
         self.logger.info(log_msg)
@@ -1931,6 +2192,9 @@ class HostDaemon(OTPmeDaemon):
         last_host_object_reload = time.time()
         last_token_data_removal = time.time()
         while True:
+            # A host that is deaf gets its jobs a minute late, so this
+            # is worth a look on every round.
+            self.start_news_watcher()
             # Start initial sync jobs.
             if not init_sync_started:
                 try:
@@ -2062,6 +2326,7 @@ class HostDaemon(OTPmeDaemon):
                         # Inform controld that we finished our reload.
                         self.comm_handler.send("controld", command="reload_done")
 
+                    sync_sites_before = True
                     if daemon_command == "sync_notify":
                         if "notify" not in self.sync_by_command:
                             self.sync_by_command.append('notify')
@@ -2094,19 +2359,24 @@ class HostDaemon(OTPmeDaemon):
                         if "resync_nsscache" not in self.sync_by_command:
                             self.sync_by_command.append('resync_nsscache')
                     if daemon_command == "sync_ssh_authorized_keys":
+                        sync_sites_before = False
                         if "sync_ssh_authorized_keys" not in self.sync_by_command:
                             self.sync_by_command.append('ssh_authorized_keys')
 
                 child_list = list(self.sync_childs)
                 if "sites" in child_list:
                     child_list.remove("sites")
-                    child_list.insert(0, "sites")
+                    if sync_sites_before:
+                        child_list.insert(0, "sites")
 
                 # Start sync process if needed.
                 recv_timeout = None
                 for sync_type in child_list:
                     # Handle still running and finished sync processes.
-                    sync_child = self.sync_childs[sync_type]
+                    try:
+                        sync_child = self.sync_childs[sync_type]
+                    except KeyError:
+                        sync_child = None
                     if sync_child:
                         # If the sync job is still running notify ourselves
                         # (via "sync_done") to check again.
@@ -2268,6 +2538,16 @@ class HostDaemon(OTPmeDaemon):
                 self.logger.critical(log_msg)
                 config.raise_exception()
 
+        # Everything the signal handler stops, because the loop also
+        # ends without a signal: on the quit command, and on a reload
+        # that asks for a restart. Those two left the childs behind --
+        # the one that waits for news above all, which then ran on with
+        # its parent gone until somebody noticed it in ps. Each of them
+        # is written to be called twice, so taking this way after the
+        # handler has run costs nothing.
+        self.stop_news_watcher()
+        self.stop_resolvers()
+        self.stop_auto_disable()
         self.shutdown_sync_childs()
         log_msg = _("Received signal, terminating.", log=True)[1]
         self.logger.info(log_msg)
@@ -2297,9 +2577,36 @@ class HostDaemon(OTPmeDaemon):
             except OSError:
                 pass
             try:
-                sync_child.join()
+                sync_child.join(timeout=SYNC_CHILD_TERMINATE_WAIT)
             except OSError:
                 pass
+            # A sync child cannot always answer a SIGTERM. The handler
+            # of it is Python's, so it runs when the interpreter gets to
+            # run bytecode -- and a child that sits in a lock of the C
+            # library never gets there: a lock wait is not interrupted
+            # by a signal, it carries on after it. A child that was
+            # forked while another thread of ours held such a lock holds
+            # it forever, because the thread that would free it was not
+            # forked along.
+            #
+            # So the shutdown does not wait on the child being able to
+            # end itself. SIGKILL is not a signal a process handles.
+            if sync_child.is_alive():
+                log_msg = _("Sync child did not end on SIGTERM, killing it: {sync_type} ({pid})", log=True)[1]
+                log_msg = log_msg.format(sync_type=sync_type, pid=sync_child.pid)
+                self.logger.warning(log_msg)
+                try:
+                    sync_child.kill()
+                except OSError:
+                    pass
+                try:
+                    sync_child.join(timeout=SYNC_CHILD_KILL_WAIT)
+                except OSError:
+                    pass
+                if sync_child.is_alive():
+                    log_msg = _("Sync child is still alive after SIGKILL, giving up on it: {sync_type} ({pid})", log=True)[1]
+                    log_msg = log_msg.format(sync_type=sync_type, pid=sync_child.pid)
+                    self.logger.critical(log_msg)
             try:
                 sync_child.close()
             except OSError:

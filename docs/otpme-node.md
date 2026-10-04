@@ -365,8 +365,8 @@ OTPme data directory
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-host**(1), **otpme-token**(1),
-**otpme-role**(1), **otpme-ca**(1)
+**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-host**(1),
+**otpme-token**(1), **otpme-role**(1), **otpme-ca**(1)
 
 # AUTHOR
 

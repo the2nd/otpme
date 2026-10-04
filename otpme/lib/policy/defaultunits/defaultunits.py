@@ -58,15 +58,20 @@ read_value_acls = {
                                 ],
             }
 
+# "default_unit" and not "unit": set_default_unit() asks for
+# "add:default_unit" and show_config() for "remove:default_unit" and
+# "edit:default_unit", so the names in these lists reached none of
+# them and only a blanket "add" got anybody through. It is also what
+# the read ACL is called (view:default_units).
 write_value_acls = {
                 "add"           : [
-                                "unit",
+                                "default_unit",
                                 ],
                 "remove"        : [
-                                "unit",
+                                "default_unit",
                                 ],
                 "edit"        : [
-                                "unit",
+                                "default_unit",
                                 ],
                 }
 
@@ -357,7 +362,7 @@ class DefaultunitsPolicy(Policy):
         if self.verify_acl("view:default_units") \
         or self.verify_acl("add:default_unit") \
         or self.verify_acl("remove:default_unit") \
-        or self.verify_acl("changeg:default_unit"):
+        or self.verify_acl("edit:default_unit"):
             for object_type in self.default_units:
                 unit_uuid = self.default_units[object_type]
                 unit = backend.get_object(uuid=unit_uuid)

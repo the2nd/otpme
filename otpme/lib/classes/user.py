@@ -83,6 +83,11 @@ write_acls = [
             #"deploy",
             "gen_keys",
             "del_keys",
+            # import_sign_key() and import_encrypt_key() ask for these
+            # and they were in no list, so nobody but an admin could
+            # import a key. otpme-user(1) named them all along.
+            "import_sign_key",
+            "import_encrypt_key",
             "unblock",
             "set_temp_password",
         ]
@@ -96,13 +101,18 @@ read_value_acls = {
                         "used_pass_salt",
                         ],
             "view"      : [
-                        "token",
+                        # "tokens" and not "token": list_tokens() asks
+                        # for "view:tokens", nothing asks for the
+                        # singular, and a view ACL that shows a list
+                        # is named in the plural.
+                        "tokens",
                         "group",
                         "failcount",
                         "session",
                         "auto_mount",
                         "auto_disable",
                         "key_cache_time",
+                        "key_caching",
                         ],
             "dump"      : [
                         "photo",
@@ -163,6 +173,7 @@ write_value_acls = {
                                 "token",
                                 "auto_mount",
                                 "admin_access",
+                                "key_caching",
                                 ],
                     "disable"   : [
                                 "disabled_login",
@@ -172,6 +183,7 @@ write_value_acls = {
                                 "token",
                                 "auto_mount",
                                 "admin_access",
+                                "key_caching",
                                 ],
         }
 
@@ -614,6 +626,22 @@ commands = {
                     },
                 },
             },
+    'enable_key_caching'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'enable_key_caching',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'disable_key_caching'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'disable_key_caching',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'get_sign_key_type'   : {
             'default'    : {
                 'exists'    : {
@@ -893,7 +921,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'cache_update_interval' : 30,
+                    'args'              : ['owner_type', 'owner_name', 'acls', 'recursive_acls', 'apply_default_acls',],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -903,7 +932,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['acls'],
                     'oargs'             : ['recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
@@ -1269,6 +1299,8 @@ def register_hooks():
     config.register_auth_on_action_hook("user", "change_group")
     config.register_auth_on_action_hook("user", "change_key_pass")
     config.register_auth_on_action_hook("user", "change_key_cache_time")
+    config.register_auth_on_action_hook("user", "enable_key_caching")
+    config.register_auth_on_action_hook("user", "disable_key_caching")
     config.register_auth_on_action_hook("user", "enable_admin_access")
     config.register_auth_on_action_hook("user", "disable_admin_access")
     config.register_auth_on_action_hook("user", "enable_disabled_login")
@@ -1766,7 +1798,8 @@ def user_is_blocked(user_uuid, access_group, realm, site):
         # Get last used timestamps.
         last_used_list = []
         for uuid in result:
-            last_used = backend.get_last_used(uuid=uuid)
+            last_used = backend.get_last_used(uuid=uuid,
+                                            object_type="failed_pass")
             if last_used == 0:
                 continue
             last_used_list.append(int(last_used))
@@ -1881,6 +1914,13 @@ class User(OTPmeObject):
         # (e.g. keep the yubikey PIV handler open). 0 means no timeout,
         # so the key stays cached for the lifetime of the agent.
         self.key_cache_time = 0
+        # Whether the users private keys travel to the host they log in
+        # on (key_mode "client" only). They go as they are stored here,
+        # which is encrypted with the users key password, and the host
+        # keeps them in its offline tokens and hands them to the agent.
+        # Off by default: which hosts hold a copy of a private key is
+        # not something to decide by accident.
+        self.cache_private_key = False
         # User holds two asymmetric key pairs: a sign key (verify
         # signatures + derive_password slot) and an encrypt key (wrap
         # secrets for the user). Today both are RSA; later the sign
@@ -2039,6 +2079,13 @@ class User(OTPmeObject):
                                                         'var_name'  : 'key_cache_time',
                                                         'type'      : int,
                                                         'default'   : 0,
+                                                        'required'  : False,
+                                                    },
+
+                        'CACHE_PRIVATE_KEY'         : {
+                                                        'var_name'  : 'cache_private_key',
+                                                        'type'      : bool,
+                                                        'default'   : False,
                                                         'required'  : False,
                                                     },
 
@@ -2819,7 +2866,8 @@ class User(OTPmeObject):
                     photo=image_base64)
         return photo.add(callback=callback)
 
-    @check_acls(['del:photo'])
+    # "delete" and not "del", see Client.del_sso_logo().
+    @check_acls(['delete:photo'])
     @object_lock()
     @audit_log()
     @object_changelog("remove photo")
@@ -3019,6 +3067,84 @@ class User(OTPmeObject):
 
         return self._cache(callback=callback)
 
+    @check_acls(['enable:key_caching'])
+    @object_lock()
+    @audit_log()
+    @object_changelog("enable key caching")
+    def enable_key_caching(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Let the users private keys travel to the hosts. """
+        if self.key_mode != "client":
+            msg = _("Key caching needs key mode 'client'.")
+            return callback.error(msg)
+        msg = _("Enable key caching for user '{user_name}'? The private keys are sent to every host the user logs in on.: ")
+        msg = msg.format(user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_key_caching",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = _("Error running policies: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
+
+        self.cache_private_key = True
+
+        return self._cache(callback=callback)
+
+    @check_acls(['disable:key_caching'])
+    @object_lock()
+    @audit_log()
+    @object_changelog("disable key caching")
+    def disable_key_caching(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Stop sending the users private keys to the hosts.
+
+        What a host has already got stays there until the user logs out
+        of it: this is about the next login, not about the copies that
+        are out.
+        """
+        msg = _("Disable key caching for user '{user_name}'?: ")
+        msg = msg.format(user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_key_caching",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = _("Error running policies: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
+
+        self.cache_private_key = False
+
+        return self._cache(callback=callback)
+
     def get_sign_key_type(self, callback: JobCallback=default_callback, **kwargs):
         """ Get users sign key type. """
         return callback.ok(self.sign_key_type)
@@ -3065,6 +3191,41 @@ class User(OTPmeObject):
             rsa_key = priv['key_blob']
             encrypted = False
         return aes_key, rsa_key, encrypted
+
+    def get_cacheable_keys(self):
+        """ The private keys as a host may hold them.
+
+        Empty unless the user asked for it (enable_key_caching) and the
+        keys are the clients own (key mode "client"). What comes back
+        is what is stored here: the blob the key script wrapped with
+        the users key password. Without that password it is of no use
+        to whoever holds it, which is what makes handing it out an
+        option at all.
+
+        Never in key mode "server". There the AES key that wraps the
+        private key is on this side too, and a host that got both would
+        have the key itself.
+        """
+        cacheable_keys = {}
+        if not self.cache_private_key:
+            return cacheable_keys
+        if self.key_mode != "client":
+            return cacheable_keys
+        for key_role in ("sign", "encrypt"):
+            key_attr = self._key_attr(key_role, private=True)
+            if not getattr(self, key_attr):
+                continue
+            try:
+                key_blob = self._get_key(key_role)[1]
+            except Exception as e:
+                log_msg = _("Failed to read {key_role} key of user '{user_name}': {e}", log=True)[1]
+                log_msg = log_msg.format(key_role=key_role, user_name=self.name, e=e)
+                logger.warning(log_msg)
+                continue
+            if not key_blob:
+                continue
+            cacheable_keys[key_role] = key_blob
+        return cacheable_keys
 
     @check_acls(['edit:group'])
     @object_lock()
@@ -3659,8 +3820,8 @@ class User(OTPmeObject):
             acls.append(acl)
             acl = f"token:{self.default_token}:verify"
             acls.append(acl)
-            if acl in acls:
-                self.add_acl(acl=acl,
+            if acls:
+                self.add_acl(acls=acls,
                             force=True,
                             recursive_acls=False,
                             apply_default_acls=False,
@@ -4175,7 +4336,7 @@ class User(OTPmeObject):
     def _handle_acl(
         self,
         action: str,
-        acl: object,
+        acls: List,
         recursive_acls: bool=False,
         apply_default_acls: bool=False,
         object_types: List=None,
@@ -4201,42 +4362,74 @@ class User(OTPmeObject):
         if object_types and "token" not in object_types:
             return callback.ok()
 
+        # Counted first, so every message can say where in them it is,
+        # see Unit._handle_acl().
+        token_count = len(self.tokens)
+        token_pos = 0
+
         for t in self.tokens:
+            token_pos += 1
+            token_progress = {
+                            'pos'   : token_pos,
+                            'total' : token_count,
+                            }
             # Get token.
             token = backend.get_object(object_type="token", uuid=t)
             # Skip orphan tokens.
             if not token:
                 continue
 
-            if not force:
+            # Only for the ACLs a token holds by itself. What comes
+            # down from the unit is not that: it was asked for, and it
+            # goes to the token whether or not the token follows its
+            # user on its own (see the force below).
+            if not force and not apply_default_acls:
                 if not token.acl_inheritance_enabled:
                     continue
 
             if recursive_acls:
-                # Get ACL apply IDs.
-                apply_id, recursive_apply_id = token.get_acl_apply_ids(acl=acl)
+                # All apply IDs at once, as raw ACLs, see
+                # Unit._handle_acl().
+                token_acls = []
+                for x_acl in acls:
+                    apply_id = token.get_acl_apply_ids(acl=x_acl)[0]
+                    if not apply_id:
+                        continue
+                    token_acl = f"{x_acl.owner_type}:{x_acl.owner_uuid}:{apply_id}"
+                    token_acls.append(token_acl)
 
-                if apply_id:
+                if token_acls:
+                    token_kwargs = dict(kwargs)
+                    token_kwargs['ignore_unknown_owner'] = True
                     add_status = token.handle_acl(action=action,
-                                        acl=apply_id,
-                                        owner_uuid=acl.owner_uuid,
+                                        raw_acls=token_acls,
                                         recursive_acls=recursive_acls,
                                         apply_default_acls=apply_default_acls,
+                                        _acl_progress=token_progress,
                                         verify_acls=verify_acls,
                                         verbose_level=verbose_level,
                                         callback=callback,
-                                        **kwargs)
+                                        **token_kwargs)
                     if not add_status:
                         exception = True
 
             if apply_default_acls:
                 token_inherit_method = getattr(token, inherit_method)
-                add_status = token_inherit_method(acl=acl,
-                                verify_acls=verify_acls,
-                                verbose_level=verbose_level,
-                                callback=callback)
-                if not add_status:
-                    exception = True
+                for x_acl in acls:
+                    # force, see Unit._handle_acl().
+                    add_status = token_inherit_method(acl=x_acl,
+                                    force=True,
+                                    _acl_progress=token_progress,
+                                    _acl_owners=kwargs.get("_acl_owners"),
+                                    verify_acls=verify_acls,
+                                    verbose_level=verbose_level,
+                                    callback=callback)
+                    if not add_status:
+                        exception = True
+
+            # Done with this token, see Unit._handle_acl().
+            if not token.write_acl_changes(callback=callback):
+                exception = True
 
         if exception:
             return callback.error()
@@ -4319,10 +4512,7 @@ class User(OTPmeObject):
         _return_type = return_type
         if return_type == "instance":
             _return_type = "uuid"
-        result = self._get_tokens(return_type=_return_type,
-                                callback=callback,
-                                _caller=_caller,
-                                **kwargs)
+        result = self._get_tokens(return_type=_return_type, **kwargs)
         if return_type == "instance":
             _result = []
             for token_uuid in result:
@@ -4331,7 +4521,15 @@ class User(OTPmeObject):
                     continue
                 _result.append(token)
             return _result
-        return result
+        # The answer goes out here and not in _get_tokens(). That one is
+        # cached, and callback.ok() sends the answer to a client instead
+        # of returning it, so the cache would hold what the sending
+        # returned and every later call would answer with nothing.
+        if _caller == "RAPI":
+            result = ",".join(result)
+        if _caller == "CLIENT":
+            result = "\n".join(result)
+        return callback.ok(result)
 
     @user_tokens_cache.cache_method()
     def _get_tokens(
@@ -4348,12 +4546,14 @@ class User(OTPmeObject):
         resolve_destination_token: bool=True,
         quiet: bool=True,
         return_type: str="uuid",
-        callback: JobCallback=default_callback,
-        _caller: str="API",
         **kwargs,
         ):
         """
         Return a list with tokens of this user, selected by access_group or all.
+
+        The list and nothing else: whoever asked for it is answered by
+        get_tokens(). This is cached, and a cached answer is handed back
+        without anything being sent.
         """
         # List to hold tokens.
         tokens = []
@@ -4508,12 +4708,7 @@ class User(OTPmeObject):
                 rel_path = token_data[token_uuid]['rel_path']
                 result.append(rel_path)
 
-        if _caller == "RAPI":
-            result = ",".join(result)
-        if _caller == "CLIENT":
-            result = "\n".join(result)
-
-        return callback.ok(result)
+        return result
 
     @cli.check_rapi_opts()
     @check_acls(acls=['find:roles'])
@@ -5056,6 +5251,12 @@ class User(OTPmeObject):
             except Exception:
                 config.raise_exception()
                 return callback.error("Error decoding token data.")
+            # The deploy args are handed to the deploy method of the
+            # token as keyword arguments, so anything that is not a
+            # mapping has to be refused here. JSON null decodes to None,
+            # and a client that calls a deploy off used to send it.
+            if not isinstance(deploy_args, dict):
+                return callback.error("Invalid token data.")
 
         if pre_deploy:
             result = token.pre_deploy(pre_deploy_args=pre_deploy_args,
@@ -5328,13 +5529,13 @@ class User(OTPmeObject):
                 return callback.ok()
             msg = "Trying to preserve token ACLs..."
             callback.send(msg)
-            for x in cur_token.acls:
-                new_token.add_acl(raw_acl=x,
-                                force=True,
-                                verify_acls=False,
-                                ignore_unknown_owner=True,
-                                callback=callback)
+            new_token.add_acl(raw_acls=list(cur_token.acls),
+                            force=True,
+                            verify_acls=False,
+                            ignore_unknown_owner=True,
+                            callback=callback)
             # Remove orphan ACLs.
+            orphan_acls = []
             for x in list(new_token.acls):
                 try:
                     _acl = otpme_acl.decode(x)
@@ -5351,7 +5552,9 @@ class User(OTPmeObject):
                 msg = _("Removing orphan ACL: {acl}")
                 msg = msg.format(acl=x)
                 callback.send(msg)
-                new_token.del_acl(raw_acl=x,
+                orphan_acls.append(x)
+            if orphan_acls:
+                new_token.del_acl(raw_acls=orphan_acls,
                                 force=True,
                                 verify_acls=False,
                                 callback=callback)
@@ -5504,7 +5707,7 @@ class User(OTPmeObject):
         # Del ACL with view access to the token owner for the deleted token.
         kwargs['verify_acls'] = False
         acl = f"token:{token.uuid}:view"
-        self.del_acl(acl=acl, force=True, callback=callback, **kwargs)
+        self.del_acl(acls=[acl], force=True, callback=callback, **kwargs)
 
         # Remove token UUID from tokens variable of this user.
         try:
@@ -5747,7 +5950,7 @@ class User(OTPmeObject):
         # here mean nothing.
         acl = f"role:{role.uuid}:set_temp_password"
         for token in tokens:
-            token.add_acl(acl=acl,
+            token.add_acl(acls=[acl],
                         force=True,
                         recursive_acls=False,
                         apply_default_acls=False,
@@ -5831,7 +6034,7 @@ class User(OTPmeObject):
         tokens = self._admin_access_tokens()
         acl = f"role:{role.uuid}:set_temp_password"
         for token in tokens:
-            token.del_acl(acl=acl,
+            token.del_acl(acls=[acl],
                         force=True,
                         recursive_acls=False,
                         apply_default_acls=False,
@@ -7198,7 +7401,7 @@ class User(OTPmeObject):
         # Add allow all ACL for admin token to own site.
         mysite = backend.get_object(object_type="site", uuid=config.site_uuid)
         acl = f"token:{admin_token.uuid}:all"
-        mysite.add_acl(acl=acl,
+        mysite.add_acl(acls=[acl],
                     force=True,
                     recursive_acls=False,
                     apply_default_acls=False,
@@ -7474,6 +7677,18 @@ class User(OTPmeObject):
             lines.append(f"\tkey-cache-time:\t\t{key_cache_time}\n")
 
         if view_acl or edit_acl:
+            # Where the key mode says nothing, key caching cannot do
+            # anything either (see enable_key_caching()), so it says
+            # that instead of "Disabled".
+            if self.key_mode != "client":
+                key_caching = "N/A"
+            elif self.cache_private_key:
+                key_caching = "Enabled"
+            else:
+                key_caching = "Disabled"
+            lines.append(f"\tkey-caching:\t\t{key_caching}\n")
+
+        if view_acl or edit_acl:
             if self.sign_public_key:
                 lines.append(f"\tsign-key:\t\t{self.sign_key_type}\n")
 
@@ -7497,7 +7712,11 @@ class User(OTPmeObject):
                 admin_access = "N/A"
             lines.append(f"\tadmin-access:\t\t{admin_access}\n")
 
-        if self.verify_acl("view:auth_script") \
+        # "view_all", which is where read_value_acls keeps the scripts.
+        # These gates said "view:auth_script" and so on, which is in no
+        # list: whoever was given "view_all:auth_script" saw nothing
+        # here, and only an admin did.
+        if self.verify_acl("view_all:auth_script") \
         or self.verify_acl("enable:auth_script") \
         or self.verify_acl("disable:auth_script"):
             auth_script = "N/A"
@@ -7515,7 +7734,7 @@ class User(OTPmeObject):
                         auth_script = f"{auth_script} {auth_script_options}"
             lines.append(f"\tauth_script:\t\t{auth_script} ({auth_script_status})\n")
 
-        if self.verify_acl("view:key_script"):
+        if self.verify_acl("view_all:key_script"):
             key_script = "N/A"
             if self.key_script:
                 x = backend.get_object(object_type="script", uuid=self.key_script)
@@ -7526,7 +7745,7 @@ class User(OTPmeObject):
                         key_script = f"{key_script} {key_script_options}"
             lines.append(f"\tkey_script:\t\t{key_script}\n")
 
-        if self.verify_acl("view:agent_script"):
+        if self.verify_acl("view_all:agent_script"):
             agent_script = "N/A"
             if self.agent_script:
                 x = backend.get_object(object_type="script", uuid=self.agent_script)
@@ -7537,7 +7756,7 @@ class User(OTPmeObject):
                         agent_script = f"{agent_script} {agent_script_options}"
             lines.append(f"\tagent_script:\t\t{agent_script}\n")
 
-        if self.verify_acl("view:login_script") \
+        if self.verify_acl("view_all:login_script") \
         or self.verify_acl("enable:login_script") \
         or self.verify_acl("disable:login_script"):
             login_script = "N/A"

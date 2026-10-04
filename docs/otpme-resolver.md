@@ -232,8 +232,10 @@ object.
 
 ## Import/Export
 
-**export *resolver***  
-Export resolver configuration to stdout.
+**export \[**--password** *PASS*\] *resolver***  
+Export resolver configuration to stdout, as JSON. Without **--password**
+it is written in clear; with one it is encrypted with a key derived from
+that password. Reading it back in is **otpme-tool** **import**.
 
 # OPTIONS
 
@@ -322,8 +324,8 @@ OTPme data directory
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-user**(1), **otpme-group**(1),
-**otpme-policy**(1)
+**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-user**(1),
+**otpme-group**(1), **otpme-policy**(1)
 
 # AUTHOR
 

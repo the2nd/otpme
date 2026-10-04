@@ -57,6 +57,11 @@ write_acls_acls =  [
 read_value_acls = {
                 "view"      : [
                             "key_type",
+                            # show_config() has a line of its own for
+                            # each of the two keys and asks for these,
+                            # which were in no list.
+                            "sign_key_type",
+                            "encrypt_key_type",
                             "auth_script",
                             "sign_public_key",
                             "encrypt_public_key",
@@ -569,7 +574,7 @@ class YubikeypivToken(Token):
     @object_changelog("change SSH public key")
     def change_ssh_public_key(
         self,
-        public_key: str,
+        ssh_public_key: str,
         force: bool=False,
         verbose_level: int=0,
         run_policies: bool=True,
@@ -577,7 +582,15 @@ class YubikeypivToken(Token):
         _caller: str="API",
         **kwargs,
         ):
-        """ Set tokens SSH public key. """
+        """ Set tokens SSH public key.
+
+        The name of the key is the name the command hands it over under
+        (the oargs of 'ssh_public_key' above), and the ssh token says
+        the same. A method that calls it something else is never given
+        it: the daemon picks the arguments of a job by name, so the key
+        lands in kwargs and the argument is missing.
+        """
+        public_key = ssh_public_key
         if run_policies:
             try:
                 self.run_policies("modify",

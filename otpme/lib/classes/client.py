@@ -874,7 +874,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'cache_update_interval' : 30,
+                    'args'              : ['owner_type', 'owner_name', 'acls', 'recursive_acls', 'apply_default_acls',],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -884,7 +885,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['acls'],
                     'oargs'             : ['recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
@@ -2893,7 +2895,10 @@ class Client(OTPmeClientObject):
 
         return self._write(callback=callback)
 
-    @check_acls(['del:sso_logo'])
+    # "delete" and not "del": that is what write_value_acls says and
+    # what "delete" alone covers, so "del:sso_logo" could be given to
+    # nobody and only an admin ever got here.
+    @check_acls(['delete:sso_logo'])
     @object_lock()
     @audit_log()
     @object_changelog("remove SSO logo")
@@ -3574,7 +3579,7 @@ class Client(OTPmeClientObject):
         addresses = ""
         if self.verify_acl("view:address") \
         or self.verify_acl("add:address") \
-        or self.verify_acl("remove:address"):
+        or self.verify_acl("delete:address"):
             addresses = ",".join(self.addresses)
         lines.append(f'ADDRESSES="{addresses}"')
 

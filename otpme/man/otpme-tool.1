@@ -136,12 +136,23 @@ Generate SLP (Session-Logout-Password) from given password.
 Generate MSCHAP SLP challenge/response from given username and password.
 .SS Signer Management
 .TP
-.B add_signer \fR[\fB\-\-private\fR] [\fB\-\-no\-pin\fR] [\fB\-\-no\-verify\-token\-opts\fR] [\fB\-\-tag\fR \fItag\fR] \fB\-\-signer\-type\fR \fItype\fR \fIobject_id\fR
+.B add_signer \fR[\fB\-\-private\fR] [\fB\-\-no\-pin\fR] [\fB\-\-no\-verify\-token\-opts\fR] [\fB\-\-allow\-throwaway\-key\fR] [\fB\-\-tag\fR \fItag\fR] \fB\-\-signer\-type\fR \fItype\fR \fIobject_id\fR
 Add signer. A token signature includes the token options (e.g.
 .IR command= )
 the SSH key may be used with, and those are verified against the options the key is served with.
 .B \-\-no\-verify\-token\-opts
 turns that check off for this signer.
+.RS
+.PP
+.B \-\-allow\-throwaway\-key
+is only for a
+.B remote_access
+signer.
+It lets that signer ask for a shell on a key the job brings along, instead of on a key this host already holds for the user.
+That way in needs nothing but the signature of the job, so it is off unless you say otherwise.
+See
+.BR otpme\-shell (1).
+.RE
 .TP
 .B del_signer \fR[\fB\-\-private\fR] \fIsigner_uuid\fR
 Delete signer.
@@ -152,11 +163,40 @@ Enable signer.
 .B disable_signer \fR[\fB\-\-private\fR] [\fB\-\-type\fR \fIsigner_type\fR] \fIsigner_uuid\fR
 Disable signer.
 .TP
-.B update_signer \fR[\fB\-\-private\fR] [\fB\-\-no\-pin\fR] [\fIsigner_uuid\fR]
+.B update_signer \fR[\fB\-\-private\fR] [\fB\-\-no\-pin\fR] [\fB\-\-remove\-gone\fR] [\fB\-\-verify\-token\-opts\fR|\fB\-\-no\-verify\-token\-opts\fR] [\fB\-\-allow\-throwaway\-key\fR|\fB\-\-no\-throwaway\-key\fR] [\fB\-\-signer\-type\fR \fItype\fR] [\fIsigner_uuid\fR]
 Update signer.
+Pins the current key of the user or role again, for example after a key change.
+.RS
+.PP
+The last two pairs change what the signer may ask for.
+Name neither of a pair and it is left as it is: an update is usually about the pinned key, and saying nothing must not take a permission away.
+This is the only way to change one of them without removing the signer and adding it again.
+.RE
 .TP
-.B show_signer \fR[\fB\-\-private\fR] [\fIsigner_uuid\fR]
+.B show_signer \fR[\fB\-\-private\fR] [\fB\-\-signer\-type\fR \fItype\fR] [\fIsigner_uuid\fR]
 Show signer(s).
+The table says whether the signature has to cover the token options, and whether the signer may bring its own key for a remote access session.
+.SS Host Keys
+.TP
+.B update_host_keys \fR[\fB\-\-list\fR] [\fIhost\fR]
+Take over the public keys of hosts whose key changed.
+Only with \fBPIN_HOST_KEYS\fR, see
+.BR otpme.conf (5).
+.RS
+.PP
+With that parameter the public key of every host synced here is written down, and a host is held to it.
+A key that differs from the one written down does not replace it, and a remote access session to that host does not open until somebody takes the new key over.
+This is where that happens, and nothing else does it.
+.PP
+It shows every host whose key in the realm is not the one written down here, with both fingerprints, and asks once.
+The keys are read from the host objects when it runs, so what it shows is the realm as it is at that moment.
+What it shows is what it will take over.
+Name a \fIhost\fR to take over that one alone.
+.PP
+You must be root, because the keys are read from this host's copy of the realm, and the global \fB\-f\fR skips the question.
+.B \-\-list
+only shows and changes nothing.
+.RE
 .SS Offline Token
 .TP
 .B show_offline_token \fR[\fItoken_id\fR]
@@ -209,6 +249,31 @@ Execute cache command.
 .TP
 .B radius \fIcommand\fR
 Execute radius command (start, status, stop, reload, restart, test).
+.SS Private Keys in otpme-agent
+These three are what the key script uses.
+They are listed here because a human may want to look, not because a human has to use them.
+.PP
+otpme-agent holds the private keys of the login session in two shapes: as the login brought them, wrapped with the key password of the user, and unwrapped, as the key script left them after it was first asked to use one.
+The unwrapped one lives for \fBkey_cache_time\fR of the user.
+Both are only handed to the login session they belong to.
+See \fBenable_key_caching\fR in
+.BR otpme\-user (1).
+.TP
+.B get_private_key \fB\-\-role\fR \fIsign\fR|\fIencrypt\fR \fR[\fB\-\-decrypted\fR]
+Write a private key of the logged in user to stdout.
+Without \fB\-\-decrypted\fR the wrapped one, with it the unwrapped one.
+It fails when the agent holds none, which is the normal answer before the key script has been asked to use the key, and after the cache time ran out.
+.TP
+.B add_private_key \fB\-\-role\fR \fIsign\fR|\fIencrypt\fR \fR[\fB\-\-decrypted\fR]
+Give the agent a private key, read from stdin.
+\fB\-\-decrypted\fR for the unwrapped one, which is then kept for the cache time.
+.br
+From stdin, because a private key on a command line is a private key in the process list.
+.TP
+.B del_private_key \fB\-\-role\fR \fIsign\fR|\fIencrypt\fR
+Take a private key away from the agent, both shapes of it.
+The next use asks for the key password again.
+This is how to drop a cached key without logging out.
 .SS Key and Certificate
 .TP
 .B regen_master_key

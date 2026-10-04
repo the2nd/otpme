@@ -176,9 +176,12 @@ List tokens assigned to the share. Use \fB\-\-return\-type\fR to select the attr
 .TP
 .B add_role \fIshare\fR \fIrole\fR
 Add a role to the share. Not supported by encrypted shares and by shares with SOTP signing enabled.
+.br
+The role is looked for in the site of the share, or written as \fIsite\fB/\fIrole\fR to take one from another site of the realm.
 .TP
 .B remove_role \fIshare\fR \fIrole\fR
 Remove a role from the share.
+A UUID is taken as well, which is how a reference to a role that is gone is cleared out.
 .TP
 .B list_roles \fR[\fB\-r\fR] \fIshare\fR
 List roles assigned to the share. Use \fB\-r\fR for recursive listing.
@@ -519,6 +522,7 @@ Let the token "backup/login" mount the share root and reach all home dirs
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
+.BR otpme\-acls (7),
 .BR otpme-pool (1),
 .BR otpme-token (1),
 .BR otpme-role (1)

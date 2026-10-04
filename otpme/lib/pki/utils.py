@@ -60,6 +60,175 @@ cn_attributes = {
     #'postal_code'               : 'POSTAL_CODE',
 }
 
+# The attributes a certificate request can be given, in the order they
+# are written: the common name first, then these.
+#
+# Its own list and not cn_attribute_order, which is extended with every
+# key of cn_attributes further down and holds two dozen names by the
+# time anybody reads it. An attribute belongs here when both forms of a
+# subject can write it, and both have to be able to write every one.
+SUBJECT_ATTRIBUTE_ORDER = [
+                    'country',
+                    'state',
+                    'locality',
+                    'organization',
+                    'ou',
+                    'email',
+                ]
+# The names openssl writes in a "-subj" string, by our own name for the
+# attribute. Ours, because the name cryptography keeps for an OID sits
+# on a private attribute of it.
+OPENSSL_SUBJECT_NAMES = {
+                    'common_name'   : "CN",
+                    'country'       : "C",
+                    'state'         : "ST",
+                    'locality'      : "L",
+                    'organization'  : "O",
+                    'ou'            : "OU",
+                    'email'         : "emailAddress",
+                }
+# What openssl has to see escaped in a value: the separator itself, and
+# the escape character.
+OPENSSL_SUBJECT_ESCAPES = ["\\", "/"]
+
+def get_subject_attributes(common_name, **kwargs):
+    """ The attributes of a subject, in the order they are written.
+
+    The common name first, then the ones of SUBJECT_ATTRIBUTE_ORDER
+    that were given. One that was not given is left out: a request that
+    says "OTPme/Development/otpme.org" about every user says less than
+    one that says nothing.
+    """
+    attributes = [('common_name', common_name)]
+    for name in SUBJECT_ATTRIBUTE_ORDER:
+        value = kwargs.get(name)
+        if not value:
+            continue
+        attributes.append((name, value))
+    return attributes
+
+def build_subject_name(common_name, **kwargs):
+    """ The subject of a certificate request, as an x509.Name. """
+    name_attributes = []
+    for name, value in get_subject_attributes(common_name, **kwargs):
+        attr_oid = getattr(NameOID, cn_attributes[name])
+        name_attributes.append(x509.NameAttribute(attr_oid, value))
+    return x509.Name(name_attributes)
+
+def build_rfc4514_subject(common_name, **kwargs):
+    """ The subject the way RFC 4514 writes it: "CN=alice,O=OTPme".
+
+    What ykman takes. Its escaping is defined, and cryptography does it
+    for us.
+    """
+    return build_subject_name(common_name, **kwargs).rfc4514_string()
+
+def build_openssl_subject(common_name, **kwargs):
+    """ The subject the way openssl takes it: "/O=OTPme/CN=alice".
+
+    openssl refuses the RFC 4514 form, and the two escape differently.
+    Built here rather than turned into the other one further down the
+    line, where the only tool left is a shell.
+    """
+    parts = []
+    for name, value in get_subject_attributes(common_name, **kwargs):
+        for x_char in OPENSSL_SUBJECT_ESCAPES:
+            value = value.replace(x_char, f"\\{x_char}")
+        parts.append(f"{OPENSSL_SUBJECT_NAMES[name]}={value}")
+    return "/" + "/".join(parts)
+
+# The names openssl writes in an "-addext keyUsage=..." value, by our
+# own name for the bit. Ours, because a key usage is one thing with two
+# spellings and both ends have to agree on one.
+OPENSSL_KEY_USAGE_NAMES = {
+    'digital_signature'     : "digitalSignature",
+    'content_commitment'    : "nonRepudiation",
+    'key_encipherment'      : "keyEncipherment",
+    'data_encipherment'     : "dataEncipherment",
+    'key_agreement'         : "keyAgreement",
+    'key_cert_sign'         : "keyCertSign",
+    'crl_sign'              : "cRLSign",
+    'encipher_only'         : "encipherOnly",
+    'decipher_only'         : "decipherOnly",
+}
+# The same for an extended key usage, by the name cryptography has for
+# the OID (ExtendedKeyUsageOID.EMAIL_PROTECTION and so on).
+OPENSSL_EXT_KEY_USAGE_NAMES = {
+    'SERVER_AUTH'           : "serverAuth",
+    'CLIENT_AUTH'           : "clientAuth",
+    'CODE_SIGNING'          : "codeSigning",
+    'EMAIL_PROTECTION'      : "emailProtection",
+    'TIME_STAMPING'         : "timeStamping",
+    'OCSP_SIGNING'          : "OCSPSigning",
+    'SMARTCARD_LOGON'       : "msSmartcardLogin",
+    'ANY_EXTENDED_KEY_USAGE': "anyExtendedKeyUsage",
+}
+
+def build_key_usage(key_usage):
+    """ The keyUsage extension, from our own names for the bits. """
+    usage_kwargs = {}
+    for name in key_usage_attributes:
+        usage_kwargs[name] = name in key_usage
+    for name in key_usage:
+        if name in key_usage_attributes:
+            continue
+        msg = _("Unknown key usage: {usage}")
+        msg = msg.format(usage=name)
+        raise OTPmeException(msg)
+    return x509.KeyUsage(**usage_kwargs)
+
+def build_ext_key_usage(ext_key_usage):
+    """ The extendedKeyUsage extension, from the names of the OIDs. """
+    oids = []
+    for name in ext_key_usage:
+        try:
+            oids.append(getattr(ExtendedKeyUsageOID, name.upper()))
+        except AttributeError:
+            msg = _("Unknown extended key usage: {usage}")
+            msg = msg.format(usage=name)
+            raise OTPmeException(msg) from None
+    return x509.ExtendedKeyUsage(oids)
+
+def build_san(email=None):
+    """ The subjectAltName extension, with e-mail addresses in it.
+
+    Where an S/MIME client looks for the address of the sender, and
+    where a CA that follows current practice wants it -- the subject
+    carries it as well (--email), but on its own that is the old way.
+    """
+    names = [x509.RFC822Name(x) for x in email or []]
+    if not names:
+        return None
+    return x509.SubjectAlternativeName(names)
+
+def build_openssl_extensions(san_email=None, key_usage=None,
+    ext_key_usage=None):
+    """ The extensions as openssl takes them, one "-addext" each.
+
+    Built here and not in the shell that calls openssl: the names of the
+    bits differ from ours, and a list has to be joined without anybody
+    guessing about the separator.
+    """
+    extensions = []
+    if san_email:
+        addresses = ",".join([f"email:{x}" for x in san_email])
+        extensions.append(f"subjectAltName={addresses}")
+    if key_usage:
+        # Asked for, so it is checked here too rather than only by
+        # openssl, which would say so in a way nobody reads.
+        build_key_usage(key_usage)
+        names = ",".join([OPENSSL_KEY_USAGE_NAMES[x] for x in key_usage])
+        # Critical, the way RFC 5280 asks for it and the way the same
+        # request is built for a key on a card.
+        extensions.append(f"keyUsage=critical,{names}")
+    if ext_key_usage:
+        build_ext_key_usage(ext_key_usage)
+        names = []
+        for x in ext_key_usage:
+            names.append(OPENSSL_EXT_KEY_USAGE_NAMES[x.upper()])
+        extensions.append(f"extendedKeyUsage={','.join(names)}")
+    return extensions
+
 key_usage_attributes = [
     'digital_signature',
     'content_commitment',

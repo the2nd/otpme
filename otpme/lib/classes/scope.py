@@ -49,6 +49,12 @@ read_value_acls =    {
                                 "roles",
                                 "tokens",
                                 "groups",
+                                # list_clients() asks for it and
+                                # show_config() offers the clients of a
+                                # scope to whoever holds it. It was in
+                                # no list, like add:client and
+                                # remove:client below.
+                                "clients",
                                 "scope_id",
                                 "auto_member",
                                 ],
@@ -59,11 +65,13 @@ write_value_acls = {
                                 "role",
                                 "token",
                                 "group",
+                                "client",
                                 ],
                     "remove"    : [
                                 "role",
                                 "token",
                                 "group",
+                                "client",
                                 ],
                     "set"       : [
                                 "config",
@@ -476,7 +484,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'cache_update_interval' : 30,
+                    'args'              : ['owner_type', 'owner_name', 'acls', 'recursive_acls', 'apply_default_acls',],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -486,7 +495,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['acls'],
                     'oargs'             : ['recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',

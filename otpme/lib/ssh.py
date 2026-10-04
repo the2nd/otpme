@@ -428,6 +428,176 @@ def write_cached_ssh_keys(ssh_keys):
         msg = msg.format(error=e)
         raise Exception(msg) from e
 
+def read_current_authorized_keys():
+    """ The authorized_keys lines this host has written so far.
+
+    Per user, so that update_authorized_keys() can tell a key that is
+    already in place from one that is new. The first is verified like
+    any other and without a word about it, see there.
+
+    A file we cannot read counts as no keys for that user: the keys are
+    verified and written again, which is the answer that leaves a
+    readable file behind.
+    """
+    current_keys = {}
+    try:
+        usernames = os.listdir(config.authorized_keys_dir)
+    except OSError as e:
+        log_msg = _("Unable to read authorized_keys cache dir: {error}", log=True)[1]
+        log_msg = log_msg.format(error=e)
+        logger.warning(log_msg)
+        return current_keys
+    for username in usernames:
+        keys_file = os.path.join(config.authorized_keys_dir, username,
+                                "authorized_keys")
+        if not os.path.exists(keys_file):
+            continue
+        try:
+            fd = open(keys_file, "r")
+            content = fd.read()
+            fd.close()
+        except OSError as e:
+            log_msg = _("Unable to read current authorized_keys file: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            logger.warning(log_msg)
+            continue
+        current_keys[username] = content.split("\n")
+    return current_keys
+
+def get_authorized_keys(username):
+    """ The authorized_keys file of a system user, as it stands.
+
+    This is what otpme-get-authorized-keys hands to sshd, and what
+    anything else on this host that lets an SSH key in has to ask, so
+    that one host has one answer.
+
+    The keys assigned to this host are synced first, or the first login
+    of a token that was just added would be refused. Not more often
+    than every thirty seconds: sshd asks this for every attempt, and a
+    sync per attempt is a sync per port scan.
+    """
+    from otpme.lib import connections
+    now = time.time()
+    try:
+        last_update = os.path.getmtime(config.authorized_keys_dir)
+    except FileNotFoundError:
+        last_update = time.time()
+    authorized_keys_age = now - last_update
+    if authorized_keys_age > 30:
+        try:
+            hostd_conn = connections.get("hostd")
+        except Exception:
+            hostd_conn = None
+
+        if hostd_conn:
+            # Sync SSH keys assigned to this host.
+            hostd_conn.send("sync_ssh_authorized_keys")
+            # Wait a maximum of 3 seconds for hostd to update
+            # authorized_keys file.
+            wait_counter = 0
+            current_timestamp = last_update
+            while current_timestamp == last_update:
+                try:
+                    current_timestamp = os.path.getmtime(config.authorized_keys_dir)
+                except FileNotFoundError:
+                    current_timestamp = time.time()
+                wait_counter += 1
+                time.sleep(0.1)
+                if wait_counter == 30:
+                    break
+
+    authorized_keys_dir = f"{config.authorized_keys_dir}/{username}"
+    authorized_keys_file = f"{authorized_keys_dir}/authorized_keys"
+
+    if not os.path.exists(authorized_keys_file):
+        return ""
+
+    try:
+        fd = open(authorized_keys_file, "r")
+        authorized_keys = fd.read()
+        fd.close()
+    except Exception as e:
+        msg = _("Unable to read current authorized_keys file: {e}")
+        msg = msg.format(e=e)
+        raise OTPmeException(msg) from e
+
+    return authorized_keys
+
+def split_authorized_key(line):
+    """ One authorized_keys line, split into its options and its key.
+
+    Returns (options, algo, blob): what the options say (comma
+    separated, to be read with split_key_options), the algo of the key,
+    and the key itself as the bytes that go over the wire.
+
+    Where the options end cannot be seen from their shape -- "no-pty"
+    reads like an algo and "cert-authority" has the dashes of one -- so
+    the key is looked for instead. It is the first pair of fields where
+    the second is a base64 blob that carries the first as its own name,
+    and whatever stands before that pair is options.
+    """
+    fields = line.split()
+    for pos in range(len(fields) - 1):
+        algo = fields[pos]
+        try:
+            if get_ssh_key_algo(fields[pos + 1]) != algo:
+                continue
+        except OTPmeException:
+            continue
+        try:
+            blob = base64.b64decode(fields[pos + 1], validate=True)
+        except Exception:
+            continue
+        return " ".join(fields[:pos]), algo, blob
+    msg = _("Not an authorized_keys line: no key in it.")
+    raise OTPmeException(msg)
+
+def filter_session_keys(authorized_keys, valid_options=None):
+    """ The keys of an authorized_keys file that may have a session.
+
+    Returns (blobs, left_out): the keys as the bytes that go over the
+    wire, and one sentence per line that was left out, for whoever has
+    somewhere to log it.
+
+    A line is left out where it says anything about how the key may be
+    used. command= says the key is not for a shell at all, from= says
+    not from here -- and a session through a broker comes from the
+    broker -- and no-pty, restrict and the rest each say something
+    nothing here carries out. A key whose line we cannot keep to is a
+    key we must not let in, so the whole line goes rather than the part
+    of it we understand.
+    """
+    if valid_options is None:
+        # Says what the key is, not what it may do: sshd puts it in the
+        # environment of the session and nothing is restricted by it.
+        valid_options = ["environment"]
+    blobs = []
+    left_out = []
+    for line in authorized_keys.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            options, algo, blob = split_authorized_key(line)
+        except OTPmeException as e:
+            left_out.append(f"{e}")
+            continue
+        refused = []
+        for option in split_key_options(options):
+            name = option.split("=")[0]
+            if name in valid_options:
+                continue
+            refused.append(name)
+        if refused:
+            msg = _("A key of this host is not for a session: {options}")
+            msg = msg.format(options=", ".join(sorted(set(refused))))
+            left_out.append(msg)
+            continue
+        if blob in blobs:
+            continue
+        blobs.append(blob)
+    return blobs, left_out
+
 def update_authorized_keys():
     """ Update SSH authorized_keys files from cache. """
     from otpme.lib import backend
@@ -435,6 +605,10 @@ def update_authorized_keys():
 
     # Get SSH keys assigned to this host.
     all_ssh_keys = read_cached_ssh_keys()
+
+    # What we wrote on the last run. It says which keys are in place
+    # already, and those are verified without saying so, see below.
+    current_authorized_keys = read_current_authorized_keys()
 
     # Get currently cached authorized_keys users.
     orphan_authorized_keys = os.listdir(config.authorized_keys_dir)
@@ -625,6 +799,28 @@ def update_authorized_keys():
         # OTPME_USER variable to be added to key options.
         otpme_user_env = f'environment="OTPME_USER={system_user.name}"'
 
+        # Build the authorized_keys line before the signatures are
+        # looked at: it is also the line we hold against the file this
+        # host already has, and that decides whether the verification
+        # says anything about this key.
+        #
+        # The algo must be taken from the key (e.g. "ssh-dss",
+        # "ecdsa-sha2-nistp256"), it cannot be built from our short key
+        # type.
+        try:
+            key_algo = get_ssh_key_algo(verify_token.ssh_public_key)
+        except OTPmeException as e:
+            log_msg = _("Ignoring SSH token with invalid public key: {token_path}: {error}", log=True)[1]
+            log_msg = log_msg.format(token_path=token.rel_path, error=e)
+            logger.warning(log_msg)
+            continue
+        # OTPME_USER is in the line and never in a sign tag, so the two
+        # are built from separate lists.
+        line_opts = list(key_opts)
+        if otpme_user_env not in line_opts:
+            line_opts.append(otpme_user_env)
+        line = f"{','.join(line_opts)} {key_algo} {verify_token.ssh_public_key} {token.rel_path}"
+
         # Get signers.
         signers = get_signers(signer_type="token", username=system_user.name)
         if signers:
@@ -654,7 +850,15 @@ def update_authorized_keys():
                 opts_tag = f"options:{','.join(token_opts)}"
                 check_tags.append(opts_tag)
 
-            # Verify signatures.
+            # Verify signatures. Also for a key that is already in
+            # place: the signer may have been taken away or its
+            # signature revoked since, and only the verification can
+            # tell. What such a key does not need is to be talked
+            # about. This runs after every sync, so saying "verifying"
+            # and "found valid" about a key that was in the file
+            # already, and stays in it, is two lines per key per run
+            # and nothing anybody reads.
+            quiet = line in current_authorized_keys.get(system_user.name, [])
             sign_data  = verify_token.get_sign_data(verify_acls=False)
             try:
                 verify_signatures(signer_type="token",
@@ -663,31 +867,18 @@ def update_authorized_keys():
                                 sign_data=sign_data,
                                 tags=check_tags,
                                 login_interface="ssh",
-                                stop_on_fist_match=True)
+                                stop_on_fist_match=True,
+                                quiet=quiet)
             except Exception as e:
                 # The key is dropped from authorized_keys. The reason of
                 # each signature we skipped is logged on debug level only,
-                # so we have to say why the key is gone.
+                # so we have to say why the key is gone. Never quiet: a
+                # key that was in place and goes now is the one thing
+                # here worth a line.
                 log_msg = _("Ignoring SSH key without valid signature: {token_path}: {e}", log=True)[1]
                 log_msg = log_msg.format(token_path=token_path, e=e)
                 logger.warning(log_msg)
                 continue
-
-        # Add OTPME_USER to environment.
-        if otpme_user_env not in key_opts:
-            key_opts.append(otpme_user_env)
-
-        # Build authorized_keys line. The algo must be taken from the key
-        # (e.g. "ssh-dss", "ecdsa-sha2-nistp256"), it cannot be built from our
-        # short key type.
-        try:
-            key_algo = get_ssh_key_algo(verify_token.ssh_public_key)
-        except OTPmeException as e:
-            log_msg = _("Ignoring SSH token with invalid public key: {token_path}: {error}", log=True)[1]
-            log_msg = log_msg.format(token_path=token.rel_path, error=e)
-            logger.warning(log_msg)
-            continue
-        line = f"{','.join(key_opts)} {key_algo} {verify_token.ssh_public_key} {token.rel_path}"
 
         system_user_name = system_user.name
         if system_user_name not in authorized_keys:
@@ -725,17 +916,11 @@ def update_authorized_keys():
 
         current_keys = []
         new_keys = list(authorized_keys[username]['authorized_keys'])
-        if os.path.exists(authorized_keys_file):
-            try:
-                fd = open(authorized_keys_file, "r")
-                current_file_content = fd.read()
-                current_keys = current_file_content.split("\n")
-                fd.close()
-            except Exception as e:
-                log_msg = _("Unable to read current authorized_keys file: {e}", log=True)[1]
-                log_msg = log_msg.format(e=e)
-                logger.critical(log_msg)
-                continue
+        if username in current_authorized_keys:
+            # Read at the start of the run, where it also said which
+            # keys needed no signature check.
+            current_keys = list(current_authorized_keys[username])
+            current_file_content = "\n".join(current_keys)
 
             # If nothing changed skip this user.
             if current_file_content == authorized_keys_content:

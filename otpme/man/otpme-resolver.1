@@ -197,8 +197,11 @@ It is true by default, but where no value is found at all, clearing is refused.
 OTPme asks the token you are signed in with first, then the object.
 .SS Import/Export
 .TP
-.B export \fIresolver\fR
-Export resolver configuration to stdout.
+.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIresolver\fR
+Export resolver configuration to stdout, as JSON.
+Without \fB\-\-password\fR it is written in clear; with one it is encrypted with a key derived from that password.
+Reading it back in is
+.BR otpme\-tool " " import .
 .SH OPTIONS
 .TP
 .B \-\-type \fITYPE\fR
@@ -277,6 +280,7 @@ OTPme data directory
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
+.BR otpme\-acls (7),
 .BR otpme-user (1),
 .BR otpme-group (1),
 .BR otpme-policy (1)

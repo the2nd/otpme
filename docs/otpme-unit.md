@@ -133,12 +133,18 @@ Needs the ACL **view:policies**.
 
 ## ACL Management
 
-**add_acl \[**-r**\] \[**-a**\] \[**--objects** *types*\] *unit* *owner_type* *owner* *acl***  
+**add_acl \[**-r**\] \[**-a**\] \[**--objects** *types*\] \[**--procs** *num*\] *unit* *owner_type* *owner* *acl***  
 Add an access control entry. Use **-r** for recursive, **-a** to apply
 default ACLs to existing objects.
 
-**del_acl \[**-r**\] \[**-a**\] \[**--objects** *types*\] *unit* *acl***  
-Remove an access control entry.
+A recursive run walks every object of the unit and of the units below
+it. Where there are many, the objects are shared out over several
+processes. **--procs** says how many. Without it a quarter of the cores
+of the node, which leaves the rest for the daemons that go on serving
+logins while this runs.
+
+**del_acl \[**-r**\] \[**-a**\] \[**--objects** *types*\] \[**--procs** *num*\] *unit* *acl***  
+Remove an access control entry. **--procs** as above.
 
 **list_acls *unit***  
 Display all ACLs for the unit.
@@ -277,7 +283,8 @@ OTPme data directory
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-user**(1), **otpme-group**(1)
+**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-user**(1),
+**otpme-group**(1)
 
 # AUTHOR
 

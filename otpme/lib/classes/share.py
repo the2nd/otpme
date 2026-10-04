@@ -146,6 +146,10 @@ write_value_acls = {
                                     "home_share_permissions",
                                     "mount_timeout",
                                     "add_script",
+                                    # change_mount_script() asks for
+                                    # it, the way change_add_script()
+                                    # asks for the one above.
+                                    "mount_script",
                                 ],
             }
 
@@ -738,7 +742,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'cache_update_interval' : 30,
+                    'args'              : ['owner_type', 'owner_name', 'acls', 'recursive_acls', 'apply_default_acls',],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -748,7 +753,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['acls'],
                     'oargs'             : ['recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
@@ -1310,8 +1316,7 @@ class Share(OTPmeObject):
 
     @property
     def share_id(self):
-        share_id = f"{self.site}/{self.name}"
-        return share_id
+        return stuff.get_share_id(self.realm, self.site, self.name)
 
     def _get_object_config(self):
         """ Get object config dict. """
@@ -1925,8 +1930,11 @@ class Share(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Enable ACL inheritance for the object """
-        if not self.verify_acl("enable:read_oid_schema"):
+        """ Make the share read only. """
+        # "enable:read_only". "read_oid_schema" is the name of the
+        # module variable above and was in no ACL list, so only an
+        # admin could make a share read only.
+        if not self.verify_acl("enable:read_only"):
             msg = _("Permission denied: {self}")
             msg = msg.format(self=self)
             return callback.error(msg, exception=PermissionDenied)
@@ -1956,7 +1964,11 @@ class Share(OTPmeObject):
 
         return self._cache(callback=callback)
 
-    @check_acls(['enable:read_only'])
+    # "disable:read_only", which is what the method itself asks for
+    # below. The decorator said "enable:read_only", so whoever was
+    # given only the permission to take read-only off never got past
+    # it.
+    @check_acls(['disable:read_only'])
     @object_lock()
     @audit_log()
     @object_changelog("disable read-only")
@@ -1968,7 +1980,7 @@ class Share(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Disable ACL inheritance for the object """
+        """ Let the share be written to again. """
         if not self.verify_acl("disable:read_only"):
             msg = _("Permission denied: {self}")
             msg = msg.format(self=self)
@@ -3385,9 +3397,19 @@ class Share(OTPmeObject):
         if not result:
             return result
 
-        # Get role.
-        role_uuid = self.get_role_uuid(role_name, callback=callback)
+        # Get role. Removal is also how the UUID of a role that is gone
+        # is taken out of the list, and then there is nothing to work
+        # out share permissions from: get_role_uuid() would look that
+        # UUID up as a name and fail, and the object behind it is gone
+        # anyway. A role nobody can name has no tokens, so there is
+        # nothing to tell the hosts either.
+        if stuff.is_uuid(role_name):
+            role_uuid = role_name
+        else:
+            role_uuid = self.get_role_uuid(role_name, callback=callback)
         role = backend.get_object(uuid=role_uuid)
+        if not role:
+            return result
 
         role_tokens = role.get_tokens(return_type="rel_path",
                                         include_roles=True)
@@ -3617,7 +3639,9 @@ class Share(OTPmeObject):
 
         return self._write(callback=callback)
 
-    @check_acls(['add:ppol'])
+    # "pool", which is what write_value_acls says. "ppol" was in no
+    # list, so only an admin could add a pool to a share.
+    @check_acls(['add:pool'])
     @object_lock()
     @audit_log()
     @object_changelog("add pool {pool_name}")
@@ -3681,7 +3705,8 @@ class Share(OTPmeObject):
         self.add_index('pool', pool.uuid)
         return self._cache(callback=callback)
 
-    @check_acls(['remove:ppol'])
+    # "pool", see add_pool().
+    @check_acls(['remove:pool'])
     @object_lock()
     @audit_log()
     @object_changelog("remove pool {pool_name}")

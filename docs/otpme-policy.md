@@ -203,8 +203,10 @@ object.
 
 ## Import/Export
 
-**export *policy***  
-Export policy configuration to stdout.
+**export \[**--password** *PASS*\] *policy***  
+Export policy configuration to stdout, as JSON. Without **--password**
+it is written in clear; with one it is encrypted with a key derived from
+that password. Reading it back in is **otpme-tool** **import**.
 
 # POLICY TYPE DETAILS
 
@@ -585,8 +587,8 @@ Server-side policy storage
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-user**(1), **otpme-group**(1),
-**otpme-token**(1), **otpme-unit**(1)
+**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-user**(1),
+**otpme-group**(1), **otpme-token**(1), **otpme-unit**(1)
 
 # AUTHOR
 

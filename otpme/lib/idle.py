@@ -26,6 +26,54 @@ from otpme.lib import connections
 
 from otpme.lib.exceptions import *
 
+def notify_host(host_uuid, event_type, data=None):
+    """ Tell a host that there is something for it.
+
+    Returns how many of the host's connections heard it, so a caller
+    can say whether the host was reached. Zero is an answer and not a
+    failure: a host that is not waiting picks the news up on its next
+    round, which is what it did before anybody was told anything.
+
+    What a host is told is never more than "look now". Everything that
+    decides whether it may do something is checked where it always was:
+    the job is fetched from syncd and verified against the signers the
+    host holds.
+    """
+    if config.use_api:
+        return 0
+    if data is None:
+        data = {}
+    idled_conn = None
+    try:
+        idled_conn = connections.get("idled",
+                                    auto_auth=False,
+                                    auto_preauth=False,
+                                    handle_host_auth=False,
+                                    handle_user_auth=False,
+                                    encrypt_session=False)
+        command_args = {
+                    'host_uuid'     : host_uuid,
+                    'event_type'    : event_type,
+                    'data'          : data,
+                    }
+        status, \
+        status_code, \
+        response, \
+        binary_data = idled_conn.send(command="host_notify",
+                                    command_args=command_args)
+        if not status:
+            log_msg = _("Failed to notify host: {response}", log=True)[1]
+            log_msg = log_msg.format(response=response)
+            config.logger.warning(log_msg)
+            return 0
+        return response
+    except Exception as e:
+        log_msg = _("Failed to notify host: {error}", log=True)[1]
+        log_msg = log_msg.format(error=e)
+        config.logger.warning(log_msg)
+        return 0
+
+
 def notify(username, event_type, data):
     """Send a notification to all idled subscribers of the given user."""
     if config.use_api:

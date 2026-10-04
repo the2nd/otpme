@@ -74,6 +74,20 @@ TRASH_JOURNAL_DIR = os.path.join(CLUSTER_OUT_JOURNAL_DIR, "trash")
 OBJECTS_JOURNAL_DIR = os.path.join(CLUSTER_OUT_JOURNAL_DIR, "objects")
 SESSIONS_JOURNAL_DIR = os.path.join(CLUSTER_OUT_JOURNAL_DIR, "sessions")
 
+# The fewest processes that write to one peer when the node object says
+# nothing. Eight because that is what the session workers have always
+# used, so nothing changes for them on a node of up to 32 cores, and
+# because it is in the range the ACL walk was measured in: four of its
+# workers gave 2.6 times and ten gave 3.8. Above that it is a quarter of
+# the cores, the same share the walk takes.
+CLUSTER_WRITE_PROCS_MIN = 8
+
+# How often something that lasts is said again, in seconds. A few of these
+# messages describe a state that does not go away by itself, and the loops
+# they sit in come round several times a second, so saying it every time
+# would bury it and saying it once would lose it.
+REPEAT_LOG_INTERVAL = 300
+
 def register():
     """ Register OTPme daemon. """
     config.register_otpme_daemon("clusterd")
@@ -112,6 +126,37 @@ def register_cluster_journal():
                             path=CLUSTER_OUT_JOURNAL_DIR,
                             drop=True,
                             perms=0o770)
+
+def get_cluster_write_procs():
+    """ How many processes write the journal to one peer.
+
+    What the node object says, or the cores if it says nothing. The same
+    number for the objects and for the sessions: both of them wait for the
+    peer to write something away, and how many of those may run at once is
+    one question, not two.
+
+    Read once, when the process that needs it starts, so a change takes
+    effect when the daemon is restarted.
+    """
+    procs = None
+    try:
+        node_object = backend.get_object(object_type="node", uuid=config.uuid)
+    except Exception:
+        node_object = None
+    if node_object:
+        try:
+            procs = node_object.get_config_parameter("cluster_write_procs")
+        except Exception:
+            procs = None
+    if procs:
+        return procs
+    try:
+        cores = len(os.sched_getaffinity(0))
+    except AttributeError:
+        # Not on this platform. Then it is the machine's cores and not
+        # the ones this process was given.
+        cores = os.cpu_count() or 1
+    return max(CLUSTER_WRITE_PROCS_MIN, int(cores / 4))
 
 def check_cluster_status(skip_master_failover=False):
     # A service shutdown (e.g. node disable) must also stop daemons that
@@ -443,22 +488,52 @@ def get_states_snapshot():
     return states
 
 def calc_node_vote():
+    """ The vote of this node in a master node election.
+
+    A vote of zero means "do not elect me", and that answer is not free:
+    a peer that gets it from the master takes the master out of the tally
+    and is then the only candidate left, so it elects itself and stamps
+    its own sync file with the current time. From that moment its vote is
+    the newest in the cluster and the master loses every election that
+    follows. One zero is enough to hand the master role away for good.
+    """
     node_name = config.host_data['name']
-    node_in_sync = False
-    if node_name in multiprocessing.master_sync_done:
-        node_in_sync = True
-    if node_in_sync:
-        result = backend.search(object_type="node",
-                                attribute="name",
-                                value=node_name,
-                                return_type="instance")
-        if not result:
-            return {'revision': 1, 'vote': 0}
-        node = result[0]
-        node_vote = node.get_node_vote()
-    else:
-        node_vote = {'revision':1, 'vote':0}
-    return node_vote
+    # Read once and looked at twice: whether we are in it, and whether it
+    # says anything at all.
+    sync_done = list(multiprocessing.master_sync_done)
+    node_in_sync = node_name in sync_done
+    if not node_in_sync and not sync_done:
+        # An empty list is the one answer that cannot be trusted, because
+        # a read of a shared list cannot fail out loud: RedisList.list()
+        # turns every error into an empty list, which reads exactly like
+        # "nobody has synced". So a single read that did not get through --
+        # redis busy under a bulk write, a connection gone -- used to be
+        # answered with a zero.
+        #
+        # Only an empty list, and only for a node that has a sync file: a
+        # node that really has not synced yet has no sync file either, it
+        # is removed when the daemon starts, and a node that is mid-sync
+        # reads a list that at least holds the master. So this rescues the
+        # case where the list said nothing although it must have said
+        # something, and leaves every real "not in sync" alone.
+        if os.path.exists(config.node_sync_file):
+            node_in_sync = True
+            log_msg = _("Standing for master node although the sync list came back empty: {node}", log=True)[1]
+            log_msg = log_msg.format(node=node_name)
+            config.logger.warning(log_msg)
+    if not node_in_sync:
+        return {'revision': 1, 'vote': 0}
+    result = backend.search(object_type="node",
+                            attribute="name",
+                            value=node_name,
+                            return_type="instance")
+    if not result:
+        log_msg = _("Not standing for master node: cannot find own node object: {node}", log=True)[1]
+        log_msg = log_msg.format(node=node_name)
+        config.logger.warning(log_msg)
+        return {'revision': 1, 'vote': 0}
+    node = result[0]
+    return node.get_node_vote()
 
 def entry_lock(write=True, timeout=None):
     """ Decorator to handle entry lock. """
@@ -482,6 +557,12 @@ class ClusterEntry(object):
         self._lock_type = _lock_type
         self.journal_id = str(journal_id)
         self.logger = config.logger
+        self.journal_dir = journal_dir
+        # The object type this entry was sorted under, filled in by
+        # whoever read the journal. Only the reading of the journal knows
+        # it without opening a file, and it is what says where one block
+        # of entries ends and the next begins.
+        self.sort_object_type = None
         self.entry_dir = os.path.join(journal_dir, self.journal_id)
         self.commit_file = os.path.join(self.entry_dir, "ready")
 
@@ -551,7 +632,7 @@ class ClusterEntry(object):
     #@entry_lock(write=True)
     def pid(self):
         try:
-            pid = filetools.read_file(self.commit_file)
+            pid = filetools.read_file(self.commit_file, compression=False)
         except FileNotFoundError:
             pid = None
         if pid:
@@ -726,11 +807,18 @@ class ClusterEntry(object):
 
 class ClusterJournalEntry(ClusterEntry):
     """ Cluster journal entry. """
-    def __init__(self, journal_id, journal_dir, timestamp=None, object_uuid=None):
+    def __init__(self, journal_id, journal_dir, timestamp=None,
+        object_uuid=None, epoch=None):
+        # A reader passes the epoch it saw and gets the generation of the
+        # entry it was looking at; without one it reads the generation
+        # that is there now. A writer passes the timestamp, which is the
+        # generation it is making.
+        if timestamp is not None:
+            epoch = timestamp
         super().__init__(journal_dir=journal_dir,
                                                 journal_id=journal_id,
                                                 _lock_type=JOURNAL_LOCK_TYPE,
-                                                epoch=timestamp)
+                                                epoch=epoch)
         if timestamp or object_uuid:
             # Dir creation runs before the entry lock is acquired, so a
             # concurrent supersede (rename of entry_dir) can race us and
@@ -847,7 +935,8 @@ class ClusterJournalEntry(ClusterEntry):
     #@entry_lock(write=False)
     def object_id(self):
         try:
-            object_id = filetools.read_file(self.object_id_file)
+            object_id = filetools.read_file(self.object_id_file,
+                                            compression=False)
         except FileNotFoundError:
             object_id = None
         except Exception as e:
@@ -871,7 +960,8 @@ class ClusterJournalEntry(ClusterEntry):
     #@entry_lock(write=False)
     def object_type(self):
         try:
-            object_type = filetools.read_file(self.object_type_file)
+            object_type = filetools.read_file(self.object_type_file,
+                                            compression=False)
         except FileNotFoundError:
             object_type = None
         except Exception as e:
@@ -895,7 +985,8 @@ class ClusterJournalEntry(ClusterEntry):
     #@entry_lock(write=False)
     def object_uuid(self):
         try:
-            object_uuid = filetools.read_file(self.object_uuid_file)
+            object_uuid = filetools.read_file(self.object_uuid_file,
+                                            compression=False)
         except FileNotFoundError:
             object_uuid = None
         except Exception as e:
@@ -930,7 +1021,7 @@ class ClusterJournalEntry(ClusterEntry):
                 if os.path.exists(x_node_file):
                     continue
             try:
-                action_data = filetools.read_file(x_file)
+                action_data = filetools.read_file(x_file, compression=False)
             except FileNotFoundError:
                 continue
             except Exception as e:
@@ -984,7 +1075,7 @@ class ClusterJournalEntry(ClusterEntry):
             if os.path.exists(x_node_file):
                 continue
             try:
-                x_journal = filetools.read_file(x_file)
+                x_journal = filetools.read_file(x_file, compression=False)
             except FileNotFoundError:
                 continue
             except Exception as e:
@@ -1027,7 +1118,7 @@ class ClusterJournalEntry(ClusterEntry):
             if os.path.exists(x_node_file):
                 continue
             try:
-                x_journal = filetools.read_file(x_file)
+                x_journal = filetools.read_file(x_file, compression=False)
             except FileNotFoundError:
                 continue
             except Exception as e:
@@ -1061,7 +1152,8 @@ class ClusterJournalEntry(ClusterEntry):
     #@entry_lock(write=False)
     def trash_id(self):
         try:
-            trash_id = filetools.read_file(self.trash_id_file)
+            trash_id = filetools.read_file(self.trash_id_file,
+                                            compression=False)
         except FileNotFoundError:
             trash_id = None
         except Exception as e:
@@ -1084,7 +1176,8 @@ class ClusterJournalEntry(ClusterEntry):
     @property
     def deleted_by(self):
         try:
-            deleted_by = filetools.read_file(self.deleted_by_file)
+            deleted_by = filetools.read_file(self.deleted_by_file,
+                                            compression=False)
         except FileNotFoundError:
             deleted_by = None
         except Exception as e:
@@ -1108,7 +1201,8 @@ class ClusterJournalEntry(ClusterEntry):
     #@entry_lock(write=False)
     def object_data(self):
         try:
-            object_data = filetools.read_file(self.object_data_file)
+            object_data = filetools.read_file(self.object_data_file,
+                                            compression=False)
         except FileNotFoundError:
             object_data = None
         except Exception as e:
@@ -1132,7 +1226,8 @@ class ClusterJournalEntry(ClusterEntry):
     #@entry_lock(write=False)
     def full_acl_update(self):
         try:
-            full_acl_update = bool(filetools.read_file(self.full_acl_update_file))
+            full_acl_update = bool(filetools.read_file(self.full_acl_update_file,
+                                                    compression=False))
         except FileNotFoundError:
             full_acl_update = False
         except Exception as e:
@@ -1156,7 +1251,8 @@ class ClusterJournalEntry(ClusterEntry):
     #@entry_lock(write=False)
     def full_index_update(self):
         try:
-            full_index_update = bool(filetools.read_file(self.full_index_update_file))
+            full_index_update = bool(filetools.read_file(self.full_index_update_file,
+                                                    compression=False))
         except FileNotFoundError:
             full_index_update = False
         except Exception as e:
@@ -1183,6 +1279,7 @@ class ClusterDaemon(OTPmeDaemon):
         self.node_name = None
         self.conn_event = None
         self.node_offline = False
+        self.node_sync_set = False
         self.node_check_connections = {}
         self.node_write_connections = {}
         self.node_sessions_connections = {}
@@ -1198,12 +1295,48 @@ class ClusterDaemon(OTPmeDaemon):
         self.online_nodes = []
         self.min_written_nodes = 3
         self.processed_journal_entries = {}
+        # The processes that write objects to one peer, in the process that
+        # holds that peer's write connection. Empty everywhere else, and
+        # then the entries are written by that process itself.
+        self.object_workers = []
+        self.object_worker_count = 0
+        self.object_work_queue = None
+        self.object_result_queue = None
+        self.object_block_counter = 0
+        # When each of the messages about a lasting state was last said.
+        self.repeated_logs = {}
         self.preferred_master_node_set = False
         self.last_nsscache_sync = 0
         self.nsscache_sync = multiprocessing.get_bool("otpme-nsscache-sync",
                                                     random_name=False,
                                                     init=False)
         super().__init__(*args, **kwargs)
+
+    def log_due(self, log_id):
+        """ Whether a message about a lasting state may be said again.
+
+        Asked before the message is built where building it costs something
+        (e.g. counting what is in the journal).
+        """
+        last = self.repeated_logs.get(log_id, 0)
+        return time.time() - last >= REPEAT_LOG_INTERVAL
+
+    def log_lasting(self, log_id, log_msg):
+        """ Say something that lasts, now and then instead of constantly.
+
+        These messages sit in loops that come round several times a second
+        and describe a state that does not go away by itself: saying it
+        every time buries it, saying it once loses it.
+        """
+        if not self.log_due(log_id):
+            return False
+        self.repeated_logs[log_id] = time.time()
+        self.logger.warning(log_msg)
+        return True
+
+    def forget_lasting_log(self, log_id):
+        """ The state is over, so say it again when it comes back. """
+        return self.repeated_logs.pop(log_id, None) is not None
 
     def signal_handler(self, _signal, frame):
         """ Exit on signal. """
@@ -1597,6 +1730,12 @@ class ClusterDaemon(OTPmeDaemon):
                 object_list = journal_entries[object_type]
             except KeyError:
                 object_list = []
+            # Written on the entry so that whoever hands the entries out
+            # can see where one object type ends. An object type may only
+            # start once the one before it is through -- a token must not
+            # reach a peer before its user.
+            for cluster_journal_entry in object_list:
+                cluster_journal_entry.sort_object_type = object_type
             journal_entries_sorted += object_list
         journal_entries_sorted += self.get_cluster_out_journal_trash()
         return journal_entries_sorted
@@ -1813,9 +1952,19 @@ class ClusterDaemon(OTPmeDaemon):
                 last_used_event.close()
 
     def get_master_node(self, quiet=False):
-        """ Get master node. """
+        """ Get master node.
+
+        A vote of zero says "I cannot be master node" and no longer wins
+        anything, not even from this node itself, and a vote that never
+        arrived does not move the role: the two are told apart below,
+        because a node that says it cannot hold the role has answered and
+        one that says nothing has not.
+        """
         node_fails = {}
         node_votes = {}
+        # The nodes that answered, and answered zero. A node that did not
+        # answer at all is in neither this nor node_votes.
+        node_said_no = set()
 
         while True:
             if config.daemon_shutdown:
@@ -1834,6 +1983,10 @@ class ClusterDaemon(OTPmeDaemon):
                 if node_name == self.host_name:
                     node_vote = calc_node_vote()
                     node_votes[self.host_name] = node_vote
+                    if node_vote.get('vote', 0) == 0:
+                        node_said_no.add(self.host_name)
+                    else:
+                        node_said_no.discard(self.host_name)
                     if config.debug_level("cluster") > 0:
                         if not quiet:
                             log_msg = _("Got cluster vote from node: {node}: {vote}", log=True)[1]
@@ -1848,9 +2001,18 @@ class ClusterDaemon(OTPmeDaemon):
                         node_fails[node_name] += 1
                     except Exception:
                         node_fails[node_name] = 1
-                    #log_msg = _("Failed to get master node election connection: {node_name}: {e}", log=True)[1]
-                    #log_msg = log_msg.format(node_name=node_name, e=e)
-                    #self.logger.warning(log_msg)
+                    # A node that is down is nothing to worry about. The
+                    # node that holds the master role is: without its vote
+                    # whoever is left is the candidate, so this is the step
+                    # where the role moves, and it had no trace at all.
+                    if node_name == master_node:
+                        log_msg = _("Master node election: cannot reach the node that is master node, so it cannot keep the role: {node}: {error}", log=True)[1]
+                        log_msg = log_msg.format(node=node_name, error=e)
+                        self.log_lasting(f"vote-no-conn-{node_name}", log_msg)
+                    elif not quiet:
+                        log_msg = _("Master node election: cannot reach node, it does not count: {node}: {error}", log=True)[1]
+                        log_msg = log_msg.format(node=node_name, error=e)
+                        self.logger.debug(log_msg)
                     try:
                         node_votes.pop(node_name)
                     except KeyError:
@@ -1866,6 +2028,26 @@ class ClusterDaemon(OTPmeDaemon):
                     self.logger.warning(log_msg)
                     x_node_vote = None
                 if not x_node_vote or x_node_vote.get('vote', 0) == 0:
+                    # A vote of zero says "I cannot be master node". A node
+                    # that has not finished its first sync with the master
+                    # says it, and so does one that takes no part in the
+                    # voting at all, and both are ordinary -- a node that
+                    # was just enabled says it for as long as it syncs.
+                    #
+                    # From the node that holds the role it is not ordinary:
+                    # it gives the role up, and whoever is left takes it.
+                    if node_name == master_node:
+                        log_msg = _("Master node election: the node that is master node says it cannot be, so it gives the role up: {node}", log=True)[1]
+                        log_msg = log_msg.format(node=node_name)
+                        self.log_lasting(f"vote-zero-{node_name}", log_msg)
+                    elif not quiet:
+                        log_msg = _("Master node election: node says it cannot be master node, it does not count: {node}", log=True)[1]
+                        log_msg = log_msg.format(node=node_name)
+                        self.logger.debug(log_msg)
+                    # It answered, and the answer was no. Only an answer
+                    # that never came leaves the role where it is.
+                    if x_node_vote:
+                        node_said_no.add(node_name)
                     try:
                         node_votes.pop(node_name)
                     except KeyError:
@@ -1876,6 +2058,7 @@ class ClusterDaemon(OTPmeDaemon):
                         log_msg = _("Got cluster vote from node: {node}: {vote}", log=True)[1]
                         log_msg = log_msg.format(node=node_name, vote=x_node_vote)
                         self.logger.debug(log_msg)
+                node_said_no.discard(node_name)
                 node_votes[node_name] = x_node_vote
 
             conn_tries_done = True
@@ -1916,11 +2099,68 @@ class ClusterDaemon(OTPmeDaemon):
         if self.node_disabled:
             self.exit_child()
 
+        # A vote of zero says "I cannot be master node". A peer that says it
+        # is dropped where the answer comes in, but our own vote went into
+        # the tally unlooked at, so this node could be elected on a zero
+        # while another node had a real vote -- the one thing a zero is
+        # there to prevent.
+        #
+        # Put aside and not thrown away, because where a zero is all there
+        # is it still has to win: that is how a cluster starts at all. On a
+        # node that has just come up the sync list is empty and the sync
+        # file is gone, so every node says zero, and one of them has to
+        # become master before any of them can say it has synced.
+        #
+        # A vote below zero is another matter and competes as it is: that is
+        # a node that has been up longest and has no sync file yet, which is
+        # how the first master of a fresh realm is found.
+        zero_votes = {}
+        for x_node in dict(_node_votes):
+            if _node_votes[x_node].get('vote', 0) != 0:
+                continue
+            zero_votes[x_node] = _node_votes.pop(x_node)
+
+        # An answer that never came must not move the role. As far as the
+        # cluster is concerned the node that holds it is still up, so this
+        # is a moment of silence and not a node that went away -- and one
+        # connection that did not get through was enough for whoever asked
+        # to elect itself and keep the role from then on, because winning
+        # stamps the winner's own sync file.
+        #
+        # A node that really goes away is taken out of online_nodes by the
+        # node check, and then the election runs as it always did and the
+        # cluster finds a new master. And a master that answered that it
+        # cannot hold the role has spoken, so that is not this case either.
+        if master_node and master_node not in _node_votes:
+            if master_node not in node_said_no:
+                if master_node in multiprocessing.online_nodes:
+                    log_msg = _("Master node election: no vote from the node that is master node, leaving the role with it: {node}", log=True)[1]
+                    log_msg = log_msg.format(node=master_node)
+                    self.log_lasting(f"vote-missing-master-{master_node}", log_msg)
+                    return master_node, node_votes
+
         x_sort = lambda x: _node_votes[x]['vote']
         node_scores_sorted = sorted(_node_votes, key=x_sort, reverse=True)
         if len(node_scores_sorted) == 0:
-            msg = _("Cannot get master node: No node votes.")
-            raise MasterNodeElectionFailed(msg)
+            if master_node:
+                # Nobody stands for it, so whoever holds it keeps it. There
+                # is nothing to be gained by taking it off the only node
+                # that has it.
+                log_msg = _("Master node election: no node stands for it, leaving the role with: {node}", log=True)[1]
+                log_msg = log_msg.format(node=master_node)
+                self.log_lasting(f"vote-nobody-{master_node}", log_msg)
+                return master_node, node_votes
+            if zero_votes:
+                # Nothing but zeros and no master node: this is a cluster
+                # coming up, and one of them has to take the role before
+                # any of them can be in sync.
+                _node_votes = zero_votes
+                x_sort = lambda x: _node_votes[x]['vote']
+                node_scores_sorted = sorted(_node_votes, key=x_sort,
+                                            reverse=True)
+            else:
+                msg = _("Cannot get master node: No node votes.")
+                raise MasterNodeElectionFailed(msg)
         new_master_node = node_scores_sorted[0]
 
         return new_master_node, node_votes
@@ -2321,14 +2561,20 @@ class ClusterDaemon(OTPmeDaemon):
         """ Switch master node. """
         multiprocessing.master_node['master'] = new_master_node
         if new_master_node == self.host_name:
+            # Start idled.
+            self.start_idled()
+            # Start racd. Both sides of a remote access session are
+            # told to meet at the floating IP, so the meeting point
+            # goes where the role goes.
+            self.start_racd()
             log_msg = _("Sending request to configure floating IP.", log=True)[1]
             self.logger.info(log_msg)
             self.comm_handler.send("controld", command="configure_floating_ip")
-            # Start idled.
-            self.start_idled()
         elif current_master_node == self.host_name:
             # Stop idled.
             self.stop_idled()
+            # Stop racd.
+            self.stop_racd()
             log_msg = _("Sending request to deconfigure floating IP.", log=True)[1]
             self.logger.info(log_msg)
             self.comm_handler.send("controld", command="deconfigure_floating_ip")
@@ -2630,6 +2876,31 @@ class ClusterDaemon(OTPmeDaemon):
                 os._exit(0)
             if self.node_disabled:
                 self.exit_child()
+            # There is no periodic rewriting of our own vote here, and there
+            # must not be one. The vote of a node is the mtime of its sync
+            # time file, and an election compares those mtimes, read one
+            # after the other. As long as no vote moves while they are being
+            # read, every node adds up the same numbers and comes to the
+            # same winner. A vote that is rewritten on a tick breaks that:
+            # the numbers a node reads no longer say who should hold the
+            # role, only who wrote last, and two nodes that both think they
+            # hold it keep overtaking each other for good -- each one asks
+            # itself last (see get_master_node()), so each one keeps winning
+            # its own election while the other does the same. That is a
+            # split brain that cannot heal, with both nodes taking the
+            # floating IP.
+            #
+            # Such a tick was here once, against a stale stamp overtaking
+            # the master. That stamp came from handle_cluster_out_journal(),
+            # which stamped this node whenever any peer joined the cluster,
+            # on a slave as well -- so a slave that a peer joined had the
+            # newest vote in the cluster and elected itself. That stamp is
+            # gone, and with it the reason for this one: the role's own
+            # stamp is written when it wins an election and at the end of a
+            # journal round, a slave gets sync_time-300 from the master and
+            # so cannot overtake it, and the deliberate ways to hand the
+            # role over (preferred master node, manual failover) write their
+            # own stamp on purpose.
             # Handle node connections.
             self.handle_node_connections()
             # Handle nsscache sync.
@@ -2843,29 +3114,7 @@ class ClusterDaemon(OTPmeDaemon):
             if is_preferred_master_node and not self.preferred_master_node_set and config.cluster_status:
                 if new_master_node == self.host_name:
                     self.preferred_master_node_set = True
-                else:
-                    while True:
-                        # Get connection to new master node.
-                        try:
-                            clusterd_conn = self.get_clusterd_connection(new_master_node)
-                        except Exception as e:
-                            log_msg = _("Failed to get master node connection: {node}: {error}", log=True)[1]
-                            log_msg = log_msg.format(node=new_master_node, error=e)
-                            self.logger.warning(log_msg)
-                            time.sleep(1)
-                            continue
-                        # Try to set master failover status.
-                        try:
-                            clusterd_conn.start_master_failover()
-                        except Exception as e:
-                            log_msg = _("Failed to set master failover status: {node}: {error}", log=True)[1]
-                            log_msg = log_msg.format(node=new_master_node, error=e)
-                            self.logger.warning(log_msg)
-                            time.sleep(1)
-                            continue
-                        finally:
-                            clusterd_conn.close()
-                        break
+                elif self.ask_for_master_role(current_master_node):
                     config.touch_node_sync_file()
                     new_master_node = self.do_master_node_election()
                     self.preferred_master_node_set = True
@@ -2878,6 +3127,59 @@ class ClusterDaemon(OTPmeDaemon):
                 self.logger.critical(log_msg)
 
             time.sleep(quorum_check_interval)
+
+    def ask_for_master_role(self, master_node):
+        """ Ask the node that holds the master role to hand it over.
+
+        It says no while it has jobs running that must not be interrupted --
+        every management job is one of those, see
+        multiprocessing.add_master_failover_blocker() -- and its answer names
+        them. That is the same question the manual failover asks, see
+        CommandHandler.handle_master_failover(), and it asks it of the node
+        that holds the role.
+
+        This used to ask the node that had just won the election instead. So
+        the jobs of the node that was handing the role over were never asked
+        about, and config.master_failover -- which stops a master from
+        renewing its own vote and from marking its peers in sync -- was set
+        on the incoming node, where it does the opposite of what is wanted.
+
+        Says whether the role may be taken. Nothing is waited for: the loop
+        this sits in comes round every few seconds, and a management job
+        holds its blocker for as long as it runs. Waiting in here for one of
+        those would stop the quorum checks, the floating IP and everything
+        else in that loop for the length of a bulk change.
+        """
+        if not master_node:
+            # Nobody holds it, so there is nobody to ask.
+            return True
+        if master_node == self.host_name:
+            return True
+        log_id = f"master-role-refused-{master_node}"
+        try:
+            clusterd_conn = self.get_clusterd_connection(master_node)
+        except Exception as e:
+            log_msg = _("Failed to get master node connection: {node}: {error}", log=True)[1]
+            log_msg = log_msg.format(node=master_node, error=e)
+            self.log_lasting(log_id, log_msg)
+            return False
+        try:
+            clusterd_conn.start_master_failover()
+        except Exception as e:
+            # The answer carries what is blocking it, so it goes into the
+            # log as it came -- but not once a second for the length of a
+            # job.
+            log_msg = _("Master node does not hand the role over yet: {node}: {error}", log=True)[1]
+            log_msg = log_msg.format(node=master_node, error=e)
+            self.log_lasting(log_id, log_msg)
+            return False
+        finally:
+            clusterd_conn.close()
+        self.forget_lasting_log(log_id)
+        log_msg = _("Master node is ready to hand the role over: {node}", log=True)[1]
+        log_msg = log_msg.format(node=master_node)
+        self.logger.info(log_msg)
+        return True
 
     def handle_two_node_setup(self):
         # Two node setups require some special handling if second node is down.
@@ -3268,6 +3570,7 @@ class ClusterDaemon(OTPmeDaemon):
                 if _signal != 2:
                     return
             # Cleanup IPC stuff.
+            self.stop_object_workers()
             if self.node_conn:
                 self.node_conn.close()
             self.conn_event.unlink()
@@ -3281,6 +3584,8 @@ class ClusterDaemon(OTPmeDaemon):
         self.pid = os.getpid()
         log_banner = f"{self.full_name}:"
         self.logger = log.setup_logger(banner=log_banner, pid=self.pid)
+
+        self.start_object_workers(node_name)
 
         start_over= True
         while True:
@@ -3296,8 +3601,10 @@ class ClusterDaemon(OTPmeDaemon):
             #    self.conn_event.close()
 
             if config.daemon_shutdown:
+                self.stop_object_workers()
                 os._exit(0)
             if self.node_disabled:
+                self.stop_object_workers()
                 self.exit_child()
 
             start_over= False
@@ -3405,6 +3712,7 @@ class ClusterDaemon(OTPmeDaemon):
             # Add node to cluster member nodes.
             self.member_candidate = False
             multiprocessing.member_nodes[node_name] = True
+            self.node_sync_set = False
             log_msg = _("Node joined the cluster: {node}", log=True)[1]
             log_msg = log_msg.format(node=node_name)
             self.logger.info(log_msg)
@@ -3435,7 +3743,7 @@ class ClusterDaemon(OTPmeDaemon):
         self.conn_event = multiprocessing.Event(conn_even_name)
 
         # Number of session sync workers per node.
-        session_worker_count = 8
+        session_worker_count = get_cluster_write_procs()
         worker_queues = []
         worker_procs = []
         # Memo of recently dispatched entries -> push timestamp. Prevents
@@ -3858,33 +4166,508 @@ class ClusterDaemon(OTPmeDaemon):
                 pass
         return entries_to_process
 
+    def start_object_workers(self, node_name):
+        """ Start the processes that write objects to one peer.
+
+        A peer writes an object away before it answers, and one connection
+        carries one object at a time, so a bulk change crossed over at the
+        speed of a single write: 61ms of the 81ms an entry cost were the
+        peer working, against 0.13ms for the round trip to it. With a
+        connection each they write at once, the way the session workers
+        already do.
+
+        The work goes over one queue that all of them read, so whoever is
+        free takes the next entry and no entry goes to two of them. The
+        session workers have a queue each and no answer at all, and pay
+        for that with a memo of what they pushed; here the answers are
+        needed anyway, to know when an object type is through.
+        """
+        self.object_worker_count = get_cluster_write_procs()
+        if self.object_worker_count < 2:
+            # One is the way it was before there were any: this process
+            # writes the entries itself, in the order it read them.
+            log_msg = _("Writing cluster journal without workers: {node}", log=True)[1]
+            log_msg = log_msg.format(node=node_name)
+            self.logger.info(log_msg)
+            return
+        self.object_work_queue = multiprocessing.MessageQueue(
+                                    f"objects-{node_name}-work", identifier="")
+        self.object_result_queue = multiprocessing.MessageQueue(
+                                    f"objects-{node_name}-result", identifier="")
+        self.object_workers = []
+        for worker_idx in range(self.object_worker_count):
+            self.object_workers.append(self.start_object_worker(node_name,
+                                                                worker_idx))
+        log_msg = _("Started {count} cluster write workers: {node}", log=True)[1]
+        log_msg = log_msg.format(count=self.object_worker_count, node=node_name)
+        self.logger.info(log_msg)
+
+    def start_object_worker(self, node_name, worker_idx):
+        """ Start one of them. """
+        return multiprocessing.start_process(
+                            name=f"{self.name}-object-worker-{worker_idx}",
+                            target=self._object_sync_worker,
+                            target_args=(node_name, worker_idx),
+                            join=False)
+
+    def ensure_object_workers(self, node_name):
+        """ Start a worker again if one of them is gone. """
+        for worker_idx, proc in enumerate(self.object_workers):
+            if proc.is_alive():
+                continue
+            proc.join()
+            log_msg = _("Cluster write worker {idx} died for {node}, respawning.", log=True)[1]
+            log_msg = log_msg.format(idx=worker_idx, node=node_name)
+            self.logger.warning(log_msg)
+            self.object_workers[worker_idx] = self.start_object_worker(node_name,
+                                                                    worker_idx)
+
+    def stop_object_workers(self):
+        """ Take the workers and their queues down. """
+        for proc in self.object_workers:
+            try:
+                proc.terminate()
+                proc.join(timeout=2)
+            except Exception:
+                pass
+        self.object_workers = []
+        for queue in [self.object_work_queue, self.object_result_queue]:
+            if queue is None:
+                continue
+            try:
+                queue.unlink()
+            except Exception:
+                pass
+        self.object_work_queue = None
+        self.object_result_queue = None
+
+    def get_object_type_blocks(self, entries_to_process):
+        """ The entries in runs of one object type, in the order given.
+
+        get_cluster_out_journal() hands them over in the order of
+        config.object_add_order, so this only has to find where one type
+        ends. Everything of one type may go over at once; the next type
+        waits.
+        """
+        blocks = []
+        for cluster_journal_entry in entries_to_process:
+            object_type = cluster_journal_entry.sort_object_type
+            if blocks and blocks[-1][0] == object_type:
+                blocks[-1][1].append(cluster_journal_entry)
+                continue
+            blocks.append((object_type, [cluster_journal_entry]))
+        return blocks
+
+    def process_cluster_out_journal_in_workers(self, node_name,
+        entries_to_process):
+        """ Hand the entries to the workers, one object type at a time. """
+        self.ensure_object_workers(node_name)
+        written_entries = []
+        for object_type, block in self.get_object_type_blocks(entries_to_process):
+            # Once for the whole block instead of once per entry, and here
+            # and not in a worker, because it is the same node object every
+            # one of them would write. The entries of the trash have no
+            # object type here, and what they carry can be a tree object,
+            # so that block is taken to hold one.
+            if config.master_node:
+                if object_type is None \
+                or object_type in config.tree_object_types:
+                    try:
+                        self.unset_node_sync(node_name)
+                    except Exception:
+                        raise ProcessingFailed() from None
+            written_entries += self.process_object_block(node_name, block)
+        return written_entries
+
+    def process_object_block(self, node_name, block):
+        """ Give the workers one object type and wait for all of it.
+
+        Nothing of the next type goes out before the last entry of this one
+        came back, which is what keeps a token from reaching the peer
+        before its user.
+        """
+        written_entries = []
+        pushed = 0
+        seen = 0
+        failed = 0
+        first_error = None
+        # Which block an answer belongs to. A block that was given up on
+        # can leave answers behind, and counting one of those towards the
+        # next block would let that block look finished while entries of
+        # it are still being written -- and then the object type after it
+        # would start too early, which is the one thing this must not do.
+        self.object_block_counter += 1
+        block_id = self.object_block_counter
+
+        def drain(timeout=0):
+            """ Take what came back. """
+            nonlocal seen, failed, first_error
+            drained = 0
+            while True:
+                x_timeout = timeout if drained == 0 else 0
+                try:
+                    msg = self.object_result_queue.recv(timeout=x_timeout)
+                except TimeoutReached:
+                    break
+                except (QueueClosed, ExitOnSignal):
+                    break
+                except Exception as e:
+                    log_msg = _("Cluster write result error: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
+                    break
+                if msg is None:
+                    break
+                drained += 1
+                if msg.get("block_id") != block_id:
+                    continue
+                seen += 1
+                if msg.get("failed"):
+                    failed += 1
+                    # The first reason stands for the block. All the workers
+                    # run into the same thing at the same moment, so saying
+                    # it once is saying it.
+                    if first_error is None:
+                        first_error = msg.get("error")
+                object_id = msg.get("object_id")
+                if object_id:
+                    written_entries.append(object_id)
+                journal_id = msg.get("journal_id")
+                timestamp = msg.get("timestamp")
+                if journal_id and timestamp:
+                    self.processed_journal_entries[journal_id] = timestamp
+            return drained
+
+        for cluster_journal_entry in block:
+            try:
+                self.object_work_queue.send({
+                            'block_id'      : block_id,
+                            'journal_id'    : cluster_journal_entry.journal_id,
+                            'journal_dir'   : cluster_journal_entry.journal_dir,
+                            'epoch'         : cluster_journal_entry._epoch,
+                            })
+            except Exception as e:
+                log_msg = _("Failed to send journal entry to worker: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
+                failed += 1
+                if first_error is None:
+                    first_error = str(e)
+                break
+            pushed += 1
+            drain()
+
+        # Ten seconds without a single answer, at half a second a look. A
+        # worker takes one entry at a time, so one that dies takes that one
+        # with it and no answer for it is ever sent -- waiting for all of
+        # them to die first would mean waiting while the others sit idle.
+        quiet_rounds = 0
+        while seen < pushed:
+            if drain(timeout=0.5) > 0:
+                quiet_rounds = 0
+                continue
+            quiet_rounds += 1
+            alive = sum(1 for x in self.object_workers if x.is_alive())
+            dead = len(self.object_workers) - alive
+            outstanding = pushed - seen
+            if alive > 0:
+                if dead < outstanding:
+                    continue
+                if quiet_rounds < 20:
+                    continue
+            drain()
+            lost = pushed - seen
+            if lost > 0:
+                failed += lost
+                if first_error is None:
+                    first_error = _("worker gone")
+                log_msg = _("Lost {count} journal entries: {dead} cluster write worker(s) gone.", log=True)[1]
+                log_msg = log_msg.format(count=lost, dead=dead)
+                self.logger.warning(log_msg)
+            break
+
+        if failed:
+            # Nothing of this block may be left waiting to be picked up:
+            # a worker taking it later would be writing an object type the
+            # journal has moved on from. The entries keep their place in
+            # the journal and come round again.
+            self.drop_object_work()
+            # One line for the block, not one per entry and per worker: a
+            # peer that turns entries away turns all of them away, and with
+            # eight workers asking that was eight warnings apiece.
+            log_msg = _("Failed to write {failed} of {pushed} journal entries to node: {node}: {error}", log=True)[1]
+            log_msg = log_msg.format(failed=failed, pushed=pushed,
+                                    node=node_name, error=first_error)
+            self.logger.warning(log_msg)
+            # And the next object type does not start on a peer we are not
+            # sure about.
+            msg = _("Failed to write journal entries to node: {node}")
+            msg = msg.format(node=node_name)
+            raise ProcessingFailed(msg)
+
+        return written_entries
+
+    def drop_object_work(self):
+        """ Throw away what is still waiting in the work queue. """
+        while True:
+            try:
+                msg = self.object_work_queue.recv(timeout=0)
+            except TimeoutReached:
+                return
+            except Exception:
+                return
+            if msg is None:
+                return
+
+    def _object_sync_worker(self, node_name, worker_idx):
+        """ Object sync worker: owns its own node connection.
+
+        Every turn ends in exactly one answer, whatever happened, or the
+        process that handed the entry over waits for one that is never
+        coming.
+        """
+        multiprocessing.atfork(quiet=True)
+        new_proctitle = f"{self.full_name} Object worker {worker_idx} ({node_name})"
+        setproctitle.setproctitle(new_proctitle)
+
+        self.node_name = node_name
+        self.node_conn = None
+        self.pid = os.getpid()
+        log_banner = f"{self.full_name}:"
+        self.logger = log.setup_logger(banner=log_banner, pid=self.pid)
+        # The list came along with the fork and holds our siblings. A
+        # worker writes the entry it was given and hands none on.
+        self.object_workers = []
+
+        def signal_handler(_signal, frame):
+            if _signal != 15:
+                if _signal != 2:
+                    return
+            if self.node_conn:
+                self.node_conn.close()
+            multiprocessing.cleanup()
+            os._exit(0)
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
+        work_queue = multiprocessing.MessageQueue(f"objects-{node_name}-work",
+                                                identifier="")
+        result_queue = multiprocessing.MessageQueue(f"objects-{node_name}-result",
+                                                identifier="")
+
+        parent_pid = os.getppid()
+
+        while True:
+            if config.daemon_shutdown:
+                break
+            if os.getppid() != parent_pid:
+                # The process that hands the entries over is gone, so
+                # nobody is waiting for an answer any more. Ending here is
+                # what keeps a connection to the peer from being held by a
+                # process nothing knows about.
+                log_msg = _("Object worker {idx} ending: the process that started it is gone.", log=True)[1]
+                log_msg = log_msg.format(idx=worker_idx)
+                self.logger.warning(log_msg)
+                break
+            try:
+                msg = work_queue.recv(timeout=1)
+            except TimeoutReached:
+                continue
+            except (QueueClosed, ExitOnSignal):
+                break
+            except Exception as e:
+                log_msg = _("Object worker {idx}: queue error: {error}", log=True)[1]
+                log_msg = log_msg.format(idx=worker_idx, error=e)
+                self.logger.warning(log_msg)
+                continue
+            if msg is None:
+                continue
+            result = self.handle_object_work(node_name, worker_idx, msg)
+            try:
+                result_queue.send(result)
+            except (QueueClosed, ExitOnSignal):
+                break
+            except Exception as e:
+                log_msg = _("Object worker {idx}: failed to answer: {error}", log=True)[1]
+                log_msg = log_msg.format(idx=worker_idx, error=e)
+                self.logger.warning(log_msg)
+
+        os._exit(0)
+
+    def handle_object_work(self, node_name, worker_idx, msg):
+        """ Write one journal entry to the peer and say how it went. """
+        journal_id = msg['journal_id']
+        result = {
+                'block_id'      : msg['block_id'],
+                'journal_id'    : journal_id,
+                'failed'        : False,
+                'error'         : None,
+                'object_id'     : None,
+                'timestamp'     : None,
+                }
+        if self.node_conn is None:
+            node_conn = self.get_node_connection(node_name)
+            if not node_conn:
+                result['failed'] = True
+                result['error'] = _("no connection to the node")
+                return result
+        # The generation of the entry the other side was looking at, so a
+        # write of an entry that has been superseded since does not put its
+        # markers into the new one.
+        cluster_journal_entry = ClusterJournalEntry(journal_id=journal_id,
+                                                journal_dir=msg['journal_dir'],
+                                                epoch=msg['epoch'])
+        try:
+            written_entries = self.process_cluster_out_journal(node_name,
+                                                [cluster_journal_entry],
+                                                unsync_status_set=True)
+        except MasterNodeWrite as e:
+            # The peer holds the master role. Its connection is good and
+            # stays, and nothing is said here: all the workers are hitting
+            # the same wall at the same moment, and the one that handed the
+            # entries over says it once for the lot of them.
+            result['failed'] = True
+            result['error'] = str(e)
+            return result
+        except ProcessingFailed as e:
+            self.node_conn = None
+            result['failed'] = True
+            result['error'] = str(e)
+            return result
+        except Exception as e:
+            log_msg = _("Object worker {idx}: error: {error}", log=True)[1]
+            log_msg = log_msg.format(idx=worker_idx, error=e)
+            self.logger.critical(log_msg)
+            self.node_conn = None
+            result['failed'] = True
+            result['error'] = str(e)
+            return result
+        if written_entries:
+            # A string, because the answer goes over a queue as json.
+            result['object_id'] = written_entries[0].full_oid
+        try:
+            result['timestamp'] = self.processed_journal_entries[journal_id]
+        except KeyError:
+            pass
+        return result
+
+    def peer_is_master_node(self, node_name):
+        """ Whether this peer holds the master role.
+
+        Only some of what is here is refused by a peer that holds it, and
+        asking anyway got one refusal per entry, one per entry and worker
+        once there were workers. Which entries those are is what the
+        caller sorts out, see entry_for_master_node().
+        """
+        if config.master_node:
+            return False
+        try:
+            master_node = multiprocessing.master_node['master']
+        except KeyError:
+            return False
+        return master_node == node_name
+
+    def entry_for_master_node(self, cluster_journal_entry):
+        """ Whether the node that holds the master role takes this entry.
+
+        It says so itself, in cluster1.py: it refuses a tree object whose
+        OID is not the OID of the peer that sends it. So two things go to
+        it.
+
+        Everything that is not a tree object. A used SOTP, a session, a
+        last-used stamp: these are written wherever they happen, and the
+        master needs them like every other node.
+
+        And our own node object, which is the exception the master makes
+        for a tree object. backupd writes it, for the last_backup stamp of
+        the node it just backed up.
+
+        The same predicate as over there, turned around, so the two cannot
+        drift apart.
+        """
+        if cluster_journal_entry.object_type not in config.tree_object_types:
+            return True
+        return cluster_journal_entry.object_uuid == config.uuid
+
     def process_cluster_journal(self, node_name):
         """ Process cluster journal. """
         written_entries = []
+        log_id = f"peer-is-master-{node_name}"
+        # Only where the peer really does not hold the role any more.
+        # Unconditionally, this cleared the throttle of the message below
+        # on every round, so the two took turns several times a second for
+        # as long as anything was stuck.
+        if not self.peer_is_master_node(node_name):
+            if self.forget_lasting_log(log_id):
+                log_msg = _("Node does not hold the master role anymore, writing objects to it again: {node}", log=True)[1]
+                log_msg = log_msg.format(node=node_name)
+                self.logger.info(log_msg)
         while True:
             entries_to_process = self.get_journal_entries_to_process(node_name)
             if not entries_to_process:
                 break
-            written_entries = self.process_cluster_out_journal(node_name, entries_to_process)
+            if self.peer_is_master_node(node_name):
+                # What the master takes goes to it, the rest stays. It has
+                # to be sorted here and not simply sent, because an entry
+                # only leaves the journal once every member node has it:
+                # one the master refuses would sit here for good.
+                entries_for_master = []
+                entries_that_stay = 0
+                for x_entry in entries_to_process:
+                    if self.entry_for_master_node(x_entry):
+                        entries_for_master.append(x_entry)
+                        continue
+                    entries_that_stay += 1
+                if not entries_for_master:
+                    # Said here and not before the scan, so nothing is
+                    # said where there is nothing to say: a node that is
+                    # not master has an empty journal most of the time,
+                    # and that is the ordinary state.
+                    #
+                    # It is a warning because of what it means where it
+                    # does happen: this node is holding changes to tree
+                    # objects that the node with the master role has not
+                    # got, and nothing here will ever hand them over.
+                    # Somebody has to put that right.
+                    log_msg = _("Node is master node, {count} object(s) of ours stay in the journal: {node}", log=True)[1]
+                    log_msg = log_msg.format(count=entries_that_stay,
+                                            node=node_name)
+                    self.log_lasting(log_id, log_msg)
+                    break
+                entries_to_process = entries_for_master
+            if self.object_workers:
+                written_entries = self.process_cluster_out_journal_in_workers(
+                                            node_name, entries_to_process)
+            else:
+                written_entries = self.process_cluster_out_journal(node_name,
+                                                        entries_to_process)
 
         if config.master_node:
             if not config.master_failover:
-                sync_time = time.time()
-                config.touch_node_sync_file(sync_time)
-                # Mark node as in sync (tree objects).
-                try:
-                    self.set_node_sync(node_name, sync_time-300)
-                except Exception:
-                    raise ProcessingFailed() from None
+                if written_entries or self.node_sync_set is False:
+                    sync_time = time.time()
+                    config.touch_node_sync_file(sync_time)
+                    # Mark node as in sync (tree objects).
+                    try:
+                        self.set_node_sync(node_name, sync_time-300)
+                    except Exception:
+                        raise ProcessingFailed() from None
+                    self.node_sync_set = True
         return written_entries
 
-    def process_cluster_out_journal(self, node_name, entries_to_process):
-        """ Process cluster journal. """
+    def process_cluster_out_journal(self, node_name, entries_to_process,
+        unsync_status_set=False):
+        """ Process cluster journal.
+
+        unsync_status_set: the peer has already been marked out of sync for
+        this round of entries. A worker that is handed one entry at a time
+        gets this, because the process that hands them out does it once for
+        the whole round instead of once per entry.
+        """
         log_msg = _("Handling cluster out journal: {node}", log=True)[1]
         log_msg = log_msg.format(node=node_name)
         self.logger.debug(log_msg)
         written_entries = []
-        unsync_status_set = False
         for cluster_journal_entry in entries_to_process:
             node_conn = self.node_conn
             if node_conn is None:
@@ -3965,8 +4748,21 @@ class ClusterDaemon(OTPmeDaemon):
                                         multiprocessing.cleanup()
                                         os._exit(0)
 
-                            object_checksum = backend.get_checksum(object_id)
-                            object_last_used = backend.get_last_used(object_uuid)
+                            # Only the log message below says the
+                            # checksum, and that one is a debug message,
+                            # so asking the index for it is work nobody
+                            # sees unless debugging is on.
+                            object_checksum = None
+                            if config.debug_enabled or config.loglevel == "DEBUG":
+                                object_checksum = backend.get_checksum(object_id)
+                            # With the object type, because without it
+                            # get_last_used() searches the index for the
+                            # oid of the uuid just to learn the type --
+                            # and we are holding the oid. That search was
+                            # about as much of the time of working through
+                            # the journal as sending the objects was.
+                            object_last_used = backend.get_last_used(object_uuid,
+                                            object_type=object_id.object_type)
                             acl_journal_committer, \
                             acl_journal = cluster_journal_entry.get_acl_journal(node_name)
                             index_journal_committer, \
@@ -4020,6 +4816,18 @@ class ClusterDaemon(OTPmeDaemon):
                                                             full_data_update=True,
                                                             object_uuid=object_uuid,
                                                             last_used=object_last_used)
+                            except MasterNodeWrite as e:
+                                # The peer is the master and takes no tree
+                                # object. The connection is fine, so it
+                                # stays, and the node is not marked as
+                                # failed either -- a failed node gets a
+                                # full update of everything next time, and
+                                # there is nothing wrong with what it has.
+                                # The entry keeps its place in the journal
+                                # and goes over once the roles are settled.
+                                msg = _("Peer is master node: {node}: {object_id}")
+                                msg = msg.format(node=node_name, object_id=object_id)
+                                raise MasterNodeWrite(msg) from e
                             except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
                                 self.node_disconnect(node_name)
                                 msg, log_msg = _("Failed to send object: {node}: {object_id}: {error}", log=True)
@@ -4909,6 +5717,12 @@ class ClusterDaemon(OTPmeDaemon):
     def stop_idled(self):
         send_daemon_command(daemon="idled", command="stop")
 
+    def start_racd(self):
+        send_daemon_command(daemon="racd", command="start")
+
+    def stop_racd(self):
+        send_daemon_command(daemon="racd", command="stop")
+
     def start_ldapd(self):
         send_daemon_command(daemon="ldapd", command="start")
 
@@ -5071,6 +5885,11 @@ class ClusterDaemon(OTPmeDaemon):
                 config.remove_node_sync_file()
         else:
             config.remove_node_sync_file()
+            # A start and not a reload, so this node has not synced with the
+            # master yet and its vote has to say so. On a reload the time
+            # file stays: the node is the same one it was a moment ago and
+            # has no business looking freshly booted.
+            config.remove_node_sync_time_file()
         # Configure ourselves (e.g. certificates etc.).
         try:
             self.configure()

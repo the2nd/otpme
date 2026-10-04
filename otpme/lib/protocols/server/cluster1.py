@@ -697,8 +697,15 @@ class OTPmeClusterP1(OTPmeServer1):
                 if object_id.object_type in config.tree_object_types:
                     if object_id != self.peer.oid:
                         if config.master_node:
+                            # Answered with a code of its own, because this
+                            # is not a failure of the connection: a tree
+                            # object goes from the master outwards, never
+                            # towards it, and no reconnect changes that.
+                            # The sender used to see nothing but a failed
+                            # command and threw a working connection away.
                             message = _("Cannot write tree object on master node.")
-                            status = False
+                            return self.build_response(status_codes.MASTER_NODE_WRITE,
+                                                    message, encrypt=False)
             if status:
                 checksum = object_config['CHECKSUM']
                 log_msg = _("Writing object: {id} ({checksum})", log=True)[1]

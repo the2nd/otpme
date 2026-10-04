@@ -69,6 +69,10 @@ class OTPmeConfig(object):
         # Users token (instance) that was used to authenticate the user of the current
         # connection.
         self.register_config_var("_auth_token", None, None)
+        # Whether we already looked whether the two above changed since
+        # they were set. Once per request, see auth_object_checked().
+        self.register_config_var("_auth_user_checked", bool, False)
+        self.register_config_var("_auth_token_checked", bool, False)
         # Session UUID the user authenticated with. Set per request, so
         # it goes through thread local storage while we are threading,
         # see the auth_session property below.
@@ -219,13 +223,59 @@ class OTPmeConfig(object):
         self.register_config_var("_posix_msgsize_max", None, 8192,
                             config_file_parameter="POSIX_MSGSIZE_MAX")
         self.register_config_var("posix_msgsize_max", None, 8192)
-        # Socket send buffer.
-        self.register_config_var("socket_send_buffer", int, 104857600,
-                            config_file_parameter="SOCKET_SEND_BUFFER")
-        # Socket receive buffer. Global fallback cap on a single incoming
-        # message frame (compressed size) when no per-daemon limit applies.
-        self.register_config_var("socket_receive_buffer", int, 104857600,
-                            config_file_parameter="SOCKET_RECEIVE_BUFFER")
+        # Which daemons ask the kernel for a socket buffer of their own.
+        # A daemon not named here is left to the kernel, which is what
+        # almost all of them are.
+        #
+        # Asking at all is a decision and not a free improvement. The
+        # kernel sizes a buffer itself and keeps adjusting it; setting
+        # SO_RCVBUF switches that off, and the size then stands for as
+        # long as the connection does. For a connection that carries a
+        # keepalive, or a shell, that is memory held for nothing.
+        #
+        # What it buys is the size from the first byte. Left alone the
+        # kernel starts a send buffer at the tcp_wmem default (16384 on
+        # a stock Linux) and grows it over round trips, and a daemon
+        # that makes many connections pays that ramp on each of them.
+        #
+        # The number asks for more than any kernel will give, on
+        # purpose: setsockopt is capped at net.core.rmem_max without
+        # saying so, so what is really being said is "as much as this
+        # machine allows". The machine is where that is decided -- see
+        # deploy/sysctl/99-otpme.conf -- and a node with the ceilings
+        # raised gets more without anybody touching this.
+        #
+        # Measured on fsd, the FUSE client, with the ceilings raised far
+        # enough to tell the sizes apart:
+        #
+        #     425984 per socket   slowest
+        #    2097152              slower
+        #    8388608              slower
+        #   20971520              fastest
+        #  209715200              no better than 20971520
+        #
+        # So it is worth it where data moves in bulk, and only there.
+        self.register_config_var("daemon_socket_buffer", dict, {
+                            # The FUSE client: many connections, and a
+                            # share moves through them in 4 MiB chunks.
+                            "fsd"       : 104857600,
+                            # Backups, by the gigabyte.
+                            "backupd"   : 104857600,
+                            })
+        # Global cap on a single incoming message frame (compressed
+        # size), for a daemon that daemon_max_request_size does not
+        # name. Also what a recv() reads at most in one go.
+        #
+        # This used to be called SOCKET_RECEIVE_BUFFER, beside a
+        # SOCKET_SEND_BUFFER that nothing reads any more. Neither of
+        # them ever was a socket buffer: that is set per daemon now and
+        # bounded by the kernel, see daemon_socket_buffer above. The
+        # old name said "make this large to speed up the fuse module",
+        # which is not what this does -- it is how much a peer may send
+        # in one frame, and raising it is a decision about what we
+        # accept, not about speed.
+        self.register_config_var("max_request_size", int, 104857600,
+                            config_file_parameter="MAX_REQUEST_SIZE")
         # In-memory holder for the max size a request may reach AFTER
         # decompression (zip-bomb guard). This is what the decompress hot
         # path reads -- always present, in every process. Built-in default
@@ -236,12 +286,15 @@ class OTPmeConfig(object):
         # size). Pre-auth-reachable daemons (authd, controld, idled) are
         # tightened hard; authenticated bulk-transfer daemons (backupd,
         # syncd, fsd, clusterd, mgmtd) stay generous. Daemons not listed
-        # fall back to socket_receive_buffer.
+        # fall back to max_request_size.
         self.register_config_var("daemon_max_request_size", dict, {
                             # Pre-auth / control paths -- always small.
                             "authd"     : 1048576,      # 1 MB
                             "controld"  : 1048576,      # 1 MB
                             "idled"     : 1048576,      # 1 MB
+                            # One command with a uuid and a role in it,
+                            # and after that no OTPme request at all.
+                            "racd"      : 1048576,      # 1 MB
                             "joind"     : 16777216,     # 16 MB (certs/keys)
                             "hostd"     : 16777216,     # 16 MB
                             "ldapd"     : 16777216,     # 16 MB
@@ -298,7 +351,14 @@ class OTPmeConfig(object):
                             # connection longer than this anyway.
                             "authd"     : 120,
                             })
-        # Instance cache update interval.
+        # How long a process may use an object out of its instance cache
+        # before it asks the index whether the object changed. Zero means
+        # ask every time, which costs one index query per cache hit.
+        # Not a config file parameter: it is set by whoever knows that
+        # objects a few seconds behind are good enough for what it does.
+        # authd does that below, and the commands that walk a tree say
+        # so in their command map ('cache_update_interval', see
+        # OTPmeJob.start_job()).
         self.register_config_var("cache_update_interval", int, 0)
         # Realm infos.
         self.register_config_var("realm", str, None)
@@ -562,6 +622,22 @@ class OTPmeConfig(object):
         # Ignore if objects changed while syncing.
         self.register_config_var("hostd_sync_ignore_changed_objects", bool, False,
                             config_file_parameter="SYNC_IGNORE_CHANGED_OBJECTS")
+        # Whether the public keys of other hosts are pinned here.
+        #
+        # A remote access session is held against the key the host was
+        # joined with, read from this host's copy of the tree. With this
+        # the copy is not the last word: the key of a host we have not
+        # seen before is written down on the first sync that brings it,
+        # and a key that differs from the one written down does not
+        # replace it. Somebody with root says yes to that, by hand
+        # (otpme-tool update_host_keys), and until then the key that was
+        # written down is the one that counts.
+        #
+        # Off by default, because it means a step per host. On, it is
+        # what known_hosts is for ssh: a key that changes because
+        # somebody changed the tree is a key that stops a session.
+        self.register_config_var("pin_host_keys", bool, False,
+                            config_file_parameter="PIN_HOST_KEYS")
 
         # Object types that are in tree.
         # The order of this list is important (e.g. for signature tags)
@@ -697,6 +773,7 @@ class OTPmeConfig(object):
         self.register_config_var("reload_file_path", str, None)
         self.register_config_var("audit_log_spool_dir", str, None)
         self.register_config_var("node_sync_file", str, None)
+        self.register_config_var("node_sync_time_file", str, None)
         self.register_config_var("node_joined_file", str, None)
         self.register_config_var("realm_data_file_path", str, None)
         self.register_config_var("sync_status_file_path", str, None)
@@ -704,6 +781,7 @@ class OTPmeConfig(object):
         self.register_config_var("env_dir", str, None)
         self.register_config_var("nsscache_dir", str, None)
         self.register_config_var("sign_key_cache_dir", str, None)
+        self.register_config_var("host_key_pin_dir", str, None)
         self.register_config_var("ssh_deploy_dir", str, None)
         self.register_config_var("authorized_keys_dir", str, None)
         self.register_config_var("nsscache_spool_dir", str, None)
@@ -827,6 +905,7 @@ class OTPmeConfig(object):
                     'backupd'   : '2028',
                     'ssod'      : '2029',
                     'idled'     : '2030',
+                    'racd'      : '2031',
                     }
         self.register_config_var("default_ports", dict, default_ports)
 
@@ -842,6 +921,7 @@ class OTPmeConfig(object):
                     'backupd'   : '2028',
                     'ssod'      : '2029',
                     'idled'     : '2030',
+                    'racd'      : '2031',
                     }
         self.register_config_var("default_listen_ports", dict, default_listen_ports)
 
@@ -1335,8 +1415,14 @@ class OTPmeConfig(object):
         filetools.create_dir(self.locks_dir)
 
         self.sync_dir = os.path.join(self.spool_dir, "sync")
+        # Where the public keys of other hosts are pinned, and where a
+        # key that wants to replace one waits for somebody to say yes.
+        # In the spool and not in the cache: a cache may be thrown away,
+        # and a pin that is thrown away is no pin.
+        self.host_key_pin_dir = os.path.join(self.spool_dir, "host_keys")
         self.reload_file_path = os.path.join(self.spool_dir, "reload")
         self.node_sync_file = os.path.join(self.spool_dir, "node_synced")
+        self.node_sync_time_file = os.path.join(self.spool_dir, "node_sync_time")
         self.audit_log_spool_dir = os.path.join(self.spool_dir, "audit_log")
         self.node_joined_file = os.path.join(self.spool_dir, "new_node")
         self.realm_data_file_path = os.path.join(self.cache_dir, "realm-data.json")
@@ -1543,6 +1629,7 @@ class OTPmeConfig(object):
         try:
             if timestamp is None:
                 timestamp = time.time()
+            # Node sync file.
             x_file = self.node_sync_file
             if not os.path.exists(self.node_sync_file):
                 x_file = f"{self.node_sync_file}.tmp"
@@ -1550,6 +1637,14 @@ class OTPmeConfig(object):
             os.utime(x_file, (timestamp, timestamp))
             if not os.path.exists(self.node_sync_file):
                 os.rename(x_file, self.node_sync_file)
+            # Node sync time file
+            x_file = self.node_sync_time_file
+            if not os.path.exists(self.node_sync_time_file):
+                x_file = f"{self.node_sync_time_file}.tmp"
+                filetools.touch(x_file)
+            os.utime(x_file, (timestamp, timestamp))
+            if not os.path.exists(self.node_sync_time_file):
+                os.rename(x_file, self.node_sync_time_file)
         finally:
             lock.release_lock()
 
@@ -1561,6 +1656,29 @@ class OTPmeConfig(object):
                                                     lock_id=lock_id)
         try:
             filetools.delete(self.node_sync_file)
+        finally:
+            lock.release_lock()
+
+    def remove_node_sync_time_file(self):
+        """ Forget when this node was last in sync.
+
+        The time file is what the vote of this node is read from, and it
+        stays where the sync file goes: a node the master is writing tree
+        objects to is not in sync for a moment, and that must not turn its
+        vote into the one of a node that has just come up.
+
+        A node that really has just come up is the case for this: it has
+        not synced with the master yet, and the vote it is left with is
+        (1 - the daemon start time), which is how the node that has been up
+        longest becomes the first master of a fresh realm.
+        """
+        from otpme.lib import locking
+        from otpme.lib import filetools
+        lock_id = "handle_node_sync_file"
+        lock = locking.acquire_lock(lock_type=self.NODE_SYNC_LOCK_TYPE,
+                                                    lock_id=lock_id)
+        try:
+            filetools.delete(self.node_sync_time_file)
         finally:
             lock.release_lock()
 
@@ -2593,6 +2711,33 @@ class OTPmeConfig(object):
     def login_user(self, login_user):
         self._login_user = login_user
 
+    def auth_object_checked(self, name, checked=False):
+        """ Have we already looked whether the auth object changed?
+
+        The user and the token of the request are read again when they
+        changed since they were put here, which takes a search in the
+        index. Doing that on every read of the property is what it used
+        to do, and these are read a lot: verify() asks for the token on
+        every single ACL it checks. A command that walks a tree paid a
+        query to the database for each of them.
+
+        Once is enough. The token and the user belong to the request,
+        they live in the thread or in the process that handles it, and
+        this mark lives with them -- setting either clears it. What it
+        costs: one that is changed while a long job runs is noticed by
+        the next job and not by this one.
+        """
+        mark = f"_{name}_checked"
+        if self.proc_mode == "threading":
+            if checked:
+                setattr(self.thread_data, mark, True)
+                return False
+            return getattr(self.thread_data, mark, False)
+        if checked:
+            setattr(self, mark, True)
+            return False
+        return getattr(self, mark, False)
+
     @property
     def auth_user(self):
         from otpme.lib import backend
@@ -2606,6 +2751,9 @@ class OTPmeConfig(object):
             if not self._auth_user:
                 return
             auth_user = self._auth_user
+        if self.auth_object_checked("auth_user"):
+            return auth_user
+        self.auth_object_checked("auth_user", checked=True)
         result = backend.search(object_type="user",
                                 attribute="uuid",
                                 value=auth_user.uuid,
@@ -2628,8 +2776,10 @@ class OTPmeConfig(object):
     def auth_user(self, auth_user):
         if self.proc_mode == "threading":
             self.thread_data.auth_user = auth_user
+            self.thread_data._auth_user_checked = False
         else:
             self._auth_user = auth_user
+            self._auth_user_checked = False
 
     @property
     def auth_token(self):
@@ -2644,6 +2794,10 @@ class OTPmeConfig(object):
             if not self._auth_token:
                 return
             auth_token = self._auth_token
+        # Looked at once per request, see auth_object_checked().
+        if self.auth_object_checked("auth_token"):
+            return auth_token
+        self.auth_object_checked("auth_token", checked=True)
         result = backend.search(object_type="token",
                                 attribute="uuid",
                                 value=auth_token.uuid,
@@ -2670,8 +2824,10 @@ class OTPmeConfig(object):
     def auth_token(self, auth_token):
         if self.proc_mode == "threading":
             self.thread_data.auth_token = auth_token
+            self.thread_data._auth_token_checked = False
         else:
             self._auth_token = auth_token
+            self._auth_token_checked = False
 
     @property
     def auth_type(self):
@@ -2903,9 +3059,8 @@ class OTPmeConfig(object):
         directories = {
                     # Data dir contains OTPme data (e.g. index).
                     self.data_dir : 0o770,
-                    # Spool dir contains hashes of used/failed passwords etc.
-                    # and should not be world readable.
-                    self.spool_dir : 0o770,
+                    # Spool dir contains pinned host key and must be world readable.
+                    self.spool_dir : 0o775,
                     # Directory to store objects while synchronizing.
                     self.sync_dir : 0o770,
                     # Run dir contains e.g. agent sockets and thus
@@ -2922,6 +3077,11 @@ class OTPmeConfig(object):
                     self.nsscache_dir : 0o775,
                     self.ssh_deploy_dir : 0o750,
                     self.sign_key_cache_dir : 0o775,
+                    # Group writeable because the sync runs as the OTPme
+                    # user and puts new keys here. Promoting one that
+                    # wants to replace a pin is root's, and that is in
+                    # the code (host_key_pins.py), not in these bits.
+                    self.host_key_pin_dir : 0o775,
                     self.nsscache_spool_dir : 0o770,
                     self.nsscache_objects_dir : 0o770,
                     self.authorized_keys_dir : 0o750,
@@ -3480,8 +3640,22 @@ class OTPmeConfig(object):
                 timestamps = True
 
         if self.debug_enabled:
-            # If debug is enabled (-d) force loglevel to "DEBUG".
-            logger_loglevel = "DEBUG"
+            from otpme.lib.help import NON_LOGGING_DEBUG_SLOTS
+            # One -d (base) says "let me read the log" and leaves the level
+            # where it is, which for a daemon in the foreground is what
+            # somebody watching it wants. A second one says "everything",
+            # and so does any topic: a topic writes its output with
+            # logger.debug(), so at a lower level the option would set its
+            # slot and show nothing, which looks like it did nothing.
+            #
+            # The slots that say how to run rather than what to log do not
+            # count as topics, see help/__init__.py, which is also where
+            # that list lives -- once.
+            debug_topics = [x for x in self.debug_levels
+                            if x != "base"
+                            and x not in NON_LOGGING_DEBUG_SLOTS]
+            if self.debug_level("base") > 1 or debug_topics:
+                logger_loglevel = "DEBUG"
             # Check if we should log to file or use syslog. If none is set log
             # messages are printed to stdout.
             if self.file_logging and not logger_logfile:

@@ -187,9 +187,11 @@ SSO hosts of a site so every host computes the same *sub* for the same
 To actually start the SSO portal on the host, set **SSO_SERVER="True"**
 in */etc/otpme/otpme.conf*. See **otpme.conf**(5).
 
-**del_sso_host *site* *host_name***  
+**remove_sso_host *site* *host_name***  
 Remove the SSO host role from a host. The SSO data will no longer be
-synchronized to this host.
+synchronized to this host. The host itself stays as it is. Takes a UUID
+as well, so a host that was deleted while it was an SSO host can still
+be taken off the site. Needs the ACL **remove:sso_host**.
 
 **sso_logo *site* *image_path***  
 Set the logo the SSO portal of this site shows on its login and recovery
@@ -393,12 +395,18 @@ Needs the ACL **view:policies**.
 
 ## ACL Management
 
-**add_acl \[**-r**\] \[**-a**\] \[**--objects** *types*\] *site* *owner_type* *owner* *acl***  
+**add_acl \[**-r**\] \[**-a**\] \[**--objects** *types*\] \[**--procs** *num*\] *site* *owner_type* *owner* *acl***  
 Add an access control entry. Use **-r** for recursive, **-a** to apply
 default ACLs to existing objects.
 
-**del_acl \[**-r**\] \[**-a**\] \[**--objects** *types*\] *site* *acl***  
-Remove an access control entry.
+A recursive run walks every unit of the site and every object in them.
+Where a unit holds many, its objects are shared out over several
+processes. **--procs** says how many. Without it a quarter of the cores
+of the node, which leaves the rest for the daemons that go on serving
+logins while this runs.
+
+**del_acl \[**-r**\] \[**-a**\] \[**--objects** *types*\] \[**--procs** *num*\] *site* *acl***  
+Remove an access control entry. **--procs** as above.
 
 **list_acls *site***  
 Display all ACLs for the site.
@@ -566,8 +574,8 @@ OTPme data directory
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-realm**(1), **otpme-node**(1),
-**otpme-ca**(1)
+**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-realm**(1),
+**otpme-node**(1), **otpme-ca**(1)
 
 # AUTHOR
 

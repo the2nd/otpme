@@ -234,7 +234,7 @@ OTPme data directory
 
 # SEE ALSO
 
-**otpme**(7), **otpme-policy**(1)
+**otpme**(7), **otpme-acls**(7), **otpme-policy**(1)
 
 # AUTHOR
 

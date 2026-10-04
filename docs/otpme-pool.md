@@ -227,7 +227,8 @@ OTPme data directory
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-share**(1), **otpme-node**(1)
+**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-share**(1),
+**otpme-node**(1)
 
 # AUTHOR
 

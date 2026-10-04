@@ -119,11 +119,16 @@ Use \fB\-\-policy\-types\fR to list only policies of the given types; these are 
 Needs the ACL \fBview:policies\fR.
 .SS ACL Management
 .TP
-.B add_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] \fIunit\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+.B add_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] [\fB\-\-procs\fR \fInum\fR] \fIunit\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
 Add an access control entry. Use \fB\-r\fR for recursive, \fB\-a\fR to apply default ACLs to existing objects.
+.RS
+.PP
+A recursive run walks every object of the unit and of the units below it. Where there are many, the objects are shared out over several processes.
+\fB\-\-procs\fR says how many. Without it a quarter of the cores of the node, which leaves the rest for the daemons that go on serving logins while this runs.
+.RE
 .TP
-.B del_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] \fIunit\fR \fIacl\fR
-Remove an access control entry.
+.B del_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] [\fB\-\-procs\fR \fInum\fR] \fIunit\fR \fIacl\fR
+Remove an access control entry. \fB\-\-procs\fR as above.
 .TP
 .B list_acls \fIunit\fR
 Display all ACLs for the unit.
@@ -251,6 +256,7 @@ OTPme data directory
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
+.BR otpme\-acls (7),
 .BR otpme-user (1),
 .BR otpme-group (1)
 

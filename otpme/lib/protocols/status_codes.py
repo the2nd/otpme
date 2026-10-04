@@ -29,3 +29,8 @@ UNKNOWN_LOGIN_SESSION = 409
 CONNECTION_REDIRECT = 303
 BACKUP_CONNECTION_BROKEN = 410
 MASTER_FAILOVER = 411
+# The peer will not take this object because it is the master node. Its own
+# code, because it is not a failure of the connection and a reconnect
+# changes nothing about it: a tree object goes from the master outwards,
+# never towards it.
+MASTER_NODE_WRITE = 412

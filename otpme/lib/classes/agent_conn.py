@@ -378,6 +378,51 @@ class AgentConn(object):
             msg = msg.format(response=response)
             raise Exception(msg)
 
+    def add_private_key(self, key_role, private_key, decrypted=False):
+        """ Add a private key of the user to otpme-agent.
+
+        <decrypted> for the unwrapped key the key script put back. The
+        one without it is the key as the user stores it, wrapped with
+        the key password, which is what the login brings along.
+        """
+        command_args = {
+                        'key_role'      : key_role,
+                        'private_key'   : private_key,
+                        'decrypted'     : decrypted,
+                    }
+        status, status_code, response = self.send("add_private_key", command_args)
+        if status_code != status_codes.OK:
+            msg = _("Failed to add private key to agent: {response}")
+            msg = msg.format(response=response)
+            raise Exception(msg)
+
+    def get_private_key(self, key_role, decrypted=False):
+        """ Get a private key of the user from otpme-agent.
+
+        None when we hold none: the unwrapped key is gone once its
+        cache time is up, and the wrapped one is only there when the
+        user asked for it (enable_key_caching).
+        """
+        command_args = {
+                        'key_role'      : key_role,
+                        'decrypted'     : decrypted,
+                    }
+        status, status_code, response = self.send("get_private_key", command_args)
+        if status_code != status_codes.OK:
+            return
+        return response
+
+    def del_private_key(self, key_role):
+        """ Del a private key of the user from otpme-agent. """
+        command_args = {
+                        'key_role'      : key_role,
+                    }
+        status, status_code, response = self.send("del_private_key", command_args)
+        if status_code != status_codes.OK:
+            msg = _("Failed to remove private key from agent: {response}")
+            msg = msg.format(response=response)
+            raise Exception(msg)
+
     def add_acl(self, username, acl):
         """ Add ACL to otpme-agent. """
         command_args = {

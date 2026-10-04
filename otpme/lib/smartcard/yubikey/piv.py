@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 # NOTE: This module was written by claude code!
 import os
-import sys
 import hashlib
 import datetime
 import getpass
@@ -18,6 +17,12 @@ from yubikit.piv import TOUCH_POLICY
 from yubikit.piv import MANAGEMENT_KEY_TYPE
 from yubikit.core import NotSupportedError
 from ykman.device import list_all_devices
+# It builds the request info, has the slot sign it and puts the
+# signature back, which is the one thing a card-held key needs.
+from ykman.piv import generate_csr as ykman_generate_csr
+from ykman.piv import sign_csr_builder as ykman_sign_csr_builder
+from cryptography.hazmat.primitives.serialization import Encoding
+from cryptography.hazmat.primitives.serialization import PublicFormat
 from cryptography.hazmat.primitives import hashes
 from cryptography.exceptions import InvalidSignature
 from yubikit.core.smartcard import SmartCardConnection
@@ -86,11 +91,38 @@ def protect_management_key(
                                touch=False, store_on_device=True)
 
 
+def get_management_key(piv_session, pin: str = None, mgmt_key: bytes = None):
+    """ The management key to write to a slot with.
+
+    One that was given wins. Otherwise the card is asked: a card that
+    went through protect_management_key() carries a random one in its
+    own protected data, and that is the ordinary state of a deployed
+    token -- the PIN reads it out.
+
+    Only a card that has none is written with the factory default, and
+    that is the state right after reset(), which is where a deploy
+    starts.
+    """
+    from ykman.piv import get_pivman_data
+    from ykman.piv import get_pivman_protected_data
+    if mgmt_key:
+        return mgmt_key
+    if not get_pivman_data(piv_session).has_stored_key:
+        return DEFAULT_MGMT_KEY
+    if not pin:
+        msg = _("The management key of this card is stored on it and the PIN is needed to read it.")
+        raise RuntimeError(msg)
+    piv_session.verify_pin(pin)
+    stored_key = get_pivman_protected_data(piv_session).key
+    if not stored_key:
+        msg = _("This card says it stores its management key, but there is none in its protected data.")
+        raise RuntimeError(msg)
+    return stored_key
+
 def get_slot_algo(slot: str = "AUTHENTICATION", serial: int = None,
         piv_session: PivSession = None):
     """ Return the OTPme algo tag of the key currently in the slot,
     or None if the slot is empty. """
-    slot_obj = slot_map[slot]
     if piv_session is None:
         conn = _open_piv(serial)
         piv_session = PivSession(conn)
@@ -131,7 +163,7 @@ def get_piv(serial: int = None):
 def import_private_key(
     private_key,
     slot: str = "AUTHENTICATION",
-    mgmt_key: bytes = DEFAULT_MGMT_KEY,
+    mgmt_key: bytes = None,
     pin: str = DEFAULT_PIN,
     serial: int = None,
 ):
@@ -147,7 +179,10 @@ def import_private_key(
         private_key = load_pem_private_key(private_key, password=None)
     with _open_piv(serial) as conn:
         piv = PivSession(conn)
-        piv.authenticate(mgmt_key)
+        # A deploy comes here right after reset(), so the card has no
+        # stored key and this is the factory default. A card that was
+        # deployed before carries a random one, see get_management_key().
+        piv.authenticate(get_management_key(piv, pin=pin, mgmt_key=mgmt_key))
         piv.put_key(slot, private_key, PIN_POLICY.ONCE, TOUCH_POLICY.NEVER)
         # X25519 has no sign primitive -- can't produce a self-signed cert.
         if isinstance(private_key, _x25519.X25519PrivateKey):
@@ -245,6 +280,30 @@ def get_public_key(
         return piv_session.get_certificate(slot).public_key()
     return piv_session.get_slot_metadata(slot).public_key
 
+
+def export_public_key(
+    slot: str = "AUTHENTICATION",
+    serial: int = None,
+    piv_session: PivSession = None,
+):
+    """ The public key of a slot, as PEM.
+
+    For a key that cannot sign a certificate request of its own -- an
+    X25519 key in the key management slot is the case this exists for.
+    A request proves possession by signing itself, X25519 has no sign
+    primitive (RFC 8410 says so), and then the only way to a
+    certificate is to hand the CA the public key and let it issue one
+    without a request.
+    """
+    public_key = get_public_key(slot, serial=serial, piv_session=piv_session)
+    if public_key is None:
+        msg = _("No key in slot: {slot}")
+        msg = msg.format(slot=slot)
+        raise RuntimeError(msg)
+    public_bytes = public_key.public_bytes(Encoding.PEM,
+                                        PublicFormat.SubjectPublicKeyInfo)
+    return public_bytes.decode()
+
 def decrypt(
     cipher_text: bytes,
     slot: str = "AUTHENTICATION",
@@ -306,6 +365,96 @@ def ecdh(
         piv_session.verify_pin(pin)
     return piv_session.calculate_secret(slot_obj, peer_public_key)
 
+
+def import_certificate(
+    certificate,
+    slot: str = "AUTHENTICATION",
+    pin: str = None,
+    mgmt_key: bytes = None,
+    serial: int = None,
+):
+    """ Put a certificate into a slot.
+
+    What a PKCS#11 module hands to a mail client or a browser: it shows
+    the key of a slot only together with the certificate that sits in
+    it. So a request that came back signed has to go here before the
+    key behind it can be used for anything.
+
+    <certificate> is PEM.
+    """
+    slot_obj = slot_map[slot]
+    if isinstance(certificate, str):
+        certificate = certificate.encode()
+    cert = x509.load_pem_x509_certificate(certificate)
+    with _open_piv(serial) as conn:
+        piv = PivSession(conn)
+        # Writing to a slot is a management key operation, not a PIN
+        # one, the same as importing a key. On a deployed token that key
+        # is random and lies on the card, see get_management_key().
+        piv.authenticate(get_management_key(piv, pin=pin, mgmt_key=mgmt_key))
+        piv.put_certificate(slot_obj, cert)
+    return cert
+
+def gen_csr(
+    subject: str,
+    slot: str = "AUTHENTICATION",
+    pin: str = None,
+    san_email=None,
+    key_usage=None,
+    ext_key_usage=None,
+    serial: int = None,
+    piv_session: PivSession = None,
+):
+    """ A certificate signing request for the key in a slot.
+
+    The private key never leaves the card, so the request is signed by
+    the card: ykman builds the request info, hands it to the slot and
+    puts the signature back.
+
+    <subject> is an RFC 4514 string ("CN=alice,O=OTPme"). That is the
+    form ykman reads, and the one our own parts pass around, because
+    its escaping is defined -- see pki.utils.build_rfc4514_subject().
+
+    <san_email>, <key_usage> and <ext_key_usage> are what a request has
+    to ask for to be of any use for S/MIME: the address in the subject
+    alternative name, digitalSignature and keyEncipherment, and the
+    extended key usage emailProtection. A request without them leaves
+    all of it to whatever the CA puts in.
+
+    Returns the request as PEM.
+    """
+    from otpme.lib.pki.utils import build_san
+    from otpme.lib.pki.utils import build_key_usage
+    from otpme.lib.pki.utils import build_ext_key_usage
+    slot_obj = slot_map[slot]
+    if not piv_session:
+        conn = _open_piv(serial)
+        piv_session = PivSession(conn)
+        piv_session.verify_pin(pin)
+    public_key = get_public_key(slot, piv_session=piv_session)
+    if public_key is None:
+        msg = _("No key in slot: {slot}")
+        msg = msg.format(slot=slot)
+        raise RuntimeError(msg)
+    if not san_email and not key_usage and not ext_key_usage:
+        csr = ykman_generate_csr(piv_session, slot_obj, public_key, subject)
+        return csr.public_bytes(Encoding.PEM).decode()
+    # The same request, with the extensions on it. ykman builds the
+    # plain one itself and signs whatever builder it is handed, so the
+    # builder is built here and handed over.
+    builder = x509.CertificateSigningRequestBuilder()
+    builder = builder.subject_name(x509.Name.from_rfc4514_string(subject))
+    san = build_san(email=san_email)
+    if san:
+        builder = builder.add_extension(san, critical=False)
+    if key_usage:
+        builder = builder.add_extension(build_key_usage(key_usage),
+                                        critical=True)
+    if ext_key_usage:
+        builder = builder.add_extension(build_ext_key_usage(ext_key_usage),
+                                        critical=False)
+    csr = ykman_sign_csr_builder(piv_session, slot_obj, public_key, builder)
+    return csr.public_bytes(Encoding.PEM).decode()
 
 def sign(
     data,

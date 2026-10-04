@@ -19,6 +19,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import locking
 from otpme.lib import nsscache
+from otpme.lib import host_key_pins
 from otpme.lib import sign_key_cache
 from otpme.lib import multiprocessing
 from otpme.lib.sync_cache import SyncCache
@@ -379,6 +380,14 @@ class OTPmeSyncP1(OTPmeClient1):
                                 ignore_changed_objects=ignore_changed_objects)
         finally:
             sync_lock.release_lock()
+        # Write down the key of every host we hold a copy of, not only
+        # of the ones this round brought: a sync fetches what changed,
+        # so a host that was already in step never reaches the worker,
+        # and switching PIN_HOST_KEYS on would leave us with no key
+        # written down for any of them -- and no session to any of them
+        # either.
+        if config.pin_host_keys:
+            self.note_host_keys()
         # Update sync status.
         config.update_sync_status(realm=realm,
                                 site=site,
@@ -391,6 +400,72 @@ class OTPmeSyncP1(OTPmeClient1):
                 and site == config.site:
                     self.sync_last_used(realm, site)
         return result
+
+    def note_host_keys(self):
+        """ Write down the key of every host we hold a copy of.
+
+        Run after a sync rather than per object, because a sync only
+        fetches what changed: a host that was already in step is never
+        handed to a worker, and the key of a host that was synced
+        before PIN_HOST_KEYS was switched on would never be written
+        down at all.
+
+        Nothing is replaced here. A key that differs from the one
+        written down is said out loud and nothing else: taking it over
+        is update_host_keys', and it reads the key off the host object
+        itself when it runs -- see host_key_pins.note_key().
+
+        The key of a host we no longer hold a copy of goes: it would
+        otherwise be held against whatever host is given that uuid
+        next. Only when there is something to compare against, so a
+        backend that answers with nothing does not take every key with
+        it.
+        """
+        try:
+            hosts = backend.search(object_types=["host", "node"],
+                                attribute="uuid",
+                                value="*",
+                                return_type="instance")
+        except Exception as e:
+            log_msg = _("Unable to look for host keys: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return
+        if not hosts:
+            return
+        known = set()
+        for x_host in hosts:
+            known.add(x_host.uuid)
+            try:
+                said = host_key_pins.note_key(x_host.uuid, x_host.public_key)
+            except Exception as e:
+                log_msg = _("Unable to note host key: {oid}: {e}", log=True)[1]
+                log_msg = log_msg.format(oid=x_host.oid, e=e)
+                self.logger.critical(log_msg)
+                continue
+            if said == "changed":
+                # Said out loud: nothing happens until somebody runs
+                # update_host_keys, and a session to that host does not
+                # open until they do.
+                log_msg = _("Host key changed, run update_host_keys to take it over: {oid}", log=True)[1]
+                log_msg = log_msg.format(oid=x_host.oid)
+                self.logger.warning(log_msg)
+            elif said == "pinned":
+                log_msg = _("Host key written down: {oid}", log=True)[1]
+                log_msg = log_msg.format(oid=x_host.oid)
+                self.logger.info(log_msg)
+        for host_uuid in sorted(host_key_pins.all_pins()):
+            if host_uuid in known:
+                continue
+            log_msg = _("Host is gone, dropping its key: {uuid}", log=True)[1]
+            log_msg = log_msg.format(uuid=host_uuid)
+            self.logger.info(log_msg)
+            try:
+                host_key_pins.del_pin(host_uuid)
+            except Exception as e:
+                log_msg = _("Unable to drop host key: {uuid}: {e}", log=True)[1]
+                log_msg = log_msg.format(uuid=host_uuid, e=e)
+                self.logger.warning(log_msg)
 
     def _sync_objects(self, realm, site, resync=False, max_tries=5,
         sync_older_objects=False, ignore_changed_objects=False,
@@ -1645,6 +1720,11 @@ class OTPmeSyncP1(OTPmeClient1):
             self.logger.critical(log_msg)
             config.raise_exception()
 
+        # Host keys are not written down here. A sync only fetches what
+        # changed, so this is reached by some hosts and not by others --
+        # see note_host_keys(), which walks all of them once the sync is
+        # through.
+
         # Update signers cache.
         if new_object.type == "user":
             if new_object.sign_public_key:
@@ -1754,6 +1834,8 @@ class OTPmeSyncP1(OTPmeClient1):
                 # Update signers cache.
                 if object_type == "user":
                     sign_key_cache.del_cache(object_id)
+                # A host that is gone keeps its pin until note_host_keys()
+                # runs, which drops every pin that has no host left.
                 # Make sure we update LDIF/nsscache.
                 if object_type == "token":
                     x_object = backend.get_object(object_id)

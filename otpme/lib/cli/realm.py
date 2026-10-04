@@ -11,7 +11,6 @@ except Exception:
     pass
 
 from otpme.lib import config
-from otpme.lib import backend
 from otpme.lib.cli import register_cli
 from otpme.lib.cli import get_policies_string
 from otpme.lib.classes.realm import get_acls
@@ -24,7 +23,6 @@ table_headers = [
                 "type",
                 "auth",
                 "sync",
-                "aliases",
                 "policies",
                 "description",
                 ]
@@ -134,22 +132,6 @@ def row_getter(realm, site, realm_order, realm_data, acls,
                     row.append(_("Enabled"))
                 else:
                     row.append(_("Disabled"))
-            else:
-                row.append("-")
-        # Realm aliases.
-        if "aliases" in output_fields:
-            if check_acl("view:alias") \
-            or check_acl("add:alias") \
-            or check_acl("delete:alias"):
-                return_attrs = ['alias']
-                aliases = backend.search(object_type="realm",
-                                        attribute="uuid",
-                                        value=realm_uuid,
-                                        return_attributes=return_attrs)
-                if aliases:
-                    row.append("\n".join(aliases))
-                else:
-                    row.append("")
             else:
                 row.append("-")
         # Policies.

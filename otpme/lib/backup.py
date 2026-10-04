@@ -54,7 +54,8 @@ def backup_object(object_id, decrypt=False):
     if decrypt:
         x_oc = x_oc.copy()
     object_uuid = x_oc['UUID']
-    last_used = backend.get_last_used(object_uuid)
+    last_used = backend.get_last_used(object_uuid,
+                                    object_type=object_id.object_type)
     file_content = {
                     'object_id'     : object_id.full_oid,
                     'object_uuid'   : object_uuid,

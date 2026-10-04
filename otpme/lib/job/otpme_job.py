@@ -27,7 +27,7 @@ class OTPmeJob(object):
     """ Class to run a OTPme job as thread. """
     def __init__(self, name, target_method, thread=True, process=False,
         timeout=None, lock_wait_timeout=0, client=None,
-        _caller="API", args=None):
+        cache_update_interval=None, _caller="API", args=None):
         # Set our name.
         if args is None:
             args = {}
@@ -45,6 +45,12 @@ class OTPmeJob(object):
         self.start_thread = thread
         # Start job as sub process.
         self.start_process = process
+        # How long this job may use an object out of its instance cache
+        # before asking the index whether it changed
+        # ('cache_update_interval' of the command map). Only honoured
+        # when started as a process, because it is set for the whole
+        # process and a thread shares it with the daemon.
+        self.cache_update_interval = cache_update_interval
         # The job start time.
         self.start_time = None
         # Job timeout.
@@ -182,6 +188,14 @@ class OTPmeJob(object):
                                 signal_method=signal_handler)
             setproctitle.setproctitle(self.proctitle)
             self.pid = os.getpid()
+            # A command that walks a tree reads thousands of objects and
+            # asks the index whether each cached one is still current,
+            # which is a query per cache hit. It can live with objects a
+            # few seconds behind, and it says so in the command map.
+            # Only here, never for a job started as a thread: there the
+            # process belongs to the daemon.
+            if self.cache_update_interval is not None:
+                config.cache_update_interval = self.cache_update_interval
             # Reconfigure logger.
             #for h in self.logger.handlers:
             #    h.close()

@@ -671,10 +671,14 @@ class OTPmeSsoP1(OTPmeServer1):
         # account. The recovery deploy is a different command and is not
         # gated here: it has no session to prove anything with, the mail
         # link is the proof.
-        step_up = self._step_up_required(user, "deploy_login_token_reauth",
-                                        command_args)
-        if step_up is not None:
-            return step_up
+        #
+        # Not for the enrollment the login token asks for itself, see
+        # _skip_step_up_for_sso_deploy().
+        if not self._skip_step_up_for_sso_deploy():
+            step_up = self._step_up_required(user, "deploy_login_token_reauth",
+                                            command_args)
+            if step_up is not None:
+                return step_up
         # Check for command redirection.
         if user.site != config.site:
             forward_args = dict(command_args)
@@ -939,7 +943,10 @@ class OTPmeSsoP1(OTPmeServer1):
                             'redeploy_refused'  : True,
                             'status'            : True,
                         })
-        if self._step_up_missing(user, "deploy_login_token_reauth",
+        # Same exception as in deploy_begin, or the page would send the
+        # user to /reauth and the deploy behind it would not ask.
+        if not self._skip_step_up_for_sso_deploy() \
+        and self._step_up_missing(user, "deploy_login_token_reauth",
                                 command_args):
             return self.build_response(True, {
                             'token_types'       : [],
@@ -4657,11 +4664,50 @@ class OTPmeSsoP1(OTPmeServer1):
             refuse("session not found on this site")
         if session.user_uuid != user.uuid:
             refuse(f"session belongs to user {session.user_uuid}, not {user.uuid}")
+        # Only reauth_time counts, never the login that made the
+        # session. A single phished OTP buys an attacker one
+        # authentication: they get a session, and the step-up then asks
+        # for a second OTP they do not have. Taking the login as the
+        # proof would hand them the right to enroll a token of their
+        # own, which is permanent access -- see _skip_step_up_for_sso_
+        # deploy() for the one flow where that reasoning does not hold.
         if not session.reauth_time:
             refuse("session has no reauth_time")
         age = time.time() - session.reauth_time
         if age > max_age:
             refuse(f"reauth is {int(age)}s old, allowed {max_age}s")
+
+    def _skip_step_up_for_sso_deploy(self):
+        """ Whether a step-up would say anything about this deploy.
+
+        It would not for the enrollment a login token asks for itself:
+        sso_deploy set on the token the session was opened with, which
+        is what sends the user to /deploy in the first place. Only a
+        password token carries that flag, and a password is reusable --
+        whoever can log in with it can answer a /reauth with it too, so
+        the gate costs the user the same password a second time and
+        buys nothing. In the forced case it is worse than nothing: the
+        token the deploy is about to hand out does not exist yet, so
+        there is nothing else to prove themselves with.
+
+        Everywhere else the gate stays, and it is not a formality. A
+        phished OTP is good for one authentication: the attacker gets a
+        session, and the step-up then asks for a second OTP they do not
+        have -- which is what keeps them from enrolling a token of
+        their own and holding the account for good.
+
+        config.auth_token is the login token out of the SSO JWT, see
+        verify_sso_jwt(), so this reads the token that authenticated and
+        not anything the browser said.
+
+        Asked before deploy_login_token_reauth and not after it: a site
+        that switches the gate on still does not get one here, because
+        there is nothing it could ask for. Decided that way on purpose.
+        """
+        auth_token = config.auth_token
+        if auth_token is None:
+            return False
+        return bool(getattr(auth_token, "sso_deploy", False))
 
     def _step_up_required(self, user, parameter, command_args):
         """ Make the user prove themselves again, if this flow says so.

@@ -142,10 +142,18 @@ shown. The options that change how OTPme runs (**-dD**, **-de**,
 **General**
 
 **-dd**  
-Enable debug output in general (log level DEBUG).
+Show the log on stdout, at the log level it already has. Use this to
+watch a daemon that runs in the foreground (**-dDd**) without reading
+everything it does.
+
+**-ddd**  
+Show the log on stdout at log level DEBUG. This is everything, and it is
+a lot.
 
 **-dD**  
-Do not go to background and log to stdout.
+Do not go to background. On its own it says nothing: add **-dd** to see
+the log, so **-dDd** to watch a daemon work and **-dDdd** to see
+everything it does.
 
 **-dt**  
 Add timestamps to debug output.
@@ -359,9 +367,9 @@ On the master node: do not remove the floating IP when the daemons stop.
 **otpme-inventory**(1), **otpme-node**(1), **otpme-policy**(1),
 **otpme-pool**(1), **otpme-realm**(1), **otpme-resolver**(1),
 **otpme-role**(1), **otpme-script**(1), **otpme-share**(1),
-**otpme-site**(1), **otpme-token**(1), **otpme-tool**(1),
-**otpme-trash**(1), **otpme-unit**(1), **otpme-user**(1),
-**otpme-vlan**(1)
+**otpme-shell**(1), **otpme-site**(1), **otpme-token**(1),
+**otpme-tool**(1), **otpme-trash**(1), **otpme-unit**(1),
+**otpme-user**(1), **otpme-vlan**(1)
 
 # AUTHOR
 

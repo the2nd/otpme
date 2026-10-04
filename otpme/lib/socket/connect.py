@@ -26,7 +26,12 @@ class ConnectSocket(object):
     """ Class to handle connections to TCP or unix sockets. """
     def __init__(self, socket_uri, use_ssl=True, ssl_version=ssl.PROTOCOL_TLSv1_2,
         cert=None, key=None, ca_data=None, verify_server=True,
-        blocking=True, socket_handler=None):
+        blocking=True, socket_handler=None, daemon=None):
+        # The daemon we connect to, if we know. Only used to decide
+        # whether this connection asks for a socket buffer of its own
+        # (daemon_socket_buffer): the two sides of a transfer both want
+        # the room, so this is the other half of what listen.py does.
+        self.daemon = daemon
         # Will hold certificate infos of peer.
         self.peer_cert = None
         # Our socket URI string. e.g. tcp://127.0.0.1:8080
@@ -101,9 +106,17 @@ class ConnectSocket(object):
                 msg = _("Failed to create socket. Error code: {code}, Error message: {message}")
                 msg = msg.format(code=msg[0], message=msg[1])
                 raise OTPmeException(msg) from None
-            # Set send/recv buffer.
-            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, config.socket_send_buffer)
-            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, config.socket_receive_buffer)
+            # Set send/recv buffer, for the daemons that move data in
+            # bulk. Both ends of a transfer want the room, so this is
+            # the other half of what listen.py does -- see
+            # daemon_socket_buffer in otpme/lib/otpme_config.py for why
+            # only some of them ask.
+            buffer_size = config.daemon_socket_buffer.get(self.daemon)
+            if buffer_size:
+                self._socket.setsockopt(socket.SOL_SOCKET,
+                                    socket.SO_SNDBUF, buffer_size)
+                self._socket.setsockopt(socket.SOL_SOCKET,
+                                    socket.SO_RCVBUF, buffer_size)
             # Disable Nagle's algorithm for lower latency.
             if self.protocol == "tcp":
                 self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -151,8 +164,20 @@ class ConnectSocket(object):
                     fd.close()
 
             if self.use_ssl:
-                # Create default SSL context.
-                ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+                # Our own context, not ssl.create_default_context(): the
+                # only thing that one adds is the CA store of the
+                # system, which is read on every connection and never
+                # looked at -- OTPme verifies against the CA of its
+                # realm, loaded below, or against nothing at all. It is
+                # also a wider trust than intended, because the roots
+                # of the system stay in the store next to ours and the
+                # host name is not checked.
+                #
+                # PROTOCOL_TLS_CLIENT brings the settings
+                # create_default_context() is otherwise there for: no
+                # SSLv2, no SSLv3, no compression, server cipher
+                # preference, single DH and ECDH use.
+                ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
                 ## Enable PFS.
                 #ctx.set_ecdh_curve('secp384r1')
                 #ctx.set_ecdh_curve('prime256v1')
@@ -353,7 +378,7 @@ class ConnectSocket(object):
             if timeout is not None and self.connected:
                 self.set_timeout(org_timeout)
 
-    def recv(self, recv_buffer=config.socket_receive_buffer, blocking=None, timeout=None, **kwargs):
+    def recv(self, recv_buffer=config.max_request_size, blocking=None, timeout=None, **kwargs):
         """ Receive data. """
         org_timeout = self.timeout
         if timeout is not None:
@@ -403,8 +428,31 @@ class ConnectSocket(object):
             if os.path.exists(self.ca_data_file):
                 os.remove(self.ca_data_file)
 
+    def hand_over(self):
+        """ The socket is somebody else's from now on.
+
+        For a connection that has stopped being an OTPme connection and
+        been given to something else -- racd hands one to a remote access
+        session, and what travels through it from then on is SSH.
+
+        After this nothing here touches the socket again. It has to be
+        this way round rather than "remember not to close it": closing a
+        connection sends "quit" on it and shuts it down, and the socket no
+        longer being ours means those four bytes land in the middle of
+        somebody's session and the shutdown takes it down. Whoever closes
+        connections does not know which of them are still connections, so
+        the ones that are not say so here.
+        """
+        self.connected = False
+        self._socket = None
+        self.socket_handler = None
+        self.remove_cert_files()
+
     def close(self):
         """ Close socket. """
+        if self._socket is None:
+            # Handed over. Not ours to close.
+            return
         if not self.connected:
             self._close()
             return
@@ -419,6 +467,9 @@ class ConnectSocket(object):
     def _close(self):
         """ Close socket. """
         self.connected = False
+        if self._socket is None:
+            # Handed over. Not ours to close.
+            return
         # Shutdown socket.
         try:
             self._socket.shutdown(socket.SHUT_RDWR)

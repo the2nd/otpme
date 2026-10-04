@@ -281,13 +281,122 @@ Remove all four keys of the user: both private and both public ones.
 It asks first, and it refuses when the user has no keys at all.
 Needs the ACL \fBdel_keys\fR.
 .TP
-.B gen_csr \fR[\fB\-\-stdin\-pass\fR] \fIuser\fR
+.B gen_csr \fR[\fIattributes\fR] [\fB\-\-slot\fR \fIslot\fR] [\fB\-\-stdin\-pass\fR] \fIuser\fR
 Make a certificate signing request with the private key of the user and write it to stdout.
 The key script does the work, so the key never leaves where it lies.
 .br
 It stops there: OTPme does not hand the request to a CA and does not store a certificate.
 What happens with the request is up to you.
+.br
+The subject is built from these, and an attribute you do not give is left out:
+.RS
+.TP
+.B \-\-cn \fIname\fR
+The common name. Without it, the name of the user.
+.TP
+.B \-\-country \fIcountry\fR
+Two letters, for example \fBDE\fR.
+.TP
+.B \-\-state \fIstate\fR
+.TP
+.B \-\-locality \fIlocality\fR
+.TP
+.B \-\-organization \fIorganization\fR
+.TP
+.B \-\-ou \fIunit\fR
+.TP
+.B \-\-email \fIaddress\fR
+.RE
+.IP
+For a certificate that is to be used for S/MIME, three more.
+Without them the request asks for nothing and what the certificate may be used for is whatever the CA puts in:
+.RS
+.TP
+.B \-\-san\-email \fIaddress\fR[\fB,\fIaddress\fR...]
+The address in the subject alternative name.
+That is where a mail client looks for the address of the sender.
+.B \-\-email
+puts it in the subject as well, but on its own that is the old way.
+.TP
+.B \-\-key\-usage \fIusage\fR[\fB,\fIusage\fR...]
+What the key may do.
+For S/MIME: \fBdigital_signature\fR to sign and \fBkey_encipherment\fR to be sent encrypted mail.
+Also \fBcontent_commitment\fR, \fBdata_encipherment\fR, \fBkey_agreement\fR, \fBkey_cert_sign\fR, \fBcrl_sign\fR, \fBencipher_only\fR, \fBdecipher_only\fR.
+.TP
+.B \-\-ext\-key\-usage \fIusage\fR[\fB,\fIusage\fR...]
+What the certificate is for.
+For S/MIME: \fBemail_protection\fR.
+Also \fBclient_auth\fR, \fBserver_auth\fR, \fBcode_signing\fR, \fBsmartcard_logon\fR, \fBtime_stamping\fR, \fBocsp_signing\fR.
+.RE
+.IP
+Whether the signed certificate carries all of it is up to the CA: a request asks, it does not decide.
+.IP
+A user whose private key is on a YubiKey in PIV mode gets a request signed by the card, because the key does not come off it.
+The card asks for its PIN.
+The key is the one the key script is set to (\fB\-\-yubikey\-piv\fR), and
+.B \-\-slot
+asks for another one.
+Where neither says a slot, it is \fBAUTHENTICATION\fR, the same one signing uses.
+.IP
+S/MIME needs two certificates, one for each key of the user.
+The sign key lies in slot \fBAUTHENTICATION\fR, the encrypt key in slot \fBKEY_MANAGEMENT\fR.
+So there are two requests.
+With RSA keys they read:
+.PP
+.RS
+.nf
+$ otpme\-user gen_csr \-\-slot AUTHENTICATION \\
+    \-\-email alice@example.org \-\-san\-email alice@example.org \\
+    \-\-key\-usage digital_signature \\
+    \-\-ext\-key\-usage email_protection alice > alice\-sign.csr
+
+$ otpme\-user gen_csr \-\-slot KEY_MANAGEMENT \\
+    \-\-email alice@example.org \-\-san\-email alice@example.org \\
+    \-\-key\-usage key_encipherment \\
+    \-\-ext\-key\-usage email_protection alice > alice\-encrypt.csr
+.fi
+.RE
+.IP
+Hand both to your CA.
+Each signed certificate then has to go back into the slot its key sits in:
+.PP
+.RS
+.nf
+$ otpme\-yk\-piv \-\-import\-cert \-\-slot AUTHENTICATION < alice\-sign.crt
+$ otpme\-yk\-piv \-\-import\-cert \-\-slot KEY_MANAGEMENT < alice\-encrypt.crt
+.fi
+.RE
+.IP
+A PKCS#11 module shows the key of a slot only together with the certificate that sits in it, so that is what a mail client or a browser needs.
+Writing a slot asks for the management key, not for the PIN.
+A card that was deployed keeps that key on itself, and then the PIN reads it out.
+.IP
+With 25519 keys the second request does not work.
+Ed25519 only signs, X25519 only does key agreement, and a request is signed by the very key it is for.
+An X25519 key cannot do that (RFC 8410).
+Two things follow.
+First, the encrypt key needs \fB\-\-key\-usage key_agreement\fR, not \fBkey_encipherment\fR: that bit is the RSA one.
+Second, there is no request for it at all.
+The CA has to issue the certificate from the public key alone:
+.PP
+.RS
+.nf
+$ otpme\-yk\-piv \-\-public\-key\-out \-\-slot KEY_MANAGEMENT > alice\-encrypt.pub
+.fi
+.RE
+.IP
+Not every CA does that, and whether a mail client reads X25519 in S/MIME at all (RFC 8418) is another question.
+Use RSA where you are not sure.
+.IP
 \fB\-\-stdin\-pass\fR reads the key password from stdin.
+.br
+A request without any of the S/MIME parts:
+.PP
+.RS
+.nf
+$ otpme\-user gen_csr \-\-organization 'Example Ltd' \-\-country DE \-\-email alice@example.org alice
+.fi
+.RE
 .TP
 .B key_mode \fIuser\fR \fImode\fR
 Where the private keys of the user are kept.
@@ -313,6 +422,41 @@ Show what kind of encrypt key the user has: \fBrsa\fR or \fBx25519\fR.
 .TP
 .B key_cache_time \fIuser\fR \fItime\fR
 Set how long otpme-agent may cache the users private key, e.g. how long it keeps the yubikey PIV handler open after the PIN was entered. Accepts a plain number of seconds or a time string such as \fI5m\fR. The default \fI0\fR means no timeout, the key stays cached as long as the agent runs. The agent gets the value with the login session, so a change takes effect on the next login.
+.TP
+.B enable_key_caching \fIuser\fR
+Let the hosts hold the private keys of the user.
+Needs key mode \fBclient\fR and refuses otherwise.
+.RS
+.PP
+The login then sends the keys to the host the user logs in on.
+They travel as they are stored: wrapped with the key password of the user.
+A host that holds one can do no more with it than it could before, because without that password it is of no use.
+The host writes it to its offline tokens and hands it to otpme-agent.
+.PP
+Two things follow.
+The key script does not ask the servers for the key on every call, and it asks for the key password once per session instead of once per signature: it unwraps the key and leaves the result with the agent for \fBkey_cache_time\fR.
+And the user can sign without the servers, which is what an offline login needs.
+.PP
+It also lets the agent sign the SOTP for a user whose login token does not own the keys, see \fBsotp_signing\fR in
+.BR otpme\-accessgroup (1).
+Without a key it holds, the agent has nothing to sign with.
+.PP
+Off by default.
+Which hosts hold a copy of a private key is not something to decide by accident.
+In key mode \fBserver\fR nothing is ever sent: there the key that wraps the private key is on the server too, and a host that got both would have the key itself.
+.PP
+\fBotpme\-user show\fR says whether it is on, as \fBkey\-caching\fR.
+It says \fBN/A\fR where the key mode is not \fBclient\fR, because there it cannot be turned on at all.
+.RE
+.TP
+.B disable_key_caching \fIuser\fR
+Stop sending the private keys of the user to the hosts.
+.RS
+.PP
+This is about the next login.
+What a host has already got stays in its offline tokens until the user logs in there again, and in its agent until the user logs out.
+A key that must be gone everywhere has to be replaced, see \fBkey_pass\fR and \fBgen_keys\fR.
+.RE
 .TP
 .B key_pass \fR[\fB\-\-stdin\-pass\fR] \fIuser\fR
 Change the password of the private keys of the user.
@@ -805,6 +949,15 @@ Generate them for carol on the 25519 curves, where the length is fixed
 .B otpme-user key_pass alice
 Change the password of alice's private keys
 .TP
+.B otpme-user enable_key_caching alice
+Let the hosts alice logs in on hold her private keys, so the key script asks her for the password once per session and works without the servers
+.TP
+.B otpme-user key_cache_time alice 5m
+Have otpme-agent drop the unwrapped key five minutes after it was last needed
+.TP
+.B otpme-user disable_key_caching alice
+Send them no more, from her next login on
+.TP
 .B otpme-user dump_sign_key alice
 Write alice's sign public key to stdout
 .TP
@@ -859,6 +1012,7 @@ Create bob using the developer template
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
+.BR otpme\-acls (7),
 .BR otpme-token (1),
 .BR otpme-group (1),
 .BR otpme-role (1),

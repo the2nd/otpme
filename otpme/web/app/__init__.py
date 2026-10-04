@@ -200,7 +200,7 @@ def _ratelimit_key():
 
 def _build_limiter_storage_uri():
     """ Build a Flask-Limiter storage URI from OTPme's configured cache
-    backend (redis or memcachedb on a Unix socket). Sharing storage with
+    backend (redis or memcached on a Unix socket). Sharing storage with
     the cache keeps counters consistent across gunicorn workers; in-
     memory (per-worker buckets) loosens the effective limit by the
     worker count.
@@ -214,7 +214,7 @@ def _build_limiter_storage_uri():
         socket = cache_module.get_socket()
         if config.cache_type == 'redis':
             return f"redis+unix://{socket}"
-        if config.cache_type == 'memcachedb':
+        if config.cache_type == 'memcached':
             return f"memcached://{socket}"
     except Exception as e:
         try:

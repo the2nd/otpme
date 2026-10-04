@@ -1,4 +1,4 @@
-.TH OTPME-HOST 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.TH OTPME-HOST 1 "2026-10-04" "OTPme 0.3.0a279" "OTPme Manual"
 .SH NAME
 otpme-host \- manage OTPme hosts
 .SH SYNOPSIS
@@ -7,30 +7,84 @@ otpme-host \- manage OTPme hosts
 [\fIoptions\fR] [\fIhost\fR]
 .SH DESCRIPTION
 .B otpme-host
-manages host objects in the OTPme system. Hosts are client machines (e.g. notebooks, workstations) that are joined to the OTPme realm and on which users log in. Hosts have certificates, can be configured with tokens, roles, dynamic groups, and sync settings.
+manages the hosts of a realm: the machines people log in to, such as notebooks, workstations and servers.
+.PP
+A host is not a node.
+A node runs the realm; a host runs \fBhostd\fR and \fBconfd\fR, and \fBhttpd\fR or \fBbackupd\fR only where it serves the SSO portal or takes backups.
+It syncs the users, groups and tokens it needs, so it can resolve a user and check an SSH key on its own.
+A password or an OTP is checked by a node of its site, or by the host itself where the token allows offline logins.
+.PP
+The host object is what the realm knows about the machine: its certificate and its public key, the tokens and roles that may log in there, the users and groups it syncs, its MAC address and its VLAN, and whether it takes configuration jobs and reports an inventory.
+.PP
+A host object is made with
+.B add
+before the machine joins, or by the join itself, which adds the host when it is not there yet (see \fBotpme\-tool\fR(1)).
 .SH COMMANDS
 .SS Host Management
 .TP
 .B add \fIhost\fR
-Create a new host.
+Create a host.
+The machine itself need not exist yet: this is the object a join with a JOTP looks for.
+Where an \fBobjecttemplates\fR policy names a host template, the new host is built from it (see \fBotpme\-policy\fR(1)).
+.br
+There is no \fBrename\fR.
+A host is found by the name it joined with, which is also the name in its certificate, so a machine that is renamed leaves the realm and joins again.
 .TP
-.B del \fIhost\fR
+.B del \fR[\fB\-\-no\-trash\fR] \fIhost\fR
 Delete a host.
+It goes to the trash, from where \fBotpme-trash\fR(1) can bring it back; \fB\-\-no\-trash\fR deletes it right away.
+.br
+The certificate of the host is revoked, and the roles and access groups that name the host let it go first, so nothing is left pointing at it.
 .TP
-.B show \fR[\fIhost\fR]
-Display host information. Without arguments, shows all hosts.
+.B show \fR[\fB\-a\fR] [\fB\-t\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-token\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] [\fIhost\fR]
+Show the hosts, with their tokens, roles and policies.
+Without a host you get all of them.
+.RS
 .TP
-.B list \fR[\fIregex\fR]
-List hosts, optionally filtered by regex pattern.
+.B \-a
+Also the hosts you may only look at, not just the ones you may change.
+.TP
+.B \-t
+Show the host templates instead of the hosts.
+A template is a host object a new host is built from; a site gets one called \fBhost_template\fR when it is created.
+.TP
+.B \-z \fIN\fR
+How many hosts to print.
+.TP
+.B \-\-fields \fIF1,F2\fR
+Print these columns and no others.
+The names are the ones in the header of the table.
+.TP
+.B \-\-limit \fIN\fR
+How many of each kind to print per host: tokens, roles, policies.
+.TP
+.B \-\-token\-limit \fIN\fR, \fB\-\-role\-limit\fR \fIN\fR, \fB\-\-policy\-limit\fR \fIN\fR
+The same for one of them, where the others should stay as they are.
+.TP
+.B \-\-sort\-by \fIfield\fR, \fB\-\-reverse\fR
+Which column to sort by, and the other way round.
+.TP
+.B \-\-raw\fR, \fB\-\-csv\fR, \fB\-\-csv\-sep\fR \fIsep\fR
+For reading with something other than your eyes: \fB\-\-raw\fR leaves the header and the borders out, \fB\-\-csv\fR prints one row per line with \fB;\fR between the columns, and \fB\-\-csv\-sep\fR uses another separator.
+.RE
+.TP
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
+List the host names, and with a regex only those that match it.
+You get the hosts you may change; \fB\-a\fR adds those you may only look at.
+.br
+\fB\-\-attribute\fR prints that attribute of each host next to its name.
 .TP
 .B enable \fIhost\fR
 Enable a disabled host.
 .TP
 .B disable \fIhost\fR
 Disable a host without deleting it.
+A disabled host is turned away by the daemons it talks to, so it neither syncs nor logs anybody in.
 .TP
 .B move \fR[\fB\-\-keep\-acls\fR] \fIhost\fR \fIunit\fR
-Move host to a different unit.
+Move the host into another unit.
+Its ACLs move with it: the default ACLs of the old unit are taken away and those of the new one are applied.
+\fB\-\-keep\-acls\fR leaves the ACLs of the host as they are.
 .TP
 .B touch \fIhost\fR
 Re-index the object to fix potential index problems.
@@ -43,34 +97,135 @@ The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, 
 Use \fB\-u\fR to disable the object if it was unused for the given time.
 .TP
 .B mac \fIhost\fR \fImac_address\fR
-Set the host's MAC address. Used for MAB port authentication (see the VLAN Assignment section below).
+Set the host's MAC address.
+It is what the realm recognises the machine by when a switch port is opened without anybody logging in, see \fBPort Authentication\fR below.
 .SS Token and Role Assignment
+A token is named by its path, \fIuser\fB/\fItoken\fR.
+A role is named by its name, which is looked for in the site of the host, or as \fIsite\fB/\fIrole\fR to take one from another site of the realm.
 .TP
-.B add_token \fR[\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] \fIhost\fR \fItoken_path\fR
-Add a token to the host. Use \fB\-i\fR to limit login to specific interfaces (e.g. tty, gui, ssh).
+.B add_token \fR[\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] \fIhost\fR \fItoken_path\fR \fR[\fItoken_options\fR]
+Let this token log in to the host.
+.RS
+.TP
+.B \-i \fIinterfaces\fR
+Only these login interfaces, comma separated: \fBgui\fR, \fBtty\fR, \fBssh\fR.
+With a leading \fB\-\fR the interface is the one that is not allowed, as in \fB\-gui\fR, and the two forms cannot be mixed.
+.TP
+.I token_options
+SSH options for the key of this token, written as they stand in an \fBauthorized_keys\fR line: comma separated, and a value may be quoted, as in \fBcommand="/usr/bin/x \-\-a,\-\-b",no\-pty\fR.
+.br
+They are for an SSH token, and only the options that token allows: \fBcert\-authority\fR, \fBcommand\fR, \fBrestrict\fR, \fBenvironment\fR, \fBfrom\fR, \fBno\-agent\-forwarding\fR, \fBno\-port\-forwarding\fR, \fBno\-pty\fR, \fBno\-user\-rc\fR, \fBno\-X11\-forwarding\fR, \fBpermitopen\fR, \fBprincipals\fR and \fBtunnel\fR.
+Anything else is dropped when the \fBauthorized_keys\fR file is written, with a warning in the log.
+.TP
+.B \-\-sign\fR, \fB\-\-tags \fItag1,tag2\fR
+Sign the token for this assignment.
+The signature carries the user and this host, and the interfaces and options where they were given, so it says what the token was allowed to do here.
+How signing works, and what a signer makes of the tags, is in
+.BR otpme-role (1).
+A token that cannot be signed with \fB\-\-sign\fR is an error.
+.TP
+.B \-\-no\-auto\-sign
+Do not sign, whatever the \fBauto_sign\fR of the host or the \fBautosign\fR setting of your own user says.
+.RE
+.IP
+A token that is already assigned, with other interfaces or options, is not added twice: OTPme asks whether to change what it has.
 .TP
 .B remove_token \fR[\fB\-\-keep\-sign\fR] \fIhost\fR \fItoken_path\fR
-Remove a token from the host.
+Take the token away from the host.
+The signature for this assignment is removed with it; \fB\-\-keep\-sign\fR leaves it in place.
 .TP
 .B list_tokens \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIhost\fR
-List tokens assigned to the host.
+List the tokens assigned to the host.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-token\-types\fR to limit the listing to the given token types.
 .TP
 .B add_role \fIhost\fR \fIrole\fR
 Add a role to the host.
+Its tokens may then log in here, with the interfaces and options they were given in the role, and the users the role syncs are synced to this host.
+The dynamic groups of the role, and of the roles in it, are added to everybody who logs in here.
+.br
+Putting the host into a role is the other way round and another thing: that decides which VLAN the host gets and which shares it may reach, see \fBotpme-role\fR(1) \fBadd_host\fR.
 .TP
 .B remove_role \fIhost\fR \fIrole\fR
 Remove a role from the host.
+A UUID is taken as well, which is how a reference to a role that is gone is cleared out.
 .TP
 .B list_roles \fIhost\fR
-List roles assigned to the host.
+List the names of the roles assigned to the host.
 .SS Login Control
+Who may log in to a host is decided by the tokens and roles it holds, see
+.B Token and Role Assignment
+above.
+A host limits logins from the moment it is made: only what is assigned to it gets in.
+Opened up, every token of the REALM access group may log in, and the assignments then only say what else a token gets there.
 .TP
 .B limit_logins \fIhost\fR
-Limit logins to tokens and roles explicitly assigned to this host.
+Only let the tokens and roles assigned to this host log in.
+This is how a host starts.
+.br
+It also narrows what is synced to the host, see \fBenable_sync_by_login_token\fR below.
 .TP
 .B unlimit_logins \fIhost\fR
-Allow logins from all authorized tokens.
+Let every token of the REALM access group log in.
+The assignments stay as they are, with their login interfaces and options.
+.PP
+On top of that the host itself can refuse a user, in its config file and not in the realm.
+.B VALID_LOGIN_USERS
+is a list, and a user not in it may not log in.
+.B DENY_LOGIN_USERS
+is a list of users that may not log in whatever else says so, and it is asked first.
+An entry is a user name, or \fIname\fR:\fIuuid\fR to name the user you mean and no other.
+Both are checked for an interactive login and for an SSH key, see
+.BR otpme.conf (5).
+.SS Signers
+A signature is checked on the host, so which signatures count is configured there and not in the realm:
+.PP
+.RS
+.B otpme-tool add_signer \-\-signer\-type token \fIuser|role\fR
+.RE
+.PP
+The signer is named by its OID, \fBuser|\fIrealm\fB/\fIname\fR or \fBrole|\fIrealm\fB/\fIsite\fB/\fIname\fR, and stored by UUID, so a rename keeps the signer.
+It is added for one type of thing.
+With a signer of type
+.B token
+the host only lets an SSH key log in that carries a signature of that signer; a key without one is ignored.
+Who signs a token, and with which tags, is in
+.BR otpme-role (1).
+Without a token signer every synced SSH key may log in.
+.PP
+The other types are for what the host runs or takes:
+.BR key_script ,
+.BR agent_script ,
+.BR login_script ,
+.BR auth_script ,
+.BR push_script ,
+.B backup_script
+and
+.B share_script
+for the scripts, and
+.BR repo_mgmt ,
+.BR sw_mgmt ,
+.BR signer_mgmt ,
+.BR service_mgmt ,
+.B file_mgmt
+and
+.B host_mgmt
+for the configuration jobs, plus
+.B remote_access
+for a shell on the host.
+One type per kind of job on purpose: whoever may install a package is not thereby allowed to change the signers of the host, or to log in.
+.PP
+Root adds a signer for the whole host.
+A user may add one of their own with \fB\-\-private\fR, for the types \fBtoken\fR, \fBkey_script\fR and \fBagent_script\fR.
+The config file options
+.BR FORCE_TOKEN_SIGNERS ,
+.B FORCE_KEY_SCRIPT_SIGNERS
+and
+.B FORCE_AGENT_SCRIPT_SIGNERS
+make the host ignore the private ones, for everybody or only for the users they name.
+See
+.BR otpme-tool (1)
+and
+.BR otpme.conf (5).
 .SS VLAN Assignment
 A host is not assigned a VLAN from here. Either the VLAN names the host, so
 that the assignment belongs to the site that runs the network (see
@@ -95,94 +250,264 @@ authenticates with its MAC address. Membership wins: the
 parameter is only looked at when no VLAN of the site answering the RADIUS
 request names the host. A host that is in the VLAN only through a role is
 overridden by one that names the host itself.
+A disabled VLAN is skipped and said so in the log.
+.SS Port Authentication
+A switch port is opened in one of two ways, and they are not the same thing.
+.PP
+With MAB the switch sends the MAC address of the machine and nobody has logged in yet.
+The realm looks the address up, finds the host and answers with its VLAN, see
+.B VLAN Assignment
+above.
+Set the address with \fBmac\fR.
+.PP
+With 802.1X the user authenticates the port, so it happens at login.
+The PAM module hands NetworkManager the name of the user and a password: the one the user types, or, where the token type is a smartcard, an OTP made on the card.
+.PP
+.RS
+.B auth required pam_otpme.so do_dot1x=auto dot1x_token_types=yubikey_piv
+.RE
+.PP
+.B do_dot1x
+is
+.B auto
+to do it only while the network is down,
+.B force
+to take the connection down and up again at every login, or
+.BR false .
+.B dot1x_connection
+names the NetworkManager connection, \fBdot1x\-lan\fR by default, and
+.B dot1x_timeout
+is how many seconds OTPme waits for it, 10 by default.
+.B dot1x_token_types
+says which token types to use; without it nothing is done.
+Nothing is done either while the link is down, which is what keeps this out of the way of a WLAN or an offline login.
+See
+.BR pam_otpme (8).
 .SS User and Group Listing
+\fB\-\-return\-type\fR picks what these print: \fBname\fR (the default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
 .TP
 .B list_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
-List users on the host.
-Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+The users who own a token assigned to the host.
+Only the tokens the host holds itself count here, not the ones it gets through a role.
 .TP
 .B list_sync_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
-List sync users on the host.
-Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+The sync users of the host, as \fBadd_sync_user\fR set them.
+The ones that come with a role are not in it, see \fBSync Configuration\fR below.
 .TP
 .B list_sync_groups \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
-List sync groups on the host.
-Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+The sync groups of the host.
 .TP
 .B list_dynamic_groups \fIhost\fR
-List dynamic groups of the host.
+The dynamic groups of the host, with those of the roles it is in.
+.SS Where this host is used
+A command that starts with \fBlist_\fR answers what the host holds.
+One that starts with \fBfind_\fR answers the other question: where the host itself is named.
+.PP
+\fB\-\-return\-type\fR works as above, and a name from another site is printed as \fIsite\fB/\fIname\fR.
+Disabled objects are listed as well, so a permission that is only switched off is not mistaken for one that is gone.
+Each of these needs its own ACL, \fBfind:roles\fR for \fBfind_roles\fR and so on.
+.TP
+.B find_roles \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
+The roles the host is in.
+They decide which VLAN it gets and which shares it may reach, see \fBotpme-role\fR(1) \fBadd_host\fR.
+.TP
+.B find_accessgroups \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
+The access groups the host is in.
+This is what carries it through MAB: the host authenticates with its MAC address as the password, and the access group the request is answered for has to hold the host, see \fBPort Authentication\fR above.
+.TP
+.B find_groups \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
+The groups the host is in.
+A group matters for the shares of that group that are limited to hosts.
+.TP
+.B find_shares \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
+The shares the host is named in, so the ones it may mount without a role bringing it.
 .SS Dynamic Groups
-Dynamic groups are local Linux groups (e.g. plugdev) that exist on hosts and nodes. Users are automatically added to these groups when they log in via the OTPme PAM module. This is most commonly used on hosts where users log in interactively.
+A dynamic group is a local group of the machine, such as \fBplugdev\fR or \fBaudio\fR.
+Whoever logs in through the PAM module is put into it for that session, without being a member of anything in the realm.
+Two sides are added together: the groups of the host and of the roles the host is in, and the groups of the login token and of the roles it is in.
+The roles in those roles count too, however deep they go.
+A group that does not exist on the machine is skipped, with a warning in the log.
 .TP
 .B add_dynamic_group \fIhost\fR \fIgroup\fR
 Add a dynamic group to the host.
+Everybody who logs in here gets it.
 .TP
 .B remove_dynamic_group \fIhost\fR \fIgroup\fR
 Remove a dynamic group from the host.
+.PP
+The machine has the last word, in its config file.
+.B ALLOW_DYNAMIC_GROUPS
+set to \fBFalse\fR switches dynamic groups off altogether; as a list it allows only the groups it names.
+.B DENY_DYNAMIC_GROUPS
+names the groups never to add.
+Deny is asked first.
+See
+.BR otpme.conf (5).
 .SS Sync Configuration
+A host does not hold the whole realm.
+Which users and tokens it gets is decided by two switches, and what each of them picks is added to the other:
+.PP
+.B sync_by_login_token
+is on from the start and picks the ones that can log in here.
+While logins are limited those are the tokens assigned to the host and to its roles, and their users; after \fBunlimit_logins\fR they are the tokens of the REALM access group and their users.
+.PP
+.B sync_groups
+is off from the start.
+It picks the members of the groups named with \fBadd_sync_group\fR: the sync users of each group, the owners of its tokens, those tokens, and the users whose default group it is.
+.PP
+Each of the two takes users and tokens out of the sync of whole object types, so a host gets every user and token of its site only while both are off.
+.PP
+The sync users of the host and of its roles always come along, and so do the default tokens of the users and the destinations of link tokens.
 .TP
 .B add_sync_user \fIhost\fR \fIuser\fR
-Add a sync user to the host.
+Sync this user to the host whether or not they ever log in there, so the machine can resolve them \(em where it holds their home directory, for one.
 .TP
 .B remove_sync_user \fIhost\fR \fIuser\fR
 Remove a sync user from the host.
 .TP
 .B add_sync_group \fIhost\fR \fIgroup\fR
-Add a sync group to the host.
+Name a group whose members are synced to the host.
+It is only read while sync groups are enabled.
 .TP
 .B remove_sync_group \fIhost\fR \fIgroup\fR
 Remove a sync group from the host.
 .TP
 .B enable_sync_groups \fIhost\fR
-Enable sync groups.
+Start reading the sync groups.
 .TP
 .B disable_sync_groups \fIhost\fR
-Disable sync groups.
+Stop reading them.
+The list stays as it is.
 .TP
 .B enable_sync_by_login_token \fIhost\fR
-Sync only the users and tokens that can log in on the host (the default). With limited logins (\fBlimit_logins\fR) those are the tokens assigned to the host, directly or via roles, and their users; without, the tokens of the REALM access group and their users. Sync users, sync groups, the users' default tokens and the destinations of link tokens are added in both cases.
+Sync the users and tokens that can log in here, which is how a host starts.
 .TP
 .B disable_sync_by_login_token \fIhost\fR
-Sync all users and tokens of the site, e.g. for a host that has to resolve the owners of files of users who do not log in on it.
-.SS Realm Join/Leave
+Sync every user and token of the site instead, for a host that has to resolve users who do not log in on it at all \(em the owners of files, for one.
+Switched off together with \fBsync_groups\fR this is the whole site; with sync groups on, those groups decide.
+.SS Realm Join and Leave
+A machine joins the realm with
+.B otpme-tool join
+and leaves it with
+.B otpme-tool leave
+(see \fBotpme\-tool\fR(1)).
+Either an admin logs in for it, or the machine uses a one-time password.
+.PP
+The JOTP is the one for joining.
+.B add
+makes one, and
+.B enable_jotp
+prints it.
+It is gone once the host has joined, and a LOTP for leaving is made in its place.
+Leaving the realm revokes the certificate of the host, drops its public key and makes a new JOTP, so the machine can come back.
 .TP
 .B enable_jotp \fIhost\fR
-Enable realm join via JOTP.
+Allow joining with the JOTP, and print it.
+It is allowed by default.
 .TP
 .B disable_jotp \fIhost\fR
-Disable realm join via JOTP.
+Refuse the JOTP.
+A join then needs an admin login.
 .TP
 .B enable_lotp \fIhost\fR
-Enable realm leaving via LOTP.
+Allow leaving with the LOTP, and print it.
+It is allowed by default.
 .TP
 .B disable_lotp \fIhost\fR
-Disable realm leaving via LOTP.
+Refuse the LOTP.
+Leaving then needs an admin login.
 .TP
 .B enable_jotp_rejoin \fIhost\fR
-Enable printing of rejoin JOTP on realm leave.
+Print the new JOTP to the machine that is leaving.
+Whoever leaves the realm can then join again without an admin login.
+It is off by default.
 .TP
 .B disable_jotp_rejoin \fIhost\fR
-Disable printing of rejoin JOTP on realm leave.
-.SS Certificate Operations
+Keep the new JOTP to yourself.
+.PP
+The JOTP and the LOTP are shown by
+.B show
+and by
+.B export
+to whoever holds the ACL \fBview:jotp\fR or \fBview:lotp\fR.
+.SS Certificates and Keys
+A host gets a certificate and a key pair of its own when it joins.
+The certificate is how a daemon knows which host it is talking to, and the public key is how anything that has to tell this host from another one checks what the host says \(em a remote shell starts with the host vouching for its SSH host key, and this is what the other end holds that against (see \fBotpme-shell\fR(1)).
+.PP
+The certificate is renewed on the machine itself, with
+.BR "otpme-tool renew_cert" .
+The certificate request is made there, with the key of the host; this side only signs it.
 .TP
 .B dump_cert \fIhost\fR
-Export the host certificate to stdout.
+Print the certificate of the host.
 .TP
 .B dump_ca_chain \fIhost\fR
-Export the CA certificate chain of the host cert to stdout.
+Print the CA certificates above it, up to the CA of the site.
 .TP
-.B renew_cert \fIhost\fR
-Renew the host certificate.
+.B get_public_key \fIhost\fR
+Print the public key of the host.
 .TP
 .B public_key \fIhost\fR \fR[\fIpublic_key\fR]
-Set or display the host's public key.
+Replace the public key of the host.
+Without the key as an argument you are asked to paste it; an empty answer takes the key away.
+.br
+The join sets this, so there is normally no reason to touch it.
 .SS SSH
 .TP
 .B get_ssh_authorized_keys \fIhost\fR \fR[\fIuser\fR]
-Get SSH authorized keys for the host, optionally for a specific user.
+Ask the realm which SSH keys this host lets in.
+With a user the lines come as sshd reads them; without one the keys of every user come, each line with the user name in front.
+A key that needs a signature and does not have one is left out, see \fBSigners\fR above.
+.PP
+On the machine itself sshd does not read this.
+It calls
+.B otpme-get-authorized-keys \fIusername\fR\fR,
+which answers from the file \fBhostd\fR keeps:
+.PP
+.RS
+.B AuthorizedKeysCommand /usr/local/bin/otpme-get-authorized-keys
+.br
+.B AuthorizedKeysCommandUser root
+.RE
+.PP
+The keys are synced before the answer, but at most every 30 seconds: sshd asks this for every attempt, and one sync per attempt would be one sync per port scan.
+.SS Configuration Jobs and Inventory
+A host can be told to install a package, write a file or restart a service.
+The jobs are made with
+.BR otpme-deploy (1),
+and every job carries a signature of a signer of its own type, see
+.B Signers
+above.
+.TP
+.B config \fIhost\fR allow_confd_jobs \fItoken|role\fR
+The tokens and roles that may send a job to this host.
+Unset means nobody.
+.br
+Both are named by their OID, \fBtoken|\fIrealm\fB/\fIuser\fB/\fIname\fR and \fBrole|\fIrealm\fB/\fIsite\fB/\fIname\fR, and stored by UUID: a rename keeps the permission, and a new object of the same name does not inherit it.
+A token counts as named when it is in a named role, however deep the nesting goes.
+.PP
+A host also reports what it runs: its system, its installed packages and its hardware.
+It does that by itself; what is configured is who reads it and where it is kept.
+Read it with
+.BR otpme-inventory (1).
+.TP
+.B config \fIhost\fR allow_inventory \fItoken|role\fR
+The tokens and roles that may read the inventory of this host, named the same way as above.
+Unset means nobody.
+A plain \fBview\fR ACL on the host does not carry it.
+.TP
+.B config \fIhost\fR inventory_site \fIsite\fR
+The site that keeps the inventory of this host.
+Unset means the site the host belongs to.
+The site named here has to accept it, see \fBinventory_trusts\fR in
+.BR otpme (7).
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
+.PP
+Unless the \fBchangelog\fR config parameter says otherwise.
+It is read along the cascade of the host, and nothing is written where it is off \(em not for that host, and not for the ones below a unit that switched it off.
+Without any value anywhere it is on.
 .PP
 An \fIentry_id\fR is the number the listing shows in front of an entry, counted from 0.
 .PP
@@ -218,6 +543,23 @@ It is looked for in the site of the host.
 Which policies there are, and what each of them does, is in
 .BR otpme\-policy (1).
 .PP
+Four types do something on a host:
+.B logintimes
+says when somebody may log in here,
+.B forcetoken
+which token they have to use,
+.B autodisable
+switches the host off after a time, and
+.B authonaction
+asks whoever changes something here to authenticate for it again.
+.PP
+A
+.B defaultpolicies
+policy is taken as well, because it fits every object in the tree, but nothing reads it on a host: what gives a new host its policies is such a policy on the unit or the site above it.
+.PP
+A policy on the host runs at every login to it.
+A policy on a role runs only where that role is assigned to the host and holds the token that is logging in \(em a restriction on a role the token does not reach this host through says nothing about this host.
+.PP
 Attaching and detaching ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
 .B add_policy \fIhost\fR \fIpolicy\fR
@@ -241,179 +583,311 @@ Use \fB\-\-policy\-types\fR to list only policies of the given types; these are 
 .br
 Needs the ACL \fBview:policies\fR.
 .SS ACL Management
+An ACL says what somebody may do with this host.
+The somebody is a role or a token, never a user.
+.PP
+What the three forms \fBacl\fR, \fB+acl\fR and \fB++acl\fR mean, and which ACLs exist, is under \fBACLs\fR in
+.BR otpme (7).
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
-.B add_acl \fIhost\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
-Add an access control entry.
+.B add_acl \fIhost\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
+Give a role or a token one or more ACLs on this host.
+.br
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR, and \fIowner\fR the path of that role or token.
+An ACL may carry a value, for example \fBview:tokens\fR, and several are separated by commas.
+.br
+Needs the ACL \fBadd:acl\fR.
 .TP
-.B del_acl \fIhost\fR \fIacl\fR
-Remove an access control entry.
+.B del_acl \fIhost\fR \fIacl\fR[,\fIacl\fR]
+Take those ACLs away again.
+.br
+Here an \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fBrole:berlin/sw\-admins:view\fR.
+.br
+Needs the ACL \fBdelete:acl\fR.
 .TP
 .B list_acls \fIhost\fR
-Display all ACLs for the host.
+Show the ACLs that lie on this host, i.e. who may do what with it.
+Needs the ACL \fBview:acl\fR.
 .TP
 .B enable_acl_inheritance \fIhost\fR
-Enable ACL inheritance from parent objects.
+Let the host inherit the default ACLs of the unit above it.
+It does not by default.
+.RS
+.PP
+Only default ACLs are inherited.
+An ordinary ACL on the unit never is.
+.PP
+Moving the host into another unit then takes away the default ACLs of the old unit and applies those of the new one.
+While inheritance is off, a move leaves the ACLs of the host as they are.
+.PP
+A move by somebody who does not hold \fBadd:acl\fR and \fBdelete:acl\fR on the host leaves its ACLs alone as well, and says so.
+Otherwise moving an object into a unit would be a way of handing yourself the default ACLs of that unit.
+.PP
+Needs the ACL \fBenable:acl_inheritance\fR.
+.RE
 .TP
 .B disable_acl_inheritance \fIhost\fR
-Disable ACL inheritance.
-.SS Configuration and Attributes
+Stop inheriting them.
+Only the ACLs on the host itself count from then on.
+Needs the ACL \fBdisable:acl_inheritance\fR.
+.SS Configuration
+A config parameter is looked for on the host, then on the units above it, then on the site.
+The first value found is the one that applies, and the realm holds none.
+A site can turn that around for a parameter it names in
+.B force_site_config_parameters\fR,
+and then its own value wins over the host and its units (see \fBotpme\fR(7)).
+.PP
+Which parameters a host takes is in
+.B CONFIG PARAMETERS
+below.
 .TP
 .B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIhost\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
+Set a parameter on the host.
+.RS
 .TP
-.B show_config \fIhost\fR [\fIparameter\fR]
-Show all configuration parameters.
-.TP
-.B get_config \fIhost\fR \fIparameter\fR
-Show the value of a single configuration parameter.
-.TP
-.B description \fIhost\fR \fR[\fIdescription\fR]
-Set host description.
-.TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIhost\fR \fR[\fIinfo\fR]
-Set free-form info text. If \fIinfo\fR is omitted, the current info text is
-opened in the editor specified by the \fBEDITOR\fR environment variable.
-.TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIhost\fR
-Dump the info text to stdout.
-.SS Import/Export
-.TP
-.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIhost\fR
-Export host configuration.
-.TP
-.B remove_orphans \fIhost\fR
-Remove orphaned object references.
-.SH OPTIONS
-.SS Display Options
+.B \-d
+Remove the parameter from the host, or with a value only that one value from a list.
+It is not set back to a default: what applies afterwards is whatever the unit or the site says.
 .TP
 .B \-a
-Show all hosts (across all units).
+Append the value to a parameter that holds a list, instead of replacing what is there.
+.RE
+.IP
+The ACL is per parameter, \fBset:config:\fIparameter\fR.
+Removing a parameter that is not registered any more, which is what a rename or a dropped feature leaves behind, is for admins only.
 .TP
-.B \-t
-Show host templates.
+.B show_config \fIhost\fR \fR[\fIparameter\fR]
+The parameters set on the host itself, or only the one named.
+Nothing is shown for a parameter that the host gets from a unit or from the site.
 .TP
-.B \-z \fISIZE\fR
-Limit output size.
+.B get_config \fIhost\fR \fIparameter\fR
+What the parameter comes to for this host, once the host, its units and its site have been looked at.
+So this answers what applies, where \fBshow_config\fR answers what was set here.
 .TP
-.B \-\-fields \fIFIELD1,FIELD2\fR
-Display only specified fields.
+.B description \fIhost\fR \fR[\fIdescription\fR]
+Set the description.
+Without one OTPme asks and offers the current text for editing.
 .TP
-.B \-\-role\-limit \fIN\fR
-Limit number of roles shown.
+.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIhost\fR \fR[\fIinfo\fR]
+Set free-form info text.
+If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
+.br
+Without
+.B \-\-language
+the text is the administrator's own note, which no user is ever shown.
+A text can be written for a language as well, for the places that show such a text to a user; nothing shows the info of a host, so for a host it stays a note either way.
 .TP
-.B \-\-token\-limit \fIN\fR
-Limit number of tokens shown.
-.TP
-.B \-\-policy\-limit \fIN\fR
-Limit number of policies shown.
-.TP
-.B \-\-limit \fIN\fR
-Limit number of items shown per object.
-.TP
-.B \-\-sort\-by \fIFIELD\fR
-Sort output by field.
-.TP
-.B \-\-reverse
-Reverse sort order.
-.TP
-.B \-\-raw
-Output without headers/borders.
-.TP
-.B \-\-csv
-Output as CSV.
-.TP
-.B \-\-csv\-sep \fISEP\fR
-CSV separator character.
-.TP
-.B \-\-attribute \fIATTR\fR
-Display specific attribute in list command.
-.SS Token Options
-.TP
-.B \-i \fIinterfaces\fR
-Limit login to given interfaces (e.g. tty, gui, ssh).
-.TP
-.B \-\-sign
-Sign the object with default tags.
-.TP
-.B \-\-tags \fItag1,tag2\fR
-Add tags to signature.
-.TP
-.B \-\-no\-auto\-sign
-Do not automatically sign when adding a token.
-.TP
-.B \-\-keep\-sign
-Do not remove any signature when removing a token.
-.SS General Options
-.TP
-.B \-\-keep\-acls
-Preserve ACLs when moving host.
-.TP
-.B \-\-password \fIPASS\fR
-Password for encrypting exports.
+.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIhost\fR
+Write one of those texts to stdout, for reading it with something other than the editor.
+.br
+\fB\-\-language\fR picks which one; without it you get the note of the administrator.
+A language the host has no text for gives nothing and is not an error.
+.SS Export and Cleanup
+Both write to stdout.
+There is no import on this page: reading an export back in is
+.B otpme\-tool import\fR,
+see
+.BR otpme\-tool (1).
 .PP
-Global options are available for all commands. See
-.BR otpme (1)
-for details.
+.B remove_orphans
+asks before it changes anything; the global option \fB\-f\fR skips the question.
+.TP
+.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIhost\fR
+Write the whole object of the host to stdout, as JSON.
+.RS
+.PP
+Without \fB\-\-password\fR it is written as it is, in clear.
+With one, a key is derived from that password and the object is encrypted with it; the salt goes into the output, so the password is all you need to read it back.
+.PP
+What a host holds are references by UUID \(em its tokens, its roles, its sync users and groups \(em so an export says something only in the realm it came from.
+It carries the certificate and the public key of the host, and no private key: that one never leaves the machine.
+.PP
+Needs the ACL \fBexport\fR.
+.RE
+.TP
+.B remove_orphans \fIhost\fR
+Remove what the host still points at although it is gone.
+.RS
+.PP
+On a host that is its ACLs, its policies, the tokens and roles added to it, and the users and groups it syncs.
+A token that is gone takes the login interfaces and the SSH options that were stored with it.
+.PP
+The join node and the join token stay.
+Both keep a note of what they pointed at so they can still be shown, and they say what happened, not what is allowed.
+.PP
+It shows everything it found and asks once for all of it.
+It asks nothing and changes nothing when it finds nothing.
+.PP
+Needs the ACL \fBremove:orphans\fR.
+.RE
+.SH OPTIONS
+Every option belongs to one command and is described with that command above.
+A short option means what that command makes of it.
+.PP
+Global options work with every command, see
+.BR otpme (1).
 .SH CONFIG PARAMETERS
-Configuration parameters can be set with the \fBconfig\fR command and displayed with \fBshow_config\fR.
-For a complete description of all available parameters and their applicable object types, see
+Each parameter is described with the thing it is about:
+.B vlans
+under \fBVLAN Assignment\fR,
+.BR allow_confd_jobs ,
+.B allow_inventory
+and
+.B inventory_site
+under \fBConfiguration Jobs and Inventory\fR,
+.B auto_sign
+under \fBToken and Role Assignment\fR, and
+.B allow_changelog_clearing
+under \fBObject Changelog\fR.
+.PP
+A host also carries the settings its own daemons read:
+.B socket_backlog
+and
+.B max_decompressed_size
+always,
+.B backupd_max_conn
+where it takes backups, and
+.BR httpd_workers ,
+.BR httpd_socket_uri ,
+.B httpd_ssl_workers
+and
+.B httpd_ssl_socket_uri
+where it serves the SSO portal.
+.PP
+What each of them does is in
 .BR otpme (7).
 .SH EXAMPLES
-.SS Managing Hosts
+The examples use the site \fBberlin\fR of the realm \fBexample.org\fR and a notebook called \fBnotebook1\fR.
+.SS Taking a machine into the realm
 .TP
 .B otpme-host add notebook1
-Create a new host
+Create the host object.
+It prints the JOTP, which is the one-time password the machine joins with.
 .TP
-.B otpme-host enable_jotp notebook1
-Enable realm join via JOTP
-.SS Token Assignment
+.B otpme-tool join \-\-jotp 12345678
+Run on the machine itself.
+It gets its certificate and its keys, and a LOTP for leaving is printed.
+See \fBotpme-tool\fR(1).
 .TP
-.B otpme-host add_token notebook1 alice/totp
-Allow alice's TOTP token to login on host
+.B otpme-host show notebook1
+What the realm holds about it now: its unit, its tokens and roles, its sync users and groups, and whether logins are limited.
+.SS Who may log in there
 .TP
-.B otpme-host add_token \-i ssh notebook1 bob/ssh_key
-Allow bob's SSH key only for SSH interface
+.B otpme-host add_role notebook1 office\-staff
+Everybody in the role may log in here, and the users the role syncs are copied to the machine.
 .TP
-.B otpme-host limit_logins notebook1
-Limit logins to explicitly assigned tokens
-.SS VLAN Assignment
+.B otpme-host add_token notebook1 alice/login
+One token on top of that, for somebody the role does not cover.
 .TP
-.B otpme-vlan add_host printers notebook1
-Put the host into a VLAN, for MAB port authentication
+.B otpme-host add_token \-i ssh notebook1 bob/ssh
+bob gets in over SSH and not at the console.
 .TP
-.B otpme-host config notebook1 vlans berlin/guests
-Assign a VLAN of another site to the host, honoured only if the answering
-site trusts it
-.SS Certificate Operations
+.B otpme-host list_users notebook1
+Who that comes to, for the tokens the host holds itself.
+.SS An SSH key with one job
 .TP
-.B otpme-host dump_cert notebook1
-Export host certificate
+.B otpme-host add_token notebook1 backup/ssh 'command="/usr/local/bin/backup",no\-pty,from="10.0.0.5"'
+The key may run that one command, from that one address, and gets no shell.
 .TP
-.B otpme-host renew_cert notebook1
-Renew the host certificate
-.SS Sync Configuration
+.B otpme-host get_ssh_authorized_keys notebook1 backup
+The line sshd will be handed for that user.
+.SS The port the machine hangs on
+.TP
+.B otpme-host mac notebook1 00:11:22:33:44:55
+The address the switch reports when nobody has logged in yet.
+.TP
+.B otpme-accessgroup add_host lan notebook1
+MAB needs this: the access group the request is answered for has to hold the host.
+See \fBotpme-accessgroup\fR(1).
+.TP
+.B otpme-vlan add_host office\-vlan notebook1
+The VLAN the machine is answered with.
+See \fBotpme-vlan\fR(1).
+.SS What the machine gets from the realm
 .TP
 .B otpme-host add_sync_user notebook1 alice
-Add sync user
+Sync her user object even if she never logs in here, so the machine can resolve her as the owner of a file.
 .TP
-.B otpme-host add_sync_group notebook1 developers
-Add sync group
+.B otpme-host add_dynamic_group notebook1 plugdev
+Everybody who logs in here is put into that local group for the session.
+.TP
+.B otpme-host disable_sync_by_login_token notebook1
+Sync every user and token of the site instead of only the ones that can log in.
+.SS Jobs and inventory
+.TP
+.B otpme-host config notebook1 allow_confd_jobs role|example.org/berlin/sw\-admins
+Who may send a configuration job to this machine.
+Nothing is allowed until somebody is named.
+.TP
+.B otpme-deploy add \-\-host notebook1 \-\-arg packages=htop sw_mgmt install
+Install a package there.
+The job is signed, and the machine only takes it from a signer of type \fBsw_mgmt\fR.
+See \fBotpme-deploy\fR(1).
+.TP
+.B otpme-inventory packages notebook1
+What it has installed.
+Reading it needs \fBallow_inventory\fR, see \fBotpme-inventory\fR(1).
+.SS When it leaves
+.TP
+.B otpme-host enable_jotp_rejoin notebook1
+Print the new JOTP to whoever leaves the realm, so the machine can come back without an admin login.
+.TP
+.B otpme-host del notebook1
+Delete the object.
+The certificate is revoked, the roles and access groups that name the host let it go, and the object goes to the trash.
 .SH FILES
+On a node:
 .TP
 .I /var/lib/otpme/
-OTPme data directory
+The objects of the realm.
+A host lives in the unit it was created in, \fBhosts\fR unless something else was said.
+.PP
+On the machine itself:
+.TP
+.I /etc/otpme/otpme.conf
+Its own config file.
+\fBVALID_LOGIN_USERS\fR, \fBDENY_LOGIN_USERS\fR, \fBALLOW_DYNAMIC_GROUPS\fR, \fBDENY_DYNAMIC_GROUPS\fR and the \fBFORCE_\fR*\fB_SIGNERS\fR options are read here and nowhere else, see
+.BR otpme.conf (5).
+.TP
+.I /etc/otpme/ssl/
+Its certificate and keys: \fBcert.pem\fR with \fBkey.pem\fR for TLS, \fBhostkey.pem\fR for the key pair the realm holds the public half of, \fBca.pem\fR for the chain and \fIrealm\fB\-\fIsite\fB.pem\fR for the site.
+.TP
+.I /etc/otpme/signers/\fItype\fI/
+The signers of the machine, one directory per signer type, as \fBotpme-tool add_signer\fR writes them.
+The ones a user added for themselves are in \fI~/.otpme/signers/\fR.
+.TP
+.I /var/cache/otpme/ssh/authorized_keys/\fIuser\fI/authorized_keys
+The SSH keys of that user, as sshd gets them through \fBotpme-get-authorized-keys\fR.
+Written by \fBhostd\fR from the tokens the host holds.
+.TP
+.I /var/cache/otpme/offline/\fIuser_uuid\fI/
+The tokens the machine can check while it cannot reach the realm, one directory per user.
+.TP
+.I /var/cache/otpme/nsscache/
+\fBpasswd\fR, \fBgroup\fR and \fBshadow\fR of the synced users and groups, which is what the machine resolves them from.
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme-node (1),
-.BR otpme-token (1),
-.BR otpme-role (1),
-.BR otpme-vlan (1),
-.BR otpme-ca (1)
+.BR otpme\-acls (7),
+.BR otpme.conf (5),
+.BR pam_otpme (8),
+.BR otpme\-tool (1),
+.BR otpme\-node (1),
+.BR otpme\-token (1),
+.BR otpme\-role (1),
+.BR otpme\-accessgroup (1),
+.BR otpme\-vlan (1),
+.BR otpme\-policy (1),
+.BR otpme\-deploy (1),
+.BR otpme\-inventory (1),
+.BR otpme\-shell (1),
+.BR otpme\-trash (1),
+.BR otpme\-ca (1)
 
 .SH AUTHOR
 the2nd <the2nd@otpme.org>
 .SH NOTE
 This manual page was created with AI assistance.
 .SH COPYRIGHT
-Copyright \(co 2014-2025 the2nd. License: GPLv3
+Copyright \(co 2014-2026 the2nd. License: GPLv3

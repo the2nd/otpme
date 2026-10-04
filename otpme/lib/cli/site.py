@@ -178,7 +178,7 @@ def row_getter(realm, site, site_order, site_data, acls,
         # Trusts.
         if "trusts" in output_fields:
             _trusted_sites = []
-            if check_acl("view:trust") \
+            if check_acl("view:trusts") \
             or check_acl("add:trust") \
             or check_acl("delete:trust"):
                 for x in trusted_sites:

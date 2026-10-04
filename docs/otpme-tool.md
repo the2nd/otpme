@@ -159,11 +159,17 @@ Generate MSCHAP SLP challenge/response from given username and password.
 
 ## Signer Management
 
-**add_signer \[**--private**\] \[**--no-pin**\] \[**--no-verify-token-opts**\] \[**--tag** *tag*\] **--signer-type** *type* *object_id***  
+**add_signer \[**--private**\] \[**--no-pin**\] \[**--no-verify-token-opts**\] \[**--allow-throwaway-key**\] \[**--tag** *tag*\] **--signer-type** *type* *object_id***  
 Add signer. A token signature includes the token options (e.g.
 *command=*) the SSH key may be used with, and those are verified against
 the options the key is served with. **--no-verify-token-opts** turns
 that check off for this signer.
+
+**--allow-throwaway-key** is only for a **remote_access** signer. It
+lets that signer ask for a shell on a key the job brings along, instead
+of on a key this host already holds for the user. That way in needs
+nothing but the signature of the job, so it is off unless you say
+otherwise. See **otpme-shell**(1).
 
 **del_signer \[**--private**\] *signer_uuid***  
 Delete signer.
@@ -174,11 +180,41 @@ Enable signer.
 **disable_signer \[**--private**\] \[**--type** *signer_type*\] *signer_uuid***  
 Disable signer.
 
-**update_signer \[**--private**\] \[**--no-pin**\] \[*signer_uuid*\]**  
-Update signer.
+**update_signer \[**--private**\] \[**--no-pin**\] \[**--remove-gone**\] \[**--verify-token-opts**\|**--no-verify-token-opts**\] \[**--allow-throwaway-key**\|**--no-throwaway-key**\] \[**--signer-type** *type*\] \[*signer_uuid*\]**  
+Update signer. Pins the current key of the user or role again, for
+example after a key change.
 
-**show_signer \[**--private**\] \[*signer_uuid*\]**  
-Show signer(s).
+The last two pairs change what the signer may ask for. Name neither of a
+pair and it is left as it is: an update is usually about the pinned key,
+and saying nothing must not take a permission away. This is the only way
+to change one of them without removing the signer and adding it again.
+
+**show_signer \[**--private**\] \[**--signer-type** *type*\] \[*signer_uuid*\]**  
+Show signer(s). The table says whether the signature has to cover the
+token options, and whether the signer may bring its own key for a remote
+access session.
+
+## Host Keys
+
+**update_host_keys \[**--list**\] \[*host*\]**  
+Take over the public keys of hosts whose key changed. Only with
+**PIN_HOST_KEYS**, see **otpme.conf**(5).
+
+With that parameter the public key of every host synced here is written
+down, and a host is held to it. A key that differs from the one written
+down does not replace it, and a remote access session to that host does
+not open until somebody takes the new key over. This is where that
+happens, and nothing else does it.
+
+It shows every host whose key in the realm is not the one written down
+here, with both fingerprints, and asks once. The keys are read from the
+host objects when it runs, so what it shows is the realm as it is at
+that moment. What it shows is what it will take over. Name a *host* to
+take over that one alone.
+
+You must be root, because the keys are read from this host's copy of the
+realm, and the global **-f** skips the question. **--list** only shows
+and changes nothing.
 
 ## Offline Token
 
@@ -236,6 +272,35 @@ Execute cache command.
 
 **radius *command***  
 Execute radius command (start, status, stop, reload, restart, test).
+
+## Private Keys in otpme-agent
+
+These three are what the key script uses. They are listed here because a
+human may want to look, not because a human has to use them.
+
+otpme-agent holds the private keys of the login session in two shapes:
+as the login brought them, wrapped with the key password of the user,
+and unwrapped, as the key script left them after it was first asked to
+use one. The unwrapped one lives for **key_cache_time** of the user.
+Both are only handed to the login session they belong to. See
+**enable_key_caching** in **otpme-user**(1).
+
+**get_private_key **--role** *sign*\|*encrypt* \[**--decrypted**\]**  
+Write a private key of the logged in user to stdout. Without
+**--decrypted** the wrapped one, with it the unwrapped one. It fails
+when the agent holds none, which is the normal answer before the key
+script has been asked to use the key, and after the cache time ran out.
+
+**add_private_key **--role** *sign*\|*encrypt* \[**--decrypted**\]**  
+Give the agent a private key, read from stdin. **--decrypted** for the
+unwrapped one, which is then kept for the cache time.  
+From stdin, because a private key on a command line is a private key in
+the process list.
+
+**del_private_key **--role** *sign*\|*encrypt***  
+Take a private key away from the agent, both shapes of it. The next use
+asks for the key password again. This is how to drop a cached key
+without logging out.
 
 ## Key and Certificate
 

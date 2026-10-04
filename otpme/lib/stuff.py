@@ -1730,7 +1730,32 @@ def get_key_script(username):
     # Get logger
     logger = config.logger
 
-    if not config.use_api and not config.fetch_scripts and not config.use_mgmtd_socket:
+    # otpme-agent takes the script off the disk, whatever the config
+    # says. Asking the servers for it means making a connection, and a
+    # connection of ours goes through ourselves -- while we are in the
+    # middle of making one: OTPmeAgent.get_daemon_conn() holds the
+    # connection lock of the session and is waiting for the signature
+    # this script is fetched for. We would be waiting for an answer
+    # only we can give.
+    #
+    # The copy on disk is the one the login verified and saved
+    # (OTPmeClient.handle_response()), which is what the servers would
+    # send back now.
+    agent_mode = config.daemon_mode and config.daemon_name == "agent"
+
+    # What the caller asked for: --api, --fetch-scripts and the mgmtd
+    # socket each say where the script is to come from.
+    told_where = (config.use_api
+                or config.fetch_scripts
+                or config.use_mgmtd_socket)
+    if agent_mode and told_where:
+        # We cannot do as we are told without waiting for ourselves, see
+        # above, so the copy on disk it is. Said out loud, because being
+        # quietly overruled is what turned a --fetch-scripts that had no
+        # effect into "Script not cached" with nothing to point at.
+        log_msg = _("Taking the key script from disk although another source was asked for: we are the agent.", log=True)[1]
+        logger.warning(log_msg)
+    if agent_mode or not told_where:
         try:
             offline_token = OfflineToken()
             offline_token.set_user(user=username)
@@ -1845,7 +1870,7 @@ def run_key_script(username, script_command, script_options=None,
     key_pass=None, key_pass_new=None, private_key=None, aes_pass=None,
     call=True, return_proc=False, key_script=None, key_script_options=None,
     key_script_uuid=None, verify_signatures=True, user=None,
-    group=None, disable_ctrl_c=True):
+    group=None, disable_ctrl_c=True, no_server=False):
     """
     Run users key script with the given options and optionally verify
     script signatures.
@@ -1895,8 +1920,47 @@ def run_key_script(username, script_command, script_options=None,
 
     # Get a copy of our shell environment.
     script_env = os.environ.copy()
+    # Make sure the OTPme programs are on the scripts PATH.
+    #
+    # It calls otpme-user, otpme-tool and the rest by name, and the PATH
+    # it gets is ours. A daemon that was started with a small one --
+    # otpme-agent through PAM -- would hand it a PATH the programs are
+    # not in, and every one of those calls comes back as "No such file
+    # or directory": the script then looks like it found nothing, when
+    # in truth it could not look.
+    # Without a PATH of our own the shell falls back to a default of its
+    # own, and naming a directory here takes that default away: the
+    # script would find the OTPme programs and lose mkdir and cut. So
+    # the system default comes along.
+    script_path = script_env.get("PATH") or ""
+    if not script_path:
+        try:
+            script_path = os.confstr("CS_PATH") or ""
+        except (AttributeError, ValueError, OSError):
+            script_path = ""
+    if not script_path:
+        script_path = os.defpath.lstrip(os.pathsep)
+    if config.bin_dir not in script_path.split(os.pathsep):
+        script_path = os.pathsep.join([config.bin_dir, script_path])
+    script_env['PATH'] = script_path.strip(os.pathsep)
     # Set username for key script.
     script_env['_OTPME_KEYSCRIPT_USER'] = username
+    # Tell the script that it must not ask the servers for anything.
+    #
+    # Only where the caller knows it would deadlock: signing a SOTP
+    # inside otpme-agent (sign_sotp()). Every connection there runs
+    # through the agent, and the agent is waiting for this script while
+    # holding the connection lock of the session -- so a script that
+    # asks the servers waits for an answer only its own caller could
+    # give. Everything it needs is here by then: the key from the
+    # agent, the script itself from the offline tokens (see
+    # get_key_script() above).
+    #
+    # Failing is the right end for a call that would have waited: the
+    # caller gets an error it can report instead of a connection that
+    # never comes back.
+    if no_server:
+        script_env['_OTPME_KEYSCRIPT_NO_SERVER'] = "1"
     # Set private key for key script.
     if private_key:
         script_env['_OTPME_KEYSCRIPT_PRIVATE_KEY'] = private_key
@@ -2032,6 +2096,7 @@ def decrypt_share_key(username, encrypted_share_key,
 def sign_sotp(username, sotp, key_mode, share=None,
     daemon=None, encode=True, disable_ctrl_c=False):
     import base64
+    from otpme.lib import config
     # Make sure sotp is bytes.
     if isinstance(sotp, str):
         sotp = sotp.encode()
@@ -2049,11 +2114,17 @@ def sign_sotp(username, sotp, key_mode, share=None,
         reason = f"Daemon auth: {daemon}"
         script_command.append("--reason")
         script_command.append(reason)
+    # Inside otpme-agent this runs while the connection lock of the
+    # session is held, and a connection of the script would go through
+    # the agent that is waiting for it. Nothing it needs is on the
+    # servers anyway, see run_key_script().
+    no_server = config.daemon_mode and config.daemon_name == "agent"
     # Run key script.
     proc = run_key_script(username=username,
                         call=False,
                         return_proc=True,
                         script_command=script_command,
+                        no_server=no_server,
                         disable_ctrl_c=disable_ctrl_c)
     proc.stdin.write(sotp)
     proc.stdin.flush()
@@ -2538,6 +2609,40 @@ def get_console_lang(default="en"):
             continue
         return val.split("_", 1)[0].split(".", 1)[0].lower()
     return default
+
+def get_share_id(share_realm, share_site, share_name):
+    """ The ID of a share: <realm>/<site>/<share>.
+
+    The realm is part of it because a share name is only unique within
+    its site, and a site name only within its realm. Two realms may well
+    have a site of the same name.
+    """
+    return f"{share_realm}/{share_site}/{share_name}"
+
+def split_share_id(share_id):
+    """ The realm, site and name of a share ID.
+
+    A share ID is <realm>/<site>/<share>. Someone who mounts a share may
+    leave the realm out and write <site>/<share>: then it is a share of
+    our own realm, which is what it is in nearly every case. Anything
+    else is not a share ID.
+    """
+    from otpme.lib import config
+    parts = str(share_id).split("/")
+    if len(parts) == 2:
+        share_realm = config.realm
+        share_site, share_name = parts
+    elif len(parts) == 3:
+        share_realm, share_site, share_name = parts
+    else:
+        msg = _("Invalid share ID: {share_id}")
+        msg = msg.format(share_id=share_id)
+        raise OTPmeException(msg)
+    if not share_realm or not share_site or not share_name:
+        msg = _("Invalid share ID: {share_id}")
+        msg = msg.format(share_id=share_id)
+        raise OTPmeException(msg)
+    return share_realm, share_site, share_name
 
 def get_user_shares(auth_token, host_uuid):
     from otpme.lib import backend

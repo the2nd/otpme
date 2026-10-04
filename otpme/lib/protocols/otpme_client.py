@@ -46,6 +46,7 @@ from otpme.lib.encoding.base import decode
 from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.messages import error_message
 from otpme.lib.protocols import status_codes
+from otpme.lib.offline_token import PRIVATE_KEY_ROLES
 from otpme.lib.register import register_module
 from otpme.lib.encryption import hash_password
 from otpme.lib.socket.connect import ConnectSocket
@@ -372,6 +373,7 @@ class OTPmeClient(OTPmeClientBase):
                                             cert=cert,
                                             key=key,
                                             ca_data=ca_data,
+                                            daemon=self.daemon,
                                             verify_server=self.verify_server)
         # Handle autoconnect.
         if self.autoconnect:
@@ -4431,6 +4433,13 @@ class OTPmeClient1(OTPmeClientBase):
         except KeyError:
             key_cache_time = None
 
+        # Get the users private keys. Empty unless the user asked for
+        # the hosts to hold them, and never in key mode "server".
+        try:
+            private_keys = self.auth_response['private_keys'] or {}
+        except KeyError:
+            private_keys = {}
+
         # Do not add offline token on temp pass authentication.
         temp_pass_auth = self.auth_response['temp_pass_auth']
 
@@ -4458,6 +4467,25 @@ class OTPmeClient1(OTPmeClientBase):
                     self._offline_token.key_cache_time = key_cache_time
                 except Exception as e:
                     log_msg = _("Error saving key cache time: {e}", log=True)[1]
+                    log_msg = log_msg.format(e=e)
+                    self.logger.warning(log_msg)
+
+            # Keep the users private keys, if we were sent any. They
+            # come wrapped with the users key password (see
+            # User.get_cacheable_keys()), so what is written here is of
+            # no use to anybody who does not know it. It is what lets
+            # the key script work without the servers, and without
+            # asking them once per call.
+            #
+            # A role we were sent nothing for loses what we hold: the
+            # user turned key caching off, or the key is gone, and a
+            # copy here must not outlive that.
+            for key_role in PRIVATE_KEY_ROLES:
+                try:
+                    self._offline_token.save_private_key(key_role,
+                                                private_keys.get(key_role))
+                except Exception as e:
+                    log_msg = _("Error saving private key: {e}", log=True)[1]
                     log_msg = log_msg.format(e=e)
                     self.logger.warning(log_msg)
 
@@ -4507,6 +4535,35 @@ class OTPmeClient1(OTPmeClientBase):
             log_msg = _("Error adding RSP to otpme-agent: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
+
+        # Hand the private keys to the agent, after the RSP because
+        # that is what makes the session the keys belong to. Still
+        # wrapped: the key script unwraps them when it is first asked
+        # to use one, and puts that back for as long as the user allows
+        # (key_cache_time).
+        #
+        # Said out loud, both ways: whether the keys arrive here decides
+        # whether the key script can work without the servers later, and
+        # a login that quietly brought none looks exactly like one whose
+        # keys the agent lost.
+        added_keys = []
+        for key_role in private_keys:
+            try:
+                agent_conn.add_private_key(key_role=key_role,
+                                        private_key=private_keys[key_role])
+            except Exception as e:
+                log_msg = _("Error adding private key to otpme-agent: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
+            else:
+                added_keys.append(key_role)
+        if added_keys:
+            log_msg = _("Added private key(s) to otpme-agent: {keys}", log=True)[1]
+            log_msg = log_msg.format(keys=",".join(sorted(added_keys)))
+            self.logger.info(log_msg)
+        else:
+            log_msg = _("Got no private keys with this login.", log=True)[1]
+            self.logger.info(log_msg)
 
         # Create offline session file.
         if keep_offline_session and (cache_offline_tokens or self.offline_session_key):

@@ -147,8 +147,7 @@ Custom config can be saved to */etc/otpme/mysql.conf*.
 # CACHE
 
 **CACHE**  
-Cache daemon: "redis", "memcached" or "memcachedb". Note that memcachedb
-stores sensitive data on disk. Run "otpme-tool cache stop" before
+Cache daemon: "redis" or "memcached". Run "otpme-tool cache stop" before
 changing this.
 
 **AUTOSTART_CACHE**  
@@ -236,27 +235,6 @@ Memcached socket path.
 
 **MEMCACHED_OPTS**  
 Full custom command line options. If set, all other memcached options
-are ignored.
-
-## Memcachedb
-
-**MEMCACHEDB_BIN**  
-Path to memcachedb binary.
-
-**MEMCACHEDB_MAXMEM**  
-Maximum memory in MB.
-
-**MEMCACHEDB_THREADS**  
-Number of threads.
-
-**MEMCACHEDB_CACHE_DIR**  
-Memcachedb cache directory.
-
-**MEMCACHEDB_SOCKET**  
-Memcachedb socket path.
-
-**MEMCACHEDB_OPTS**  
-Full custom command line options. If set, all other memcachedb options
 are ignored.
 
 # FREERADIUS
@@ -528,6 +506,28 @@ SYNC_INTERVAL.
 If True, sync objects as received even if they changed during sync. May
 lead to inconsistent state but helps when objects change frequently.
 
+**PIN_HOST_KEYS**  
+If True, write down the public key of every host that is synced here,
+and hold the host to it.
+
+A remote access session is checked against the key a host was joined
+with, read from this host's copy of the tree. Whoever can change the
+tree can change that key. With this, they cannot change it here: the key
+written down is the one a session is checked against.
+
+The first key of a host is written down by the sync that brings it — it
+comes from the realm, not from the host, so there is nobody to ask. A
+key that differs from the one written down does not replace it. The sync
+says so in its log, and you take the new key over by hand as root:
+
+> **otpme-tool update_host_keys**
+
+Until then a session to that host does not open. A host that was never
+synced here has no key written down and gets no session either.
+
+Default False, because it means a command for every host whose key
+changes. See **otpme-shell**(1) and **otpme-tool**(1).
+
 # DAEMON
 
 **MASTER_FAILOVER_SYNC**  
@@ -569,12 +569,12 @@ Interval in seconds for keepalive messages to daemons.
 
 # NETWORK
 
-**SOCKET_SEND_BUFFER**  
-Socket send buffer size in bytes. Should be high (e.g. 100 MiB) to speed
-up the OTPme FUSE module.
-
-**SOCKET_RECEIVE_BUFFER**  
-Socket receive buffer size in bytes.
+**MAX_REQUEST_SIZE**  
+The largest single request OTPme accepts from the other side, in bytes.
+A request larger than this is refused. This is a safety limit and not a
+speed setting. Raise it only when a backup, a sync or a restore fails
+because something you move is bigger than it. Most daemons have a
+smaller limit of their own; this value is used where a daemon has none.
 
 **POSIX_MSGSIZE_MAX**  
 Max POSIX message queue message size. Set to "auto" to read from

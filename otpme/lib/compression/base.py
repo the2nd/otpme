@@ -42,13 +42,26 @@ def register():
             config.register_compression_type(level, cmodule)
 
 def get_compression_type(filename):
-    """ Get compression type of file. """
+    """ Get compression type of file.
+
+    The name it answers with is one compress() and decompress() take.
+    Two of them used to be spelled the way the object config writes them
+    in its headers -- "GZIP" and "BZIP2" -- and those two are not names
+    this module knows anywhere else, so reading back a file it had just
+    recognised raised "Unknown compression: GZIP". Nothing ran into it
+    because everything here writes lz4, and lz4 was spelled right.
+
+    LZO is the one exception, and it is deliberate: it is recognised, and
+    there is nothing in this module that unpacks it. Saying so by name
+    gets an error that says which compression it was, which is better
+    than the file being read as if it had none.
+    """
     compression = None
     file_type = magic.from_file(filename, mime=True)
     if file_type in GZIP_MIMETYPES:
-        compression = "GZIP"
+        compression = "gzip"
     elif file_type in BZIP2_MIMETYPES:
-        compression = "BZIP2"
+        compression = "bzip"
     elif file_type == "application/x-lz4":
         compression = "lz4"
     elif file_type == "application/zlib":
@@ -65,7 +78,7 @@ def get_compression_type(filename):
 def get_uncompressed_size(filename):
     """ Get uncompressed size of gzip file. """
     compression = get_compression_type(filename)
-    if compression != "GZIP":
+    if compression != "gzip":
         msg = _("Unsupported compression: {}")
         msg = msg.format(compression)
         raise UnsupportedCompressionType(msg)

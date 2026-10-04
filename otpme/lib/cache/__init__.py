@@ -41,7 +41,6 @@ modules = [
         'otpme.lib.cache.redis',
         'otpme.lib.cache.dogpile',
         'otpme.lib.cache.memcached',
-        'otpme.lib.cache.memcachedb',
         ]
 
 def register():
@@ -340,8 +339,6 @@ def init():
 def add_instance(instance, skip_shared_cache=True, invalidate=True):
     """ Update instance caches. """
     from otpme.lib import config
-    if not config.cache_enabled:
-        return
     if not instance.oid:
         msg = _("Unable to add object without OID: {instance}")
         msg = msg.format(instance=instance)
@@ -371,6 +368,13 @@ def add_instance(instance, skip_shared_cache=True, invalidate=True):
             ldif_cache.invalidate()
             # Clear LDAP cache.
             ldap_search_cache.invalidate()
+
+    # Whether this process keeps instances of its own is asked here
+    # and not at the top: the invalidation above has to happen either
+    # way, or a process that writes objects without using caches
+    # leaves everybody else holding stale ones.
+    if not config.cache_enabled:
+        return
 
     # We will not update multiprocessing cache with an modified object.
     if instance._modified:
@@ -435,14 +439,20 @@ def get_instance(object_id, cache_type=None):
     from otpme.lib import config
     from otpme.lib import backend
     global last_checksum_test
-    if not config.cache_enabled:
-        return
-    logger = config.logger
     read_oid = object_id.read_oid
 
+    # Asked before config.cache_enabled, because this is not a cache.
+    # It is what this process changed and has not written yet, and
+    # handing out the version that is still on disk instead would lose
+    # the change. A process that runs without caches -- a migration
+    # script, say -- would otherwise read its own work back stale.
     instance = get_modified_object(object_id)
     if instance:
         return instance
+
+    if not config.cache_enabled:
+        return
+    logger = config.logger
 
     check_process_cache = True
     check_multiprocessing_cache = True

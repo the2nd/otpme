@@ -80,6 +80,40 @@ def close_connections(proc_id=None):
                 connections[x_proc_id][daemon].pop(key)
     connections.clear()
 multiprocessing.register_at_exit(close_connections)
+# And a child that was forked does not inherit them, because the above
+# runs when a child ends too and a connection of ours is not a thing two
+# processes can share the ending of.
+#
+# A shutdown reaches the socket itself, not the copy of it: a child that
+# ends shuts down the connection its parent is still using, the parent's
+# reads start returning nothing at all, and the kernel goes on calling
+# the connection established because nothing was wrong with it. Measured
+# on a remote access session: the child's "shutdown(5, SHUT_RDWR)" and
+# then a session that had read two hundred megabytes reporting that the
+# far end had hung up.
+#
+# Registered here rather than left to whoever forks: every one of them
+# would have to remember, and the one that did not was the one that
+# mattered. atfork() only drops what this process cached, which a child
+# must not use anyway -- it opens its own.
+os.register_at_fork(after_in_child=atfork)
+
+def forget(connection):
+    """ Take a connection out of the cache.
+
+    For one that has stopped being an OTPme connection: whoever asks for
+    a connection to that daemon next would otherwise be handed this one,
+    ping it, and close it when the answer is not "pong" -- and both the
+    ping and the close would land in the middle of whatever is using the
+    socket now.
+    """
+    global connections
+    for x_proc_id in dict(connections):
+        for daemon in dict(connections[x_proc_id]):
+            for key in dict(connections[x_proc_id][daemon]):
+                if connections[x_proc_id][daemon][key] is not connection:
+                    continue
+                connections[x_proc_id][daemon].pop(key)
 
 def add_connection(proc_id, daemon, key, connection):
     """ Add connection to dict. """
@@ -325,6 +359,10 @@ def get(daemon, mgmt=None, ping=True, **kwargs):
     # Connections to idled work independently of the agent
     if daemon == "idled":
         use_agent = False
+    # Connections to racd work independently of the agent: the host
+    # side of a remote access session has no user behind it.
+    if daemon == "racd":
+        use_agent = False
 
     if node and not socket_uri:
         try:
@@ -482,6 +520,9 @@ def get(daemon, mgmt=None, ping=True, **kwargs):
         if mgmt is None:
             mgmt = True
     if daemon == "idled":
+        if mgmt is None:
+            mgmt = True
+    if daemon == "racd":
         if mgmt is None:
             mgmt = True
     if daemon == "clusterd":

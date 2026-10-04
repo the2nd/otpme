@@ -87,6 +87,14 @@ class OTPmeClusterP1(OTPmeClient1):
         response, \
         binary_data = self.connection.send(command, command_args)
         if not status:
+            if status_code == status_codes.MASTER_NODE_WRITE:
+                # Its own exception, so the caller can tell this apart from
+                # a connection that broke. The peer is the master and will
+                # not take a tree object; trying again on a new connection
+                # would get the same answer.
+                msg = _("Peer is master node: {object_id}: {response}")
+                msg = msg.format(object_id=object_id, response=response)
+                raise MasterNodeWrite(msg)
             msg = _("Failed to send object: {object_id}: {response}")
             msg = msg.format(object_id=object_id, response=response)
             raise OTPmeException(msg)

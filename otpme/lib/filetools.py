@@ -370,7 +370,17 @@ def remove_dir(path, recursive=False,
         x = "/".join(x.split("/")[:-1])
 
 def read_file(path, read_mode="r", compression=None):
-    """ Atomic file read.. """
+    """ Atomic file read..
+
+    Which compression the file has is looked for in the file itself
+    unless the caller says. Looking means libmagic reading the beginning
+    of it, about half a millisecond, which is worth it where nobody
+    knows and is waste where the same code wrote the file. So: the name
+    of a compression to use that one, False for a file that has none,
+    and None or "auto" to look. The argument was taken before this and
+    then ignored, so everything that passed one paid for the look
+    anyway.
+    """
     from otpme.lib import stuff
     # Get file real path to ensure working locking (e.g. on symlink).
     file_real_path = os.path.realpath(path)
@@ -378,10 +388,13 @@ def read_file(path, read_mode="r", compression=None):
         msg = _("No such file or directory: {path}")
         msg = msg.format(path=path)
         raise FileNotFoundError(msg)
-    try:
-        _compression = stuff.get_compression_type(file_real_path)
-    except OTPmeException:
-        _compression = None
+    if compression is None or compression == "auto":
+        try:
+            _compression = stuff.get_compression_type(file_real_path)
+        except OTPmeException:
+            _compression = None
+    else:
+        _compression = compression
     if _compression:
         read_mode = "rb"
     # Get flock.

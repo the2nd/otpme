@@ -170,8 +170,24 @@ bring it back; **--no-trash** deletes it right away.
 **show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--role-limit** *N*\] \[**--scope-limit** *N*\] \[*token*\]**  
 Show the tokens, with their roles, scopes and policies.  
 Without a token you get your own, i.e. the tokens of the user you are
-signed in as. **-a** shows every token you may look at. The other
-options are under **Display Options** below.
+signed in as.
+
+**-a**  
+Also the tokens you may only look at, not just the ones you may change.
+
+**-z *N***  
+How many tokens to print. Without it you get 10.
+
+**--fields *F1,F2***  
+Print these columns and no others. The names are the ones in the header
+of the table.
+
+**--limit *N***  
+How many roles, scopes and policies to print per token. Without it you
+get 5 of each, or 30 of each when you asked for one token by name.
+
+**--role-limit *N*, **--scope-limit** *N*, **--policy-limit** *N***  
+The same for one of the three, where the others should stay as they are.
 
 **list \[**-a**\] \[*regex*\]**  
 List the token paths, and with a regex only those that match it, e.g.
@@ -777,314 +793,514 @@ Needs the ACL **enable:acl_inheritance**.
 Stop that. Only the ACLs on the token itself count from then on.  
 Needs the ACL **disable:acl_inheritance**.
 
-## Import/Export
+## Export and Cleanup
 
-**export *token***  
-Export token configuration to stdout.
+Everything here writes to stdout or reads a file. There is no import on
+this page: reading an export back in is **otpme-tool** **import**, see
+**otpme-tool**(1).
+
+**set_token_data** and **remove_orphans** ask before they change
+anything; the global option **-f** skips the question.
+
+**export \[**--password** *PASS*\] *token***  
+Write the whole object of the token to stdout, as JSON.  
+Without **--password** it is written as it is, in clear. With one, a key
+is derived from that password and the object is encrypted with it; the
+salt goes into the output, so the password is all you need to read it
+back.  
+This is the object, so it holds what the token logs in with. An export
+without a password is as secret as the token itself.  
+Needs the ACL **export**.
 
 **dump_token_data *token***  
-Dump the token's authentication data (secret, hashes, counters, keys,
-etc.) as JSON. Useful for copying credentials between two tokens of the
-same type. Available on all token types that support it (HOTP, TOTP,
-mOTP, password, SSH, FIDO2, U2F, passkey, YubiKey HMAC, YubiKey PIV,
-...).
+Write what the token logs in with to stdout, as JSON. Not the whole
+object, only that.
+
+What it is depends on the type: the secret for **hotp**, **totp**,
+**motp** and **tiqr**, the password hashes for **password** and
+**otp_push**, the public key for **ssh**, the credential for **fido2**,
+**passkey** and **u2f**, the slot and the secret for **yubikey_hmac**.
+
+It is what the server keeps, never what is on a card. A **yubikey_piv**
+token writes its two public keys and its 802.1X secret; the private keys
+stay on the card.
+
+Every token type can do this but **link**, **script_otp** and
+**script_static**.
+
+For every type that logs in with a shared secret, whoever reads this can
+build a second token that logs in the same way.
+
+Needs the ACL **view:token_data**.
 
 **set_token_data *token* *file***  
-Load token authentication data previously produced by
-**dump_token_data** back into a token of the same type.
+Load that data into a token. *file* holds what **dump_token_data**
+wrote.
+
+Use it to keep a user logging in with the device they have when the
+token object has to be replaced.
+
+The type is not checked. The dump does not say which type it came from,
+and loading sets only the fields the type of *token* knows. A dump from
+another type sets the fields that happen to carry the same name, leaves
+the rest as it was, and still reports success. **hotp** and **totp**
+have the same three fields, so either dump loads into either token. Make
+sure yourself that both tokens are of the same type.
+
+Needs the ACL **edit:token_data**.
 
 **remove_orphans *token***  
-Remove orphaned object references.
+Remove what the token still points at although it is gone.
+
+On a token that is its ACLs, its policies and its signatures. An ACL for
+a role that was deleted is one, and so is a signature of a user that is
+gone.
+
+It shows everything it found and asks once for all of it. It asks
+nothing and changes nothing when it finds nothing.
+
+Needs the ACL **remove:orphans**.
 
 # TOKEN TYPE COMMANDS
 
-The following commands require **--type** before the command.
+Each type has commands of its own. They need **--type** in front of the
+command, because the name of a command says nothing about the type:
 
-## HOTP / TOTP / mOTP (OTP Tokens)
+> **otpme-token --type hotp resync alice/phone**
+
+A type that is not named below has no commands of its own.
+
+## OTP Tokens (hotp, totp, motp)
 
 **secret *token* \[*secret*\]**  
-Change token secret.
+Set the secret the OTPs are made from. Without a *secret* a new one is
+made.  
+The same secret sits on both sides: the token makes an OTP from it and
+OTPme makes the same OTP to compare. So changing it here stops every
+copy of the token from working until it has the new one as well.  
+For **hotp** and **totp** it is base32, which is what the authenticator
+apps read.
 
 **show_secret *token***  
-Show token secret.
+Show that secret. In **mode2** it asks for the PIN first, because the
+secret cannot be read without it.
 
 **pin \[**--generate**\] *token* \[*pin*\]**  
-Change token PIN.
+Set the PIN the user types in front of the OTP. **--generate** makes
+one.
 
 **show_pin *token***  
-Show token PIN.
+Show the PIN. Not in **mode2**: it is not stored there.
 
-**enable_pin *token***  
-Enable token PIN. (HOTP/TOTP only)
-
-**disable_pin *token***  
-Disable token PIN. (HOTP/TOTP only)
+**enable_pin *token* / **disable_pin** *token***  
+Ask for a PIN, or stop asking. **hotp** and **totp** only, and not in
+**mode2**, where the PIN is part of the secret. An **motp** always has
+one.
 
 **gen *token***  
-Generate token OTP.
+Make an OTP here, for testing. In **mode2** it asks for the PIN.
 
 **gen_mschap *token***  
-Generate MSCHAP challenge/response from token OTP.
+Make an MSCHAP challenge and response pair from an OTP of this token.
+For testing a RADIUS setup without a client.
 
 **gen_qrcode *token***  
-Generate QR code for token configuration. (HOTP/TOTP only)
+Print a QR code an authenticator app can read. **hotp** and **totp**
+only.
 
 **mode *token* *mode***  
-Change token operation mode. (HOTP/TOTP only)
+Change where the secret lives. **hotp** and **totp** only.
 
-## HOTP Specific
+In **mode1** OTPme holds the whole secret. A PIN is optional, and OTPme
+checks it itself.
+
+In **mode2** OTPme holds half of it. The secret of the token is made
+from what OTPme holds and the PIN, so the PIN is needed and is stored
+nowhere. A wrong PIN gives a wrong OTP, and OTPme cannot tell the two
+apart — it sees a wrong OTP and nothing more. It also cannot make an OTP
+or show the secret without being given the PIN.
+
+## HOTP only
 
 **counter_check_range *token* \[*range*\]**  
-Change OTP counter check range.
+How many counters past the last one are tried at login. Default is the
+**hotp_check_range** of the site or unit, which is **32**.  
+A counter-based token moves on every press, and a few presses that never
+reached OTPme are normal. Set it too high and an OTP somebody wrote down
+stays good for longer.
 
 **resync *token* \[*otp*\]**  
-Resync counter-based token.
+Find the counter again when it ran too far ahead. Give one OTP of the
+token and OTPme looks for it over **hotp_resync_check_range** counters,
+which is **1024**.
 
 **get_token_counter *token***  
-Get token counter value.
+The counter OTPme holds for this token.
 
-## mOTP Specific
+## mOTP only
 
-**validity_time *token* \[*time*\]**  
-Change OTP validity time.
+**validity_time *token* \[*minutes*\]**  
+How long an OTP of this token counts. In minutes, default **60**
+(**motp_validity_time**).
 
-**timedrift_tolerance *token* \[*tolerance*\]**  
-Change OTP timedrift tolerance.
+**timedrift_tolerance *token* \[*minutes*\]**  
+How far the clock of the phone may be off. In minutes, default **15**
+(**motp_timedrift_tolerance**).
+
+**enable_mschap *token* / **disable_mschap** *token***  
+Allow this token for MSCHAP, or stop allowing it.
 
 ## Password Token
 
 **password \[**--generate**\] \[**--weak-password**\] *token* \[*password*\]**  
-Change token password. With **--weak-password** a password the password
-policy rejects is accepted, which needs the *force_password* ACL. This
-is not the same as **-f**, which only skips the confirmation.
-
-**2f_token *token* *second_factor_token***  
-Change second factor token.
-
-**enable_2f *token***  
-Enable second factor token.
-
-**disable_2f *token***  
-Disable second factor token.
-
-**enable_mschap *token***  
-Enable MSCHAP authentication.
-
-**disable_mschap *token***  
-Disable MSCHAP authentication.
-
-**remove_nt_hash *token***  
-Remove NT hash used for MSCHAP authentication.
+Set the password. **--generate** makes one.  
+With **--weak-password** a password the password policy rejects is taken
+anyway. That needs the **force_password** ACL, and it is not what **-f**
+does — **-f** only skips the question.
 
 **upgrade_pass_hash *token* \[*hash_type*\] \[*args*\]**  
-Upgrade password hash.
+Hash the stored password hash again, with this hash type.  
+The password is not needed for it, so this can be run over old tokens
+after the realm moved to a stronger hash. What is stored afterwards is
+the old hash inside the new one, and a login still works: OTPme hashes
+what is typed the same way down the chain.
+
+**2f_token *token* *second_factor_token***  
+Set the token that is asked for as the second factor.
+
+**enable_2f *token* / **disable_2f** *token***  
+Ask for that second token, or stop asking.
+
+**enable_mschap *token* / **disable_mschap** *token***  
+Allow this token for MSCHAP, or stop allowing it.  
+MSCHAP needs an NT hash of the password, so enabling it stores one.
+
+**remove_nt_hash *token***  
+Remove that NT hash.
 
 **gen_mschap *token***  
-Generate an MSCHAP challenge/response pair from the token's
-second-factor token.
+Make an MSCHAP challenge and response pair from the second factor token
+of this token. For testing a RADIUS setup without a client.
 
 **enable_sso_deploy *token* \[*deploy_token_type*\]**  
-Enable first-login deployment of the token via the SSO portal. Optional
-*deploy_token_type* pre-selects the token type to deploy.
+Let the user deploy a real token for themselves at their first login on
+the SSO portal. The password token is what gets them in that once.
+*deploy_token_type* picks the type they get, so they are not asked.
 
 **disable_sso_deploy *token***  
-Disable SSO first-login deployment for the token.
+Stop that.
 
 ## SSH Token
 
 **ssh_public_key *token* \[*ssh_public_key*\]**  
-Change token SSH public key.
+Set the public key. A whole **authorized_keys** line may be pasted; what
+is stored is the key out of it. The type is read from the key, so
+**key_type** does not have to be set first.
 
 **card_type *token* \[*card_type*\]**  
-Set card type of SSH token (e.g. gpg).
+Say that the private key lives on a card. The only value is **gpg**, for
+the GPG applet of a YubiKey.
 
 **key_type *token* *key_type***  
-Set SSH key type (e.g. rsa).
+The kind of key: **rsa**, **ed25519** or **ecdsa**.
 
 **password \[**--generate**\] \[**--weak-password**\] *token* \[*password*\]**  
-Change token password. With **--weak-password** a password the password
-policy rejects is accepted, which needs the *force_password* ACL. This
-is not the same as **-f**, which only skips the confirmation.
+Set the password of the token. See the password token above for
+**--weak-password**.
 
 **2f_token *token* *second_factor_token***  
-Change second factor token.
+Set the token that is asked for as the second factor.
 
-**enable_2f / disable_2f *token***  
-Enable/disable second factor token.
+**enable_2f *token* / **disable_2f** *token***  
+Ask for that second token, or stop asking.
 
 **get_sign_data \[**--tags** *tag1,tag2*\] *token***  
-Get the object data that has to be signed (used by external signing
-helpers).
+The bytes that have to be signed, for signing somewhere else.
 
-SSH tokens also support signature commands: **sign**, **resign**,
-**verify_sign**, **get_sign**, **add_sign**, **del_sign**.
+An SSH token can be signed, so it also takes **sign**, **resign**,
+**verify_sign**, **get_sign**, **add_sign** and **del_sign**. See
+**Signing a token** below.
 
 ## Link Token
 
 **add *token* *destination_token***  
-Add a link token pointing to destination_token.
+Make the link and say which token it points at, as *user***/***name*.
+Whoever signs in with the link uses the credential of that token.
 
 ## YubiKey HMAC
 
-**otp_format *token* \[*format*\]**  
-Change token OTP format.
-
-**validity_time *token* \[*time*\]**  
-Change OTP validity time.
-
-**timedrift_tolerance *token* \[*tolerance*\]**  
-Change OTP timedrift tolerance.
-
-**mode *token* *mode***  
-Change token operation mode.
-
 **secret *token* \[*secret*\]**  
-Change the token secret.
+Set the HMAC secret of the key. It is the same secret on the key itself,
+so **otpme-token deploy** is the usual way to set it.
 
 **show_secret *token***  
-Show the token secret.
+Show that secret.
 
 **gen *token***  
-Generate a token OTP.
+Make an answer to the stored challenge, for testing.
 
 **gen_mschap *token***  
-Generate an MSCHAP challenge/response pair from a token OTP.
+Make an MSCHAP challenge and response pair from that answer. For testing
+a RADIUS setup without a client.
 
 **enable_mschap *token* / **disable_mschap** *token***  
-Enable / disable MSCHAP authentication.
+Allow this token for MSCHAP, or stop allowing it.
 
 **remove_nt_hash *token***  
-Remove the NT hash used for MSCHAP authentication.
+Remove the NT hash used for MSCHAP.
+
+**validity_time *token* \[*minutes*\] and timedrift_tolerance *token* \[*minutes*\]**  
+Both are stored and nothing reads them. This token answers a challenge,
+so there is no OTP with a lifetime and no clock to be off. They are only
+here because the type shares its commands with the OTP tokens.
 
 ## OTP Push Token
 
+**push_token *token* *otp_token***  
+Which OTP token of the same user the pushed OTP is made from. By name,
+not as a path, and it has to be an OTP token.
+
+**phone_number *token* \[*number*\]**  
+Where the OTP is sent.  
+This is a value on the token, not the phone number of the user — see
+**otp_push** under **TOKEN TYPES** above.
+
+**push_script *token* *script***  
+The script that delivers it. Without one the default of the realm is
+used, **default_otp_push_script** in **otpme**(7).
+
 **password \[**--generate**\] \[**--weak-password**\] *token* \[*password*\]**  
-Change the token password (used for the push confirmation channel).
+Set the password of the token. See the password token above for
+**--weak-password**.
 
 **enable_mschap *token* / **disable_mschap** *token***  
-Enable / disable MSCHAP authentication.
+Allow this token for MSCHAP, or stop allowing it.
 
 **remove_nt_hash *token***  
-Remove the NT hash used for MSCHAP authentication.
+Remove the NT hash used for MSCHAP.
 
 ## FIDO2
 
 **uv *token* *uv***  
-Set the FIDO2 user verification requirement (**discouraged**,
-**preferred**, **required**).
+Whether the key has to check the user before it signs: **discouraged**,
+**preferred** or **required**. Default is **preferred**.  
+With **required** the key asks for its PIN or the finger, and the token
+counts as two factors on its own. With the other two a login is the key
+alone, and whoever holds the key can use it.
 
 ## YubiKey PIV
 
+A PIV token has two keys, one for signing and one for encrypting.
+**otpme-token deploy** makes both and writes them into the slots of the
+card, and it does everything below on its own — see **Deploy - YubiKey
+PIV** above, which also says where the backup of the private keys goes.
+
+What these commands set is the public half, which is the half OTPme
+keeps. You only need them by hand when a card was set up somewhere else.
+
+A PIV token can also be signed, see **Signing a token** below.
+
 **sign_public_key *token* \[*public_key*\]**  
-Set the PIV token's sign public key.
+Set the public half of the sign key.
 
 **encrypt_public_key *token* \[*public_key*\]**  
-Set the PIV token's encrypt public key.
+Set the public half of the encrypt key.
 
-**dump_sign_key *token***  
-Dump the PIV token's sign public key (or backup pointer) to stdout.
+**ssh_public_key *token* \[*ssh_public_key*\]**  
+Set the SSH public key of the card, so this token gets the user onto
+hosts as well. A whole **authorized_keys** line may be pasted, and the
+key type is read from the key.
 
-**dump_encrypt_key *token***  
-Dump the PIV token's encrypt public key (or backup pointer) to stdout.
+**key_type *token* *key_type***  
+The kind of key: **rsa**, **ed25519** or **ecdsa**.
+
+**dump_sign_key *token* / **dump_encrypt_key** *token***  
+Print one of the two public keys.
 
 **dump_private_key_backup *token***  
-Dump the encrypted private-key backup for the PIV token to stdout (for
-later **otpme-token deploy --restore**).
+Print the encrypted backup of the private keys, if there is one. This is
+what **otpme-token deploy --restore** reads to put the keys on a new
+card. See **Deploy - YubiKey PIV** above for where the backup comes from
+and what can read it.
 
-**sign \[*options*\] *token***  
-Sign an object with the PIV token.
+## Signing a token
 
-**resign \[*options*\] *token***  
-Re-sign an existing signature with the PIV token.
+A signature says that somebody vouches for this token. What is signed is
+the token, not something the token signs: the signature is made with the
+sign key of whoever is logged in, and it covers the data of the token —
+its public keys among it.
+
+That is what a host asks for. A host with token signers lets an SSH key
+in only when its token carries a signature from one of them, and a token
+with no signature at all is skipped. Which host wants that is set with
+**otpme-tool add_signer --signer-type token** on the host, see
+**otpme-tool**(1).
+
+**ssh** and **yubikey_piv** tokens take these:
+
+**sign \[**--tags** *tag1,tag2*\] *token***  
+Sign the token. You have to be logged in with a key of your own, and
+that key makes the signature.
+
+**resign \[**--tags** *tag1,tag2*\] *token***  
+Sign it again, over the data as it is now. For after something a
+signature covers has changed.
 
 **verify_sign \[*options*\] *token***  
-Verify a signature made by the PIV token.
+Check the signatures of the token.
 
 **get_sign *token***  
-Show a signature stored on the PIV token.
+Show them.
 
 **get_sign_data \[**--tags** *tag1,tag2*\] *token***  
-Get the object data that needs to be signed by the PIV token.
+The bytes that have to be signed, for signing somewhere else.
 
 **add_sign *token* *signature***  
-Attach an externally created signature to the PIV token.
+Add a signature that was made somewhere else, from those bytes.
 
 **del_sign *token* *signature***  
-Remove a signature from the PIV token.
+Remove a signature.
 
 # OPTIONS
 
-**--type *TYPE***  
-Specify the token type. Required for the **add** command and for all
-type-specific commands. Must be placed before the command.
+Every option belongs to one command and is described with that command
+above. A short option means what the command it is given to makes of it:
+**-r** replaces for **add** and **move**, and asks for the roles of
+roles for **find_roles**.
 
-## Display Options
+One option is not a command's own:
 
-**-a**  
-Show all tokens.
+**--type *type***  
+Which type of token. **add** needs it, and so does every command under
+**TOKEN TYPE COMMANDS** — the type decides which commands there are at
+all.  
+It goes in front of the command, not after it: OTPme reads the type
+before it parses the rest of the line.
 
-**-z *SIZE***  
-Limit output size.
-
-**--fields *FIELD1,FIELD2***  
-Display only specified fields.
-
-**--role-limit *N***  
-Limit number of roles shown.
-
-**--policy-limit *N***  
-Limit number of policies shown.
-
-**--limit *N***  
-Limit number of items shown per object.
-
-## General Options
-
-**-r**  
-Replace existing token and keep its UUID (for add, move, deploy).
-
-**-u**  
-Disable if unused for the given time (auto_disable).
-
-Global options are available for all commands. See **otpme**(1) for
-details.
+Global options work with every command, see **otpme**(1).
 
 # CONFIG PARAMETERS
 
-Configuration parameters can be set with the **config** command und
-displayed with **show_config**. For a complete description of all
-available parameters and their applicable object types, see
-**otpme**(7).
+Parameters are set on a token with **config** and shown with
+**show_config**. **get_config** answers what applies to the token once
+the user, the unit and the site have been looked at as well.
+
+Which parameters there are, and which object types each of them can be
+set on, is in **otpme**(7).
 
 # EXAMPLES
 
-**otpme-token --type totp add alice/totp**  
-Create a TOTP token for user alice
+A token is named *user***/***name*, and the name is yours to pick. The
+examples below use the user **alice**.
 
-**otpme-token --type fido2 deploy alice/fido2**  
-Deploy a FIDO2 token
+## Giving somebody a token
 
-**otpme-token test alice/totp**  
-Test token authentication
+**otpme-token --type yubikey_piv deploy alice/piv**  
+A YubiKey, with a sign key and an encrypt key on the card. This is the
+type OTPme recommends. Needs the card in the machine you run it on.
 
-**otpme-token --type link add root/admin_link alice/login**  
-Create a link token
+**otpme-token --type fido2 deploy alice/key**  
+A security key that signs a challenge. Also needs the key in the
+machine.
 
-**otpme-vlan add_token servers alice/totp**  
-Put the token into a VLAN, whatever VLAN its roles are in
+**otpme-token --type totp add alice/phone**  
+A TOTP token for an authenticator app. It prints a QR code to scan;
+**--no-qrcode** leaves it out.
 
-**otpme-token config alice/totp vlans guests**  
-Assign a VLAN to the token, used where no VLAN names it
+**otpme-token --type totp gen_qrcode alice/phone**  
+The QR code again, for a second phone or a scan that went wrong.
+
+## Letting the user set up their own
+
+**otpme-token --type password add alice/start**  
+A password token. OTPme makes the password up and prints it;
+**--password** sets one of your own. Something has to get the user in
+the first time.
+
+**otpme-token enable_sso_deploy alice/start fido2**  
+At their first login on the SSO portal, alice registers a security key
+for herself. Then the password token can go.
+
+## Helping somebody out
+
+**otpme-token temp_password --generate --duration 8h alice/login**  
+A second password that works for the rest of the day, next to the one
+alice has. For the support who has to set up her notebook.
+
+**otpme-token temp_password --remove alice/login**  
+Take it away before the day is over.
+
+**otpme-token --type hotp resync alice/hardtoken**  
+The counter of a hardware token ran ahead of what OTPme holds, because
+somebody pressed the button. One OTP of it is enough to find the counter
+again.
+
+**otpme-token test alice/phone**  
+Ask the token to prove itself. It is the real check, so the OTP you type
+is spent.
+
+## An SSH key the hosts accept
+
+**otpme-token --type ssh add alice/ssh 'ssh-ed25519 AAAAC3Nza...'**  
+Add the public key of alice.
+
+**otpme-token --type ssh sign alice/ssh**  
+Sign the token with your own key. A host that has token signers only
+lets the key in with this, see **Signing a token** above.
+
+**otpme-token find_hosts alice/ssh**  
+Which hosts the token is assigned to, without following its roles.
+
+## Before you throw one away
+
+**otpme-token find_roles -r alice/phone**  
+Which roles the token is in, and the roles those are in.
+
+**otpme-token find_shares alice/piv**  
+Which shares it opens. This one follows the roles, there is nothing to
+switch.
+
+**otpme-token del alice/phone**  
+Delete it. It goes to the trash and **otpme-trash**(1) can bring it
+back.
+
+## Moving one
+
+**otpme-token move alice/phone bob**  
+Give the token to bob, under the same name.
+
+**otpme-token move alice/phone TOKENSTORE**  
+Park it, with nobody using it, under the name **alice:phone**.
+
+**otpme-token --type totp add -r alice/phone**  
+Set the token up from scratch, with a new secret, and keep it in every
+role, group and ACL it is in. The old one goes to the trash.  
+A token is held by its UUID, and **-r** gives the new token the UUID of
+the old one. Deleting it and adding it again would give it a new UUID,
+and every assignment would be gone.  
+alice has to scan the new QR code.
 
 # FILES
 
 */var/lib/otpme/*  
-OTPme data directory
+The objects of the realm, on a node. A token lives under the user it
+belongs to.
+
+*/var/cache/otpme/offline/*user_uuid/**  
+The tokens a host can check while it cannot reach the realm, one
+directory per user. Written at login, and only for a token that allows
+it — see **Offline Configuration** above.
+
+*/var/cache/otpme/ssh/authorized_keys/*user/authorized_keys**  
+The keys of the SSH tokens of that user, on a host, as sshd reads them.
+Written by **hostd** from the tokens of the realm.
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-user**(1), **otpme-role**(1),
-**otpme-policy**(1), **otpme-accessgroup**(1), **otpme-vlan**(1)
+**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-user**(1),
+**otpme-role**(1), **otpme-policy**(1), **otpme-accessgroup**(1),
+**otpme-vlan**(1), **otpme-tool**(1), **otpme-trash**(1),
+**otpme-site**(1)
 
 # AUTHOR
 
@@ -1096,4 +1312,4 @@ This manual page was created with AI assistance.
 
 # COPYRIGHT
 
-Copyright © 2014-2025 the2nd. License: GPLv3
+Copyright © 2014-2026 the2nd. License: GPLv3

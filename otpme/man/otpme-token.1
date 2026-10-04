@@ -1,4 +1,4 @@
-.TH OTPME-TOKEN 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.TH OTPME-TOKEN 1 "2026-10-03" "OTPme 0.3.0a279" "OTPme Manual"
 .SH NAME
 otpme-token \- manage OTPme authentication tokens
 .SH SYNOPSIS
@@ -174,8 +174,26 @@ can bring it back; \fB\-\-no\-trash\fR deletes it right away.
 Show the tokens, with their roles, scopes and policies.
 .br
 Without a token you get your own, i.e. the tokens of the user you are signed in as.
-\fB\-a\fR shows every token you may look at.
-The other options are under \fBDisplay Options\fR below.
+.RS
+.TP
+.B \-a
+Also the tokens you may only look at, not just the ones you may change.
+.TP
+.B \-z \fIN\fR
+How many tokens to print.
+Without it you get 10.
+.TP
+.B \-\-fields \fIF1,F2\fR
+Print these columns and no others.
+The names are the ones in the header of the table.
+.TP
+.B \-\-limit \fIN\fR
+How many roles, scopes and policies to print per token.
+Without it you get 5 of each, or 30 of each when you asked for one token by name.
+.TP
+.B \-\-role\-limit \fIN\fR, \fB\-\-scope\-limit \fIN\fR, \fB\-\-policy\-limit \fIN\fR
+The same for one of the three, where the others should stay as they are.
+.RE
 .TP
 .B list \fR[\fB\-a\fR] \fR[\fIregex\fR]
 List the token paths, and with a regex only those that match it, e.g. \fBalice/*\fR for the tokens of one user.
@@ -707,289 +725,545 @@ Stop that.
 Only the ACLs on the token itself count from then on.
 .br
 Needs the ACL \fBdisable:acl_inheritance\fR.
-.SS Import/Export
+.SS Export and Cleanup
+Everything here writes to stdout or reads a file.
+There is no import on this page: reading an export back in is
+.BR otpme\-tool " " import ,
+see
+.BR otpme\-tool (1).
+.PP
+\fBset_token_data\fR and \fBremove_orphans\fR ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
-.B export \fItoken\fR
-Export token configuration to stdout.
+.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fItoken\fR
+Write the whole object of the token to stdout, as JSON.
+.br
+Without \fB\-\-password\fR it is written as it is, in clear.
+With one, a key is derived from that password and the object is encrypted with it; the salt goes into the output, so the password is all you need to read it back.
+.br
+This is the object, so it holds what the token logs in with.
+An export without a password is as secret as the token itself.
+.br
+Needs the ACL \fBexport\fR.
 .TP
 .B dump_token_data \fItoken\fR
-Dump the token's authentication data (secret, hashes, counters, keys, etc.) as JSON. Useful for copying credentials between two tokens of the same type. Available on all token types that support it (HOTP, TOTP, mOTP, password, SSH, FIDO2, U2F, passkey, YubiKey HMAC, YubiKey PIV, ...).
+Write what the token logs in with to stdout, as JSON. Not the whole object, only that.
+.RS
+.PP
+What it is depends on the type:
+the secret for \fBhotp\fR, \fBtotp\fR, \fBmotp\fR and \fBtiqr\fR,
+the password hashes for \fBpassword\fR and \fBotp_push\fR,
+the public key for \fBssh\fR,
+the credential for \fBfido2\fR, \fBpasskey\fR and \fBu2f\fR,
+the slot and the secret for \fByubikey_hmac\fR.
+.PP
+It is what the server keeps, never what is on a card.
+A \fByubikey_piv\fR token writes its two public keys and its 802.1X secret; the private keys stay on the card.
+.PP
+Every token type can do this but \fBlink\fR, \fBscript_otp\fR and \fBscript_static\fR.
+.PP
+For every type that logs in with a shared secret, whoever reads this can build a second token that logs in the same way.
+.PP
+Needs the ACL \fBview:token_data\fR.
+.RE
 .TP
 .B set_token_data \fItoken\fR \fIfile\fR
-Load token authentication data previously produced by
-.B dump_token_data
-back into a token of the same type.
+Load that data into a token. \fIfile\fR holds what \fBdump_token_data\fR wrote.
+.RS
+.PP
+Use it to keep a user logging in with the device they have when the token object has to be replaced.
+.PP
+The type is not checked.
+The dump does not say which type it came from, and loading sets only the fields the type of \fItoken\fR knows.
+A dump from another type sets the fields that happen to carry the same name, leaves the rest as it was, and still reports success.
+\fBhotp\fR and \fBtotp\fR have the same three fields, so either dump loads into either token.
+Make sure yourself that both tokens are of the same type.
+.PP
+Needs the ACL \fBedit:token_data\fR.
+.RE
 .TP
 .B remove_orphans \fItoken\fR
-Remove orphaned object references.
+Remove what the token still points at although it is gone.
+.RS
+.PP
+On a token that is its ACLs, its policies and its signatures.
+An ACL for a role that was deleted is one, and so is a signature of a user that is gone.
+.PP
+It shows everything it found and asks once for all of it.
+It asks nothing and changes nothing when it finds nothing.
+.PP
+Needs the ACL \fBremove:orphans\fR.
+.RE
 .SH TOKEN TYPE COMMANDS
-The following commands require \fB\-\-type\fR before the command.
-.SS HOTP / TOTP / mOTP (OTP Tokens)
+Each type has commands of its own.
+They need \fB\-\-type\fR in front of the command, because the name of a command says nothing about the type:
+.PP
+.RS
+.B otpme\-token \-\-type hotp resync alice/phone
+.RE
+.PP
+A type that is not named below has no commands of its own.
+.SS OTP Tokens (hotp, totp, motp)
 .TP
 .B secret \fItoken\fR \fR[\fIsecret\fR]
-Change token secret.
+Set the secret the OTPs are made from.
+Without a \fIsecret\fR a new one is made.
+.br
+The same secret sits on both sides: the token makes an OTP from it and OTPme makes the same OTP to compare.
+So changing it here stops every copy of the token from working until it has the new one as well.
+.br
+For \fBhotp\fR and \fBtotp\fR it is base32, which is what the authenticator apps read.
 .TP
 .B show_secret \fItoken\fR
-Show token secret.
+Show that secret.
+In \fBmode2\fR it asks for the PIN first, because the secret cannot be read without it.
 .TP
 .B pin \fR[\fB\-\-generate\fR] \fItoken\fR \fR[\fIpin\fR]
-Change token PIN.
+Set the PIN the user types in front of the OTP.
+.B \-\-generate
+makes one.
 .TP
 .B show_pin \fItoken\fR
-Show token PIN.
+Show the PIN.
+Not in \fBmode2\fR: it is not stored there.
 .TP
-.B enable_pin \fItoken\fR
-Enable token PIN. (HOTP/TOTP only)
-.TP
-.B disable_pin \fItoken\fR
-Disable token PIN. (HOTP/TOTP only)
+.B enable_pin \fItoken\fR / \fBdisable_pin \fItoken\fR
+Ask for a PIN, or stop asking.
+\fBhotp\fR and \fBtotp\fR only, and not in \fBmode2\fR, where the PIN is part of the secret.
+An \fBmotp\fR always has one.
 .TP
 .B gen \fItoken\fR
-Generate token OTP.
+Make an OTP here, for testing.
+In \fBmode2\fR it asks for the PIN.
 .TP
 .B gen_mschap \fItoken\fR
-Generate MSCHAP challenge/response from token OTP.
+Make an MSCHAP challenge and response pair from an OTP of this token.
+For testing a RADIUS setup without a client.
 .TP
 .B gen_qrcode \fItoken\fR
-Generate QR code for token configuration. (HOTP/TOTP only)
+Print a QR code an authenticator app can read.
+\fBhotp\fR and \fBtotp\fR only.
 .TP
 .B mode \fItoken\fR \fImode\fR
-Change token operation mode. (HOTP/TOTP only)
-.SS HOTP Specific
+Change where the secret lives.
+\fBhotp\fR and \fBtotp\fR only.
+.RS
+.PP
+In
+.B mode1
+OTPme holds the whole secret.
+A PIN is optional, and OTPme checks it itself.
+.PP
+In
+.B mode2
+OTPme holds half of it.
+The secret of the token is made from what OTPme holds and the PIN, so the PIN is needed and is stored nowhere.
+A wrong PIN gives a wrong OTP, and OTPme cannot tell the two apart \(em it sees a wrong OTP and nothing more.
+It also cannot make an OTP or show the secret without being given the PIN.
+.RE
+.SS HOTP only
 .TP
 .B counter_check_range \fItoken\fR \fR[\fIrange\fR]
-Change OTP counter check range.
+How many counters past the last one are tried at login.
+Default is the \fBhotp_check_range\fR of the site or unit, which is \fB32\fR.
+.br
+A counter-based token moves on every press, and a few presses that never reached OTPme are normal.
+Set it too high and an OTP somebody wrote down stays good for longer.
 .TP
 .B resync \fItoken\fR \fR[\fIotp\fR]
-Resync counter-based token.
+Find the counter again when it ran too far ahead.
+Give one OTP of the token and OTPme looks for it over \fBhotp_resync_check_range\fR counters, which is \fB1024\fR.
 .TP
 .B get_token_counter \fItoken\fR
-Get token counter value.
-.SS mOTP Specific
+The counter OTPme holds for this token.
+.SS mOTP only
 .TP
-.B validity_time \fItoken\fR \fR[\fItime\fR]
-Change OTP validity time.
+.B validity_time \fItoken\fR \fR[\fIminutes\fR]
+How long an OTP of this token counts.
+In minutes, default \fB60\fR (\fBmotp_validity_time\fR).
 .TP
-.B timedrift_tolerance \fItoken\fR \fR[\fItolerance\fR]
-Change OTP timedrift tolerance.
+.B timedrift_tolerance \fItoken\fR \fR[\fIminutes\fR]
+How far the clock of the phone may be off.
+In minutes, default \fB15\fR (\fBmotp_timedrift_tolerance\fR).
+.TP
+.B enable_mschap \fItoken\fR / \fBdisable_mschap \fItoken\fR
+Allow this token for MSCHAP, or stop allowing it.
 .SS Password Token
 .TP
 .B password \fR[\fB\-\-generate\fR] [\fB\-\-weak\-password\fR] \fItoken\fR \fR[\fIpassword\fR]
-Change token password. With \fB\-\-weak\-password\fR a password the password policy rejects is accepted, which needs the \fIforce_password\fR ACL. This is not the same as \fB\-f\fR, which only skips the confirmation.
-.TP
-.B 2f_token \fItoken\fR \fIsecond_factor_token\fR
-Change second factor token.
-.TP
-.B enable_2f \fItoken\fR
-Enable second factor token.
-.TP
-.B disable_2f \fItoken\fR
-Disable second factor token.
-.TP
-.B enable_mschap \fItoken\fR
-Enable MSCHAP authentication.
-.TP
-.B disable_mschap \fItoken\fR
-Disable MSCHAP authentication.
-.TP
-.B remove_nt_hash \fItoken\fR
-Remove NT hash used for MSCHAP authentication.
+Set the password.
+.B \-\-generate
+makes one.
+.br
+With
+.B \-\-weak\-password
+a password the password policy rejects is taken anyway.
+That needs the \fBforce_password\fR ACL, and it is not what \fB\-f\fR does \(em \fB\-f\fR only skips the question.
 .TP
 .B upgrade_pass_hash \fItoken\fR \fR[\fIhash_type\fR] \fR[\fIargs\fR]
-Upgrade password hash.
+Hash the stored password hash again, with this hash type.
+.br
+The password is not needed for it, so this can be run over old tokens after the realm moved to a stronger hash.
+What is stored afterwards is the old hash inside the new one, and a login still works: OTPme hashes what is typed the same way down the chain.
+.TP
+.B 2f_token \fItoken\fR \fIsecond_factor_token\fR
+Set the token that is asked for as the second factor.
+.TP
+.B enable_2f \fItoken\fR / \fBdisable_2f \fItoken\fR
+Ask for that second token, or stop asking.
+.TP
+.B enable_mschap \fItoken\fR / \fBdisable_mschap \fItoken\fR
+Allow this token for MSCHAP, or stop allowing it.
+.br
+MSCHAP needs an NT hash of the password, so enabling it stores one.
+.TP
+.B remove_nt_hash \fItoken\fR
+Remove that NT hash.
 .TP
 .B gen_mschap \fItoken\fR
-Generate an MSCHAP challenge/response pair from the token's second-factor token.
+Make an MSCHAP challenge and response pair from the second factor token of this token.
+For testing a RADIUS setup without a client.
 .TP
 .B enable_sso_deploy \fItoken\fR \fR[\fIdeploy_token_type\fR]
-Enable first-login deployment of the token via the SSO portal. Optional \fIdeploy_token_type\fR pre-selects the token type to deploy.
+Let the user deploy a real token for themselves at their first login on the SSO portal.
+The password token is what gets them in that once.
+.I deploy_token_type
+picks the type they get, so they are not asked.
 .TP
 .B disable_sso_deploy \fItoken\fR
-Disable SSO first-login deployment for the token.
+Stop that.
 .SS SSH Token
 .TP
 .B ssh_public_key \fItoken\fR \fR[\fIssh_public_key\fR]
-Change token SSH public key.
+Set the public key.
+A whole \fBauthorized_keys\fR line may be pasted; what is stored is the key out of it.
+The type is read from the key, so \fBkey_type\fR does not have to be set first.
 .TP
 .B card_type \fItoken\fR \fR[\fIcard_type\fR]
-Set card type of SSH token (e.g. gpg).
+Say that the private key lives on a card.
+The only value is \fBgpg\fR, for the GPG applet of a YubiKey.
 .TP
 .B key_type \fItoken\fR \fIkey_type\fR
-Set SSH key type (e.g. rsa).
+The kind of key: \fBrsa\fR, \fBed25519\fR or \fBecdsa\fR.
 .TP
 .B password \fR[\fB\-\-generate\fR] [\fB\-\-weak\-password\fR] \fItoken\fR \fR[\fIpassword\fR]
-Change token password. With \fB\-\-weak\-password\fR a password the password policy rejects is accepted, which needs the \fIforce_password\fR ACL. This is not the same as \fB\-f\fR, which only skips the confirmation.
+Set the password of the token.
+See the password token above for \fB\-\-weak\-password\fR.
 .TP
 .B 2f_token \fItoken\fR \fIsecond_factor_token\fR
-Change second factor token.
+Set the token that is asked for as the second factor.
 .TP
-.B enable_2f / disable_2f \fItoken\fR
-Enable/disable second factor token.
+.B enable_2f \fItoken\fR / \fBdisable_2f \fItoken\fR
+Ask for that second token, or stop asking.
 .TP
 .B get_sign_data \fR[\fB\-\-tags\fR \fItag1,tag2\fR] \fItoken\fR
-Get the object data that has to be signed (used by external signing helpers).
+The bytes that have to be signed, for signing somewhere else.
 .PP
-SSH tokens also support signature commands: \fBsign\fR, \fBresign\fR, \fBverify_sign\fR, \fBget_sign\fR, \fBadd_sign\fR, \fBdel_sign\fR.
+An SSH token can be signed, so it also takes
+.BR sign ,
+.BR resign ,
+.BR verify_sign ,
+.BR get_sign ,
+.B add_sign
+and
+.BR del_sign .
+See
+.B Signing a token
+below.
 .SS Link Token
 .TP
 .B add \fItoken\fR \fIdestination_token\fR
-Add a link token pointing to destination_token.
+Make the link and say which token it points at, as \fIuser\fB/\fIname\fR.
+Whoever signs in with the link uses the credential of that token.
 .SS YubiKey HMAC
 .TP
-.B otp_format \fItoken\fR \fR[\fIformat\fR]
-Change token OTP format.
-.TP
-.B validity_time \fItoken\fR \fR[\fItime\fR]
-Change OTP validity time.
-.TP
-.B timedrift_tolerance \fItoken\fR \fR[\fItolerance\fR]
-Change OTP timedrift tolerance.
-.TP
-.B mode \fItoken\fR \fImode\fR
-Change token operation mode.
-.TP
 .B secret \fItoken\fR \fR[\fIsecret\fR]
-Change the token secret.
+Set the HMAC secret of the key.
+It is the same secret on the key itself, so
+.B otpme\-token deploy
+is the usual way to set it.
 .TP
 .B show_secret \fItoken\fR
-Show the token secret.
+Show that secret.
 .TP
 .B gen \fItoken\fR
-Generate a token OTP.
+Make an answer to the stored challenge, for testing.
 .TP
 .B gen_mschap \fItoken\fR
-Generate an MSCHAP challenge/response pair from a token OTP.
+Make an MSCHAP challenge and response pair from that answer.
+For testing a RADIUS setup without a client.
 .TP
 .B enable_mschap \fItoken\fR / \fBdisable_mschap \fItoken\fR
-Enable / disable MSCHAP authentication.
+Allow this token for MSCHAP, or stop allowing it.
 .TP
 .B remove_nt_hash \fItoken\fR
-Remove the NT hash used for MSCHAP authentication.
+Remove the NT hash used for MSCHAP.
+.TP
+.B validity_time \fItoken\fR \fR[\fIminutes\fR] \fRand\fB timedrift_tolerance \fItoken\fR \fR[\fIminutes\fR]
+Both are stored and nothing reads them.
+This token answers a challenge, so there is no OTP with a lifetime and no clock to be off.
+They are only here because the type shares its commands with the OTP tokens.
 .SS OTP Push Token
 .TP
+.B push_token \fItoken\fR \fIotp_token\fR
+Which OTP token of the same user the pushed OTP is made from.
+By name, not as a path, and it has to be an OTP token.
+.TP
+.B phone_number \fItoken\fR \fR[\fInumber\fR]
+Where the OTP is sent.
+.br
+This is a value on the token, not the phone number of the user \(em see
+.B otp_push
+under
+.B TOKEN TYPES
+above.
+.TP
+.B push_script \fItoken\fR \fIscript\fR
+The script that delivers it.
+Without one the default of the realm is used, \fBdefault_otp_push_script\fR in
+.BR otpme (7).
+.TP
 .B password \fR[\fB\-\-generate\fR] [\fB\-\-weak\-password\fR] \fItoken\fR \fR[\fIpassword\fR]
-Change the token password (used for the push confirmation channel).
+Set the password of the token.
+See the password token above for \fB\-\-weak\-password\fR.
 .TP
 .B enable_mschap \fItoken\fR / \fBdisable_mschap \fItoken\fR
-Enable / disable MSCHAP authentication.
+Allow this token for MSCHAP, or stop allowing it.
 .TP
 .B remove_nt_hash \fItoken\fR
-Remove the NT hash used for MSCHAP authentication.
+Remove the NT hash used for MSCHAP.
 .SS FIDO2
 .TP
 .B uv \fItoken\fR \fIuv\fR
-Set the FIDO2 user verification requirement (\fBdiscouraged\fR, \fBpreferred\fR, \fBrequired\fR).
+Whether the key has to check the user before it signs: \fBdiscouraged\fR, \fBpreferred\fR or \fBrequired\fR.
+Default is \fBpreferred\fR.
+.br
+With
+.B required
+the key asks for its PIN or the finger, and the token counts as two factors on its own.
+With the other two a login is the key alone, and whoever holds the key can use it.
 .SS YubiKey PIV
+A PIV token has two keys, one for signing and one for encrypting.
+.B otpme\-token deploy
+makes both and writes them into the slots of the card, and it does everything below on its own \(em see
+.B Deploy \- YubiKey PIV
+above, which also says where the backup of the private keys goes.
+.PP
+What these commands set is the public half, which is the half OTPme keeps.
+You only need them by hand when a card was set up somewhere else.
+.PP
+A PIV token can also be signed, see
+.B Signing a token
+below.
 .TP
 .B sign_public_key \fItoken\fR \fR[\fIpublic_key\fR]
-Set the PIV token's sign public key.
+Set the public half of the sign key.
 .TP
 .B encrypt_public_key \fItoken\fR \fR[\fIpublic_key\fR]
-Set the PIV token's encrypt public key.
+Set the public half of the encrypt key.
 .TP
-.B dump_sign_key \fItoken\fR
-Dump the PIV token's sign public key (or backup pointer) to stdout.
+.B ssh_public_key \fItoken\fR \fR[\fIssh_public_key\fR]
+Set the SSH public key of the card, so this token gets the user onto hosts as well.
+A whole \fBauthorized_keys\fR line may be pasted, and the key type is read from the key.
 .TP
-.B dump_encrypt_key \fItoken\fR
-Dump the PIV token's encrypt public key (or backup pointer) to stdout.
+.B key_type \fItoken\fR \fIkey_type\fR
+The kind of key: \fBrsa\fR, \fBed25519\fR or \fBecdsa\fR.
+.TP
+.B dump_sign_key \fItoken\fR / \fBdump_encrypt_key \fItoken\fR
+Print one of the two public keys.
 .TP
 .B dump_private_key_backup \fItoken\fR
-Dump the encrypted private-key backup for the PIV token to stdout (for later
-.BR "otpme-token deploy --restore" ).
+Print the encrypted backup of the private keys, if there is one.
+This is what
+.B otpme\-token deploy \-\-restore
+reads to put the keys on a new card.
+See
+.B Deploy \- YubiKey PIV
+above for where the backup comes from and what can read it.
+.SS Signing a token
+A signature says that somebody vouches for this token.
+What is signed is the token, not something the token signs: the signature is made with the sign key of whoever is logged in, and it covers the data of the token \(em its public keys among it.
+.PP
+That is what a host asks for.
+A host with token signers lets an SSH key in only when its token carries a signature from one of them, and a token with no signature at all is skipped.
+Which host wants that is set with
+.B otpme\-tool add_signer \-\-signer\-type token
+on the host, see
+.BR otpme\-tool (1).
+.PP
+\fBssh\fR and \fByubikey_piv\fR tokens take these:
 .TP
-.B sign \fR[\fIoptions\fR] \fItoken\fR
-Sign an object with the PIV token.
+.B sign \fR[\fB\-\-tags\fR \fItag1,tag2\fR] \fItoken\fR
+Sign the token.
+You have to be logged in with a key of your own, and that key makes the signature.
 .TP
-.B resign \fR[\fIoptions\fR] \fItoken\fR
-Re-sign an existing signature with the PIV token.
+.B resign \fR[\fB\-\-tags\fR \fItag1,tag2\fR] \fItoken\fR
+Sign it again, over the data as it is now.
+For after something a signature covers has changed.
 .TP
 .B verify_sign \fR[\fIoptions\fR] \fItoken\fR
-Verify a signature made by the PIV token.
+Check the signatures of the token.
 .TP
 .B get_sign \fItoken\fR
-Show a signature stored on the PIV token.
+Show them.
 .TP
 .B get_sign_data \fR[\fB\-\-tags\fR \fItag1,tag2\fR] \fItoken\fR
-Get the object data that needs to be signed by the PIV token.
+The bytes that have to be signed, for signing somewhere else.
 .TP
 .B add_sign \fItoken\fR \fIsignature\fR
-Attach an externally created signature to the PIV token.
+Add a signature that was made somewhere else, from those bytes.
 .TP
 .B del_sign \fItoken\fR \fIsignature\fR
-Remove a signature from the PIV token.
+Remove a signature.
 .SH OPTIONS
-.TP
-.B \-\-type \fITYPE\fR
-Specify the token type. Required for the \fBadd\fR command and for all type-specific commands. Must be placed before the command.
-.SS Display Options
-.TP
-.B \-a
-Show all tokens.
-.TP
-.B \-z \fISIZE\fR
-Limit output size.
-.TP
-.B \-\-fields \fIFIELD1,FIELD2\fR
-Display only specified fields.
-.TP
-.B \-\-role\-limit \fIN\fR
-Limit number of roles shown.
-.TP
-.B \-\-policy\-limit \fIN\fR
-Limit number of policies shown.
-.TP
-.B \-\-limit \fIN\fR
-Limit number of items shown per object.
-.SS General Options
-.TP
-.B \-r
-Replace existing token and keep its UUID (for add, move, deploy).
-.TP
-.B \-u
-Disable if unused for the given time (auto_disable).
+Every option belongs to one command and is described with that command above.
+A short option means what the command it is given to makes of it: \fB\-r\fR replaces for
+.B add
+and
+.BR move ,
+and asks for the roles of roles for
+.BR find_roles .
 .PP
-Global options are available for all commands. See
-.BR otpme (1)
-for details.
+One option is not a command's own:
+.TP
+.B \-\-type \fItype\fR
+Which type of token.
+.B add
+needs it, and so does every command under
+.B TOKEN TYPE COMMANDS
+\(em the type decides which commands there are at all.
+.br
+It goes in front of the command, not after it: OTPme reads the type before it parses the rest of the line.
+.PP
+Global options work with every command, see
+.BR otpme (1).
 .SH CONFIG PARAMETERS
-Configuration parameters can be set with the \fBconfig\fR command und displayed with \fBshow_config\fR.
-For a complete description of all available parameters and their applicable object types, see
+Parameters are set on a token with
+.B config
+and shown with
+.BR show_config .
+.B get_config
+answers what applies to the token once the user, the unit and the site have been looked at as well.
+.PP
+Which parameters there are, and which object types each of them can be set on, is in
 .BR otpme (7).
 .SH EXAMPLES
+A token is named \fIuser\fB/\fIname\fR, and the name is yours to pick.
+The examples below use the user \fBalice\fR.
+.SS Giving somebody a token
 .TP
-.B otpme-token \-\-type totp add alice/totp
-Create a TOTP token for user alice
+.B otpme-token \-\-type yubikey_piv deploy alice/piv
+A YubiKey, with a sign key and an encrypt key on the card.
+This is the type OTPme recommends.
+Needs the card in the machine you run it on.
 .TP
-.B otpme-token \-\-type fido2 deploy alice/fido2
-Deploy a FIDO2 token
+.B otpme-token \-\-type fido2 deploy alice/key
+A security key that signs a challenge.
+Also needs the key in the machine.
 .TP
-.B otpme-token test alice/totp
-Test token authentication
+.B otpme-token \-\-type totp add alice/phone
+A TOTP token for an authenticator app.
+It prints a QR code to scan; \fB\-\-no\-qrcode\fR leaves it out.
 .TP
-.B otpme-token \-\-type link add root/admin_link alice/login
-Create a link token
+.B otpme-token \-\-type totp gen_qrcode alice/phone
+The QR code again, for a second phone or a scan that went wrong.
+.SS Letting the user set up their own
 .TP
-.B otpme-vlan add_token servers alice/totp
-Put the token into a VLAN, whatever VLAN its roles are in
+.B otpme-token \-\-type password add alice/start
+A password token.
+OTPme makes the password up and prints it; \fB\-\-password\fR sets one of your own.
+Something has to get the user in the first time.
 .TP
-.B otpme-token config alice/totp vlans guests
-Assign a VLAN to the token, used where no VLAN names it
+.B otpme-token enable_sso_deploy alice/start fido2
+At their first login on the SSO portal, alice registers a security key for herself.
+Then the password token can go.
+.SS Helping somebody out
+.TP
+.B otpme-token temp_password \-\-generate \-\-duration 8h alice/login
+A second password that works for the rest of the day, next to the one alice has.
+For the support who has to set up her notebook.
+.TP
+.B otpme-token temp_password \-\-remove alice/login
+Take it away before the day is over.
+.TP
+.B otpme-token \-\-type hotp resync alice/hardtoken
+The counter of a hardware token ran ahead of what OTPme holds, because somebody pressed the button.
+One OTP of it is enough to find the counter again.
+.TP
+.B otpme-token test alice/phone
+Ask the token to prove itself.
+It is the real check, so the OTP you type is spent.
+.SS An SSH key the hosts accept
+.TP
+.B otpme-token \-\-type ssh add alice/ssh 'ssh\-ed25519 AAAAC3Nza...'
+Add the public key of alice.
+.TP
+.B otpme-token \-\-type ssh sign alice/ssh
+Sign the token with your own key.
+A host that has token signers only lets the key in with this, see
+.B Signing a token
+above.
+.TP
+.B otpme-token find_hosts alice/ssh
+Which hosts the token is assigned to, without following its roles.
+.SS Before you throw one away
+.TP
+.B otpme-token find_roles \-r alice/phone
+Which roles the token is in, and the roles those are in.
+.TP
+.B otpme-token find_shares alice/piv
+Which shares it opens.
+This one follows the roles, there is nothing to switch.
+.TP
+.B otpme-token del alice/phone
+Delete it.
+It goes to the trash and
+.BR otpme\-trash (1)
+can bring it back.
+.SS Moving one
+.TP
+.B otpme-token move alice/phone bob
+Give the token to bob, under the same name.
+.TP
+.B otpme-token move alice/phone TOKENSTORE
+Park it, with nobody using it, under the name \fBalice:phone\fR.
+.TP
+.B otpme-token \-\-type totp add \-r alice/phone
+Set the token up from scratch, with a new secret, and keep it in every role, group and ACL it is in.
+The old one goes to the trash.
+.br
+A token is held by its UUID, and \fB\-r\fR gives the new token the UUID of the old one.
+Deleting it and adding it again would give it a new UUID, and every assignment would be gone.
+.br
+alice has to scan the new QR code.
 .SH FILES
 .TP
 .I /var/lib/otpme/
-OTPme data directory
+The objects of the realm, on a node.
+A token lives under the user it belongs to.
+.TP
+.I /var/cache/otpme/offline/\fIuser_uuid\fI/
+The tokens a host can check while it cannot reach the realm, one directory per user.
+Written at login, and only for a token that allows it \(em see \fBOffline Configuration\fR above.
+.TP
+.I /var/cache/otpme/ssh/authorized_keys/\fIuser\fI/authorized_keys
+The keys of the SSH tokens of that user, on a host, as sshd reads them.
+Written by \fBhostd\fR from the tokens of the realm.
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme-user (1),
-.BR otpme-role (1),
-.BR otpme-policy (1),
-.BR otpme-accessgroup (1),
-.BR otpme-vlan (1)
+.BR otpme\-acls (7),
+.BR otpme\-user (1),
+.BR otpme\-role (1),
+.BR otpme\-policy (1),
+.BR otpme\-accessgroup (1),
+.BR otpme\-vlan (1),
+.BR otpme\-tool (1),
+.BR otpme\-trash (1),
+.BR otpme\-site (1)
 
 .SH AUTHOR
 the2nd <the2nd@otpme.org>
 .SH NOTE
 This manual page was created with AI assistance.
 .SH COPYRIGHT
-Copyright \(co 2014-2025 the2nd. License: GPLv3
+Copyright \(co 2014-2026 the2nd. License: GPLv3

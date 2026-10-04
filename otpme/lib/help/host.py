@@ -221,16 +221,16 @@ cmd_help = {
      #           },
 
     'add_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-host add_acl {host} {role|token} {role_path|token_path} {acl[:value]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-host add_acl {host} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
+                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to host'),
                                 },
                 },
 
     'del_acl'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-host del_acl {host} {acl}'),
-                    'cmd'   :   '<|object|> <acl>',
+                    '_cmd_usage_help' : _('Usage: otpme-host del_acl {host} {acl[,acl]}'),
+                    'cmd'   :   '<|object|> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Delete ACL from host'),
                                 },
@@ -488,6 +488,13 @@ cmd_help = {
                 },
 
     'renew_cert'   : {
+                    # This command is not intended to be used by the user
+                    # directly. It is called internally when running
+                    # otpme-tool renew_cert, which makes the certificate
+                    # request on the host itself. Without a request there
+                    # is nothing to sign, so it carries no help text and
+                    # is not offered.
+                    'internal'  : True,
                     'cmd'   :   '<|object|>',
                 },
 
@@ -495,7 +502,15 @@ cmd_help = {
                     '_cmd_usage_help' : _('Usage: otpme-host public_key {host} [public_key]'),
                     'cmd'   :   '<|object|> [public_key]',
                     '_help' :   {
-                                    'cmd'                   : _("Change host\\'s public key."),
+                                    'cmd'                   : _('Change host\'s public key.'),
+                                },
+                },
+
+    'get_public_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-host get_public_key {host}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show host\'s public key.'),
                                 },
                 },
 

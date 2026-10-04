@@ -149,6 +149,7 @@ class OTPmeFS(fuse.Operations):
         share_site,
         logger,
         nodes,
+        share_realm=None,
         hard=False,
         sotp_signing=False,
         connection_timeout=None,
@@ -156,6 +157,8 @@ class OTPmeFS(fuse.Operations):
         self.use_ns = True
         self.share = share
         self.share_site = share_site
+        # A caller that does not name the realm means ours.
+        self.share_realm = share_realm or config.realm
         self.nodes = nodes
         self.hard = hard
         self.fsd_conn = None
@@ -178,7 +181,8 @@ class OTPmeFS(fuse.Operations):
         self.master_password = None
         self.restore_share = False
         self.sotp_signing = sotp_signing
-        self.share_id = f"{self.share_site}/{self.share}"
+        self.share_id = stuff.get_share_id(self.share_realm,
+                                        self.share_site, self.share)
         config.daemon_mode = True
 
     def get_user(self):
@@ -193,8 +197,8 @@ class OTPmeFS(fuse.Operations):
         # Get SOTP from agent
         agent_conn = connections.get(daemon="agent")
         try:
-            sotp = agent_conn.get_sotp(site=self.share_site,
-                                        share=self.share_id)[1]
+            # No site: the share ID carries the realm and the site.
+            sotp = agent_conn.get_sotp(share=self.share_id)[1]
         except Exception as e:
             msg = _("Unable to get SOTP from agent: {e}")
             msg = msg.format(e=e)
@@ -2611,7 +2615,12 @@ def remove_mount_dirs(mountpoints):
 
 def mount_share_proc(share, share_site, mount, nodes, encrypted, sotp_signing, **kwargs):
     logger = config.logger
-    new_proctitle = f"otpme-mount {share_site}/{share} {mount}"
+    # The share ID, so two realms with a site of the same name are told
+    # apart here too. kwargs and not a parameter of its own: they go to
+    # mount_share() unchanged.
+    share_id = stuff.get_share_id(kwargs.get('share_realm') or config.realm,
+                                share_site, share)
+    new_proctitle = f"otpme-mount {share_id} {mount}"
     setproctitle.setproctitle(new_proctitle)
     mount_proc = multiprocessing.start_process(name="mount",
                                             target=mount_share,
@@ -2638,7 +2647,7 @@ def mount_share_proc(share, share_site, mount, nodes, encrypted, sotp_signing, *
         logger.warning(log_msg)
 
 def mount_share(share, share_site, mount, nodes, encrypted, sotp_signing,
-    hard=False, master_password=None, add_share_key=False,
+    share_realm=None, hard=False, master_password=None, add_share_key=False,
     mount_timeout=None, foreground=True, logger=None):
     if add_share_key and not master_password:
         msg = _("Need <master_password> with <add_share_key>")
@@ -2646,7 +2655,11 @@ def mount_share(share, share_site, mount, nodes, encrypted, sotp_signing,
     #if config.debug_enabled:
     #    logging.basicConfig(level=logging.DEBUG)
     try:
-        fsname = f"OTPmeFS:/{share_site}/{share}"
+        # What mount and df show, so it names the share the way the share
+        # ID does: a site name is only unique within its realm.
+        share_id = stuff.get_share_id(share_realm or config.realm,
+                                    share_site, share)
+        fsname = f"OTPmeFS:/{share_id}"
         if logger is None:
             logger = config.logger
         msg = _("Got nodes: {share}: {nodes}")
@@ -2657,6 +2670,7 @@ def mount_share(share, share_site, mount, nodes, encrypted, sotp_signing,
                                 share_site,
                                 logger,
                                 nodes,
+                                share_realm=share_realm,
                                 hard=hard,
                                 sotp_signing=sotp_signing,
                                 connection_timeout=mount_timeout,
@@ -2668,7 +2682,8 @@ def mount_share(share, share_site, mount, nodes, encrypted, sotp_signing,
                             fsname=fsname,
                             )
         else:
-            fuse.FUSE(OTPmeFS(share, share_site, logger, nodes=nodes, hard=hard,
+            fuse.FUSE(OTPmeFS(share, share_site, logger, nodes=nodes,
+                                share_realm=share_realm, hard=hard,
                                 sotp_signing=sotp_signing,
                                 connection_timeout=mount_timeout),
                             mount,

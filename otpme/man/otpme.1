@@ -126,10 +126,16 @@ The options that change how OTPme runs (\fB\-dD\fR, \fB\-de\fR, \fB\-dE\fR, \fB\
 \fBGeneral\fR
 .TP
 .B \-dd
-Enable debug output in general (log level DEBUG).
+Show the log on stdout, at the log level it already has.
+Use this to watch a daemon that runs in the foreground (\fB\-dDd\fR) without reading everything it does.
+.TP
+.B \-ddd
+Show the log on stdout at log level DEBUG.
+This is everything, and it is a lot.
 .TP
 .B \-dD
-Do not go to background and log to stdout.
+Do not go to background.
+On its own it says nothing: add \fB\-dd\fR to see the log, so \fB\-dDd\fR to watch a daemon work and \fB\-dDdd\fR to see everything it does.
 .TP
 .B \-dt
 Add timestamps to debug output.
@@ -339,6 +345,7 @@ On the master node: do not remove the floating IP when the daemons stop.
 .BR otpme-role (1),
 .BR otpme-script (1),
 .BR otpme-share (1),
+.BR otpme-shell (1),
 .BR otpme-site (1),
 .BR otpme-token (1),
 .BR otpme-tool (1),

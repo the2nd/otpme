@@ -243,6 +243,7 @@ data_files = [
                 ('/usr/share/man/man7',
                     [
                         "otpme/man/otpme.7",
+                        "otpme/man/otpme-acls.7",
                     ]
                 ),
                 #('lib/otpme/freeradius',

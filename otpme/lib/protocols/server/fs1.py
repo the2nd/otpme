@@ -321,8 +321,18 @@ class OTPmeFsP1(OTPmeFsServer1):
                 response = {'try_other_node':False, 'message':message}
                 return self.build_response(status, response)
             # Make sure we only mount the share auth handler authenticated for.
-            self.share_id = f"{config.site}/{self.share}"
-            if self.auth_share != self.share_id:
+            self.share_id = stuff.get_share_id(config.realm, config.site,
+                                            self.share)
+            # The share the client authenticated for, read the same way a
+            # share ID given by hand is read: a client that leaves the
+            # realm out means ours, which is the only realm we serve. The
+            # comparison stays exact either way.
+            try:
+                auth_share = stuff.get_share_id(
+                                *stuff.split_share_id(self.auth_share))
+            except Exception:
+                auth_share = None
+            if auth_share != self.share_id:
                 status = status_codes.PERMISSION_DENIED
                 message, log_msg = _("Permission denied.", log=True)
                 self.logger.warning(log_msg)

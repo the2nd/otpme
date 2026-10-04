@@ -66,6 +66,35 @@ attributetype ( 1.3.6.1.4.1.66639.1.2
 	SUBSTR caseIgnoreSubstringsMatch
 	SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256} )
 
+# Size limit of the users mailbox, in bytes. There is no standard LDAP
+# attribute for this: every mail system brings its own (``mailQuota`` in
+# the postfix-book schema, ``quota`` in Courier, ``mailQuotaSize`` in
+# qmail-ldap, ``zimbraMailQuota``), and dovecot brings none at all -- it
+# reads whichever attribute it is pointed at.
+#
+# Bytes and Integer syntax, not a string like ``1G``: one unit, no suffix
+# convention to agree on, and a directory can compare the values, so a
+# search can ask for ``(otpmeMailQuota>=1073741824)``. A mail server that
+# wants a quota rule builds it from the number, e.g. in dovecot:
+#
+#   user_attrs = ...,=quota_rule=*:bytes=%{ldap:otpmeMailQuota}
+#
+# SINGLE-VALUE: one mailbox, one limit. An attribute that is not there
+# means no limit comes from the directory; what a value of 0 means is up
+# to the mail server (dovecot reads it as unlimited).
+#
+# OTPme stores the value and hands it out, it does not enforce anything
+# with it. Note that OTPme does not check the syntax on write, so a value
+# that is not a number is only refused once the schema is loaded into a
+# directory that does check, such as OpenLDAP.
+attributetype ( 1.3.6.1.4.1.66639.1.3
+	NAME 'otpmeMailQuota'
+	DESC 'OTPme: size limit of the users mailbox, in bytes'
+	EQUALITY integerMatch
+	ORDERING integerOrderingMatch
+	SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+	SINGLE-VALUE )
+
 #-----------------------------------------------------------
 # Object classes
 #-----------------------------------------------------------
@@ -79,4 +108,4 @@ objectclass ( 1.3.6.1.4.1.66639.2.1
 	DESC 'OTPme: auxiliary class for OTPme-specific user attributes'
 	SUP top
 	AUXILIARY
-	MAY ( otpmeRecoveryMail $ otpmeMailAlias ) )
+	MAY ( otpmeRecoveryMail $ otpmeMailAlias $ otpmeMailQuota ) )

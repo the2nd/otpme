@@ -38,6 +38,8 @@ from otpme.lib.confd.base import parse_bool_arg
 from otpme.lib.classes.data_objects.conf_job import get_sign_data
 from otpme.lib.classes.data_objects.conf_job import get_content_tags
 from otpme.lib.classes.data_objects.conf_job import check_job_args
+from otpme.lib.classes.data_objects.conf_job import check_job_ttl
+from otpme.lib.classes.data_objects.conf_job import check_job_values
 from otpme.lib.classes.data_objects.conf_job import CONF_JOB_ACTIONS
 
 from otpme.lib.exceptions import *
@@ -50,6 +52,49 @@ RESULT_OUTPUT_LEN = 64 * 1024
 # "target:" tag of another host is not among them: a host does not know
 # the names of the others, and each of them checks its own.
 TAG_PREFIXES = ("job_type:", "action:", "arg:", "targets:")
+# The job types that do not want the host to themselves. Everything
+# else does: two package managers on one host wait for each other at
+# best, and a job that upgrades the host while another one configures it
+# leaves neither finished.
+#
+# A remote access session is the one job type that is not work on the
+# host at all. It is a shell for somebody, it lasts as long as that
+# person keeps it, and nothing it does stops another job -- so it must
+# not stop one either, which is also what makes a second shell on the
+# same host possible.
+PARALLEL_JOB_TYPES = ["remote_access"]
+# How many of those a host carries at once. Each one is a runner process
+# with a session in it, so this is what keeps a host from being asked
+# for more shells than it can hold. Past it the next one waits for one
+# of them to end, the same as any other job that has to wait.
+MAX_PARALLEL_JOBS = 8
+
+def runs_alone(job_type):
+    """ Whether a job of this type wants the host to itself. """
+    return job_type not in PARALLEL_JOB_TYPES
+
+def job_in_the_way(job_type, running):
+    """ The running job a new job of this type has to wait for.
+
+    Returns the uuid of that job, or None when the new one can start.
+
+    <running> is what the runners have, as {job uuid: job type}.
+
+    A job that wants the host to itself waits for whatever already has
+    it. A session does not wait for those -- a package manager at work
+    is the very moment somebody wants to look at the host -- but only so
+    many sessions run at once, and past that the next one waits for one
+    of the sessions to end.
+    """
+    if runs_alone(job_type):
+        alone = sorted([x for x, y in running.items() if runs_alone(y)])
+        if alone:
+            return alone[0]
+        return None
+    sessions = sorted([x for x, y in running.items() if not runs_alone(y)])
+    if len(sessions) >= MAX_PARALLEL_JOBS:
+        return sessions[0]
+    return None
 
 def get_spool_dir(name):
     """ One of our spool directories, made if it is not there. """
@@ -238,6 +283,41 @@ def check_self_lockout(job, sig, signers):
     msg = _("Job removes the last signer that signed it: set remove_last_own_signer=yes to allow it.")
     raise OTPmeException(msg)
 
+def check_throwaway_key(job, sig, signers):
+    """ Refuse a job that brings the key it will be entered with.
+
+    A remote access job without a key of its own is let in by the keys
+    this host already holds for the user (its own authorized_keys). Two
+    things are needed then: the signature of the job and a key in that
+    file. Taking either away shuts the door.
+
+    A job that carries a pubkey needs only the signature. It names the
+    key it will be entered with, so whoever can sign such a job for
+    this host has a shell -- there is no second thing to hold it
+    against.
+
+    Which of the two a signer may ask for is the host's own decision,
+    so it hangs on the signer and not on a parameter that comes down
+    with the tree: otpme-tool add_signer --allow-throwaway-key, or a
+    signer_mgmt job, which needs a signer that can do anything to this
+    host anyway. Off unless somebody said otherwise.
+
+    Allowed where any signer that covers the signature says so, the
+    same way a signature verifies where any of them accepts it.
+    """
+    if job['job_type'] != "remote_access":
+        return
+    args = job['args'] or {}
+    if args.get("pubkey") is None:
+        return
+    for signer in signers:
+        if sig.signer_uuid not in signer.signers:
+            continue
+        if signer.allow_throwaway_key:
+            return
+    msg = _("Job brings its own key, and its signer may not ask for that.")
+    raise OTPmeException(msg)
+
 def verify_job(job):
     """ Whether this host runs this job.
 
@@ -273,6 +353,10 @@ def verify_job(job):
     # Asked for when the job was made as well, and asked again here:
     # what we run is our own decision, not that of the node.
     check_job_args(job_type=job_type, action=action, args=args)
+    check_job_values(job_type=job_type, action=action, args=args)
+    # How long it may live is our decision too. A signature says who
+    # asked for a shell, not until when the door stays open.
+    check_job_ttl(job_type=job_type, created=created, expiry=expiry)
     if expiry and time.time() > expiry:
         msg = _("Job is expired.")
         raise OTPmeException(msg)
@@ -332,6 +416,9 @@ def verify_job(job):
     # Only now: who signed it is worth reading once the signature said
     # so, and what it may do to our signers depends on who that was.
     check_self_lockout(job, sig, signers)
+    # And whether that signer may ask for a shell on a key the job
+    # brought along, which is a thing of this host and not of the job.
+    check_throwaway_key(job, sig, signers)
     # Who signed it, for whoever wants to write it down. A uuid and not
     # a name: a host holds signers, not the objects behind them, so the
     # name is a thing the nodes have (see deploy.audit_job(), which
@@ -393,7 +480,8 @@ def run_job(job, log_file):
     return handler.run(job_type=job['job_type'],
                     action=job['action'],
                     args=job['args'] or {},
-                    log_file=log_file)
+                    log_file=log_file,
+                    job_uuid=job['uuid'])
 
 def build_result(job, exit_code, output, log_file, started, finished,
     status=None):

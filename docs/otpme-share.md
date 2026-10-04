@@ -236,10 +236,13 @@ attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 **add_role *share* *role***  
 Add a role to the share. Not supported by encrypted shares and by shares
-with SOTP signing enabled.
+with SOTP signing enabled.  
+The role is looked for in the site of the share, or written as
+*site***/***role* to take one from another site of the realm.
 
 **remove_role *share* *role***  
-Remove a role from the share.
+Remove a role from the share. A UUID is taken as well, which is how a
+reference to a role that is gone is cleared out.
 
 **list_roles \[**-r**\] *share***  
 List roles assigned to the share. Use **-r** for recursive listing.
@@ -616,8 +619,8 @@ dirs
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-pool**(1), **otpme-token**(1),
-**otpme-role**(1)
+**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-pool**(1),
+**otpme-token**(1), **otpme-role**(1)
 
 # AUTHOR
 

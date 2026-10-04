@@ -266,8 +266,8 @@ OTPme data directory
 
 # SEE ALSO
 
-**otpme**(7), **otpme-accessgroup**(1), **otpme-host**(1),
-**otpme-vlan**(1), **otpme-client**(1)
+**otpme**(7), **otpme-acls**(7), **otpme-accessgroup**(1),
+**otpme-host**(1), **otpme-vlan**(1), **otpme-client**(1)
 
 # AUTHOR
 

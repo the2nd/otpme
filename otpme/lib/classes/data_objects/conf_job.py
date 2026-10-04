@@ -16,7 +16,10 @@ get_sign_data(). Only what the nodes note about it afterwards, that
 somebody has seen a failed run, is written later.
 """
 import os
+import re
 import time
+import base64
+import hashlib
 from typing import List
 from typing import Union
 
@@ -64,6 +67,11 @@ CONF_JOB_DIR = os.path.join(config.data_dir, "data", "conf_job")
 # (otpme/lib/confd).
 # How long a job and its results are kept by default (conf_job_max_age).
 CONF_JOB_MAX_AGE = 90 * 86400
+# The same for a remote access job, counted from its expiry
+# (remote_access_job_max_age). An hour, which is long enough to look at
+# what came of the shell that just ended and short enough that a day of
+# them is not in the way.
+REMOTE_ACCESS_JOB_MAX_AGE = 3600
 
 CONF_JOB_ACTIONS = {
                 'repo_mgmt'     : {
@@ -86,6 +94,14 @@ CONF_JOB_ACTIONS = {
                                 'upgrade'   : {
                                     'args'  : ['packages'],
                                     },
+                                # Every package, where upgrade does the
+                                # ones it is given. Here and not with
+                                # host_mgmt, where it was: it is the
+                                # package manager doing what the package
+                                # manager does, and the one type that
+                                # has "upgrade packages=..." is the type
+                                # that should have "upgrade everything".
+                                'dist_upgrade'  : {},
                                 'autoremove': {},
                                 },
                 'signer_mgmt'   : {
@@ -95,9 +111,14 @@ CONF_JOB_ACTIONS = {
                                 'show_signer'   : {
                                     'oargs' : ['type'],
                                     },
+                                # verify_token_opts and
+                                # allow_throwaway_key are what the
+                                # signer may ask for, see
+                                # classes/signing.py OTPmeSigner.
                                 'add_signer'    : {
                                     'args'  : ['type', 'signer'],
-                                    'oargs' : ['tags'],
+                                    'oargs' : ['tags', 'verify_token_opts',
+                                            'allow_throwaway_key'],
                                     },
                                 # remove_last_own_signer allows a job to
                                 # take away the signer it was signed by,
@@ -107,10 +128,17 @@ CONF_JOB_ACTIONS = {
                                     'args'  : ['type', 'signer'],
                                     'oargs' : ['remove_last_own_signer'],
                                     },
+                                # The two permissions are left as they
+                                # are where the job does not name them:
+                                # an update is usually about the pinned
+                                # keys and not about what may be asked
+                                # for.
                                 'update_signer' : {
                                     'args'  : ['type', 'signer'],
                                     'oargs' : ['remove_gone',
-                                            'remove_last_own_signer'],
+                                            'remove_last_own_signer',
+                                            'verify_token_opts',
+                                            'allow_throwaway_key'],
                                     },
                                 },
                 'service_mgmt'  : {
@@ -139,11 +167,56 @@ CONF_JOB_ACTIONS = {
                                     'args'  : ['path'],
                                     },
                                 },
+                # The machine itself, which here means its power state.
+                # Upgrading it is sw_mgmt: that is the package manager's
+                # work, and this type is what is left when the host is
+                # not being configured but switched.
                 'host_mgmt'     : {
                                 'reboot'        : {},
-                                'dist_upgrade'  : {},
+                                # A host that is switched off stays off
+                                # until somebody is standing next to it.
+                                'shutdown'      : {},
+                                },
+                # A shell on the host. The host connects out to the
+                # master node of its site and speaks SSH through it, so
+                # that node carries the session without being able to
+                # read it.
+                #
+                # Which key gets in: the host's own authorized_keys for
+                # <user>, which is the key that lets that user log in
+                # anyway. With <pubkey> that one key instead, and then
+                # nothing else gets in -- for a shell on a key that
+                # exists for the five minutes of the job and is in no
+                # file. That one needs nothing but the signature of the
+                # job, so the host takes it only from a signer that was
+                # given the permission (confd/job.py
+                # check_throwaway_key).
+                'remote_access' : {
+                                'shell' : {
+                                    'args'  : [],
+                                    'oargs' : ['pubkey', 'user', 'command'],
+                                    },
                                 },
                 }
+
+# A job that opens a shell is a ticket, and a ticket that is good for a
+# month is a standing invitation. It is meant to be used right away, so
+# it lives for minutes, and no signature can say otherwise -- the host
+# refuses a longer one whatever it was signed with.
+REMOTE_ACCESS_DEFAULT_TTL = 300
+REMOTE_ACCESS_MAX_TTL = 3600
+
+# The user the shell runs as where the job does not say. root, because
+# the whole point is a host that cannot be reached otherwise.
+REMOTE_ACCESS_DEFAULT_USER = "root"
+
+# What a user name may look like.
+#
+# A dot is allowed because system user names have them: a realm whose
+# users are named firstname.lastname puts that name on every host it
+# syncs to, and a job for one of them is the ordinary case.
+# Not in the first place, so a name cannot be "." or "..".
+USER_NAME_RE = r'^[a-z_][a-z0-9_.-]{0,31}$'
 
 def register():
     register_oid()
@@ -199,6 +272,42 @@ def register_config_params():
                                     setter=conf_job_max_age_setter,
                                     getter=conf_job_max_age_getter,
                                     default_value=CONF_JOB_MAX_AGE,
+                                    object_types=['site'])
+    # How long a remote access job is kept after it expired. Its own
+    # parameter, because a shell job is a different kind of record:
+    # there is one per otpme-shell call, it is good for five minutes,
+    # and it says nothing afterwards -- whoever asked for the shell
+    # watched it happen. Kept to conf_job_max_age they would pile up
+    # for three months.
+    #
+    # Counted from the expiry and not from the creation: that is when
+    # the job stopped being of use to anybody. Measured in the same
+    # seconds-in, time-units-out way as conf_job_max_age, and read with
+    # apply_getter=False for the same reason, see
+    # deploy.get_remote_access_job_max_age().
+    def remote_access_job_max_age_setter(max_age, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            max_age = units.time2int(max_age, time_unit="s")
+        except Exception as err:
+            msg = _("Invalid remote access job max age.")
+            raise ValueError(msg) from err
+        if max_age < 0:
+            msg = _("Remote access job max age cannot be negative.")
+            raise ValueError(msg)
+        return max_age
+    def remote_access_job_max_age_getter(max_age, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            return units.int2time(max_age, time_unit="s")[0]
+        except Exception as err:
+            msg = _("Invalid remote access job max age.")
+            raise ValueError(msg) from err
+    config.register_config_parameter(name="remote_access_job_max_age",
+                                    ctype=int,
+                                    setter=remote_access_job_max_age_setter,
+                                    getter=remote_access_job_max_age_getter,
+                                    default_value=REMOTE_ACCESS_JOB_MAX_AGE,
                                     object_types=['site'])
 
 def register_oid():
@@ -375,6 +484,111 @@ def check_job_args(job_type, action, args):
                         known=", ".join(known_args) or "-")
         raise OTPmeException(msg)
 
+def parse_ssh_public_key(value):
+    """ An SSH public key, taken apart, or an exception.
+
+    "<type> <base64> [comment]", where the base64 carries the type
+    again as its first string. Both have to say the same thing: the
+    type in front is what a reader believes, the one inside is what
+    every implementation acts on.
+
+    Read without paramiko on purpose. This runs where a job is made
+    and again on the host, and neither place needs an SSH library to
+    tell whether a string is shaped like a key.
+    """
+    if not isinstance(value, str):
+        msg = _("Public key must be a string.")
+        raise OTPmeException(msg)
+    parts = value.split()
+    if len(parts) < 2:
+        msg = _("Not an SSH public key: expected '<type> <base64>'.")
+        raise OTPmeException(msg)
+    key_type = parts[0]
+    try:
+        blob = base64.b64decode(parts[1], validate=True)
+    except Exception as e:
+        msg = _("Public key is not base64: {e}")
+        msg = msg.format(e=e)
+        raise OTPmeException(msg) from e
+    # The first string of the blob: four bytes of length, then the type.
+    if len(blob) < 4:
+        msg = _("Public key is too short.")
+        raise OTPmeException(msg)
+    name_len = int.from_bytes(blob[:4], "big")
+    if name_len == 0 or name_len > len(blob) - 4:
+        msg = _("Public key is malformed.")
+        raise OTPmeException(msg)
+    try:
+        blob_type = blob[4:4+name_len].decode()
+    except UnicodeDecodeError as e:
+        msg = _("Public key is malformed.")
+        raise OTPmeException(msg) from e
+    if blob_type != key_type:
+        msg = _("Public key says '{key_type}' and carries '{blob_type}'.")
+        msg = msg.format(key_type=key_type, blob_type=blob_type)
+        raise OTPmeException(msg)
+    return key_type, blob
+
+def get_ssh_key_fingerprint(value):
+    """ The fingerprint of an SSH public key, the way OpenSSH shows it.
+
+    "SHA256:<base64 without padding>", which is what ssh-keygen -lf
+    prints and therefore what anybody compares it against.
+    """
+    blob = parse_ssh_public_key(value)[1]
+    digest = hashlib.sha256(blob).digest()
+    digest = base64.b64encode(digest).decode().rstrip("=")
+    return f"SHA256:{digest}"
+
+def check_job_values(job_type, action, args):
+    """ Whether the values of a job are shaped the way they must be.
+
+    Apart from check_job_args(), which asks whether the arguments are
+    the ones the action knows. This asks what they say.
+
+    Run where the job is made, so a typo does not become a refusal on
+    every host it was sent to, and again on the host, which takes
+    nothing it is sent on trust -- see confd/job.py verify_job().
+    """
+    if job_type != "remote_access":
+        return
+    if args is None:
+        args = {}
+    # A key of its own is optional. Where there is one, a shell is
+    # handed to whoever holds its private half and to nobody else;
+    # where there is none, the host lets in what its own
+    # authorized_keys for the user lets in.
+    if args.get('pubkey') is not None:
+        parse_ssh_public_key(args.get('pubkey'))
+    user = args.get('user')
+    if user is not None:
+        if not isinstance(user, str) or not re.match(USER_NAME_RE, user):
+            msg = _("Not a user name: {user}")
+            msg = msg.format(user=user)
+            raise OTPmeException(msg)
+    command = args.get('command')
+    if command is not None:
+        if not isinstance(command, str) or not command:
+            msg = _("Command must be a string.")
+            raise OTPmeException(msg)
+
+def check_job_ttl(job_type, created, expiry):
+    """ Whether a job may live as long as it says.
+
+    Only remote_access is held to a limit, and it is held to it on the
+    host as well: a signature says who asked for a shell, not how long
+    the invitation stands.
+    """
+    if job_type != "remote_access":
+        return
+    if not expiry:
+        msg = _("A remote access job must expire.")
+        raise OTPmeException(msg)
+    if (expiry - created) > REMOTE_ACCESS_MAX_TTL:
+        msg = _("A remote access job may live at most {max_ttl}s.")
+        msg = msg.format(max_ttl=REMOTE_ACCESS_MAX_TTL)
+        raise OTPmeException(msg)
+
 def check_job_objects(job_type, action, args):
     """ Whether what a job names exists at all.
 
@@ -416,6 +630,16 @@ def check_job_objects(job_type, action, args):
         msg = _("Not a user or role: {signer_oid}")
         msg = msg.format(signer_oid=signer_oid)
         raise OTPmeException(msg)
+    if action == "del_signer":
+        # A signer that is to go is often one whose user or role is
+        # already gone -- that is what leaves an entry behind on every
+        # host that holds it. The host keeps the OID of a signer next to
+        # its uuid (classes/signing.py, dumps()), so it can still find
+        # the entry by the name the job gives. Whether the name is one
+        # an object ever had is not something this can say, and not
+        # something it has to: a name no host holds a signer under
+        # removes nothing.
+        return
     if not backend.get_uuid(object_oid):
         msg = _("Unknown signer: {signer_oid}")
         msg = msg.format(signer_oid=signer_oid)
@@ -445,14 +669,26 @@ def job_creation_allowed(host, token):
 # in a yes/no question is not read by anybody.
 ARG_TAG_MAX_LEN = 64
 
-def get_arg_tag_value(value):
+def get_arg_tag_value(name, value):
     """ One argument of a job, short enough to be read.
 
     A value too long for that is named by its size and its hash, which
     is what one can compare against the file it came from:
 
         sha256sum <file>
+
+    An SSH public key is named by its fingerprint instead. It is just
+    over the length that fits, and its hash is not what anybody has:
+    what one holds against a key is what ssh-keygen -lf prints.
     """
+    if name == "pubkey":
+        try:
+            return get_ssh_key_fingerprint(value)
+        except OTPmeException:
+            # Not a key at all. check_job_values() says so with a
+            # better message; here it goes in as it is, so the tags
+            # keep saying what the job says.
+            pass
     if isinstance(value, (list, tuple)):
         value = ",".join([str(x) for x in value])
     value = str(value)
@@ -477,7 +713,8 @@ def get_content_tags(job_type, action, args):
     if args:
         args = args.copy()
         for name in sorted(args):
-            tags.append(f"arg:{name}={get_arg_tag_value(args[name])}")
+            tag_value = get_arg_tag_value(name, args[name])
+            tags.append(f"arg:{name}={tag_value}")
     return tags
 
 def get_sign_tags(job_type, action, args, target_names):

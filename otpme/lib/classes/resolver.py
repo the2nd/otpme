@@ -56,6 +56,10 @@ read_acls =  [
 
 write_acls =  [
                 'run',
+                # test() asks for it beside "run" and it was in no
+                # list, so only an admin could run a resolver in test
+                # mode while "run" itself could be given away.
+                'test',
             ]
 
 read_value_acls = {
@@ -102,6 +106,15 @@ commands = {
                     'args'              : ['parameter'],
                     'dargs'             : {'verify_acls':True},
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'show_config'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_config_parameters',
+                    'oargs'             : ['parameter'],
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -341,7 +354,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['owner_type', 'owner_name', 'acls', 'recursive_acls', 'apply_default_acls'],
                     'oargs'             : ['object_types'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
@@ -352,7 +366,8 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl'],
+                    'cache_update_interval' : 30,
+                    'args'              : ['acls'],
                     'oargs'             : ['recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
@@ -1952,7 +1967,10 @@ class Resolver(OTPmeObject):
 
         return result
 
-    @check_acls(['sync_interval'])
+    # "edit:sync_interval", which is what write_value_acls says. The
+    # bare name was in no list, so the ACL that can be given out did
+    # not reach the method that asks for it.
+    @check_acls(['edit:sync_interval'])
     @audit_log()
     @object_changelog("set sync interval to {sync_interval}")
     def set_sync_interval(

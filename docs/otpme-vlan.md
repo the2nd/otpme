@@ -122,10 +122,13 @@ Remove a token from the VLAN.
 **add_role *vlan* *role***  
 Add a role to the VLAN. Every token, host and device of the role is then
 in the VLAN, and so is every role nested in it, unless a VLAN names one
-of them more closely.
+of them more closely.  
+The role is looked for in the site of the VLAN, or written as
+*site***/***role* to take one from another site of the realm.
 
 **remove_role *vlan* *role***  
-Remove a role from the VLAN.
+Remove a role from the VLAN. A UUID is taken as well, which is how a
+reference to a role that is gone is cleared out.
 
 **add_host *vlan* *host***  
 Add a host to the VLAN. Used for MAB port authentication.
@@ -342,8 +345,8 @@ OTPme data directory
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-token**(1), **otpme-host**(1),
-**otpme-device**(1)
+**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-token**(1),
+**otpme-host**(1), **otpme-device**(1)
 
 # AUTHOR
 

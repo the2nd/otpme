@@ -174,7 +174,8 @@ def register():
     # Register cluster floating IP property.
     def cluster_ip_getter(self):
         try:
-            return config._cluster_ip.value
+            value = config._cluster_ip.value
+            return value
         except AttributeError:
             return False
     def cluster_ip_setter(self, new_status):
@@ -657,6 +658,7 @@ class ControlDaemon(UnixDaemon):
                     'backupd',
                     'confd',
                     #'idled',
+                    #'racd',
                     #'ldapd',
                     ]
 
@@ -675,6 +677,7 @@ class ControlDaemon(UnixDaemon):
             child_daemons["confd"] = {}
             #child_daemons["ldapd"] = {}
             #child_daemons["idled"] = {}
+            #child_daemons["racd"] = {}
 
         if config.host_data['type'] == "host":
             # Daemons we have to handle and its start order.
@@ -814,7 +817,7 @@ class ControlDaemon(UnixDaemon):
             log_msg = _("Failed to get shared bool: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
-        cluster_ip = "otpme-cluster-status"
+        cluster_ip = "otpme-cluster-ip"
         try:
             config._cluster_ip = multiprocessing.get_bool(cluster_ip,
                                                         random_name=False)
@@ -1267,6 +1270,7 @@ class ControlDaemon(UnixDaemon):
             from otpme.lib.daemon.fsd import FsDaemon
             from otpme.lib.daemon.ssod import SSODaemon
             from otpme.lib.daemon.idled import IdleDaemon
+            from otpme.lib.daemon.racd import RacDaemon
             from otpme.lib.daemon.httpd import HttpDaemon
             from otpme.lib.daemon.authd import AuthDaemon
             from otpme.lib.daemon.mgmtd import MgmtDaemon
@@ -1314,6 +1318,8 @@ class ControlDaemon(UnixDaemon):
             daemon_class = SSODaemon
         elif daemon_name == "idled":
             daemon_class = IdleDaemon
+        elif daemon_name == "racd":
+            daemon_class = RacDaemon
         elif daemon_name == "fsd":
             daemon_class = FsDaemon
         elif daemon_name == "backupd":
@@ -1400,6 +1406,7 @@ class ControlDaemon(UnixDaemon):
                     sender, \
                     ping_response, \
                     data = self.comm_handler.recv(sender=daemon_name,
+                                            command="pong",
                                             timeout=heartbeat_timeout)
                 except TimeoutReached:
                     ping_response = None
@@ -1410,19 +1417,17 @@ class ControlDaemon(UnixDaemon):
                     log_msg = log_msg.format(daemon=daemon_name, error_type=type(e))
                     self.logger.critical(log_msg, exc_info=True)
                     ping_response = None
-                # Check for heartbeat response.
+                # Check for heartbeat response. Nothing but the pong comes
+                # back here now, so a daemon that sends us something unasked
+                # while we are waiting no longer counts as one that answered
+                # wrongly -- and its message is not eaten either. What is
+                # left is the answer or nothing, and nothing is a retry.
                 if ping_response:
                     #if ping_response == "down":
                     #    return
                     #if ping_response == "quit":
                     #    return
-                    if ping_response == "pong":
-                        daemon_status = "ready"
-                    else:
-                        msg = _("Got wrong response to heartbeat packet from daemon '{daemon}': {response}")
-                        msg = msg.format(daemon=daemon_name, response=ping_response)
-                        raise OTPmeException(msg)
-                    self.childs[daemon_name]['status'] = daemon_status
+                    self.childs[daemon_name]['status'] = "ready"
                     return True
 
             if retry == retry_count:
@@ -1516,7 +1521,13 @@ class ControlDaemon(UnixDaemon):
                 self.start_daemon(daemon_name)
                 break
             try:
+                # Only the two answers this waits for, so a message the
+                # daemon sends unasked is not read and dropped here.
                 sender, response, data = self.comm_handler.recv(sender=daemon_name,
+                                                                command=[
+                                                                    "reload_shutdown",
+                                                                    "reload_done",
+                                                                    ],
                                                                 timeout=0.01)
             except TimeoutReached:
                 continue
@@ -1571,6 +1582,7 @@ class ControlDaemon(UnixDaemon):
             sender, \
             response, \
             data = self.comm_handler.recv(sender=daemon.name,
+                                        command="ready",
                                         timeout=startup_timeout)
         except Exception as e:
             log_msg = _("Error getting startup response from {daemon}: {error}", log=True)[1]

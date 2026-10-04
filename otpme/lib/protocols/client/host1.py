@@ -64,6 +64,21 @@ class OTPmeHostP1(OTPmeClient1):
             object_uuid = response
         return object_uuid
 
+    def get_host_public_key(self, object_uuid):
+        """ The key a host or node was joined with. """
+        public_key = None
+        command = "get_host_public_key"
+        command_args = {
+                        "object_uuid"   : object_uuid,
+                        }
+        status, \
+        status_code, \
+        response, \
+        binary_data = self.connection.send(command, command_args)
+        if status:
+            public_key = response
+        return public_key
+
     def object_exists(self, object_id):
         """ Check if object exists. """
         object_exists = False

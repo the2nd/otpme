@@ -25,7 +25,6 @@ from otpme.lib import cache
 from otpme.lib import config
 from otpme.lib import backup
 from otpme.lib import backend
-from otpme.lib import encryption
 from otpme.lib import jwt as _jwt
 from otpme.lib.humanize import units
 from otpme.lib import multiprocessing
@@ -354,7 +353,8 @@ class OTPmeMgmtP1(OTPmeServer1):
         return _method_args
 
     def start_job(self, name, target_method, args=None, _args=None, opt_args=None,
-        _opt_args=None, _dargs=None, command_args=None, thread=True, process=False):
+        _opt_args=None, _dargs=None, command_args=None, thread=True, process=False,
+        cache_update_interval=None):
         """ Start command as child process. """
         if args is None:
             args = {}
@@ -418,6 +418,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                     process=process,
                     timeout=job_timeout,
                     lock_wait_timeout=lock_wait_timeout,
+                    cache_update_interval=cache_update_interval,
                     _caller=_caller)
 
         if not config.use_api:
@@ -2199,7 +2200,11 @@ class OTPmeMgmtP1(OTPmeServer1):
                     status = False
                     message = _("Object config misses encryption key salt.")
                     return self.build_response(status, message)
-                x = encryption.derive_key(password, salt=key_salt,
+                # Through the module that will do the decrypting, the
+                # same way export_config derives it. The generic hash
+                # hands out a hex string, which is no key for FERNET.
+                x = config.disk_encryption_mod.derive_key(password,
+                            salt=key_salt,
                             hash_type=config.object_export_hash_type)
                 aes_key = x['key']
             if key_salt:
@@ -2208,11 +2213,21 @@ class OTPmeMgmtP1(OTPmeServer1):
                     message = _("Object config is encrypted. Use --password.")
                     return self.build_response(status, message)
 
-            opt_args = {}
-            args = {
-                'aes_key'       : aes_key,
-                'object_id'     : object_id,
-                'object_config' : object_config,
+            # Named in the lists as well, and not only put in the
+            # dicts: the arguments of a job are picked out by name, and
+            # a value that is only in args or opt_args is never passed
+            # on (get_method_args). Without the lists, import_config()
+            # was called with no object_config at all.
+            #
+            # args is the fallback for what the method must have,
+            # opt_args for what it may have -- an optional argument
+            # that sits in args is skipped there on purpose.
+            _args = ['object_config']
+            _opt_args = ['object_id', 'aes_key']
+            args = {'object_config' : object_config}
+            opt_args = {
+                'object_id' : object_id,
+                'aes_key'   : aes_key,
             }
 
             try:
@@ -2220,6 +2235,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 response = self.start_job(name="import_object",
                                     target_method=backend.import_config,
                                     args=args, opt_args=opt_args,
+                                    _args=_args, _opt_args=_opt_args,
                                     command_args=command_args,
                                     process=True,
                                     thread=False)
@@ -2661,20 +2677,23 @@ class OTPmeMgmtP1(OTPmeServer1):
     # --------------------------------------------------------------------
 
     def _cmd_get_share(self, subcommand, command_args):
+        from otpme.lib import stuff
         try:
             share_id = command_args['share_id']
         except KeyError:
             return self.build_response(False, "Missing <share_id>")
+        # A client may leave the realm out of the ID, then it is ours.
         try:
-            share_site = share_id.split("/")[0]
-            share_name = share_id.split("/")[1]
+            share_realm, \
+            share_site, \
+            share_name = stuff.split_share_id(share_id)
         except Exception:
             response = _("Invalid share id: {id}").format(id=share_id)
             return self.build_response(False, response)
         result = backend.search(object_type="share",
                                 attribute="name",
                                 value=share_name,
-                                realm=config.realm,
+                                realm=share_realm,
                                 site=share_site,
                                 return_type="instance")
         if not result:
@@ -3330,7 +3349,14 @@ class OTPmeMgmtP1(OTPmeServer1):
         except Exception:
             command_method = None
 
-        if object_name and not command_method:
+        if object_name and not command_method and object_status != "failure":
+            # Not on "failure": the lookup of the object already said
+            # what was wrong with it, and there is no command for that
+            # status -- so what follows would call every one of those a
+            # command nobody knows. A name that cannot be a name is the
+            # one that got here most often ("MGMT_INVALID_OBJECT_NAME:
+            # yubikey-" turned into "MGMT_UNKNOWN_COMMAND: token sign"),
+            # and whoever reads that goes looking for the command.
             try:
                 _test = command_map[x_type][object_status]
             except Exception:
@@ -3385,6 +3411,16 @@ class OTPmeMgmtP1(OTPmeServer1):
             except Exception:
                 job_type = command_map[object_type][object_status][subcommand]['job_type']
 
+            # A command that can live with objects a few seconds behind
+            # says so here. See OTPmeJob.start_job().
+            try:
+                job_cache_interval = command_map[x_type][object_status][subcommand]['cache_update_interval']
+            except Exception:
+                try:
+                    job_cache_interval = command_map[object_type][object_status][subcommand]['cache_update_interval']
+                except Exception:
+                    job_cache_interval = None
+
             if job_type == "thread":
                 job_thread = True
                 job_process = False
@@ -3438,7 +3474,8 @@ class OTPmeMgmtP1(OTPmeServer1):
                                         _dargs=_dargs,
                                         command_args=command_args,
                                         process=job_process,
-                                        thread=job_thread)
+                                        thread=job_thread,
+                                        cache_update_interval=job_cache_interval)
                 except Exception as e:
                     response = _("Error running command: {cmd}: {error}")
                     response = response.format(cmd=subcommand, error=e)

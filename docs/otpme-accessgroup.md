@@ -496,7 +496,7 @@ OTPme data directory
 
 # SEE ALSO
 
-**otpme**(7), **otpme-client**(1), **otpme-host**(1),
+**otpme**(7), **otpme-acls**(7), **otpme-client**(1), **otpme-host**(1),
 **otpme-token**(1), **otpme-role**(1), **otpme-vlan**(1),
 **otpme-policy**(1)
 

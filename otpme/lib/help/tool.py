@@ -60,14 +60,25 @@ cmd_help = {
                 },
 
     'add_signer'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool add_signer [--private] [--no-pin] [--no-verify-token-opts] [--tag <tag1> --tag <tag2> ...] --signer-type {signer_type} {object_id}'),
-                    'cmd'   :   '--private :private=True: --no-pin :pin=false: --no-verify-token-opts :verify_token_opts=false: --tag :+tags+: --signer-type ::signer_type:: <object_oid>',
+                    '_cmd_usage_help' : _('Usage: otpme-tool add_signer [--private] [--no-pin] [--no-verify-token-opts] [--allow-throwaway-key] [--tag <tag1> --tag <tag2> ...] --signer-type {signer_type} {object_id}'),
+                    'cmd'   :   '--private :private=True: --no-pin :pin=false: --no-verify-token-opts :verify_token_opts=false: --allow-throwaway-key :allow_throwaway_key=True: --tag :+tags+: --signer-type ::signer_type:: <object_oid>',
                     '_help' :   {
                                     'cmd'                   : _('Add signer.'),
                                     '--signer-type <type>'  : _('Add signer of type <type>.'),
                                     '--no-pin'              : _('Do not pin signature keys.'),
                                     '--no-verify-token-opts': _('Do not require the signature to include the token options (e.g. command=) the SSH key is used with.'),
+                                    '--allow-throwaway-key' : _('Only for remote_access: let this signer ask for a shell on a key the job brings along.'),
                                     '--private'             : _('Add signer for the logged in user.'),
+                                },
+                },
+
+
+    'update_host_keys'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-tool update_host_keys [--list] [host]'),
+                    'cmd'   :   '--list :list_only=True: [host_name]',
+                    '_help' :   {
+                                    'cmd'                   : _('Take over the public keys of hosts that changed.'),
+                                    '--list'                : _('Only show what changed, change nothing.'),
                                 },
                 },
 
@@ -104,14 +115,18 @@ cmd_help = {
                 },
 
     'update_signer'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool update_signer [--private] [--no-pin] [--remove-gone] [--signer-type <signer_type>] [signer_uuid]'),
-                    'cmd'   :   '--private :private=True: --no-pin :pin=false: --remove-gone :remove_gone=True: --signer-type :signer_type: [signer_uuid]',
+                    '_cmd_usage_help' : _('Usage: otpme-tool update_signer [--private] [--no-pin] [--remove-gone] [--verify-token-opts|--no-verify-token-opts] [--allow-throwaway-key|--no-throwaway-key] [--signer-type <signer_type>] [signer_uuid]'),
+                    'cmd'   :   '--private :private=True: --no-pin :pin=false: --remove-gone :remove_gone=True: --verify-token-opts :verify_token_opts=True: --no-verify-token-opts :verify_token_opts=false: --allow-throwaway-key :allow_throwaway_key=True: --no-throwaway-key :allow_throwaway_key=false: --signer-type :signer_type: [signer_uuid]',
                     '_help' :   {
                                     'cmd'                   : _('Update signer.'),
                                     '--no-pin'              : _('Do not pin signature keys.'),
                                     '--private'             : _('Update signer of the logged in user.'),
                                     '--signer-type <type>'  : _('Update every signer of this type instead of one.'),
                                     '--remove-gone'         : _('Drop signers that are not there anymore: the user was deleted, or is no longer in the role. Without this they are kept, so what they signed still validates.'),
+                                    '--verify-token-opts'   : _('Require the signature to include the token options the SSH key is used with. Left as it is when neither this nor --no-verify-token-opts is given.'),
+                                    '--no-verify-token-opts': _('Do not require it.'),
+                                    '--allow-throwaway-key' : _('Only for remote_access: let this signer ask for a shell on a key the job brings along.'),
+                                    '--no-throwaway-key'    : _('Take that permission away again.'),
                                 },
                 },
 
@@ -460,6 +475,13 @@ cmd_help = {
                                 },
                 },
 
+    'host_who'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-tool host_who'),
+                    '_help' :   {
+                                    'cmd'                   : _('Show hosts waiting for jobs'),
+                                },
+                },
+
     'whoami'    : {
                     '_cmd_usage_help' : _('Usage: otpme-tool whoami'),
                     '_help' :   {
@@ -521,6 +543,35 @@ cmd_help = {
                     'cmd'   :   '--site :site:',
                     '_help' :   {
                                     'cmd'                   : _('Get a SOTP for logged in user'),
+                                },
+                },
+
+    'get_private_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-tool get_private_key --role {sign|encrypt} [--decrypted]'),
+                    'cmd'   :   '--role :key_role: --decrypted :decrypted=True:',
+                    '_help' :   {
+                                    'cmd'                   : _('Get a private key of the logged in user from otpme-agent.'),
+                                    '--role <role>'         : _('Which key: sign or encrypt.'),
+                                    '--decrypted'           : _('Ask for the unwrapped key instead of the one wrapped with the key password.'),
+                                },
+                },
+
+    'add_private_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-tool add_private_key --role {sign|encrypt} [--decrypted]'),
+                    'cmd'   :   '--role :key_role: --decrypted :decrypted=True:',
+                    '_help' :   {
+                                    'cmd'                   : _('Add a private key of the logged in user to otpme-agent. The key is read from stdin.'),
+                                    '--role <role>'         : _('Which key: sign or encrypt.'),
+                                    '--decrypted'           : _('The key is unwrapped. It is kept for the users key cache time.'),
+                                },
+                },
+
+    'del_private_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-tool del_private_key --role {sign|encrypt}'),
+                    'cmd'   :   '--role :key_role:',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove a private key of the logged in user from otpme-agent. Both the wrapped and the unwrapped one.'),
+                                    '--role <role>'         : _('Which key: sign or encrypt.'),
                                 },
                 },
 

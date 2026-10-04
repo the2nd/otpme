@@ -59,9 +59,11 @@ REGISTER_AFTER = [
 HOST_INVENTORY_DIR = os.path.join(config.data_dir, "data", "host_inventory")
 
 # The hardware fields that go into the index, by the name they get
-# there. The rest of the hardware is read off the object: an index
-# attribute is something to search by, and nobody searches for a BIOS
-# date.
+# there. Every value a host reports is in here, because every one of
+# them is a reason to look for a machine: the board by its vendor when
+# a series turns out to be faulty, the BIOS by its date when a version
+# has to go. One entry per host and field, and a host reports a dozen
+# values, so what this costs is what it is worth.
 #
 # A disk is two values. "hw_disk" is "<name>=<size>", which lists and
 # matches like a package; "hw_disk_size" is the size on its own,
@@ -73,19 +75,50 @@ HARDWARE_INDEX_FIELDS = {
                     'serial'        : "hw_serial",
                     'asset_tag'     : "hw_asset_tag",
                     'sku'           : "hw_sku",
+                    'board_vendor'  : "hw_board_vendor",
+                    'board_model'   : "hw_board_model",
+                    'board_serial'  : "hw_board_serial",
                     'cpu_model'     : "hw_cpu_model",
                     'cpu_count'     : "hw_cpu_count",
                     'memory'        : "hw_memory",
+                    'bios_vendor'   : "hw_bios_vendor",
                     'bios_version'  : "hw_bios_version",
+                    'bios_date'     : "hw_bios_date",
                     'chassis_type'  : "hw_chassis_type",
                     'virtual'       : "hw_virtual",
                     'virt_type'     : "hw_virt_type",
                     }
 HARDWARE_DISK_ATTRIBUTE = "hw_disk"
 HARDWARE_DISK_SIZE_ATTRIBUTE = "hw_disk_size"
+# The serial of a disk, on its own: it is what a disk is called on the
+# sticker and in a support case, and a search for one has to find the
+# host it sits in without knowing which one that is.
+HARDWARE_DISK_SERIAL_ATTRIBUTE = "hw_disk_serial"
+# Who made the disk and what it is called. A whole series of a model
+# can turn out to be faulty, and then the question is which hosts have
+# one, not which host has one particular disk.
+HARDWARE_DISK_VENDOR_ATTRIBUTE = "hw_disk_vendor"
+HARDWARE_DISK_MODEL_ATTRIBUTE = "hw_disk_model"
+# A storage controller, by everything it is called: its PCI address,
+# its vendor, the name on the card and the name of the chip on it.
+# One attribute for all of them, because whoever looks for a controller
+# has one of those names and not a particular one.
+HARDWARE_CONTROLLER_ATTRIBUTE = "hw_controller"
+HARDWARE_CONTROLLER_FIELDS = ["address", "vendor", "model", "chip"]
+# A network card, the same way, by the name the kernel gave it, its
+# MAC and what the card is. The MAC above all: it is what a DHCP lease
+# and a switch port know a host by, and the question then is which host
+# that is.
+HARDWARE_NIC_ATTRIBUTE = "hw_nic"
+HARDWARE_NIC_FIELDS = ["name", "mac", "vendor", "model", "chip"]
 HARDWARE_INDEX_ATTRIBUTES = sorted(set(HARDWARE_INDEX_FIELDS.values())
                                 | {HARDWARE_DISK_ATTRIBUTE,
-                                    HARDWARE_DISK_SIZE_ATTRIBUTE})
+                                    HARDWARE_DISK_SIZE_ATTRIBUTE,
+                                    HARDWARE_DISK_SERIAL_ATTRIBUTE,
+                                    HARDWARE_DISK_VENDOR_ATTRIBUTE,
+                                    HARDWARE_DISK_MODEL_ATTRIBUTE,
+                                    HARDWARE_CONTROLLER_ATTRIBUTE,
+                                    HARDWARE_NIC_ATTRIBUTE})
 
 def register():
     register_oid()
@@ -116,6 +149,92 @@ def register_config_params():
                                                 'host',
                                                 'node',
                                                 ])
+    # Who may read the inventory of a host of another site. Only on the
+    # site that keeps it, and only for hosts that are not its own.
+    #
+    # A host of another site brings its allow_inventory with it, at the
+    # host, its unit and its site of origin, and that is what decides
+    # while this is unset. Whoever runs a central inventory can take the
+    # decision over by setting this, and then the site that keeps the
+    # data says who reads it. Both are wanted, so this one wins where it
+    # is set and falls back to the other where it is not.
+    config.register_config_parameter(name="allow_foreign_inventory",
+                                    ctype=list,
+                                    warn_if_exists=True,
+                                    setter=token_role_list_setter,
+                                    getter=token_role_list_getter,
+                                    object_types=['site'])
+    def site_setter(site_name, **kwargs):
+        result = backend.search(object_type="site",
+                                attribute="name",
+                                value=site_name,
+                                realm=config.realm,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown site: {site_name}")
+            msg = msg.format(site_name=site_name)
+            raise ValueError(msg)
+        return result[0].uuid
+    def site_getter(site_uuid, **kwargs):
+        result = backend.search(object_type="site",
+                                attribute="uuid",
+                                value=site_uuid,
+                                return_type="name")
+        if not result:
+            msg = _("Unknown site: {site_uuid}")
+            msg = msg.format(site_uuid=site_uuid)
+            raise ValueError(msg)
+        return result[0]
+    # Where a host reports its inventory. Unset means the site the host
+    # belongs to, which is where it went before there was a choice.
+    #
+    # For a realm that wants one place to ask "which machines do we
+    # have": the inventory object is flat and keyed by the host UUID, so
+    # it can be kept anywhere, and the site it is kept in is the site
+    # that answers otpme-inventory.
+    #
+    # The site named here has to take it, see inventory_trusts.
+    config.register_config_parameter(name="inventory_site",
+                                    ctype=str,
+                                    warn_if_exists=True,
+                                    setter=site_setter,
+                                    getter=site_getter,
+                                    object_types=[
+                                                'site',
+                                                'unit',
+                                                'host',
+                                                'node',
+                                                ])
+    def sites_setter(site_names, **kwargs):
+        if isinstance(site_names, str):
+            site_names = site_names.split(",")
+        site_uuids = []
+        for x_name in site_names:
+            x_name = x_name.strip()
+            if not x_name:
+                continue
+            x_uuid = site_setter(x_name)
+            if x_uuid in site_uuids:
+                continue
+            site_uuids.append(x_uuid)
+        return site_uuids
+    def sites_getter(site_uuids, **kwargs):
+        if isinstance(site_uuids, str):
+            site_uuids = site_uuids.split(",")
+        return [site_getter(x) for x in site_uuids]
+    # The sites whose hosts may report their inventory to us. Unset
+    # means none: a host of another site is refused, the way every host
+    # of another site was refused before.
+    #
+    # Said here and not only at the sending end, because a host saying
+    # where it wants to report is not the same as a site agreeing to
+    # keep it.
+    config.register_config_parameter(name="inventory_trusts",
+                                    ctype=list,
+                                    warn_if_exists=True,
+                                    setter=sites_setter,
+                                    getter=sites_getter,
+                                    object_types=['site'])
 
 def register_oid():
     full_oid_schema = [ 'realm', 'site', 'host_uuid' ]
@@ -263,8 +382,17 @@ def register_backend():
                                     object_types=inventory_types)
     config.register_index_attribute('package', sync=[],
                                     object_types=inventory_types)
-    # The hardware, one attribute per field. Only what is worth
-    # searching, the rest is read off the object.
+    # The system the host runs. Here and not on the host object: it is
+    # what the host reported about itself, like its packages and its
+    # hardware, and an inventory has to stand on its own where it is
+    # reported to a site other than the one the host belongs to.
+    config.register_index_attribute('os', sync=[],
+                                    object_types=inventory_types)
+    config.register_index_attribute('os_version', sync=[],
+                                    object_types=inventory_types)
+    # The hardware, one attribute per field, and every field a host
+    # reports: what "otpme-inventory hardware" shows is what
+    # "otpme-inventory search --hardware" finds.
     for x_attribute in HARDWARE_INDEX_ATTRIBUTES:
         config.register_index_attribute(x_attribute, sync=[],
                                         object_types=inventory_types)
@@ -371,15 +499,61 @@ class HostInventory(OTPmeDataObject):
             self.add_index("package", f"{name}={version}")
         self.touch_inventory()
 
+    def _get_index_value(self, key):
+        """ The one value of an index attribute, or None. """
+        values = self.get_index(key)
+        if not values:
+            return None
+        return values[0]
+
+    @property
+    def os(self):
+        """ The operating system of the host (e.g. Linux). """
+        return self._get_index_value("os")
+
+    @property
+    def os_version(self):
+        """ The name and version of the system (e.g. debian-13). """
+        return self._get_index_value("os_version")
+
+    def update_os(self, os_name=None, os_version=None):
+        """ Take what the host reported about its system.
+
+        Answers whether anything changed, so the caller only writes
+        where there is something to write.
+        """
+        changed = False
+        if os_name is not None and os_name != self.os:
+            self.update_index("os", os_name)
+            changed = True
+        if os_version is not None and os_version != self.os_version:
+            self.update_index("os_version", os_version)
+            changed = True
+        if changed:
+            self.touch_inventory()
+        return changed
+
     def update_hardware(self, hardware):
         """ Replace the hardware. Written by the caller.
 
         Whole, not by difference: it is a dozen values, and a host that
-        got a second disk says so by sending all of them again. What is
-        worth searching goes into the index as well, the rest stays in
-        the object.
+        got a second disk says so by sending all of them again.
         """
-        hardware = dict(hardware or {})
+        self.hardware = dict(hardware or {})
+        self.update_hardware_index()
+        self.touch_inventory()
+
+    def update_hardware_index(self):
+        """ Build the index of the hardware we hold.
+
+        Apart from update_hardware(), which is what a host reporting
+        leads to, because this says nothing about when it last did: an
+        index that has to be built again after a field was added to
+        HARDWARE_INDEX_FIELDS is our doing and not the hosts', and
+        last_inventory_update must go on saying when the host was last
+        heard from (migrate_hardware_index.py).
+        """
+        hardware = self.hardware or {}
         for index_attribute in HARDWARE_INDEX_ATTRIBUTES:
             self.del_index(index_attribute)
         for name, index_attribute in HARDWARE_INDEX_FIELDS.items():
@@ -394,8 +568,29 @@ class HostInventory(OTPmeDataObject):
                 continue
             self.add_index(HARDWARE_DISK_ATTRIBUTE, f"{disk_name}={disk_size}")
             self.add_index(HARDWARE_DISK_SIZE_ATTRIBUTE, disk_size)
-        self.hardware = hardware
-        self.touch_inventory()
+            disk_index_fields = {
+                        HARDWARE_DISK_SERIAL_ATTRIBUTE  : "serial",
+                        HARDWARE_DISK_VENDOR_ATTRIBUTE  : "vendor",
+                        HARDWARE_DISK_MODEL_ATTRIBUTE   : "model",
+                        }
+            for index_attribute, name in disk_index_fields.items():
+                value = disk.get(name)
+                if not value:
+                    continue
+                self.add_index(index_attribute, value)
+        devices = (
+                (HARDWARE_CONTROLLER_ATTRIBUTE, HARDWARE_CONTROLLER_FIELDS,
+                    hardware.get("controllers") or []),
+                (HARDWARE_NIC_ATTRIBUTE, HARDWARE_NIC_FIELDS,
+                    hardware.get("nics") or []),
+                )
+        for index_attribute, fields, entries in devices:
+            for entry in entries:
+                for name in fields:
+                    value = entry.get(name)
+                    if not value:
+                        continue
+                    self.add_index(index_attribute, value)
 
     def touch_inventory(self):
         """ Note that the host reported just now. """
