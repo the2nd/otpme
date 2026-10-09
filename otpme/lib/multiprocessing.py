@@ -291,6 +291,21 @@ def signal_handler(_signal, frame):
     that stopped the realm, and went on running with its parent gone --
     hostd's wait_for_news collected one orphan per run that way, each
     of them retrying a connection to a site nobody was listening on.
+
+    What register_at_exit() collected does deliberately not run here.
+    _hard_exit() runs it, this does not: the one thing in it that would
+    have an effect is close_connections(), and that sends a quit, shuts
+    the socket down and waits for the TLS close_notify of the peer --
+    no timeout on that wait, which is the hang hard_exit exists to
+    avoid, and a close with unread data in it costs data in both
+    directions. The other two give back what the kernel gives back
+    anyway (locking.cleanup closes fds) or belong to a tool whose parent
+    dies with it (the mass login worker).
+
+    So anything that has to survive a process being killed cannot rely
+    on being told. It has to be built so that nobody needs to clean up:
+    an flock, which the kernel gives back by itself, is how the pidfiles
+    do it (lib/pidfile.py).
     """
     from otpme.lib import config
     if _signal not in (signal.SIGTERM, signal.SIGINT):
@@ -1309,11 +1324,23 @@ class InterProcessQueue(object):
             if command is None or x_command in command:
                 return x_sender, x_command, x_data
             self.queue_message(recipient, x_sender, x_command, x_data)
+        # The timeout is for the message we are waiting for, not for
+        # each try. A message that is not ours goes back into the queue
+        # and we ask again, and without a deadline that wait would start
+        # over every time -- a caller that asked for a second would wait
+        # as long as anybody keeps sending.
+        deadline = None
+        if timeout is not None:
+            deadline = time.monotonic() + timeout
         while True:
             # Get queue.
             queue = self.get_queue(recipient)
+            if deadline is None:
+                time_left = None
+            else:
+                time_left = max(deadline - time.monotonic(), 0)
             # Try to get message from queue.
-            message = queue.recv(timeout=timeout)
+            message = queue.recv(timeout=time_left)
             # Decode message.
             try:
                 _sender, _command, data = self.decode_message(message)

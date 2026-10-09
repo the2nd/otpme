@@ -1055,21 +1055,52 @@ class ListenSocket(object):
 
             # Start child process to handle new connection.
             if self.conn_handling == "multiprocessing":
-                try:
-                    p = multiprocessing.start_process(name=self.name,
-                                    target=self.handle_connection,
-                                    target_args=(new_connection,
-                                                client,
-                                                self.connection_handler),
-                                    hard_exit=True,
-                                    join=False)
-                except Exception as e:
-                    log_msg = _("Failed to start connection handler: {e}", log=True)[1]
-                    log_msg = log_msg.format(e=e)
-                    self.logger.warning(log_msg)
-                else:
-                    # Add process to dict.
-                    self.add_connection_proc(client, p)
+                p = None
+                for attempt in (1, 2):
+                    try:
+                        p = multiprocessing.start_process(name=self.name,
+                                        target=self.handle_connection,
+                                        target_args=(new_connection,
+                                                    client,
+                                                    self.connection_handler),
+                                        hard_exit=True,
+                                        join=False)
+                    except AttributeError as e:
+                        # Process.start() begins with _cleanup(), which
+                        # walks multiprocessing's set of children and
+                        # asks each one p._popen.poll() without looking
+                        # whether it has one. A process that is being
+                        # closed next to us has none for the moment
+                        # between "_popen = None" and leaving that set
+                        # (Process.close(), three statements apart), and
+                        # close_conn_procs() does exactly that in a
+                        # thread of its own. The set is consistent again
+                        # right afterwards, so trying once more costs a
+                        # moment and saves this connection -- without it
+                        # the client is simply dropped.
+                        #
+                        # Trying again cannot leave a process behind:
+                        # _cleanup() runs before the fork, so nothing
+                        # was started when this is raised.
+                        if attempt == 1:
+                            log_msg = _("Retrying connection handler for '{client}': {e}", log=True)[1]
+                            log_msg = log_msg.format(client=client, e=e)
+                            self.logger.warning(log_msg)
+                            continue
+                        log_msg = _("Failed to start connection handler: {e}", log=True)[1]
+                        log_msg = log_msg.format(e=e)
+                        self.logger.warning(log_msg, exc_info=True)
+                    except Exception as e:
+                        # With the traceback: this is not a failure we
+                        # know the shape of, and the message alone sent
+                        # somebody looking for an hour.
+                        log_msg = _("Failed to start connection handler: {e}", log=True)[1]
+                        log_msg = log_msg.format(e=e)
+                        self.logger.warning(log_msg, exc_info=True)
+                    else:
+                        # Add process to dict.
+                        self.add_connection_proc(client, p)
+                    break
                 # Close connection in parent process to avoid file descriptor leak.
                 new_connection.close()
             else:
@@ -1083,7 +1114,17 @@ class ListenSocket(object):
                 except Exception as e:
                     log_msg = _("Failed to start connection handler: {e}", log=True)[1]
                     log_msg = log_msg.format(e=e)
-                    self.logger.warning(log_msg)
+                    self.logger.warning(log_msg, exc_info=True)
+                    # Nobody is going to serve it, and nobody else
+                    # closes it here -- unlike the branch above, where
+                    # the parent closes its copy either way.
+                    try:
+                        new_connection.close()
+                    except Exception as close_error:
+                        log_msg = _("Failed to close connection of '{client}': {error}", log=True)[1]
+                        log_msg = log_msg.format(client=client,
+                                                error=close_error)
+                        self.logger.warning(log_msg)
                 else:
                     # Add process to dict.
                     self.add_connection_proc(client, p)

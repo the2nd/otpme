@@ -38,6 +38,7 @@ METHOD_CODES = {
     'listxattr': 25,
     'removexattr': 26,
     'mount': 27,
+    'fsync': 29,
 }
 
 # Reverse mapping for decoding
@@ -303,6 +304,13 @@ def encode_truncate(path: str, length: int) -> bytes:
     packet += struct.pack('!I', length)
     return packet
 
+def encode_fsync(path: str, datasync: int) -> bytes:
+    """Encode fsync method call"""
+    packet = struct.pack('!B', METHOD_CODES['fsync'])
+    packet += _encode_string(path)
+    packet += struct.pack('!B', 1 if datasync else 0)
+    return packet
+
 def encode_unlink(path: str) -> bytes:
     """Encode unlink method call"""
     packet = struct.pack('!B', METHOD_CODES['unlink'])
@@ -526,6 +534,16 @@ def decode_truncate(data: bytes) -> dict:
         raise ValueError(f"Failed to unpack truncate: {e}") from e
     return {'path': path, 'length': length}
 
+def decode_fsync(data: bytes) -> dict:
+    """Decode fsync method call"""
+    offset = 1  # Skip method code
+    path, offset = _decode_string(data, offset)
+    try:
+        datasync = struct.unpack('!B', data[offset:offset+1])[0]
+    except struct.error as e:
+        raise ValueError(f"Failed to unpack fsync: {e}") from e
+    return {'path': path, 'datasync': datasync}
+
 def decode_unlink(data: bytes) -> dict:
     """Decode unlink method call"""
     offset = 1  # Skip method code
@@ -620,6 +638,7 @@ ENCODE_FUNCTIONS = {
     'link': encode_link,
     'symlink': encode_symlink,
     'truncate': encode_truncate,
+    'fsync': encode_fsync,
     'unlink': encode_unlink,
     'utimens': encode_utimens,
     'exists': encode_exists,
@@ -652,6 +671,7 @@ DECODE_FUNCTIONS = {
     METHOD_CODES['link']: decode_link,
     METHOD_CODES['symlink']: decode_symlink,
     METHOD_CODES['truncate']: decode_truncate,
+    METHOD_CODES['fsync']: decode_fsync,
     METHOD_CODES['unlink']: decode_unlink,
     METHOD_CODES['utimens']: decode_utimens,
     METHOD_CODES['exists']: decode_exists,

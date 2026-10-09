@@ -103,6 +103,18 @@ Object types: site, unit, node, share
 Backup interval (accepts human-readable time values, e.g. 1h, 1D).  
 Object types: site, unit, node, share
 
+**backup_retry_interval (int, default: 5m)**  
+How long to wait before trying again when another backup, a restore or a
+repack holds the repository (accepts human-readable time values, e.g.
+5m).  
+Object types: site, unit, node, share
+
+**backup_retry_count (int, default: 12)**  
+How many more times to try when the repository is in use. The tries end
+with the backup window in any case. With 0 a backup does not wait, and a
+repository in use makes it fail.  
+Object types: site, unit, node, share
+
 **backup_key (str)**  
 AES key (64-character hex string) for encrypting backups. Automatically
 generated if not set.  

@@ -158,9 +158,11 @@ def get_logger(log_name, level, syslog=False, syslog_address="/dev/log",
         unknown_loglevel = level
         level = "INFO"
 
-    # Get PID if needed.
-    if pid is True:
-        pid = os.getpid()
+    # pid=True means "the process that writes the line", and that is
+    # worked out per line further down. A pid given as a number is
+    # somebody naming one specific process, and that one goes into the
+    # banner as it is.
+    dynamic_pid = pid is True
 
     # Use given banner or set one.
     if banner is True:
@@ -174,16 +176,30 @@ def get_logger(log_name, level, syslog=False, syslog_address="/dev/log",
 
     if log_banner:
         # Add PID to banner if given.
+        #
+        # A pid of our own cannot go into the banner: the banner is
+        # built once, and everything forked after that keeps the pid of
+        # the process that built it. A shutdown traceback from a child
+        # then reads as if its parent had written it -- which is how an
+        # hour went into reading one log. %(process)d is filled in by
+        # logging for every record, so it goes into the format.
+        pid_in_format = False
         if pid and not syslog:
-            log_banner = f"{log_banner}[{pid}]"
+            if dynamic_pid:
+                pid_in_format = True
+            else:
+                log_banner = f"{log_banner}[{pid}]"
 
-        # Add colon to banner.
-        log_banner = f"{log_banner}:"
+        # The banner, with the colon that follows it.
+        if pid_in_format:
+            banner_part = '%(log_banner)s[%(process)d]:'
+        else:
+            banner_part = '%(log_banner)s:'
 
         # Logformat without date.
-        LOG_FORMAT = '%(log_banner)s %(levelname)s: %(message)s'
+        LOG_FORMAT = banner_part + ' %(levelname)s: %(message)s'
         # Logformat with date.
-        LOG_FORMAT_DATE = '%(asctime)s %(log_banner)s %(levelname)s: %(message)s'
+        LOG_FORMAT_DATE = '%(asctime)s ' + banner_part + ' %(levelname)s: %(message)s'
     else:
         # Logformat without date.
         LOG_FORMAT = '%(levelname)s: %(message)s'

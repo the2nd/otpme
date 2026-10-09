@@ -1185,6 +1185,9 @@ class ConfDaemon(OTPmeDaemon):
                         if now >= self.next_job_check:
                             self.next_job_check = None
                             check_jobs = True
+                    if config.host_type == "node":
+                        if not config.cluster_status:
+                            check_jobs = False
                     if check_jobs:
                         try:
                             self.process_jobs()

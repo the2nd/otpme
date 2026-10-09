@@ -621,6 +621,11 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 message = message.format(repository=self.repository, root_dir=self.backup_root)
                 return self.build_response(status, message)
             self.backup_handler = BackupServer(self.backup_root)
+            # Retention, gc and repack walk every block of a repository
+            # and can take hours. They say so while they work, so the
+            # client does not have to sit out the whole thing on one
+            # read, see OTPmeServer1.send_keepalive().
+            self.backup_handler.progress = self.send_keepalive
             self.set_proctitle(self.repository, action="open")
             message = _("Repository openend.")
             return self.build_response(status, message)
@@ -1323,6 +1328,17 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 self.backup_handler.lock_repo()
                 self.backup_handler.load_pack_index()
                 message = _("Repository locked.")
+            except ObjectLocked as e:
+                # Its own status code: somebody else is in the
+                # repository, which is not a failure of this backup but
+                # a reason to come back later. backupd does exactly
+                # that, see BackupDaemon.start_backup(). Only this
+                # command says it -- a lock the repository takes in the
+                # middle of another command (apply_retention, say) comes
+                # back as a plain error, because repeating that command
+                # is not the same thing as repeating the backup.
+                status = status_codes.BACKUP_REPO_LOCKED
+                message = str(e)
             except Exception as e:
                 status = False
                 message = str(e)

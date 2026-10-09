@@ -164,14 +164,30 @@ A host carries up to 8 sessions at the same time.
 .PP
 So two people can have a shell on the same host, and a package can be installed while somebody is logged in.
 .SS Which node you meet at
-Both sides meet at the master node of your site.
-They reach it over the management address of the site, which is the floating IP of the master.
+Both sides meet at the master node of the site of the host.
+They reach it over the management address of that site, which is the floating IP of its master.
 .PP
 The daemon that brings them together is \fBracd\fR, on port 2031.
 It runs on the master node and nowhere else: it is started when a node takes the master role and stopped when it loses it.
 Both sides need to reach that address.
 .PP
 There is nothing to choose here, so there is no option for it.
+.SS A host in another site
+Name the site with the global option \fB\-s\fR:
+.PP
+.RS
+.B otpme\-shell \-s \fIsite host\fR
+.RE
+.PP
+That one option moves the whole command to that site.
+The job is made by the management daemon there, because that is where the connection goes, and only the nodes of a site hand a job to a host of that site.
+The host is looked up there as well, and both sides meet at the master of that site.
+.PP
+Nothing else changes.
+The job is signed with your key here, and the host holds the signature against the signers it has \(em so the host needs a signer for you (\fBotpme\-tool add_signer\fR), the same as a host of your own site.
+The two sides show each other a certificate, and those are good across the realm: a host trusts the CA of the realm and the CA of every site in it.
+.PP
+Without \fB\-s\fR the command works against your own site, so a host of another site is not found there.
 .PP
 An open session holds the master failover off while it lasts.
 So a shell that is left open overnight keeps the master role where it is.
@@ -238,6 +254,9 @@ A root shell on client1.
 A shell as alice.
 Uses the keys of alice on that host.
 .TP
+.B otpme-shell \-s munich client2
+A root shell on \fBclient2\fR, which is a host of site \fBmunich\fR.
+.TP
 .B otpme-shell \-\-command 'systemctl status otpme' client1
 Run one command and print what it says.
 .TP
@@ -261,6 +280,28 @@ Written by \fBhostd\fR from the SSH tokens of the realm.
 The log of one session, on the host.
 Never what was said in the session.
 .SH NOTES
+A session is written into the login history of the host, so
+.BR last (1)
+there shows it like any other login:
+.PP
+.RS
+.nf
+root  pts/3  otpme/edfc63d5  Thu Oct  8 15:53  still logged in
+.fi
+.RE
+.PP
+The origin names the job, and the job names the rest: who asked for the shell, which key got in and when it was signed (\fBotpme\-deploy show \fIuuid\fR).
+.PP
+While it runs \fBlast\fR says \fBstill logged in\fR, because the record names the process of the shell and that one is still there.
+A session whose end was never written \(em one that was cut off hard \(em shows as \fBgone \- no logout\fR.
+.PP
+The shell is a login session of that user for the kernel as well, the same as a login over
+.BR ssh (1).
+So the audit of the host puts what happens in the session under the user the shell runs as, and not under the daemon that started it.
+.PP
+It is not in \fBwho\fR(1).
+That reads another file, one in which a record has to be found and replaced rather than appended, and which every other login on the host writes too.
+.PP
 The size of your terminal is sent when the shell starts.
 It is not sent again, so a window you resize during a session stays at the size it had.
 .PP

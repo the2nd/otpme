@@ -380,8 +380,18 @@ def get_host_uuid(host):
     with no unit in it (classes/host.py, register_oid), which is all we
     have here.
 
-    Our own realm and site, because that is the host a job can be made
-    for.
+    The realm and the site are the ones the command works against (-r
+    and -s, config.connect_realm and config.connect_site), which without
+    either of them given are our own. That is what makes a shell on a
+    host of another site work: the job is made by the management daemon
+    of that site, because that is where the connection goes, and only
+    the nodes of that site hand it to the host. So the host has to be
+    looked up there as well -- our own site does not have it.
+
+    Not searched for across the realm, because this is a resolution and
+    not a search: a name alone would be ambiguous (two sites may each
+    have a host of that name), and on a host there is no index to search
+    anyway.
     """
     from otpme.lib import oid
     from otpme.lib import stuff
@@ -391,15 +401,16 @@ def get_host_uuid(host):
     # a shell is still not root's.
     register_module("otpme.lib.classes.host")
     register_module("otpme.lib.classes.node")
+    realm = config.connect_realm or config.realm
+    site = config.connect_site or config.site
     for object_type in ["host", "node"]:
-        object_id = oid.get(object_id=(f"{object_type}|{config.realm}"
-                                    f"/{config.site}/{host}"))
+        object_id = oid.get(object_id=f"{object_type}|{realm}/{site}/{host}")
         try:
             return stuff.resolve_oid(object_id)
         except UnknownOID:
             continue
-    msg = _("Unknown host: {host}")
-    msg = msg.format(host=host)
+    msg = _("Unknown host: {host} ({realm}/{site})")
+    msg = msg.format(host=host, realm=realm, site=site)
     raise OTPmeException(msg)
 
 
@@ -488,13 +499,28 @@ def connect_to_host(job_uuid, host_public_key):
     address both sides are told to meet at is the floating IP, and that
     goes with the role.
 
+    The site of the host, which with -s is not ours, and it has to be
+    said here. A connection that names no site does not fall back to
+    config.connect_site: connections.get() works the address out of the
+    own site and passes a socket_uri on, and the fallback in
+    OTPmeClient.__init__() only runs where there is none. So without
+    this the client waited at the broker of its own site while the host
+    sat at the broker of its own -- racd said "client arrived" on one
+    node and "Nobody came to the meeting" on both.
+
+    Both ends present a certificate, and those verify across the realm:
+    the CA data of a host holds the realm CA and the CA of every site in
+    it (Realm.update_ca_data).
+
     Returns a socket that is at the beginning of an SSH handshake with
     the host the job was for, or raises.
     """
     from otpme.lib import connections
     from otpme.lib.confd import remote_access
     from otpme.lib import rendezvous
-    rac_conn = connections.get("racd")
+    rac_conn = connections.get("racd",
+                            realm=config.connect_realm or config.realm,
+                            site=config.connect_site or config.site)
     sock = rac_conn.meet(key=job_uuid, role="client")
     # So that a connection that is torn away says so instead of reading
     # like one that was finished with. Both of them arrive as nothing at

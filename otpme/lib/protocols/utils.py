@@ -181,12 +181,13 @@ def passauth(message_id, prompt="Password:",
             }
     return request
 
-def sshauth(message_id, challenge):
+def sshauth(message_id, challenge, token_test=False):
     """ Sends request to client to do SSH authentication. """
     request = {
-            'message_id': message_id,
-            'command'   : 'OTPME_SSHAUTH',
-            'challenge' : challenge,
+            'message_id'    : message_id,
+            'command'       : 'OTPME_SSHAUTH',
+            'challenge'     : challenge,
+            'token_test'    : token_test,
             }
     return request
 

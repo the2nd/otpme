@@ -20,6 +20,7 @@ from otpme.lib import log
 from otpme.lib import config
 from otpme.lib import script
 from otpme.lib import backend
+from otpme.lib import connections
 from otpme.lib.mail import send_mail
 from otpme.lib.humanize import units
 from otpme.lib import multiprocessing
@@ -30,6 +31,16 @@ from otpme.lib.exceptions import *
 
 REGISTER_BEFORE = ['otpme.lib.daemon.controld']
 REGISTER_AFTER = ['otpme.lib.classes.unit']
+
+# A backup that finds the repository in somebody else's hands (another
+# backup, a restore, a repack) has not failed: the very same attempt
+# works once that is done. So it waits and tries again -- how long and
+# how often comes from the backup_retry_interval and backup_retry_count
+# parameters of the object. These are what an object that has neither
+# gets: a realm created before they existed has no value for them, and
+# the default of a parameter is written to a site when the site is made.
+DEFAULT_BACKUP_RETRY_INTERVAL = 300
+DEFAULT_BACKUP_RETRY_COUNT = 12
 
 def register():
     """ Register OTPme daemon. """
@@ -133,6 +144,63 @@ class BackupDaemon(OTPmeDaemon):
             # Window spans midnight, e.g. 23:00 - 03:00
             in_window = now >= start_time or now <= end_time
         return in_window
+
+    def get_backup_retry_settings(self, o):
+        """ How long and how often to wait for a busy repository.
+
+        Whatever cannot be read falls back to the default, with a word in
+        the log: a value nobody can make sense of must not decide that a
+        backup is given up on.
+        """
+        retry_interval = o.get_config_parameter("backup_retry_interval")
+        if not retry_interval:
+            retry_interval = DEFAULT_BACKUP_RETRY_INTERVAL
+        try:
+            # A string ("5m") on the way out of the parameter getter.
+            retry_interval = units.time2int(retry_interval, time_unit="s")
+        except Exception:
+            log_msg = _("Invalid backup retry interval: {retry_interval}", log=True)[1]
+            log_msg = log_msg.format(retry_interval=retry_interval)
+            self.logger.warning(log_msg)
+            retry_interval = DEFAULT_BACKUP_RETRY_INTERVAL
+        retry_count = o.get_config_parameter("backup_retry_count")
+        if retry_count is None:
+            retry_count = DEFAULT_BACKUP_RETRY_COUNT
+        try:
+            retry_count = int(retry_count)
+        except Exception:
+            log_msg = _("Invalid backup retry count: {retry_count}", log=True)[1]
+            log_msg = log_msg.format(retry_count=retry_count)
+            self.logger.warning(log_msg)
+            retry_count = DEFAULT_BACKUP_RETRY_COUNT
+        return retry_interval, retry_count
+
+    def in_backup_window_now(self, o):
+        """ Whether a backup of this object may start right now.
+
+        The window says when a backup may start, and process_backups()
+        asks that before it starts one. This is the same question asked
+        again from the backup itself, before it waits for a repository
+        somebody else holds: a retry hours later would belong to a
+        window that is long over.
+
+        Anything it cannot read is a no. The value got this far, so
+        process_backups() has read it already and said what is wrong
+        with it.
+        """
+        backup_time = o.get_config_parameter("backup_time")
+        if not backup_time:
+            return False
+        try:
+            start_time = backup_time.split("-")[0]
+            end_time = backup_time.split("-")[1]
+        except Exception:
+            return False
+        try:
+            return self.in_backup_window(datetime.now().time(),
+                                        start_time, end_time)
+        except ValueError:
+            return False
 
     def send_backup_report(self, backup_object, status, subject, result):
         """ Send backup report. """
@@ -544,26 +612,65 @@ class BackupDaemon(OTPmeDaemon):
 
         subject = _("Backup {status} {backup_object}")
 
-        backup_start_time = time.time()
         command_handler = CommandHandler()
-        try:
-            result = command_handler.start_backup(backup_object, return_result=True)
-        except Exception as e:
-            log_msg = _("Failed to run backup: {backup_object}: {e}", log=True)[1]
-            log_msg = log_msg.format(backup_object=backup_object, e=e)
-            result = {'log':[log_msg]}
+        retry_interval, retry_count = self.get_backup_retry_settings(o)
+        failed = None
+        attempt = 0
+        while True:
+            attempt += 1
+            backup_start_time = time.time()
+            try:
+                result = command_handler.start_backup(backup_object,
+                                                    return_result=True)
+            except ObjectLocked as e:
+                # Somebody else holds the repository: another backup, a
+                # restore, a repack. Nothing of this backup has run, so
+                # it is one to do later and not a failed one -- and
+                # last_backup stays where it is, because it says when a
+                # backup of this object ran and none did. Without that,
+                # the backup interval would count this as the backup of
+                # this window and the next one would be tomorrow.
+                #
+                # Only the repository lock says this (see the lock_repo
+                # branch in protocols/server/backup1.py), so it cannot
+                # be a retention that found the repository taken after a
+                # backup that worked. Repeating that is not the same
+                # thing as repeating the backup.
+                if attempt <= retry_count \
+                and self.in_backup_window_now(o):
+                    log_msg = _("Backup repository is busy, trying again in {interval} seconds: {backup_object}: {error}", log=True)[1]
+                    log_msg = log_msg.format(interval=retry_interval,
+                                            backup_object=backup_object,
+                                            error=e)
+                    self.logger.info(log_msg)
+                    # The repository is still open on the connection
+                    # this attempt used, and the next attempt opens it
+                    # again -- which the server refuses on a connection
+                    # that holds it open already. So this one goes and
+                    # the next attempt brings its own.
+                    connections.close_connections()
+                    time.sleep(BACKUP_RETRY_INTERVAL)
+                    continue
+                failed = _("Giving up on a busy backup repository after {attempt} attempts: {backup_object}: {error}", log=True)[1]
+                failed = failed.format(attempt=attempt,
+                                        backup_object=backup_object,
+                                        error=e)
+            except Exception as e:
+                failed = _("Failed to run backup: {backup_object}: {e}", log=True)[1]
+                failed = failed.format(backup_object=backup_object, e=e)
+            break
+        o.last_backup = backup_start_time
+        o._write(update_last_modified=False,
+                update_last_modified_by=False)
+        if failed:
             subject = subject.format(status="failed", backup_object=backup_object)
             self.send_backup_report(backup_object=o,
                                     status=False,
                                     subject=subject,
-                                    result=result)
-            self.logger.warning(log_msg)
+                                    result={'log':[failed]})
+            self.logger.warning(failed)
             multiprocessing.cleanup(keep_queues=True)
             sys.exit(1)
-        finally:
-            o.last_backup = backup_start_time
-            o._write(update_last_modified=False,
-                    update_last_modified_by=False)
         if backup_script:
             self.run_backup_script(backup_script, backup_object, "post")
         subject = subject.format(status="successful", backup_object=backup_object)

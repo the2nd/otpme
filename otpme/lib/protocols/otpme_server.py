@@ -19,6 +19,7 @@ from otpme.lib import log
 from otpme.lib import net
 from otpme.lib import jwt
 from otpme.lib import oid
+from otpme.lib import ssh
 from otpme.lib import json
 from otpme.lib import stuff
 from otpme.lib import config
@@ -37,6 +38,11 @@ from otpme.lib.protocols.response import build_response
 from otpme.lib.daemon.clusterd import check_cluster_status
 
 from otpme.lib.exceptions import *
+
+# How often a long running command says that it is still working, see
+# send_keepalive(). Far below any read timeout a client sets, and far
+# above what it costs: one small frame.
+KEEPALIVE_INTERVAL = 30
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = [
@@ -66,6 +72,9 @@ class OTPmeServer1(object):
         self.connection = connection
         # Marks connection as new.
         self.new_connection = True
+        # When we last told the client that we are still working, see
+        # send_keepalive().
+        self._last_keepalive = 0.0
 
         # Get queues to communicate with daemon main process..
         self.comm_handler = comm_handler
@@ -2291,6 +2300,14 @@ class OTPmeServer1(object):
                 return passauth(message_id="password", prompt="Password/OTP:")
 
         elif auth_type == "ssh":
+            # Without a session key there is nothing to bind the
+            # challenge to, and an unbound signature is good at any
+            # other server too (lib/ssh.bind_challenge). So we do not
+            # even ask for one, instead of asking and failing to verify
+            # it below.
+            if not self.session_key:
+                msg = "SSH authentication needs an encrypted session."
+                raise OTPmeException(msg)
             log_msg = _("Selecting SSH token for user: {user}", log=True)[1]
             log_msg = log_msg.format(user=self.user.name)
             self.logger.debug(log_msg)
@@ -2392,6 +2409,10 @@ class OTPmeServer1(object):
             # Get auth status from response.
             auth_status = auth_response['status']
         else:
+            if auth_type == "ssh":
+                # The response was signed over the challenge plus this
+                # connection, and so is what we verify.
+                challenge = ssh.bind_challenge(challenge, self.session_key)
             # Try to authenticate user.
             try:
                 auth_response = self.user.authenticate(auth_mode=auth_mode,
@@ -2524,6 +2545,36 @@ class OTPmeServer1(object):
 
     def decode_request(self, *args, **kwargs):
         return decode_request(*args, **kwargs)
+
+    def send_keepalive(self, interval=KEEPALIVE_INTERVAL):
+        """ Tell the client that we are still working on its request.
+
+        For commands that take minutes or hours. Without a word in
+        between, the read timeout of the client would have to outlast
+        the slowest repository on its worst day, and when it did not,
+        the client gave up on a command the daemon then finished anyway.
+
+        Called from inside the work, between two steps of it -- never
+        from a thread of its own. Two threads writing one TLS
+        connection is a trap this code has fallen into before (the
+        symptom is an EOF on a connection that is established), so the
+        keepalive goes out where nothing else is writing.
+
+        At most one frame per <interval> seconds, so the places that
+        call this may call it as often as they like.
+        """
+        # Nobody is waiting on a socket in API mode, and there is no
+        # connection to write to.
+        if config.use_api:
+            return
+        if self.connection is None:
+            return
+        now = time.time()
+        if now - self._last_keepalive < interval:
+            return
+        self._last_keepalive = now
+        response = self.build_response(status_codes.KEEPALIVE, "working")
+        self.connection.send(response, timeout=config.connection_timeout)
 
     def build_response(self, status, message, binary_data=None, encrypt=None,
         compress=None, encoding="base64"):

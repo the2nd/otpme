@@ -482,6 +482,18 @@ cmd_help = {
                                 },
                 },
 
+    'message'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-tool message [--user <username>] [--host <hostname>] [--all] [--title <title>] {text}'),
+                    'cmd'   :   '--user :username: --host :host: --all :all_users=True: --title :title: <text>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show a message box to logged in users'),
+                                    '--user <username>'     : _('Send the message to this user.'),
+                                    '--host <hostname>'     : _('Send the message to the users logged in on this host.'),
+                                    '--all'                 : _('Send the message to all logged in users of this site.'),
+                                    '--title <title>'       : _('Title of the message box.'),
+                                },
+                },
+
     'whoami'    : {
                     '_cmd_usage_help' : _('Usage: otpme-tool whoami'),
                     '_help' :   {

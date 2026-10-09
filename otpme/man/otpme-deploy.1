@@ -45,6 +45,18 @@ The user who created a job sees all of its hosts.
 .PP
 \fBack\fR and \fBcancel\fR change the whole job.
 They are allowed for the user who created the job, and for users who may create jobs for all of its hosts.
+.SS Hosts in another site
+A job is made by the management daemon the command goes to, and only the nodes of that site hand it to a host.
+So a job for a host of another site is made in that site, with the global option \fB\-s\fR:
+.PP
+.RS
+.B otpme\-deploy add \-s \fIsite\fB \-\-host \fIhost type action\fR
+.RE
+.PP
+The same \fB\-s\fR is needed for every command about that job \(em \fBlist\fR, \fBshow\fR, \fBresults\fR, \fBack\fR and \fBcancel\fR \(em because the job is there and nowhere else.
+.PP
+Nothing else changes.
+The job is signed with your key, and the host holds the signature against the signers it has, so it needs a signer for you like a host of your own site does.
 .SS How jobs run
 On every host, the \fBconfd\fR daemon asks the nodes of its site for new jobs every 60 seconds.
 It runs one job at a time.

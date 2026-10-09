@@ -41,6 +41,13 @@ from otpme.lib.exceptions import *
 
 CALLBACK_LOCK_TYPE = "callback"
 
+# How long one wait for an answer from the client lasts. It does not
+# bound the answer -- a user may take as long as they are given to type
+# a password -- it is how often we get to look around while waiting:
+# whether the job was asked to stop and whether it ran out of time. An
+# answer that arrives ends the wait at once, so this costs nothing.
+ANSWER_POLL_TIME = 0.5
+
 locking.register_lock_type(CALLBACK_LOCK_TYPE, module=__file__)
 def callback_lock(write=True, timeout=None):
     """ Decorator to handle entry lock. """
@@ -244,30 +251,72 @@ class JobCallback(object):
 
     @callback_lock(write=True)
     def _send_message(self, message_id, message, timeout=1, convert_type=True):
-        """ Send message to client and handle answer. """
+        """ Send message to client and handle answer.
+
+        The answer is waited for in rounds, because a client that is
+        gone sends none, and this used to be a wait without an end: the
+        job kept its object locks and its transaction while it waited,
+        an authentication that wanted one of those objects waited for
+        the job, and the client of that one waited for both. Three
+        waits, and the first of them had no end.
+
+        A SIGTERM was no way out either. A job with an active
+        transaction answers one with "not stoppable at this stage" and a
+        flag on this callback (OTPmeJob.start_job), and nobody can read
+        a flag from inside a blocking recv.
+
+        So each round asks the two questions that end a wait: was the
+        job asked to stop, and did it run out of time. The second is the
+        job timeout the client sends with every request (--job-timeout),
+        counted from the moment this message went out -- the same
+        deadline the timeout thread of a job that runs as a process
+        watches, which is the only reason that case ever ended.
+        """
         # Callback was used.
         self.last_used = time.time()
         # Send message to client.
         self._send(message, timeout=timeout)
         # Receive answer
         comm_handler = self.job.comm_queue.get_handler("callback")
-        try:
-            sender, \
-            answer_id, \
-            answer = comm_handler.recv(sender="client")
-        except ExitOnSignal:
-            self.job.stop()
-            answer_id = None
+        answer = None
+        answer_id = None
+        while True:
+            try:
+                sender, \
+                answer_id, \
+                answer = comm_handler.recv(sender="client",
+                                        timeout=ANSWER_POLL_TIME)
+            except TimeoutReached:
+                # Nothing yet. Have a look around and wait again.
+                if self.job.check_timeout():
+                    break
+                if self.stop_job:
+                    msg = _("Job stopped while waiting for an answer.")
+                    raise OTPmeException(msg) from None
+                continue
+            except ExitOnSignal:
+                self.job.stop()
+                answer_id = None
+            break
+        # A job that is over its time ends here, whether its answer came
+        # or the wait ran out.
+        if self.job.check_timeout():
+            if self.job.start_process:
+                # Do some cleanup.
+                multiprocessing.cleanup()
+                #os._exit(0)
+                sys.exit(0)
+            # A job that runs as a thread has no process of its own to
+            # end, and nothing of the daemon it runs in is ours to clean
+            # up. The exception is the way out: the job writes nothing,
+            # releases its locks and answers its client on the way
+            # (OTPmeJob.start_job).
+            msg = _("Timeout waiting for answer from client.")
+            raise OTPmeException(msg)
         if answer_id != message_id:
             msg = _("Received wrong answer ID: {} <> {}")
             msg = msg.format(message_id, answer_id)
             raise OTPmeException(msg)
-        # Wait for answer from peer.
-        if self.job.check_timeout():
-            # Do some cleanup.
-            multiprocessing.cleanup()
-            #os._exit(0)
-            sys.exit(0)
         # FIXME: Converting from string to type() leads to some "reserved"
         #        strings (True, False and None) because they are converted
         #        to the corresponding python types. This means that e.g. a
@@ -436,7 +485,7 @@ class JobCallback(object):
         return result
 
     @handle_exception
-    def sshauth(self, challenge, timeout=1):
+    def sshauth(self, challenge, token_test=False, timeout=1):
         """ Send message to ask the user/client to authenticate via ssh key. """
         # If the callback is disabled we do not send anything to the client.
         if not self.enabled:
@@ -446,7 +495,7 @@ class JobCallback(object):
         # Gen message ID.
         message_id = self._gen_message_id()
         # Build message string.
-        message = sshauth(message_id, challenge)
+        message = sshauth(message_id, challenge, token_test=token_test)
         # Send message.
         return self._send_message(message_id, message, timeout=timeout)
 

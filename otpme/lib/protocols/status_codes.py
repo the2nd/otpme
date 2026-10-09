@@ -12,6 +12,12 @@ except Exception:
 
 OK = 200
 ERR = 400
+# "Still working on your last request." Sent by a command that takes
+# long enough for the other side to wonder, so the read timeout of a
+# client does not have to outlast the slowest repository on the worst
+# day. The client reads the next frame instead of taking this for the
+# answer, see OTPmeClient1._send().
+KEEPALIVE = 100
 ABORT = 230
 NOT_FOUND = 404
 SYNC_DISABLED= 433
@@ -34,3 +40,8 @@ MASTER_FAILOVER = 411
 # changes nothing about it: a tree object goes from the master outwards,
 # never towards it.
 MASTER_NODE_WRITE = 412
+# Somebody else holds the backup repository right now (another backup, a
+# restore, a repack). Its own code because nothing is wrong and the same
+# attempt works later, which is what a backup started by backupd then
+# does -- see BackupDaemon.start_backup().
+BACKUP_REPO_LOCKED = 413

@@ -186,9 +186,7 @@ class AtomicFileLock(object):
 
     def acquire_lock(self, exclusive=False, block=True, timeout=None,
         callback=None, log_wait_message=False, wait_message=None):
-        from otpme.lib import stuff
         from otpme.lib import config
-        from otpme.lib import multiprocessing
         lock_status = self._acquire_lock_atomic(exclusive=exclusive, block=False)
         if lock_status:
             return lock_status
@@ -198,16 +196,40 @@ class AtomicFileLock(object):
                     self.logger.debug(wait_message)
             if callback:
                 callback.send(wait_message)
-        proc_type = multiprocessing.get_proc_type()
-        if proc_type == "thread":
-            timeout = None
         if timeout is None:
             result = self._acquire_lock_atomic(exclusive=exclusive, block=block)
             return result
-        def run_method():
-            return self._acquire_lock_atomic(exclusive=exclusive, block=block)
-        result = stuff.start_with_timeout(run_method, timeout=timeout)
-        return result
+        # A timeout on a flock, asked for until the time is up.
+        #
+        # It used to be carried by SIGALRM, and a signal is a main thread
+        # affair: setting one anywhere else raises. So the timeout was
+        # dropped in a thread, and a lock somebody else held became a
+        # wait with no end -- in a reader that had asked for 0.01s and
+        # was ready to go on without the lock. That is what
+        # replay_transactions() does before reading an object, and it
+        # deadlocked authd against a job that was waiting for the client
+        # it had asked something: the job held the transaction, the auth
+        # request waited for it, and the client waited for both. A worker
+        # that serves its connections in threads (authd_worker_threads)
+        # runs every one of them off the main thread, so it was always
+        # the thread without the timeout.
+        #
+        # Asking again needs no signal and reads the same in a thread as
+        # in a process. The pause between two tries starts short, so a
+        # lock that frees up in a moment costs almost nothing, and grows
+        # to 50ms, so a long wait costs a handful of syscalls a second.
+        deadline = time.monotonic() + timeout
+        wait_time = 0.001
+        while True:
+            lock_status = self._acquire_lock_atomic(exclusive=exclusive,
+                                                block=False)
+            if lock_status:
+                return True
+            time_left = deadline - time.monotonic()
+            if time_left <= 0:
+                return False
+            time.sleep(min(wait_time, time_left))
+            wait_time = min(wait_time * 2, 0.05)
 
     def _acquire_lock_atomic(self, exclusive=False, block=True):
         """ Do atomic lock acquiring. """

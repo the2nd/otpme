@@ -41,7 +41,6 @@ diriv_cache = {}
 filesize_cache = {}
 getattr_cache = {}
 getxattr_cache = {}
-path_hash_cache = {}
 no_such_file_cache = {}
 no_such_data_cache = {}
 last_create_cache = None
@@ -51,6 +50,15 @@ UTIME_NOW = 1073741823
 CONF_FILE = "otpmecryptfs.conf"
 DIRIV_NAME = "otpmecryptfs.diriv"
 LONGNAME_PREFIX = "otpmecryptfs.longname."
+# A blob encrypted with the key of the share, so a mount can tell that it
+# holds the key the share was written with. See EncryptedFS.verify_key().
+KEY_CHECK_NAME = "otpmecryptfs.keycheck"
+KEY_CHECK_MAGIC = b"OTPME-CRYPTFS-KEY-CHECK"
+# The characters an encrypted name is made of (_b64e, urlsafe base64
+# without the padding). Anything else was not written by this
+# filesystem, see EncryptedFS.looks_like_an_encrypted_name().
+ENC_NAME_CHARS = frozenset(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
 
 # We use cephfs blocksize which results in good read/write performance.
 PREFERRED_BLOCK_SIZE = 4194304
@@ -85,11 +93,100 @@ def load_cryptfs_settings(fs_data):
         raise OTPmeException(msg) from e
     return fs_data
 
+def write_diriv_file(path):
+    """ Write the diriv of a directory on the backing store.
+
+    The names in a directory are encrypted with a nonce worked out from
+    this, so it is the one file a directory cannot be without.
+    """
+    diriv_file = os.path.join(path, DIRIV_NAME)
+    diriv = gen_diriv()
+    try:
+        fd = open(diriv_file, "wb")
+        fd.write(diriv)
+        fd.close()
+    except Exception as e:
+        msg = _("Failed to write diriv file: {diriv_file}: {e}")
+        msg = msg.format(diriv_file=diriv_file, e=e)
+        raise OTPmeException(msg) from e
+    try:
+        os.chmod(diriv_file, 0o644)
+    except Exception as e:
+        msg = _("Failed to set diriv file permissions: {diriv_file}: {e}")
+        msg = msg.format(diriv_file=diriv_file, e=e)
+        raise OTPmeException(msg) from e
+    return diriv
+
+def share_holds_data(path):
+    """ Whether a share holds anything but the files that describe it.
+
+    Asked before writing one of those files, because none of them can
+    be made up again for a share that already holds data. The path is
+    the backing store of the share, on the node this runs on
+    (share.root_dir), so this is a local directory.
+
+    scandir and not listdir, which reads the whole directory into a
+    list: the first entry that is not one of ours answers the question,
+    and the root of a share can hold a great many.
+    """
+    with os.scandir(path) as entries:
+        for entry in entries:
+            if entry.name in (CONF_FILE, DIRIV_NAME, KEY_CHECK_NAME):
+                continue
+            return True
+    return False
+
 def init_cryptfs(path, block_size, hash_params):
     conf_file = os.path.join(path, CONF_FILE)
-    if os.path.exists(conf_file):
+    already_initialized = os.path.exists(conf_file)
+    # The diriv of the root directory, on its own and before the config
+    # decides anything.
+    #
+    # Without it the share cannot answer a single request: _load_diriv()
+    # fails with EIO for every path in it. It used to be written only
+    # together with the config, and the config being there was enough to
+    # leave this function right away -- so once the diriv was gone
+    # (on the backing store it is just a file, and a cleanup there takes
+    # it along) nothing ever put it back and the share stayed dead.
+    diriv_file = os.path.join(path, DIRIV_NAME)
+    if not os.path.exists(diriv_file):
+        # Into an empty share only. A new diriv for a share that still
+        # holds files would make every name in it unfindable: readdir
+        # still shows them, because a name decrypts without the diriv,
+        # but a lookup builds the name from the diriv and would build a
+        # different one. So that case is said out loud and left to
+        # somebody who can look at it.
+        if share_holds_data(path):
+            msg = _("Missing diriv file: {diriv_file}")
+            msg = msg.format(diriv_file=diriv_file)
+            raise OTPmeException(msg)
+        write_diriv_file(path)
+    if already_initialized:
         msg = _("Cryptfs already initialized.")
         raise AlreadyInitialized(msg)
+    # The same decision for the config file, which is what this function
+    # is really about. It used to be written whenever it was missing, so
+    # a share that lost it got a new one on the next mount and nobody
+    # ever heard of it. The data stays readable -- block_size is not a
+    # choice and the same value goes back in -- but the hash_params are
+    # replaced, and those are what a master password mount makes its key
+    # from. The share is then readable with the share keys of its users
+    # and with nothing else, and the one thing that could have said so
+    # was the file that went missing.
+    if share_holds_data(path):
+        msg = _("Missing cryptfs config file: {conf_file}")
+        msg = msg.format(conf_file=conf_file)
+        raise OTPmeException(msg)
+    if not hash_params:
+        # The parameters a key is made from the master password with. An
+        # empty set is not "the defaults": hash_password() makes a salt
+        # of its own when it gets none, so every mount with the master
+        # password would arrive at a different key and whatever was
+        # written under one of them is lost with it. A share without them
+        # is one that was created with --no-key-gen and never took over
+        # an existing directory, see data_loss_review, finding 14d.
+        msg = _("Refusing to initialize cryptfs without master password parameters.")
+        raise OTPmeException(msg)
     init_data = {
                 'block_size'    : block_size,
                 'hash_params'   : hash_params,
@@ -108,24 +205,6 @@ def init_cryptfs(path, block_size, hash_params):
     except Exception as e:
         msg = _("Failed to set config file permissions: {conf_file}: {e}")
         msg = msg.format(conf_file=conf_file, e=e)
-        raise OTPmeException(msg) from e
-    diriv_file = os.path.join(path, DIRIV_NAME)
-    if os.path.exists(diriv_file):
-        return
-    diriv = gen_diriv()
-    try:
-        fd = open(diriv_file, "wb")
-        fd.write(diriv)
-        fd.close()
-    except Exception as e:
-        msg = _("Failed to init cryptfs: {e}")
-        msg = msg.format(e=e)
-        raise OTPmeException(msg) from e
-    try:
-        os.chmod(diriv_file, 0o644)
-    except Exception as e:
-        msg = _("Failed to set diriv file permissions: {diriv_file}: {e}")
-        msg = msg.format(diriv_file=diriv_file, e=e)
         raise OTPmeException(msg) from e
 
 # Errno a filesystem request gets while the connection to the share is
@@ -558,6 +637,11 @@ class OTPmeFS(fuse.Operations):
                     raise OSError(errno.ENOENT, _("Missing block size")) from err
                 # Set block size for encrypted fs.
                 self.set_block_size(block_size)
+                # What the share says its key is, if it says anything.
+                # Read on every mount and not kept from an earlier one: a
+                # reconnect gets the share key again, and the check that
+                # goes with it comes along.
+                self.key_check = mount_response.get('key_check')
                 if not self.key:
                     if master_password_mount:
                         try:
@@ -626,6 +710,19 @@ class OTPmeFS(fuse.Operations):
                     self.max_name = statfs['f_namemax']
                 except Exception:
                     pass
+                # Before the first request, and before --add-share-key
+                # would store this key for good: is it the key this share
+                # was written with? A restore mount is left out, it
+                # cannot be written and the repository checks its own key
+                # (BackupClient.verify_key()).
+                if not self.restore_share:
+                    try:
+                        self.verify_key()
+                    except Exception:
+                        self.fsd_conn.close()
+                        self.fsd_conn = None
+                        tried_nodes.append(node)
+                        raise
             if self.connection_timeout:
                 msg, log_msg = _("Share mounted: {share} ({node}) (tmo={tmo})", log=True)
                 msg = msg.format(share=self.share, node=node, tmo=self.connection_timeout)
@@ -1012,6 +1109,34 @@ class OTPmeFS(fuse.Operations):
         return response
 
     @fuse.overrides(fuse.Operations)
+    def fsync(self, path: str, datasync: int, fh: int=None) -> int:
+        """ Hand fsync on to the node, and wait for it.
+
+        The base class answers 0 without doing anything, so fsync() on a
+        file in a share used to report success while nothing had been
+        sent anywhere. Every write is a request of its own with a status
+        of its own, so the bytes are at the node -- but at the node they
+        sit in its page cache, and that is what this is about.
+        """
+        if config.debug_enabled:
+            self.logger.debug(f"fsync method called for path: {path}")
+        method_data = encode_method_call(method_name="fsync",
+                                        path=path,
+                                        datasync=datasync)
+        command_args = {'method_data':method_data}
+        status, \
+        response_code, \
+        response, \
+        binary_data = self.send(command="fsop_fsync", command_args=command_args)
+        if status is not True:
+            if config.debug_enabled:
+                self.logger.debug(f"fsync failed for path: {path}")
+            raise fuse.FuseOSError(response_code)
+        if config.debug_enabled:
+            self.logger.debug(f"fsync successful for path: {path}")
+        return response
+
+    @fuse.overrides(fuse.Operations)
     def release(self, path: str, fh: int=None) -> int:
         if config.debug_enabled:
             self.logger.debug(f"release method called for path: {path}")
@@ -1023,9 +1148,14 @@ class OTPmeFS(fuse.Operations):
         binary_data = self.send(command="fsop_release", command_args=command_args)
         self.invalidate_caches(path)
         if status is not True:
-            if config.debug_enabled:
-                self.logger.debug(f"release failed for path: {path}")
-            raise fuse.FuseOSError(response_code)
+            # Logged, not raised: the kernel calls flush on close() and
+            # throws away what release answers, so raising here told
+            # nobody. The log is the only place it can be seen. An
+            # application that wants to know its data is safe has to
+            # ask for it -- that is what fsync is for, and that one does
+            # report its failure.
+            self.logger.error(f"Release failed for {path}: {response}")
+            return 0
         if config.debug_enabled:
             self.logger.debug(f"release successful for path: {path}")
         return response
@@ -1449,6 +1579,10 @@ class EncryptedFS(OTPmeFS):
         self.aesgcm = None
         self.aesgcm_names = None
         self.add_share_key = add_share_key
+        # The key check of the share, as the mount handed it over. None
+        # where the share has none yet, or where the node is too old to
+        # know about it. See verify_key().
+        self.key_check = None
         self.master_password = master_password
         self.block_size = 4096
         self.nonce_size = 12
@@ -1485,6 +1619,152 @@ class EncryptedFS(OTPmeFS):
         self.aesgcm = AESGCM(self.content_key)
         self.aesgcm_names = AESGCM(self.name_key)
 
+    def key_check_plaintext(self, diriv):
+        """ What the key check of this share has to decrypt to.
+
+        The diriv of the share root is in it, so the blob belongs to this
+        share and not merely to this key -- one share key can serve more
+        than one share, and a blob copied from another one would
+        otherwise pass.
+        """
+        return KEY_CHECK_MAGIC + b"\n" + diriv
+
+    def build_key_check(self, diriv):
+        """ A key check for this share, made with the key we hold. """
+        nonce = os.urandom(self.nonce_size)
+        plain = self.key_check_plaintext(diriv)
+        return nonce + self.aesgcm.encrypt(nonce, plain, None)
+
+    def looks_like_an_encrypted_name(self, fs_name):
+        """ Whether this name could be one this filesystem wrote.
+
+        Every name it writes goes through _encrypt_name_blob(), so it is
+        urlsafe base64 of at least a nonce, one byte and a tag -- or it
+        is too long for that and becomes a name with LONGNAME_PREFIX.
+
+        Anything else was put there by somebody else, and a share root is
+        a place where that happens: it is the mount point of the storage,
+        so a lost+found or a README of the admin may well sit in it.
+        Those say nothing about a key, in either direction.
+        """
+        if fs_name.startswith(LONGNAME_PREFIX):
+            return True
+        shortest = self._b64e(b"\x00" * (self.nonce_size + 1 + self.tag_size))
+        if len(fs_name) < len(shortest):
+            return False
+        return set(fs_name) <= ENC_NAME_CHARS
+
+    def key_belongs_to_this_share(self):
+        """ Whether the key we hold reads what the share root holds.
+
+        For a share that has no key check yet, and only for that: it
+        decides whether we may write one. A wrong key must not be the one
+        that writes it, or it would take the share over and lock the
+        right key out for good.
+
+        Asked of the names, because they are encrypted with key material
+        of the same share key (setup_encryption) and under AES-GCM, so a
+        name that decrypts is one that was written with our key.
+
+        A share with nothing of ours in it is a yes: there is nothing our
+        key could fail to belong to. That covers an empty share, the
+        files that carry the share itself, and whatever else lies in the
+        share root without this filesystem having written it. A name too
+        long to be one is read out of the file beside it, which
+        _from_fs_name() does for us.
+        """
+        entries = super().readdir("/", None)
+        ours = 0
+        for entry in entries:
+            if entry in (".", "..", CONF_FILE, DIRIV_NAME, KEY_CHECK_NAME):
+                continue
+            if not self.looks_like_an_encrypted_name(entry):
+                continue
+            ours += 1
+            if self._from_fs_name("/", entry) is not None:
+                return True
+        if ours:
+            return False
+        return True
+
+    def verify_key(self):
+        """ Make sure we hold the key the share was written with.
+
+        A wrong key is not noticed by itself. Reading fails with EIO on
+        every block, which is loud, but writing is not: a whole block and
+        a new file need nothing of what is there, so they are written
+        with the wrong key and sit in the share next to data nobody can
+        read together with them. See data_loss_review, finding 14.
+
+        So the share keeps a blob encrypted with its key. AES-GCM
+        authenticates, which makes decrypting it at all the proof; the
+        plaintext is compared as well, to also catch a blob that was
+        carried over from another share.
+
+        A share that has none yet gets one, but only where the key has
+        shown that it belongs to the share -- see
+        key_belongs_to_this_share(). That is what makes this safe to turn
+        on for shares that are already in use.
+
+        Raises OSError(EACCES) where the key is not the right one, which
+        ends the mount before a single request is served.
+        """
+        diriv = self._load_diriv("/")
+        if self.key_check:
+            try:
+                blob = bytes.fromhex(self.key_check)
+                nonce = blob[:self.nonce_size]
+                got = self.aesgcm.decrypt(nonce, blob[self.nonce_size:], None)
+            except Exception as e:
+                msg, log_msg = _("Wrong key for share: {share}", log=True)
+                msg = msg.format(share=self.share)
+                log_msg = log_msg.format(share=self.share)
+                self.logger.warning(log_msg)
+                raise OSError(errno.EACCES, msg) from e
+            if got != self.key_check_plaintext(diriv):
+                msg, log_msg = _("Key check of another share: {share}", log=True)
+                msg = msg.format(share=self.share)
+                log_msg = log_msg.format(share=self.share)
+                self.logger.warning(log_msg)
+                raise OSError(errno.EACCES, msg)
+            return
+        if not self.key_belongs_to_this_share():
+            msg, log_msg = _("Nothing in this share reads with the key we got, so it is either the wrong key or the share holds data of one: {share}", log=True)
+            msg = msg.format(share=self.share)
+            log_msg = log_msg.format(share=self.share)
+            self.logger.warning(log_msg)
+            raise OSError(errno.EACCES, msg)
+        self.write_key_check(self.build_key_check(diriv))
+
+    def write_key_check(self, blob):
+        """ Leave a key check in a share that had none.
+
+        A share that stays without one is not a failed mount: nothing is
+        worse than before, and the next mount with a key that does not
+        belong to the share is still turned away by the names. A read
+        only share is the ordinary case for it.
+        """
+        command_args = {'key_check':blob.hex()}
+        try:
+            status, \
+            _unused_code, \
+            response, \
+            _unused_binary = self.fsd_conn.send(command="set_key_check",
+                                            command_args=command_args,
+                                            handle_response=False,
+                                            encrypt_request=False,
+                                            encode_request=False,
+                                            compress_request=False)
+        except Exception as e:
+            status = False
+            response = str(e)
+        if status is not True:
+            log_msg = _("Failed to store key check: {share}: {response}", log=True)[1]
+            log_msg = log_msg.format(share=self.share, response=response)
+            self.logger.warning(log_msg)
+            return
+        self.key_check = blob.hex()
+
     def check_restore_share(self, path):
         if not self.restore_share:
             return False
@@ -1502,15 +1782,27 @@ class EncryptedFS(OTPmeFS):
     def _diriv_path(self, enc_dir_path: str) -> str:
         return os.path.join(enc_dir_path, DIRIV_NAME)
 
-    def _create_diriv(self, enc_dir_path: str) -> bytes:
+    def _create_diriv(self, enc_dir_path: str, iv: bytes=None) -> bytes:
+        """ Write the diriv of a directory.
+
+        <iv> is for putting a known one back, which rmdir() does when it
+        took the diriv away and then could not remove the directory. A
+        directory without its diriv is a directory nobody can look up a
+        name in any more, see data_loss_review, finding 9.
+        """
         diriv_file = self._diriv_path(enc_dir_path)
         if super().exists(diriv_file):
             return
         try:
             super().create(diriv_file, 0o664, None)
-        except Exception:
-            pass
-        iv = gen_diriv()
+        except Exception as e:
+            # Somebody else got there first, which the exists() above
+            # cannot rule out. Only logged: a real reason to fail --
+            # no room, read only -- comes back from the write below,
+            # and that one is not swallowed.
+            self.logger.debug(f"Could not create {diriv_file}: {e}")
+        if iv is None:
+            iv = gen_diriv()
         super().truncate(diriv_file, 0, None)
         super().write(diriv_file, iv, 0, None)
         return iv
@@ -1528,10 +1820,18 @@ class EncryptedFS(OTPmeFS):
         except KeyError:
             pass
         diriv_file = self._diriv_path(enc_dir_path)
-        diriv = super().read(diriv_file, 16, 0, None)
+        try:
+            diriv = super().read(diriv_file, 16, 0, None)
+        except Exception as e:
+            # Said out loud with the name of the file. Without it every
+            # request for a path in this directory fails, and all the
+            # caller saw was a read that did not work.
+            self.logger.error(f"Failed to read diriv file {diriv_file}: {e}")
+            raise
         # Make sure diriv file is closed and not re-read old diriv from still open fh.
         super().release(diriv_file)
         if not diriv or len(diriv) != 16:
+            self.logger.error(f"Invalid diriv file {diriv_file}: {len(diriv) if diriv else 0} bytes, want 16")
             raise fuse.FuseOSError(errno.EIO)
         diriv_cache[enc_dir_path] = diriv
         return diriv
@@ -1581,7 +1881,7 @@ class EncryptedFS(OTPmeFS):
     def _from_fs_name(self, enc_dir_path: str, fs_name: str) -> Optional[str]:
         if fs_name in ('.', '..'):
             return fs_name
-        if fs_name == DIRIV_NAME:
+        if fs_name in (DIRIV_NAME, KEY_CHECK_NAME):
             return None
         if fs_name.startswith(LONGNAME_PREFIX):
             helper = self._long_helper_path(enc_dir_path, fs_name)
@@ -1622,11 +1922,40 @@ class EncryptedFS(OTPmeFS):
         enc_path = self._join_enc(enc_parts)
         return enc_path
 
-    def _encrypt_block(self, block, unencrypted_block_len, nonce):
+    @staticmethod
+    def block_aad(block_index, unencrypted_block_len):
+        """ What a record is tied to besides its own bytes.
+
+        AES-GCM proves that a block was encrypted with our key and not
+        changed since. On its own that is all it proves -- not where the
+        block belongs. With no additional data, somebody who can reach
+        the backing store and has no key at all can swap two records
+        inside a file, copy a record from one file over the same place
+        in another (one key per share), or put an older copy of a record
+        back. Everything decrypts, nothing complains.
+
+        So the position of the block and the length it says it holds go
+        in here. The length matters on its own: it is in the clear in
+        the record, and the size of the file is worked out from the one
+        in the last record -- unbound, it can be changed to cut a file
+        off or stretch it.
+
+        The path is deliberately not in here. It would tie every record
+        to the name of its file, and then a rename would have to
+        re-encrypt the whole file. What that leaves open is noted in
+        data_loss_review, finding 12.
+
+        Pure, so it can be driven without a share, see
+        tests/unit/test_encrypted_block_aad.py.
+        """
+        return struct.pack('!QI', block_index, unencrypted_block_len)
+
+    def _encrypt_block(self, block, unencrypted_block_len, nonce, block_index):
         if config.debug_enabled:
             self.logger.debug(f"Encrypting block of size {len(block)} with nonce {nonce.hex()}")
         try:
-            ciphertext = self.aesgcm.encrypt(nonce, block, None)
+            aad = self.block_aad(block_index, unencrypted_block_len)
+            ciphertext = self.aesgcm.encrypt(nonce, block, aad)
             tag = ciphertext[-self.tag_size:]
             encrypted_block = ciphertext[:-self.tag_size]
             block_len = len(encrypted_block)
@@ -1647,7 +1976,12 @@ class EncryptedFS(OTPmeFS):
             self.logger.error(f"Encryption failed: {e}")
             raise fuse.FuseOSError(errno.EIO) from e
 
-    def _decrypt_blocks(self, encrypted_data, block_count):
+    def _decrypt_blocks(self, encrypted_data, block_count, start_block=0):
+        """ <start_block> is the index of the first block in the file.
+
+        It is part of what each record is tied to, see block_aad(), so a
+        record that was moved somewhere else does not decrypt any more.
+        """
         mv = memoryview(encrypted_data)
         data_len = len(encrypted_data)
         decrypted_data = bytearray(block_count * self.block_size)
@@ -1655,6 +1989,7 @@ class EncryptedFS(OTPmeFS):
         dec_offset = 0
         blocks_processed = 0
         while offset < data_len and blocks_processed < block_count:
+            block_index = start_block + blocks_processed
             block_len = struct.unpack('!I', mv[offset:offset + 4])[0]
             if block_len == 0:
                 block = bytes(mv[offset + 8:offset + 8 + self.block_size])
@@ -1668,6 +2003,9 @@ class EncryptedFS(OTPmeFS):
                 log_msg = _("Found invalid block without block len that is not a null block.", log=True)[1]
                 self.logger.error(log_msg)
                 raise fuse.FuseOSError(errno.EIO)
+            # The length the record says it holds. It goes into the
+            # additional data, so it cannot be changed on its own.
+            unencrypted_block_len = struct.unpack('!I', mv[offset + 4:offset + 8])[0]
             # Add block_len and unencrypted_block_len to offset.
             offset += 8
             if config.debug_enabled:
@@ -1687,11 +2025,12 @@ class EncryptedFS(OTPmeFS):
             if config.debug_enabled:
                 self.logger.debug(f"Decrypting block_len: {block_len}, nonce: {nonce.hex()}, tag: {tag.hex()}")
             try:
-                decrypted_block = self.aesgcm.decrypt(nonce, block + tag, None)
+                aad = self.block_aad(block_index, unencrypted_block_len)
+                decrypted_block = self.aesgcm.decrypt(nonce, block + tag, aad)
                 decrypted_data[dec_offset:dec_offset + len(decrypted_block)] = decrypted_block
                 dec_offset += len(decrypted_block)
             except Exception as e:
-                self.logger.error(f"Decryption failed for block {blocks_processed}: {e}")
+                self.logger.error(f"Decryption failed for block {block_index}: {e}")
                 raise fuse.FuseOSError(errno.EIO) from e
             blocks_processed += 1
         if blocks_processed < block_count:
@@ -1809,6 +2148,9 @@ class EncryptedFS(OTPmeFS):
             last_create_cache = None
             last_create_cache_time = 0.0
             raise
+        # A name that was there before and is new again, so what we
+        # worked out about the old one says nothing about this one.
+        self.invalidate_size_cache(path)
         last_create_cache = parent
         last_create_cache_time = time.time()
         return result
@@ -1828,7 +2170,21 @@ class EncryptedFS(OTPmeFS):
                 raise
             return self.mkdir(path, mode, use_diriv_cache=False)
         # Create diriv for new directory.
-        self._create_diriv(enc_path)
+        #
+        # Without it the directory is useless: every lookup of a name in
+        # it fails with EIO, and a diriv written later does not bring
+        # back names that were encrypted with the first one. So if it
+        # cannot be written, the directory goes again -- better no
+        # directory than one that cannot be repaired. See
+        # data_loss_review, finding 9.
+        try:
+            self._create_diriv(enc_path)
+        except Exception:
+            try:
+                super().rmdir(enc_path)
+            except Exception as e:
+                self.logger.error(f"Failed to remove {path} again after its diriv could not be written: {e}")
+            raise
         return result
 
     def rmdir(self, path: str, use_diriv_cache: bool=True) -> int:
@@ -1847,19 +2203,42 @@ class EncryptedFS(OTPmeFS):
                 raise
             return self.rmdir(path, use_diriv_cache=False)
         # Remove diriv file on rmdir on empty dir.
+        #
+        # It has to go before the rmdir: a directory with a file in it
+        # cannot be removed. So it is read first and put back if the
+        # rmdir does not happen -- a directory without its diriv is a
+        # directory nobody can look up a name in any more, and the names
+        # already in it stay unreachable even after a new diriv, see
+        # data_loss_review, finding 9.
+        removed_diriv = None
         if sorted(empty_dir_entries) == sorted(dir_entries):
-            enc_parent = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
-            diriv_path = os.path.join(enc_parent, DIRIV_NAME)
-            super().unlink(diriv_path)
+            # Read, not taken from the cache: this is the copy that may
+            # have to go back. And a directory whose diriv cannot be
+            # read is removed all the same -- that is the one case where
+            # there is nothing left to protect, and refusing it would
+            # leave no way to clean such a directory up.
             try:
-                diriv_cache.pop(enc_dir_path)
-            except KeyError:
-                pass
+                removed_diriv = self._load_diriv(enc, use_cache=False)
+            except Exception as e:
+                self.logger.warning(f"No diriv to keep for {path}: {e}")
+            diriv_path = self._diriv_path(enc)
+            super().unlink(diriv_path)
+            # The diriv of the directory being removed, not the one of
+            # its parent: a later directory of the same name would get a
+            # new diriv while this mount still answered with the old one
+            # from the cache.
+            diriv_cache.pop(enc, None)
+            diriv_cache.pop(enc_dir_path, None)
         last_create_cache = None
         last_create_cache_time = 0.0
         try:
             result = super().rmdir(enc)
         except Exception:
+            if removed_diriv is not None:
+                try:
+                    self._create_diriv(enc, iv=removed_diriv)
+                except Exception as e:
+                    self.logger.error(f"Failed to put the diriv of {path} back: {e}")
             if not use_diriv_cache:
                 raise
             return self.rmdir(path, use_diriv_cache=False)
@@ -1872,44 +2251,65 @@ class EncryptedFS(OTPmeFS):
 
     def unlink(self, path: str, use_diriv_cache=True) -> int:
         enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
-        # Handle longname symlinks.
+        # What has to go with the entry, worked out before anything is
+        # removed. A symlink whose target is a long name keeps the name
+        # in a helper file next to it, and that has to be read off the
+        # link while the link is still there.
+        helpers = []
         st_info = super().getattr(enc)
         if stat.S_ISLNK(st_info['st_mode']):
             link_target = super().readlink(enc)
             if link_target.startswith(LONGNAME_PREFIX):
                 target_longname_file = f"{link_target}.name"
                 enc_old_parent = os.path.dirname(enc)
-                enc_old_path = os.path.join(enc_old_parent, target_longname_file)
-                super().unlink(enc_old_path)
-        # Make sure we remove longname file.
-        enc_file = os.path.basename(enc)
-        if enc_file.startswith(LONGNAME_PREFIX):
-            longname_file = enc + ".name"
-            super().unlink(longname_file)
+                helpers.append(os.path.join(enc_old_parent,
+                                        target_longname_file))
+        if os.path.basename(enc).startswith(LONGNAME_PREFIX):
+            helpers.append(enc + ".name")
         try:
-            return super().unlink(enc)
+            result = super().unlink(enc)
         except Exception as e:
             if e.errno != errno.ENOENT:
                 raise
             if not use_diriv_cache:
                 raise
             return self.unlink(path, use_diriv_cache=False)
+        # Only now, and this order is the whole point: an entry whose
+        # name helper is gone cannot be resolved any more --
+        # _from_fs_name() answers None, readdir() leaves it out and no
+        # lookup finds it. Removing the helper first meant that an
+        # unlink which then failed left the data there with no way to
+        # reach it. A helper left over the other way round is harmless:
+        # it is skipped in readdir and the next entry of that name
+        # writes it again.
+        for helper in helpers:
+            try:
+                super().unlink(helper)
+            except Exception as e:
+                self.logger.warning(f"Failed to remove longname helper {helper}: {e}")
+        self.invalidate_size_cache(path)
+        return result
 
     def rename(self, old: str, new: str) -> int:
         enc_old = self._map_plain_to_enc(old)
         new_parent = os.path.dirname(new) if new != '/' else '/'
         new_name = os.path.basename(new)
         enc_new_parent = self._map_plain_to_enc(new_parent)
-        # Handle longname symlinks.
+        # Handle longname symlinks. Read off the link now, moved after
+        # the entry: moving it first left the symlink pointing at a
+        # target whose name was no longer resolvable whenever the
+        # rename below failed.
+        target_helper = None
         st_info = super().getattr(enc_old)
         if stat.S_ISLNK(st_info['st_mode']):
             link_target = super().readlink(enc_old)
             if link_target.startswith(LONGNAME_PREFIX):
                 target_longname_file = f"{link_target}.name"
                 enc_old_parent = os.path.dirname(enc_old)
-                enc_old_path = os.path.join(enc_old_parent, target_longname_file)
-                enc_new_path = os.path.join(enc_new_parent, target_longname_file)
-                super().rename(enc_old_path, enc_new_path)
+                target_helper = (
+                        os.path.join(enc_old_parent, target_longname_file),
+                        os.path.join(enc_new_parent, target_longname_file),
+                        )
         enc_new_name = self._to_fs_name(enc_new_parent,
                                         new_name,
                                         create_longname=True)
@@ -1922,10 +2322,18 @@ class EncryptedFS(OTPmeFS):
                 longname_file = enc_new + ".name"
                 super().unlink(longname_file)
             raise
+        if target_helper is not None and target_helper[0] != target_helper[1]:
+            try:
+                super().rename(target_helper[0], target_helper[1])
+            except Exception as e:
+                self.logger.error(f"Failed to move longname helper of the link target to {new}: {e}")
         enc_old_file = os.path.basename(enc_old)
         if enc_old_file.startswith(LONGNAME_PREFIX):
             longname_file = enc_old + ".name"
             super().unlink(longname_file)
+        # Both ends: the old name holds nothing any more, and what the
+        # new one held before is gone.
+        self.invalidate_size_cache(old, new)
         return result
 
     def link(self, target: str, source: str, use_diriv_cache: bool=True):
@@ -2044,11 +2452,20 @@ class EncryptedFS(OTPmeFS):
         file_mtime = result['st_mtime']
         file_ctime = result['st_ctime']
         unencrypted_size = None
-        try:
-            cache_data = filesize_cache[path]
-        except KeyError:
-            pass
-        else:
+        cache_data = filesize_cache.get(path)
+        # The size of the encrypted file is asked first, and the
+        # timestamps only after it. A write that changes the length of a
+        # file changes this one, where ctime and mtime are a float from
+        # the server's stat: two writes within the same tick carry the
+        # same ones, and the second was answered with the size from
+        # before the first. fsx found that in eight operations -- a write
+        # past the end of a file, and the file still as long as it was,
+        # so everything that write had put there was unreadable.
+        if cache_data is not None:
+            if cache_data.get('enc_size') != encrypted_size:
+                filesize_cache.pop(path, None)
+                cache_data = None
+        if cache_data is not None:
             cache_ctime = cache_data['ctime']
             if file_ctime == cache_ctime:
                 result = cache_data['result']
@@ -2066,10 +2483,26 @@ class EncryptedFS(OTPmeFS):
         filesize_cache[path] = {
                                 'ctime'     : file_ctime,
                                 'mtime'     : file_mtime,
+                                'enc_size'  : encrypted_size,
                                 'size'      : unencrypted_size,
                                 'result'    : result,
                                 }
         return result
+
+    def invalidate_size_cache(self, *paths) -> None:
+        """ Forget the size we worked out for these files.
+
+        The clear-text size of an encrypted file is not in its stat, it
+        is worked out from the last block (_calc_unencrypted_size()), so
+        it is cached -- and everything that writes has to say so here.
+        OTPmeFS.invalidate_caches() cannot do it: it is handed the
+        encrypted path, and this cache is keyed by the clear-text one.
+        """
+        global filesize_cache
+        for path in paths:
+            if not path:
+                continue
+            filesize_cache.pop(path, None)
 
     def readdir(self, path: str, fh: int) -> fuse.ReadDirResult:
         enc_dir = self._map_plain_to_enc(path)
@@ -2112,6 +2545,15 @@ class EncryptedFS(OTPmeFS):
             if config.debug_enabled:
                 self.logger.debug("File is empty")
             return b''
+        # Only whole records are readable. A file can end in half a
+        # record after a write that could not put all of its bytes
+        # down, and reading into it would fail the read it is in -- so
+        # the file ends, as far as reading goes, at the last complete
+        # record. _calc_unencrypted_size() reports the size the same
+        # way.
+        encrypted_size -= encrypted_size % self.block_with_metadata_size
+        if encrypted_size == 0:
+            return b''
         read_size = min(read_size, encrypted_size - read_offset)
         if read_size <= 0:
             if config.debug_enabled:
@@ -2127,112 +2569,288 @@ class EncryptedFS(OTPmeFS):
         except Exception as e:
             self.logger.error(f"Read failed: {path}: {e}")
             raise fuse.FuseOSError(errno.EIO) from e
-        decrypted_data = self._decrypt_blocks(encrypted_data, block_count)
+        decrypted_data = self._decrypt_blocks(encrypted_data, block_count,
+                                            start_block=start_block)
         del encrypted_data
         data_offset = offset % self.block_size
         result = decrypted_data[data_offset:data_offset + size]
         del decrypted_data
         return result
 
-    def write(self, path, data, offset, fh):
-        global path_hash_cache
-        enc = self._map_plain_to_enc(path, use_diriv_cache=True)
-        if config.debug_enabled:
-            self.logger.debug(f"Writing {len(data)} bytes at offset {offset} to {path}")
-        start_block = offset // self.block_size
-        end_block = (offset + len(data) - 1) // self.block_size
-        block_count = end_block - start_block + 1
-        if config.debug_enabled:
-            self.logger.debug(f"Start block: {start_block}, End block: {end_block}, Block count: {block_count}")
-        write_offset = start_block * self.block_with_metadata_size
-        if config.debug_enabled:
-            self.logger.debug(f"Write offset: {write_offset}")
-        is_first_block_partial = offset % self.block_size != 0
-        is_last_block_partial = (offset + len(data)) % self.block_size != 0
-        if config.debug_enabled:
-            self.logger.debug(f"First block partial: {is_first_block_partial}, Last block partial: {is_last_block_partial}")
-        current_size = self._get_file_size(enc)
-        decrypted_data = {}
-        if current_size > 0 and (is_first_block_partial or is_last_block_partial):
-            blocks_to_read = []
-            if is_first_block_partial:
-                blocks_to_read.append(start_block)
-            if is_last_block_partial and end_block != start_block:
-                blocks_to_read.append(end_block)
-            for block in blocks_to_read:
-                read_offset = block * self.block_with_metadata_size
-                read_size = self.block_with_metadata_size
-                max_available_size = self._get_file_size(enc)
-                read_size = min(read_size, max_available_size - read_offset)
-                if read_size > 0:
-                    if config.debug_enabled:
-                        self.logger.debug(f"Reading block {block} at offset {read_offset}, size {read_size}")
-                    try:
-                        encrypted_data = super().read(enc, read_size, read_offset, fh)
-                        decrypted_data[block] = self._decrypt_blocks(encrypted_data, 1)[:self.block_size]
-                    except Exception as e:
-                        self.logger.error(f"Failed to read block {block}: {e}")
-                        raise fuse.FuseOSError(errno.EIO) from e
-        # Create a unique identifier from the file path using SHA-256.
+    @staticmethod
+    def patch_block(old_block, old_len, block_size, at, chunk):
+        """ One block as it looks after <chunk> was written into it at
+        <at>, and how much of it is then data.
+
+        The whole block, every time: what the write does not cover is
+        what was there, and a block that was not there yet is zeros --
+        a file has zeros where nobody wrote, and a hole reads as zeros
+        too.
+
+        The length is the end of the write or the length it had,
+        whichever is further out. That is the one number the size of the
+        file is worked out from (_calc_unencrypted_size() reads it off
+        the last block), so taking the end of the write for it cuts the
+        file off there: writing one byte at the front of a file used to
+        leave a file of one byte.
+
+        Pure, so it can be driven without a share, see
+        tests/unit/test_encrypted_block_patch.py.
+        """
+        block = bytearray(block_size)
+        if old_block:
+            have = min(len(old_block), block_size)
+            block[:have] = old_block[:have]
+        block[at:at + len(chunk)] = chunk
+        return bytes(block), max(old_len, at + len(chunk))
+
+    def read_block(self, enc, index, fh, enc_size=None):
+        """ One whole block of an encrypted file, with its length.
+
+        Returns (plaintext, length as it is written in the block), or
+        (None, 0) where the block is not in the file.
+        """
+        if enc_size is None:
+            enc_size = self._get_file_size(enc)
+        read_offset = index * self.block_with_metadata_size
+        if read_offset + self.block_with_metadata_size > enc_size:
+            return None, 0
         try:
-            path_hash = path_hash_cache[path]
-        except KeyError:
-            path_hash = hashlib.sha256(path.encode('utf-8')).digest()
-            path_hash_cache[path] = path_hash
-        data_offset = 0
-        block_counter = 0
+            raw = super().read(enc, self.block_with_metadata_size,
+                            read_offset, fh)
+        except Exception as e:
+            self.logger.error(f"Failed to read block {index}: {e}")
+            raise fuse.FuseOSError(errno.EIO) from e
+        if len(raw) < self.block_with_metadata_size:
+            self.logger.error(f"Short read of block {index}: {len(raw)} bytes")
+            raise fuse.FuseOSError(errno.EIO)
+        plain = self._decrypt_blocks(raw, 1, start_block=index)[:self.block_size]
+        # The second of the two length fields, see _encrypt_block().
+        stored_len = struct.unpack('!I', raw[4:8])[0]
+        if stored_len > self.block_size:
+            self.logger.error(f"Invalid block length {stored_len} in block {index}")
+            raise fuse.FuseOSError(errno.EIO)
+        return plain, stored_len
+
+    def write_block_records(self, enc, path, start_block, blocks, fh):
+        """ Encrypt and write consecutive blocks, each with its length.
+
+        <blocks> is a list of (plaintext, length) in file order,
+        starting at <start_block>.
+        """
+        write_offset = start_block * self.block_with_metadata_size
         serialized_data = bytearray()
-        for i in range(start_block, end_block + 1):
-            block = bytearray()
-            if i == start_block and is_first_block_partial:
-                existing_block = decrypted_data.get(i, b'\x00' * self.block_size)
-                block_offset = offset % self.block_size
-                block.extend(existing_block[:block_offset])
-                data_start = data_offset
-                data_end = min(len(data), data_start + self.block_size - block_offset)
-                block.extend(data[data_start:data_end])
-                block_length = len(block)
-                data_offset = data_end
-                if len(block) % self.block_size != 0:
-                    block.extend(b'\x00' * (self.block_size - (len(block) % self.block_size)))
-            elif i == end_block and is_last_block_partial:
-                existing_block = decrypted_data.get(i, b'\x00' * self.block_size)
-                remaining_data = data[data_offset:]
-                block.extend(remaining_data)
-                block_length = len(remaining_data)
-                remaining_length = self.block_size - len(remaining_data)
-                if remaining_length > 0:
-                    block.extend(existing_block[:remaining_length])
-            else:
-                data_start = data_offset
-                data_end = min(len(data), data_start + self.block_size)
-                block.extend(data[data_start:data_end])
-                block_length = len(data[data_start:data_end])
-                data_offset = data_end
-                if len(block) % self.block_size != 0:
-                    block.extend(b'\x00' * (self.block_size - (len(block) % self.block_size)))
-            # Get block number for nonce.
-            block_number = write_offset + block_counter
-            # Generate nonce: 8 bytes block_number, 2 bytes path_id, 2 bytes random.
-            nonce = struct.pack('!Q', block_number) + path_hash[:2] + os.urandom(2)
-            serialized_block = self._encrypt_block(block, block_length, nonce)
-            serialized_data.extend(serialized_block)
-            block_counter += 1
+        for counter, (block, block_length) in enumerate(blocks):
+            # The nonce is all random now, and it has to be.
+            #
+            # It used to be eight bytes of block number, two bytes of a
+            # hash of the path and two random ones. For one block of one
+            # file the first ten of those never change, so 16 random
+            # bits were left: overwriting the same block of the same
+            # file repeated a nonce after a few hundred writes (39% at
+            # 256 of them, 94% at 600). And two bytes of path hash means
+            # that in a share of a few hundred files two of them share
+            # it, so the same block of both files had those 16 bits and
+            # nothing else between them.
+            #
+            # A repeated nonce under one key is the one thing AES-GCM
+            # must not see: it gives away the xor of the two plaintexts
+            # and, worse, the authentication key, which is what a
+            # forgery is made from.
+            #
+            # Nothing is lost by dropping the block number from it. The
+            # nonce is written into the record and read back from there,
+            # it was never worked out again (see _decrypt_blocks()), so
+            # it bound nothing. What the record is tied to is in the
+            # additional data instead, see block_aad().
+            #
+            # 96 random bits is what NIST SP 800-38D asks of a random
+            # nonce, good for 2**32 writes under one key.
+            nonce = os.urandom(self.nonce_size)
+            serialized_data.extend(self._encrypt_block(block, block_length,
+                                                    nonce,
+                                                    start_block + counter))
         try:
             if config.debug_enabled:
                 self.logger.debug(f"Writing {len(serialized_data)} bytes at offset {write_offset}")
-            if len(serialized_data) != block_count * self.block_with_metadata_size:
-                self.logger.error(f"Invalid serialized data size: {len(serialized_data)}, expected {block_count * self.block_with_metadata_size}")
+            if len(serialized_data) != len(blocks) * self.block_with_metadata_size:
+                self.logger.error(f"Invalid serialized data size: {len(serialized_data)}, expected {len(blocks) * self.block_with_metadata_size}")
                 raise fuse.FuseOSError(errno.EIO)
-            super().write(enc, bytes(serialized_data), write_offset, fh)
+            # Every byte of this has to get there. A write may write
+            # less than it was given -- the backing store running out
+            # of room in the middle of it is the usual reason -- and
+            # half a record is a record that does not decrypt. The
+            # caller is told the whole write succeeded, so nobody would
+            # ever learn about it.
+            payload = bytes(serialized_data)
+            written = 0
+            while written < len(payload):
+                chunk = payload if not written else payload[written:]
+                count = super().write(enc, chunk, write_offset + written, fh)
+                if not count:
+                    self.logger.error(f"Short write at offset {write_offset + written}: nothing written of {len(chunk)} bytes")
+                    raise fuse.FuseOSError(errno.EIO)
+                if written or count != len(chunk):
+                    self.logger.warning(f"Short write at offset {write_offset + written}: {count} of {len(chunk)} bytes, writing the rest")
+                written += count
         except Exception as e:
             self.logger.error(f"Write failed: {e}")
             raise fuse.FuseOSError(errno.EIO) from e
         finally:
             del serialized_data
-        #self._read_file_size_cache.pop(enc, None)
+        # The clear-text size is worked out from the last block, so it
+        # has to be asked again now, see invalidate_size_cache().
+        self.invalidate_size_cache(path)
+
+    def write(self, path, data, offset, fh):
+        if not data:
+            return 0
+        enc = self._map_plain_to_enc(path, use_diriv_cache=True)
+        if config.debug_enabled:
+            self.logger.debug(f"Writing {len(data)} bytes at offset {offset} to {path}")
+        block_size = self.block_size
+        start_block = offset // block_size
+        end_block = (offset + len(data) - 1) // block_size
+        if config.debug_enabled:
+            self.logger.debug(f"Start block: {start_block}, End block: {end_block}")
+        enc_size = self._get_file_size(enc)
+        existing_blocks = enc_size // self.block_with_metadata_size
+        blocks = []
+        data_offset = 0
+        for index in range(start_block, end_block + 1):
+            block_start = index * block_size
+            at = max(offset, block_start) - block_start
+            until = min(offset + len(data), block_start + block_size) - block_start
+            chunk = data[data_offset:data_offset + (until - at)]
+            data_offset += len(chunk)
+            old_block = None
+            old_len = 0
+            # Read what is there, except where the write covers the
+            # whole block anyway -- a full block needs nothing of the
+            # old one, and reading it would cost a round trip per block
+            # of every sequential write.
+            if index < existing_blocks and (at > 0 or until < block_size):
+                old_block, stored_len = self.read_block(enc, index, fh,
+                                                    enc_size=enc_size)
+                # Only the last block of a file holds a length that is
+                # not the whole block; the ones before it are full, and
+                # for a block that is a hole the stored length is 0
+                # while its content is zeros all the same.
+                if index < existing_blocks - 1:
+                    old_len = block_size
+                else:
+                    old_len = stored_len
+            block, block_length = self.patch_block(old_block, old_len,
+                                                block_size, at, chunk)
+            blocks.append((block, block_length))
+        self.write_block_records(enc, path, start_block, blocks, fh)
         return len(data)
 
+    # The write() the one above replaced, kept for comparison. It wrote
+    # the end of the write as the length of the last block, so a write
+    # that ended inside a block cut the file off there (data_loss_review,
+    # finding 1), and it filled a partial last block with the old data
+    # from the front instead of from where the write ended.
+    #def write(self, path, data, offset, fh):
+    #    global path_hash_cache
+    #    enc = self._map_plain_to_enc(path, use_diriv_cache=True)
+    #    if config.debug_enabled:
+    #        self.logger.debug(f"Writing {len(data)} bytes at offset {offset} to {path}")
+    #    start_block = offset // self.block_size
+    #    end_block = (offset + len(data) - 1) // self.block_size
+    #    block_count = end_block - start_block + 1
+    #    if config.debug_enabled:
+    #        self.logger.debug(f"Start block: {start_block}, End block: {end_block}, Block count: {block_count}")
+    #    write_offset = start_block * self.block_with_metadata_size
+    #    if config.debug_enabled:
+    #        self.logger.debug(f"Write offset: {write_offset}")
+    #    is_first_block_partial = offset % self.block_size != 0
+    #    is_last_block_partial = (offset + len(data)) % self.block_size != 0
+    #    if config.debug_enabled:
+    #        self.logger.debug(f"First block partial: {is_first_block_partial}, Last block partial: {is_last_block_partial}")
+    #    current_size = self._get_file_size(enc)
+    #    decrypted_data = {}
+    #    if current_size > 0 and (is_first_block_partial or is_last_block_partial):
+    #        blocks_to_read = []
+    #        if is_first_block_partial:
+    #            blocks_to_read.append(start_block)
+    #        if is_last_block_partial and end_block != start_block:
+    #            blocks_to_read.append(end_block)
+    #        for block in blocks_to_read:
+    #            read_offset = block * self.block_with_metadata_size
+    #            read_size = self.block_with_metadata_size
+    #            max_available_size = self._get_file_size(enc)
+    #            read_size = min(read_size, max_available_size - read_offset)
+    #            if read_size > 0:
+    #                if config.debug_enabled:
+    #                    self.logger.debug(f"Reading block {block} at offset {read_offset}, size {read_size}")
+    #                try:
+    #                    encrypted_data = super().read(enc, read_size, read_offset, fh)
+    #                    decrypted_data[block] = self._decrypt_blocks(encrypted_data, 1)[:self.block_size]
+    #                except Exception as e:
+    #                    self.logger.error(f"Failed to read block {block}: {e}")
+    #                    raise fuse.FuseOSError(errno.EIO) from e
+    #    # Create a unique identifier from the file path using SHA-256.
+    #    try:
+    #        path_hash = path_hash_cache[path]
+    #    except KeyError:
+    #        path_hash = hashlib.sha256(path.encode('utf-8')).digest()
+    #        path_hash_cache[path] = path_hash
+    #    data_offset = 0
+    #    block_counter = 0
+    #    serialized_data = bytearray()
+    #    for i in range(start_block, end_block + 1):
+    #        block = bytearray()
+    #        if i == start_block and is_first_block_partial:
+    #            existing_block = decrypted_data.get(i, b'\x00' * self.block_size)
+    #            block_offset = offset % self.block_size
+    #            block.extend(existing_block[:block_offset])
+    #            data_start = data_offset
+    #            data_end = min(len(data), data_start + self.block_size - block_offset)
+    #            block.extend(data[data_start:data_end])
+    #            block_length = len(block)
+    #            data_offset = data_end
+    #            if len(block) % self.block_size != 0:
+    #                block.extend(b'\x00' * (self.block_size - (len(block) % self.block_size)))
+    #        elif i == end_block and is_last_block_partial:
+    #            existing_block = decrypted_data.get(i, b'\x00' * self.block_size)
+    #            remaining_data = data[data_offset:]
+    #            block.extend(remaining_data)
+    #            block_length = len(remaining_data)
+    #            remaining_length = self.block_size - len(remaining_data)
+    #            if remaining_length > 0:
+    #                block.extend(existing_block[:remaining_length])
+    #        else:
+    #            data_start = data_offset
+    #            data_end = min(len(data), data_start + self.block_size)
+    #            block.extend(data[data_start:data_end])
+    #            block_length = len(data[data_start:data_end])
+    #            data_offset = data_end
+    #            if len(block) % self.block_size != 0:
+    #                block.extend(b'\x00' * (self.block_size - (len(block) % self.block_size)))
+    #        # Get block number for nonce.
+    #        block_number = write_offset + block_counter
+    #        # Generate nonce: 8 bytes block_number, 2 bytes path_id, 2 bytes random.
+    #        nonce = struct.pack('!Q', block_number) + path_hash[:2] + os.urandom(2)
+    #        serialized_block = self._encrypt_block(block, block_length, nonce)
+    #        serialized_data.extend(serialized_block)
+    #        block_counter += 1
+    #    try:
+    #        if config.debug_enabled:
+    #            self.logger.debug(f"Writing {len(serialized_data)} bytes at offset {write_offset}")
+    #        if len(serialized_data) != block_count * self.block_with_metadata_size:
+    #            self.logger.error(f"Invalid serialized data size: {len(serialized_data)}, expected {block_count * self.block_with_metadata_size}")
+    #            raise fuse.FuseOSError(errno.EIO)
+    #        super().write(enc, bytes(serialized_data), write_offset, fh)
+    #    except Exception as e:
+    #        self.logger.error(f"Write failed: {e}")
+    #        raise fuse.FuseOSError(errno.EIO) from e
+    #    finally:
+    #        del serialized_data
+    #    #self._read_file_size_cache.pop(enc, None)
+    #    return len(data)
+
+    # And the one before that.
     #def write(self, path, data, offset, fh):
     #    enc = self._map_plain_to_enc(path, use_diriv_cache=True)
     #    self.logger.debug(f"Writing {len(data)} bytes at offset {offset} to {path}")
@@ -2354,8 +2972,15 @@ class EncryptedFS(OTPmeFS):
             # have permissions to the file, backupd returns the file size of the metadata file.
             if self.restore_share:
                 return encrypted_size
-            self.logger.error(f"Invalid encrypted file size for {path}: {encrypted_size}, not a multiple of {self.block_with_metadata_size}")
-            raise fuse.FuseOSError(errno.EIO)
+            # A record that was left half written, which is what a write
+            # that could not put all of its bytes down leaves behind. The
+            # whole file used to be refused here, so one torn record at
+            # the end cost every block before it as well. The complete
+            # records are still readable, so the file is as long as they
+            # are and the torn tail is left out of it.
+            self.logger.error(f"Incomplete last block for {path}: {encrypted_size} is not a multiple of {self.block_with_metadata_size}, ignoring {encrypted_size % self.block_with_metadata_size} bytes at the end")
+            if num_blocks == 0:
+                return 0
         unencrypted_size = (num_blocks - 1) * self.block_size if num_blocks > 0 else 0
         try:
             offset = (num_blocks - 1) * self.block_with_metadata_size + 4
@@ -2385,7 +3010,9 @@ class EncryptedFS(OTPmeFS):
         if length == 0:
             if config.debug_enabled:
                 self.logger.debug("Truncating file to 0 bytes")
-            return super().truncate(enc, 0, fh)
+            status = super().truncate(enc, 0, fh)
+            self.invalidate_size_cache(path)
+            return status
 
         # Pad empty file with zeros.
         if current_encrypted_size == 0:
@@ -2413,29 +3040,73 @@ class EncryptedFS(OTPmeFS):
 
         # If needed blocks is 0 truncate file to 0.
         if needed_blocks == 0:
-            return super().truncate(enc, 0, fh)
+            status = super().truncate(enc, 0, fh)
+            self.invalidate_size_cache(path)
+            return status
 
+        shrunk = False
         if needed_blocks < current_blocks:
             # If file should shrink, truncate to full block size.
             if config.debug_enabled:
                 self.logger.debug(f"Removing blocks: from {current_blocks} to {needed_blocks}")
             new_encrypted_size = needed_blocks * self.block_with_metadata_size
             super().truncate(enc, new_encrypted_size, fh)
+            self.invalidate_size_cache(path)
+            shrunk = True
 
         # Handle partial last block.
+        last_block = needed_blocks - 1
         last_block_remainder = length % self.block_size
-        if last_block_remainder != 0 and needed_blocks > 0:
+        if last_block_remainder != 0:
             if config.debug_enabled:
                 self.logger.debug(f"Adjusting last block to {last_block_remainder} bytes")
-            # Read current block data.
-            last_block_start_offset = (needed_blocks - 1) * self.block_size
-            current_block_data = self.read(path, self.block_size, last_block_start_offset, fh)
-            # Truncate current block.
-            truncated_data = current_block_data[:last_block_remainder]
-            # Write truncated block.
-            self.write(path, truncated_data, last_block_start_offset, fh)
+            old_block, _unused_len = self.read_block(enc, last_block, fh)
+            block = bytearray(self.block_size)
+            if old_block:
+                block[:last_block_remainder] = old_block[:last_block_remainder]
+            # The length is set here, not carried over: this is the one
+            # write that makes a file smaller, so the cut away tail goes
+            # and the length has to be exactly where the file now ends.
+            # write() would keep the longer of the two, see patch_block().
+            self.write_block_records(enc, path, last_block,
+                                    [(bytes(block), last_block_remainder)],
+                                    fh)
+        elif shrunk:
+            # The file now ends on a block boundary, so it ends with a
+            # full block -- and the length in the last record is where
+            # the file ends. A block that was never filled to the end
+            # has to be filled now: what nobody wrote in it is a hole,
+            # and a hole reads as zeros, which is what the record holds.
+            # Without this a truncate to a block boundary left the file
+            # as short as the last write into that block had made it.
+            old_block, stored_len = self.read_block(enc, last_block, fh)
+            if stored_len != self.block_size:
+                if config.debug_enabled:
+                    self.logger.debug(f"Filling last block to {self.block_size} bytes")
+                block, block_length = self.patch_block(old_block,
+                                                    self.block_size,
+                                                    self.block_size, 0, b'')
+                self.write_block_records(enc, path, last_block,
+                                        [(block, block_length)], fh)
 
         return 0
+
+    def fsync(self, path: str, datasync: int, fh: int=None,
+        use_diriv_cache: bool=True) -> int:
+        # A restore share answers 0: it is read only, so there is
+        # nothing of ours to put on disk, and its command set does not
+        # have fsync.
+        if self.restore_share:
+            return 0
+        enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
+        try:
+            return super().fsync(enc, datasync, fh)
+        except Exception as e:
+            if e.errno != errno.ENOENT:
+                raise
+            if not use_diriv_cache:
+                raise
+            return self.fsync(path, datasync, fh, use_diriv_cache=False)
 
     def chmod(self, path: str, mode: int, use_diriv_cache: bool=True) -> int:
         enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)

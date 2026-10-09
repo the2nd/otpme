@@ -19,6 +19,17 @@
 
 import os
 import sys
+import faulthandler
+
+# A crash inside a C extension or a library we did not write leaves
+# nothing behind but a line in dmesg -- "segfault at 0 ip 0 error 14",
+# which says a function pointer was NULL and nothing about who called
+# it. A signal is the one thing no traceback can be made of afterwards,
+# so the handler has to be in place before it arrives. This writes the
+# stack of every thread to stderr on SIGSEGV, SIGBUS, SIGILL, SIGFPE
+# and SIGABRT, which is what a test run or a daemon log then shows. It
+# costs nothing while nothing crashes.
+faulthandler.enable()
 
 # Add PYTHONPATH.
 PYTHONPATH_FILE = "/etc/otpme/PYTHONPATH"
@@ -94,12 +105,27 @@ import getpass
 from importlib import reload
 
 # Workaround for "ValueError: unsupported hash type md4" error on hashlib.new('md4')
-import ctypes
-try:
-    ctypes.CDLL("libssl.so").OSSL_PROVIDER_load(None, b"legacy")
-    ctypes.CDLL("libssl.so").OSSL_PROVIDER_load(None, b"default")
-except (AttributeError, OSError):
-    pass
+#
+# Not needed any more: MD4 comes from passlib now (lib/mschap.py),
+# which is where the DES of MS-CHAP comes from as well. Kept here as a
+# comment because this is the place it would have to go back to.
+#
+# What it did: load the OpenSSL legacy provider in every otpme command
+# there is, whether it ever hashes anything or not, around python into
+# a library python itself uses, without a signature for the call (the
+# returned provider pointer came back truncated to an int) and beside
+# the OpenSSL that cryptography carries statically. The buildbot has
+# been seeing segfaults in the command line tools since September, all
+# of them with the signature of a corrupted pointer: a call through
+# NULL, a jump onto the stack, a GC header written into read-only
+# memory. That is no proof of anything, which is why faulthandler is
+# enabled above -- this is one thing less that could do it.
+#import ctypes
+#try:
+#    ctypes.CDLL("libssl.so").OSSL_PROVIDER_load(None, b"legacy")
+#    ctypes.CDLL("libssl.so").OSSL_PROVIDER_load(None, b"default")
+#except (AttributeError, OSError):
+#    pass
 
 ## Workaround for https://github.com/pyca/cryptography/issues/7236
 #from cryptography.hazmat.backends.openssl import backend

@@ -409,6 +409,20 @@ def get(daemon, mgmt=None, ping=True, **kwargs):
         need_user = False
     if daemon == "backupd":
         need_user = False
+    if daemon == "racd":
+        # Nothing on this connection authenticates a user: racd asks for
+        # no user authentication and no preauth, only for a client
+        # certificate (protocols/server/rac1.py). The host that was
+        # given the job shows up there the same way.
+        #
+        # A username it does not need is not baggage, it changes what
+        # the connection does: with one, the client holds the site it
+        # connects to against the trusted sites of ours before it says
+        # anything (OTPmeClient1._do_preauth), which is there to keep
+        # credentials from going to a site we do not trust. There are no
+        # credentials here, and a shell on a host of another site died
+        # on it with "Site not trusted".
+        need_user = False
 
     if config.use_socket:
         username = config.system_user()

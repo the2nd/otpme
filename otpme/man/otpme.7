@@ -556,6 +556,18 @@ This copy is encrypted with the encrypt key of the user.
 With \fByubikey_piv\fR this key is on the token, which is why this token type is the safe way to use encrypted shares.
 Because each token needs its own key copy, only tokens can be added to an encrypted share, not roles.
 .PP
+A directory that is already an encrypted share can be taken over, for example after a move to another site, or when the share object is gone and the data is still there.
+Create the share with \fB\-\-no\-key\-gen\fR, so OTPme does not make a new key: the data can only be read with the key it was written with.
+The settings file in the directory stays as it is, so the key is still made the same way from the same master password.
+Then mount the share once from the login session of root, with a token that may use the master password of it:
+.RS
+.B otpme\-mount \-\-master\-password\-mount \-\-add\-share\-key \fIshare mountpoint\fR
+.RE
+OTPme asks for the master password, makes the key from it and stores it for your token.
+After that the share mounts the normal way.
+See
+.BR otpme\-share (1).
+.PP
 A share can also use SOTP signing.
 The login to the share must then be signed with the sign key of the user, see
 .BR otpme\-share (1)
@@ -2669,6 +2681,38 @@ Whatever it is set to, a peer of another site or of another realm is always refu
 .br
 Object types: site
 .TP
+.B allow_user_messages \fR(list, default: empty)
+The hosts that may send messages to the users of this site.
+See
+.B message
+in
+.BR otpme\-tool (1).
+.RS
+.PP
+Nodes may send messages whatever this is set to.
+A host may not, until it is listed here.
+Add a host where something on it has to reach the people who use it.
+.PP
+Give the host by name, several of them separated by commas, and
+.B \-a
+to add one to those already there:
+.PP
+.nf
+otpme\-site config berlin allow_user_messages munich\-host1
+otpme\-site config \-a berlin allow_user_messages munich\-host2
+.fi
+.PP
+The hosts are kept by UUID and shown by name again.
+A name belongs to a host only for as long as it has it, so a host that is removed takes its permission with it, and a new host of the same name does not inherit it.
+.PP
+A message is shown in a window on the desktop of the user, so a host that may send one can put text in front of somebody.
+That is why it is one host at a time and not a switch for all of them, and why only an admin may change it.
+.PP
+Whatever it is set to, a peer of another site or of another realm is always refused.
+.PP
+Object types: site
+.RE
+.TP
 .B preferred_master_node \fR(str)
 Name of the node that
 .B clusterd
@@ -2913,6 +2957,25 @@ Object types: site, unit, node, share
 .B backup_interval \fR(time)
 How much time passes between two backups of this object.
 It takes time units, e.g. \fB1h\fR or \fB1D\fR, and it is shown in those units.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_retry_interval \fR(time, default: 5m)
+How long a backup waits before it tries again, when the repository is in somebody else's hands.
+That happens when another backup, a restore or a repack is running in it.
+Such a backup has not failed, so it does not report one: the same attempt works once the other one is done.
+It takes time units, e.g. \fB5m\fR, and it is shown in those units.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_retry_count \fR(int, default: 12)
+How many more times a backup tries when it found the repository in use.
+The tries end with the backup window in any case, so this only bounds a window that stands open all day.
+With \fB0\fR a backup does not wait at all, and a repository in use makes it fail.
+.br
+The time of the last backup stays as it is while a backup waits.
+No backup ran, so \fBbackup_interval\fR must not count the waiting as the backup of this window.
+It is written when the backup runs, and when the last try gives up.
 .br
 Object types: site, unit, node, share
 .TP
@@ -3358,6 +3421,7 @@ The settings of one user, e.g. which agent to talk to.
 .BR otpme-group (1),
 .BR otpme-host (1),
 .BR otpme-inventory (1),
+.BR otpme-mount (1),
 .BR otpme-node (1),
 .BR otpme-policy (1),
 .BR otpme-pool (1),

@@ -2820,12 +2820,22 @@ class Share(OTPmeObject):
                     if not share_key:
                         msg = _("Failed to receive share key from client.")
                         return callback.error(msg)
-            if share_key:
-                self.add_share_key(username=user.name,
-                                    share_key=share_key,
-                                    force=True,
-                                    callback=callback,
-                                    verify_acls=False)
+            # The key the user will read this share with. A second token
+            # of the same user brings the key the share already has, and
+            # add_share_key() refuses to add one twice -- which is no
+            # failure here, so it is not even asked. Anything else is:
+            # without a key of theirs the user mounts the share and
+            # reads nothing, and the answer used to say the token was
+            # added.
+            if share_key and user.uuid not in self.share_keys:
+                if not self.add_share_key(username=user.name,
+                                        share_key=share_key,
+                                        force=True,
+                                        callback=callback,
+                                        verify_acls=False):
+                    msg = _("Failed to add share key for user: {user_name}")
+                    msg = msg.format(user_name=user.name)
+                    return callback.error(msg)
 
         if self.sotp_signing:
             if not self.add_sign_public_key(user, callback=callback):
@@ -3024,12 +3034,22 @@ class Share(OTPmeObject):
                     if not share_key:
                         msg = _("Failed to receive share key from client.")
                         return callback.error(msg)
-            if share_key:
-                self.add_share_key(username=user.name,
-                                    share_key=share_key,
-                                    force=True,
-                                    callback=callback,
-                                    verify_acls=False)
+            # The key the user will read this share with. A second token
+            # of the same user brings the key the share already has, and
+            # add_share_key() refuses to add one twice -- which is no
+            # failure here, so it is not even asked. Anything else is:
+            # without a key of theirs the user mounts the share and
+            # reads nothing, and the answer used to say the token was
+            # added.
+            if share_key and user.uuid not in self.share_keys:
+                if not self.add_share_key(username=user.name,
+                                        share_key=share_key,
+                                        force=True,
+                                        callback=callback,
+                                        verify_acls=False):
+                    msg = _("Failed to add share key for user: {user_name}")
+                    msg = msg.format(user_name=user.name)
+                    return callback.error(msg)
 
         if self.sotp_signing:
             if not self.add_sign_public_key(user, callback=callback):

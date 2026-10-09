@@ -51,6 +51,7 @@ try:
 except Exception:
     pass
 
+from otpme.lib import wtmp
 from otpme.lib import config
 from otpme.lib import rendezvous
 
@@ -216,17 +217,29 @@ def verify_host_vouch(line, job_uuid, host_public_key):
     return host_key_blob
 
 
-def read_host_vouch(sock, timeout=BANNER_TIMEOUT):
+def read_host_vouch(sock, timeout=None):
     """ The vouch line, and nothing of what comes after it.
 
     Read one byte at a time up to the newline: what follows is the SSH
     handshake, and reading a single byte of that here would take it
     away from the library that has to see it.
+
+    An end that says nothing at all ends up here as well, and not as a
+    TimeoutError of its own: silence and a connection that went away
+    are the same answer to the one question asked here.
+
+    <timeout> is looked up when it is used and not when this is defined,
+    so BANNER_TIMEOUT can be set to something else at runtime.
     """
+    if timeout is None:
+        timeout = BANNER_TIMEOUT
     line = b""
     sock.settimeout(timeout)
     while len(line) < MAX_VOUCH_LEN:
-        data = sock.recv(1)
+        try:
+            data = sock.recv(1)
+        except TimeoutError:
+            break
         if not data:
             break
         if data == b"\n":
@@ -311,7 +324,7 @@ def verify_session_bind(line, job_uuid, session_id, host_public_key):
         raise OTPmeException(msg)
 
 
-def read_session_bind(channel, timeout=BANNER_TIMEOUT):
+def read_session_bind(channel, timeout=None):
     """ The binding line off the channel, and nothing after it.
 
     One byte at a time up to the newline, the way the vouch is read:
@@ -322,13 +335,27 @@ def read_session_bind(channel, timeout=BANNER_TIMEOUT):
     next is the session itself: a channel left with a timeout on it
     hands the session a TimeoutError instead of waiting, and the
     session reads that as a far end that is gone.
+
+    A host that holds the channel open and says nothing is the one this
+    is really for -- a party that only carries the session cannot work
+    the id out, so it has nothing to send. That is a refusal like any
+    other here, not a TimeoutError for the caller to make sense of
+    (paramiko raises PipeTimeout, which is a TimeoutError).
+
+    <timeout> is looked up when it is used and not when this is defined,
+    so BANNER_TIMEOUT can be set to something else at runtime.
     """
+    if timeout is None:
+        timeout = BANNER_TIMEOUT
     line = b""
     before = channel.gettimeout()
     channel.settimeout(timeout)
     try:
         while len(line) < MAX_VOUCH_LEN:
-            data = channel.recv(1)
+            try:
+                data = channel.recv(1)
+            except TimeoutError:
+                break
             if not data:
                 break
             if data == b"\n":
@@ -559,6 +586,10 @@ def start_shell(server, user_entry):
             os.chdir(user_entry.pw_dir)
         except OSError:
             os.chdir("/")
+        # This process is the login session of that user from here on,
+        # and so is the shell it becomes. Before the privileges go,
+        # because setting it needs them (lib/wtmp.set_login_uid).
+        wtmp.set_login_uid(user_entry.pw_uid)
         if os.getuid() == 0 and user_entry.pw_uid != 0:
             os.initgroups(user_entry.pw_name, user_entry.pw_gid)
             os.setgid(user_entry.pw_gid)
@@ -917,6 +948,12 @@ def serve_session(sock, allowed_keys, user=None, command=None,
     transport.set_keepalive(KEEPALIVE_INTERVAL)
     pid = None
     master_fd = None
+    # The terminal of the shell and its pid, once there is one. Kept out
+    # here so the end of the session is written wherever it ends, see
+    # below -- and the pid of its own, because the one above is given up
+    # as soon as the shell has been waited for.
+    terminal = None
+    shell_pid = None
     # So that what SSH has to say about this session is in the log of
     # this session, and in its result, for as long as it lasts. Its
     # logger is let down to where a complaint gets through, since
@@ -960,6 +997,22 @@ def serve_session(sock, allowed_keys, user=None, command=None,
         pid, master_fd = start_shell(server, user_entry)
         server.master_fd = master_fd
         set_window_size(master_fd, server.columns, server.rows)
+        # A shell on this host is a login on this host, so it goes where
+        # the other logins are. What "last" shows as the origin is the
+        # job: whoever asked for the shell, which host the key belongs
+        # to and when it was signed are all on it
+        # ("otpme-deploy show <uuid>"), and the uuid is the one thing
+        # that leads to all of it.
+        terminal = wtmp.terminal_name(master_fd)
+        shell_pid = pid
+        origin = "otpme-shell"
+        if job_uuid:
+            origin = f"otpme/{str(job_uuid)[:8]}"
+        # The pid of the shell, the way sshd and login(1) put it in:
+        # "last" asks whether that process is still alive to tell a
+        # session that is running from one whose end was never written.
+        # The pid of whoever writes the record says nothing about that.
+        wtmp.login(terminal, user_entry.pw_name, origin, pid=pid)
         ended_by = pump(channel, master_fd, deadline=deadline)
         if ended_by.startswith("lost"):
             # What SSH made of it, where it made anything of it. Without
@@ -991,6 +1044,11 @@ def serve_session(sock, allowed_keys, user=None, command=None,
         x_logger.info(log_msg)
         return exit_status, ended_by
     finally:
+        if terminal is not None:
+            # Here and not beside the login above: a session ends in
+            # more ways than one, and one that is not written as ended
+            # stands in "last" as still logged in for good.
+            wtmp.logout(terminal, shell_pid)
         if pid is not None:
             # The client left or the time ran out, and the shell is
             # still there. It goes, with its whole process group: what

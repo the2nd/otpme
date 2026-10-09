@@ -74,6 +74,44 @@ def notify_host(host_uuid, event_type, data=None):
         return 0
 
 
+def message(text, title=None, username=None, host=None, all_users=False):
+    """ Put a message in front of users that are logged in.
+
+    One of username, host or all_users says who gets it, and idled
+    works out which of its subscribers that is -- it is the one that
+    knows who is here. The answer says how many users were told.
+
+    Unlike notify() this is not fire and forget: a message that nobody
+    could be told is something the caller has to hear, because somebody
+    typed it and is waiting to learn whether it went out.
+    """
+    if config.use_api:
+        return 0
+    idled_conn = connections.get("idled",
+                                auto_auth=False,
+                                auto_preauth=False,
+                                handle_host_auth=False,
+                                handle_user_auth=False,
+                                encrypt_session=False)
+    command_args = {
+                'text'          : text,
+                'title'         : title,
+                'username'      : username,
+                'host'          : host,
+                'all_users'     : all_users,
+                }
+    status, \
+    status_code, \
+    response, \
+    binary_data = idled_conn.send(command="message",
+                                command_args=command_args)
+    if not status:
+        msg = _("Failed to send message: {response}")
+        msg = msg.format(response=response)
+        raise OTPmeException(msg)
+    return response
+
+
 def notify(username, event_type, data):
     """Send a notification to all idled subscribers of the given user."""
     if config.use_api:

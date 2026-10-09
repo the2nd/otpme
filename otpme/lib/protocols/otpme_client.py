@@ -1068,30 +1068,44 @@ class OTPmeClient(OTPmeClientBase):
             error_msg = error_msg.format(error=e)
             raise ConnectionError(error_msg) from e
 
-        # Receive response.
-        try:
-            response = self.connection.recv(blocking=blocking, timeout=timeout)
-        except Exception as e:
-            #config.raise_exception()
-            error_msg = _("Error while receiving: {error}")
-            error_msg = error_msg.format(error=e)
-            raise ConnectionError(error_msg) from e
-
         # Decode response.
         decode_method = self.decode_response
         if self.proto_handler:
             decode_method = self.proto_handler.decode_response
 
-        try:
-            status_code, \
-            response, \
-            binary_data = decode_method(response,
-                                    encryption=enc_mod,
-                                    enc_key=enc_key)
-        except Exception as e:
-            msg = _("Error decoding response: {e}")
-            msg = msg.format(e=e)
-            raise ConnectionError(msg) from e
+        # Receive response.
+        #
+        # In a loop, because a command that takes long says so while it
+        # works (see OTPmeServer1.send_keepalive()): those frames are
+        # not the answer, they are "still working", and the next one is
+        # read without asking again. The timeout therefore has to
+        # outlast the quiet between two of them and not the command
+        # itself -- a retention over a big repository used to run into
+        # it, and the client gave up on work the daemon then finished
+        # anyway.
+        while True:
+            try:
+                response = self.connection.recv(blocking=blocking,
+                                            timeout=timeout)
+            except Exception as e:
+                #config.raise_exception()
+                error_msg = _("Error while receiving: {error}")
+                error_msg = error_msg.format(error=e)
+                raise ConnectionError(error_msg) from e
+
+            try:
+                status_code, \
+                response, \
+                binary_data = decode_method(response,
+                                        encryption=enc_mod,
+                                        enc_key=enc_key)
+            except Exception as e:
+                msg = _("Error decoding response: {e}")
+                msg = msg.format(e=e)
+                raise ConnectionError(msg) from e
+
+            if status_code != status_codes.KEEPALIVE:
+                break
         if status_code == status_codes.SERVER_QUIT:
             self._connected = False
             msg = _("Connection closed by server: {response}")
@@ -1165,6 +1179,10 @@ class OTPmeClient(OTPmeClientBase):
         """ Handle SSH authentication. """
         challenge = command_dict['challenge']
         otp_len = int(challenge.split(":")[1])
+        try:
+            token_test = command_dict['token_test']
+        except KeyError:
+            token_test = False
 
         #if not self.use_ssh_agent:
         #    raise OTPmeException(_("SSH authentication requested but ssh-agent "
@@ -1216,10 +1234,17 @@ class OTPmeClient(OTPmeClientBase):
 
         log_msg = _("Signing SSH challenge...", log=True)[1]
         self.logger.debug(log_msg)
+        from otpme.lib import ssh
+        sign_challenge = challenge
+        if not token_test:
+            # Bind our answer to this connection, so that nobody can
+            # use it on another one. A token test is the one case that
+            # cannot be bound: the challenge is verified by the job
+            # that asked for it, which has no session key.
+            sign_challenge = ssh.bind_challenge(challenge, self.session_key)
         # Try to sign challenge with via running SSH agent.
         try:
-            from otpme.lib import ssh
-            response = ssh.sign_challenge(challenge=challenge)
+            response = ssh.sign_challenge(challenge=sign_challenge)
         except Exception as e:
             config.raise_exception()
             error_msg = _("Error signing SSH challenge: {error}")

@@ -2,7 +2,8 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import hashlib
-from passlib.utils import des
+from passlib.crypto import des
+from passlib.crypto.digest import lookup_hash
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -11,6 +12,18 @@ try:
         print(msg)
 except Exception:
     pass
+
+# MD4, for the NT hash. OpenSSL 3 moved it into the legacy provider, so
+# hashlib.new("md4") raises on a host that does not load that provider,
+# and that used to be worked around by loading it with ctypes behind
+# python's back -- in every otpme command there is, see bin/command.py.
+#
+# passlib brings it, the way it already brings the DES of MS-CHAP above:
+# the one of hashlib where the host has it, its own in python where it
+# has not. The python one costs 13us against 1us for a password of
+# twelve characters, measured, and an authentication asks for two of
+# them.
+md4 = lookup_hash("md4").const
 
 def generate_nt_response(authenticator_challenge,
     peer_challenge, username, password):
@@ -38,16 +51,12 @@ def nt_password_hash(password):
         pw_bin = password.encode('utf-16')[2:]
     else:
         pw_bin = password[2:]
-    md4 = hashlib.new('md4')
-    md4.update(pw_bin)
-    password_hash = md4.digest()
+    password_hash = md4(pw_bin).digest()
     return password_hash
 
 def hash_nt_password_hash(password_hash):
     """ https://tools.ietf.org/html/rfc2759#section-8.4 """
-    md4 = hashlib.new('md4')
-    md4.update(password_hash)
-    password_hash_hash = md4.digest()
+    password_hash_hash = md4(password_hash).digest()
     return password_hash_hash
 
 def challenge_response(challenge, password_hash):

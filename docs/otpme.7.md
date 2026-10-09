@@ -567,6 +567,22 @@ this token type is the safe way to use encrypted shares. Because each
 token needs its own key copy, only tokens can be added to an encrypted
 share, not roles.
 
+A directory that is already an encrypted share can be taken over, for
+example after a move to another site, or when the share object is gone
+and the data is still there. Create the share with **--no-key-gen**, so
+OTPme does not make a new key: the data can only be read with the key it
+was written with. The settings file in the directory stays as it is, so
+the key is still made the same way from the same master password. Then
+mount the share once from the login session of root, with a token that
+may use the master password of it:
+
+> **otpme-mount --master-password-mount --add-share-key *share*
+> mountpoint**
+
+OTPme asks for the master password, makes the key from it and stores it
+for your token. After that the share mounts the normal way. See
+**otpme-share**(1).
+
 A share can also use SOTP signing. The login to the share must then be
 signed with the sign key of the user, see **otpme-share**(1) and
 **Tokens** above.
@@ -2519,6 +2535,34 @@ Whatever it is set to, a peer of another site or of another realm is
 always refused.  
 Object types: site
 
+**allow_user_messages (list, default: empty)**  
+The hosts that may send messages to the users of this site. See
+**message** in **otpme-tool**(1).
+
+Nodes may send messages whatever this is set to. A host may not, until
+it is listed here. Add a host where something on it has to reach the
+people who use it.
+
+Give the host by name, several of them separated by commas, and **-a**
+to add one to those already there:
+
+    otpme-site config berlin allow_user_messages munich-host1
+    otpme-site config -a berlin allow_user_messages munich-host2
+
+The hosts are kept by UUID and shown by name again. A name belongs to a
+host only for as long as it has it, so a host that is removed takes its
+permission with it, and a new host of the same name does not inherit it.
+
+A message is shown in a window on the desktop of the user, so a host
+that may send one can put text in front of somebody. That is why it is
+one host at a time and not a switch for all of them, and why only an
+admin may change it.
+
+Whatever it is set to, a peer of another site or of another realm is
+always refused.
+
+Object types: site
+
 **preferred_master_node (str)**  
 Name of the node that **clusterd** should make the master of this site,
 as soon as that node is up and the cluster has quorum.  
@@ -2742,6 +2786,25 @@ Object types: site, unit, node, share
 **backup_interval (time)**  
 How much time passes between two backups of this object. It takes time
 units, e.g. **1h** or **1D**, and it is shown in those units.  
+Object types: site, unit, node, share
+
+**backup_retry_interval (time, default: 5m)**  
+How long a backup waits before it tries again, when the repository is in
+somebody else's hands. That happens when another backup, a restore or a
+repack is running in it. Such a backup has not failed, so it does not
+report one: the same attempt works once the other one is done. It takes
+time units, e.g. **5m**, and it is shown in those units.  
+Object types: site, unit, node, share
+
+**backup_retry_count (int, default: 12)**  
+How many more times a backup tries when it found the repository in use.
+The tries end with the backup window in any case, so this only bounds a
+window that stands open all day. With **0** a backup does not wait at
+all, and a repository in use makes it fail.  
+The time of the last backup stays as it is while a backup waits. No
+backup ran, so **backup_interval** must not count the waiting as the
+backup of this window. It is written when the backup runs, and when the
+last try gives up.  
 Object types: site, unit, node, share
 
 **backup_key (str)**  
@@ -3123,12 +3186,12 @@ The settings of one user, e.g. which agent to talk to.
 **otpme-accessgroup**(1), **otpme-backup**(1), **otpme-ca**(1),
 **otpme-client**(1), **otpme-deploy**(1), **otpme-device**(1),
 **otpme-dictionary**(1), **otpme-group**(1), **otpme-host**(1),
-**otpme-inventory**(1), **otpme-node**(1), **otpme-policy**(1),
-**otpme-pool**(1), **otpme-realm**(1), **otpme-resolver**(1),
-**otpme-role**(1), **otpme-script**(1), **otpme-share**(1),
-**otpme-site**(1), **otpme-token**(1), **otpme-tool**(1),
-**otpme-trash**(1), **otpme-unit**(1), **otpme-user**(1),
-**otpme-vlan**(1)
+**otpme-inventory**(1), **otpme-mount**(1), **otpme-node**(1),
+**otpme-policy**(1), **otpme-pool**(1), **otpme-realm**(1),
+**otpme-resolver**(1), **otpme-role**(1), **otpme-script**(1),
+**otpme-share**(1), **otpme-site**(1), **otpme-token**(1),
+**otpme-tool**(1), **otpme-trash**(1), **otpme-unit**(1),
+**otpme-user**(1), **otpme-vlan**(1)
 
 # AUTHOR
 

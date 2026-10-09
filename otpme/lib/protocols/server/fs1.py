@@ -22,12 +22,16 @@ from otpme.lib import backend
 from otpme.lib import filetools
 from otpme.lib import connections
 from otpme.lib import multiprocessing
+from otpme.lib.fuse import CONF_FILE
 from otpme.lib.fuse import init_cryptfs
+from otpme.lib.fuse import KEY_CHECK_NAME
 from otpme.lib.fuse import read_cryptfs_settings
 from otpme.lib.fuse import load_cryptfs_settings
 from otpme.lib.classes.backup import CHUNK_SIZE
 from otpme.lib.classes.backup import FLAG_ZLIB
 from otpme.lib.classes.backup import decrypt_block
+from otpme.lib.classes.backup import block_id
+from otpme.lib.classes.backup import _derive_id_key
 
 from otpme.lib.protocols import status_codes
 from otpme.lib.multiprocessing import drop_privileges
@@ -36,13 +40,42 @@ from otpme.lib.protocols.server.fs import OTPmeFsServer1
 from otpme.lib.exceptions import *
 
 filehandlers = {}
-default_callback = config.get_callback()
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']
 PROTOCOL_VERSION = "OTPme-fs-1.0"
 
+# Decrypted chunks of a file on a restore mount, per path, see
+# _cache_chunk().
 blob_cache = {}
+# How much of that is kept per open file. Bytes and not a number of
+# chunks, because memory is what this is about -- CHUNK_SIZE may change
+# and this must not follow it silently. Enough for a reader that does
+# not go strictly front to back (two processes in one file, readahead
+# arriving out of order): fetching a chunk again means pulling 4 MiB
+# over the network and decrypting it, which is the expensive side of
+# this trade, not the memory. Per open file, so the process holds this
+# times the number of files somebody has open on the mount.
+RESTORE_CACHE_BYTES = 32 * 1024 * 1024
+# What a restore mount refuses, see process_restore_command(). Everything
+# that would change something, including the ones that only change
+# metadata: a backup is what it was when it was taken.
+RESTORE_WRITE_COMMANDS = [
+                        "create",
+                        "link",
+                        "symlink",
+                        "rename",
+                        "truncate",
+                        "unlink",
+                        "mkdir",
+                        "rmdir",
+                        "chmod",
+                        "chown",
+                        "utimens",
+                        "write",
+                        "setxattr",
+                        "removexattr",
+                        ]
 
 def register():
     config.register_otpme_protocol("fsd", PROTOCOL_VERSION, server=True)
@@ -115,8 +148,12 @@ class OTPmeFsP1(OTPmeFsServer1):
         self.backupd_conn = None
         # AES key for block decryption (set externally before FUSE read).
         self.aes_key = None
+        # What the chunk IDs of this repository are made with, derived
+        # from the key above. Used to ask whether a block we read is the
+        # block we asked for, see restore_read().
+        self.block_id_key = None
         # Deny access set by handle_share_setttings().
-        self.block_access = False
+        self.deny_access = False
         # Indicates if other node should be tried on blocked access.
         self.try_other_node = False
         # Indicates shutdown of connection.
@@ -185,14 +222,14 @@ class OTPmeFsP1(OTPmeFsServer1):
                 self.try_other_node = False
 
             if status:
-                if not self.block_access:
+                if not self.deny_access:
                     log_msg = _("Share access denied: {share}: {response}", log=True)[1]
                     log_msg = log_msg.format(share=self.share, response=response)
                     self.logger.warning(log_msg)
-                self.block_access = True
+                self.deny_access = True
                 continue
 
-            self.block_access = False
+            self.deny_access = False
 
             # Nothing more to do for restore shares.
             if self.restore_share:
@@ -211,6 +248,33 @@ class OTPmeFsP1(OTPmeFsServer1):
                 self.read_only = response['read_only']
             except KeyError:
                 pass
+
+    def key_check_file(self):
+        """ Where the key check of the mounted share lives.
+
+        Beside the config and the diriv, and a file of its own rather
+        than a field in the config: a config file that went missing is
+        written again (see init_cryptfs), and the key check must not be
+        lost with it -- whoever mounted next would write a new one, and
+        that is the one thing it exists to prevent.
+        """
+        return os.path.join(self.root, KEY_CHECK_NAME)
+
+    def read_key_check(self):
+        """ The key check of the share, hex, or None where it has none. """
+        try:
+            fd = open(self.key_check_file(), "rb")
+        except FileNotFoundError:
+            return None
+        except Exception as e:
+            log_msg = _("Failed to read key check: {share}: {error}", log=True)[1]
+            log_msg = log_msg.format(share=self.share, error=e)
+            self.logger.warning(log_msg)
+            return None
+        try:
+            return fd.read().hex()
+        finally:
+            fd.close()
 
     def get_backupd_conn(self, host, home_dir=None, backup_key=None):
         try:
@@ -254,7 +318,7 @@ class OTPmeFsP1(OTPmeFsServer1):
             response = {'try_other_node':False, 'message':message}
             return self.build_response(status, response)
 
-        if self.block_access:
+        if self.deny_access:
             if self.try_other_node:
                 multiprocessing.cleanup(keep_queues=True)
                 os._exit(0)
@@ -286,6 +350,7 @@ class OTPmeFsP1(OTPmeFsServer1):
         valid_commands = [
                             "mount",
                             "add_share_key",
+                            "set_key_check",
                         ]
 
         # Check if we got a valid command.
@@ -424,6 +489,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                     response = {'try_other_node':False, 'message':message}
                     return self.build_response(status, response)
                 self.aes_key = bytes.fromhex(backup_key)
+                self.block_id_key = _derive_id_key(self.aes_key)
 
             # Get user groups.
             default_group = stuff.get_users_default_group(self.username)
@@ -702,12 +768,39 @@ class OTPmeFsP1(OTPmeFsServer1):
                                 self.logger.warning(log_msg)
                                 response = {'try_other_node':False, 'message':message}
                                 return self.build_response(status, response)
-                            share.add_share_key(username=config.auth_user.name,
+                            # The key this home dir is about to be
+                            # encrypted with, kept by the share. It is
+                            # stored once, at the first mount of a home
+                            # dir that has no cryptfs settings yet, so a
+                            # refusal here says the share has another
+                            # key for this user already -- their home
+                            # dir lost its settings while the key stayed
+                            # behind.
+                            #
+                            # The mount goes on, because it is the
+                            # stored key that is handed to the client
+                            # below, and that is the key the home dir is
+                            # encrypted with. What was thrown away is
+                            # the password the user had just been asked
+                            # for, and that is the part nobody heard of:
+                            # not the client, and not the log either.
+                            # Said here, because an answer of its own is
+                            # not something a mount has. A share that
+                            # has no key for this user at all does not
+                            # get past the read further down.
+                            callback = config.get_callback()
+                            if not share.add_share_key(
+                                                username=config.auth_user.name,
                                                 share_key=new_share_key,
                                                 force=True,
-                                                callback=default_callback,
-                                                verify_acls=False)
-                            default_callback.write_modified_objects()
+                                                callback=callback,
+                                                verify_acls=False):
+                                log_msg = _("Share did not take the new key of user '{user_name}', mounting with the key it has: {share_name}", log=True)[1]
+                                log_msg = log_msg.format(
+                                                user_name=config.auth_user.name,
+                                                share_name=share.name)
+                                self.logger.warning(log_msg)
+                            callback.write_modified_objects()
                             do_cryptfs_init = True
                     else:
                         do_cryptfs_init = True
@@ -773,11 +866,39 @@ class OTPmeFsP1(OTPmeFsServer1):
                         self.logger.warning(log_msg)
                         response = {'try_other_node':False, 'message':message}
                         return self.build_response(status, response)
+                    if self.home_share:
+                        # A home share has no key of its own: every home
+                        # dir is encrypted with the key of its user, made
+                        # from the password of that user. Deriving from
+                        # the master password with those parameters gives
+                        # a key that cannot fit anything, and a mount with
+                        # it would write under it. See data_loss_review,
+                        # finding 16.
+                        status = status_codes.PERMISSION_DENIED
+                        message, log_msg = _("A home share has no master password: {share_name}", log=True)
+                        message = message.format(share_name=share.name)
+                        log_msg = log_msg.format(share_name=share.name)
+                        self.logger.warning(log_msg)
+                        response = {'try_other_node':False, 'message':message}
+                        return self.build_response(status, response)
                     try:
                         master_password_hash_params = fs_data['hash_params']
                     except KeyError:
                         status = status_codes.UNKNOWN_OBJECT
                         message, log_msg = _("Cryptfs misses master password hash parameters: {share_name}", log=True)
+                        message = message.format(share_name=share.name)
+                        log_msg = log_msg.format(share_name=share.name)
+                        self.logger.warning(log_msg)
+                        response = {'try_other_node':False, 'message':message}
+                        return self.build_response(status, response)
+                    if not master_password_hash_params:
+                        # Empty is not "the defaults": hash_password()
+                        # makes a salt of its own when it gets none, so
+                        # every mount would arrive at a different key and
+                        # anything written under one of them is lost with
+                        # it. See data_loss_review, finding 14d.
+                        status = status_codes.UNKNOWN_OBJECT
+                        message, log_msg = _("Cryptfs has no master password parameters: {share_name}", log=True)
                         message = message.format(share_name=share.name)
                         log_msg = log_msg.format(share_name=share.name)
                         self.logger.warning(log_msg)
@@ -835,6 +956,16 @@ class OTPmeFsP1(OTPmeFsServer1):
             if self.encrypted:
                 if self.restore_share:
                     mount_result['restore_share'] = True
+                else:
+                    # So the client can tell whether the key it just got
+                    # is the one this share was written with. Sent with
+                    # the mount because the share root is read here
+                    # anyway, see EncryptedFS.verify_key().
+                    mount_result['key_check'] = self.read_key_check()
+                    # The two files the share needs for itself. Ours to
+                    # write and ours to read, and a client has no reason
+                    # to change either -- see check_protected_names().
+                    self.protected_names = (CONF_FILE, KEY_CHECK_NAME)
                 mount_result['share_key'] = share_key
                 mount_result['block_size'] = self.block_size
                 mount_result['master_password_hash_params'] = master_password_hash_params
@@ -895,19 +1026,111 @@ class OTPmeFsP1(OTPmeFsServer1):
                 log_msg = log_msg.format(user_name=config.auth_user.name)
                 self.logger.warning(log_msg)
                 return self.build_response(status, message)
-            share.add_token(token_path=config.auth_token.rel_path,
-                            share_key=share_key,
-                            force=True,
-                            callback=default_callback,
-                            verify_acls=False)
-            default_callback.write_modified_objects()
+            # A callback of its own, and one that raises: add_token()
+            # refuses for reasons the client has to hear -- the token is
+            # already assigned to the share, a policy says no -- and a
+            # callback that only returns False said nothing, so the
+            # answer below was sent whether a key had been added or not.
+            # This is the request that makes a key the user's own for
+            # good, so an answer of "added" has to mean it.
+            callback = config.get_callback()
+            callback.raise_exception = True
+            try:
+                share.add_token(token_path=config.auth_token.rel_path,
+                                share_key=share_key,
+                                force=True,
+                                callback=callback,
+                                verify_acls=False)
+            except Exception as e:
+                status = status_codes.ERR
+                message, log_msg = _("Failed to add share key: {error}", log=True)
+                message = message.format(error=e)
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
+                return self.build_response(status, message)
+            callback.write_modified_objects()
             message = _("Share key added for user: {user_name}")
             message = message.format(user_name=config.auth_user.name)
             status = True
             return self.build_response(status, message)
 
+        if command == "set_key_check":
+            # Written once and never replaced. Letting it be overwritten
+            # would mean the first mount with a wrong key takes the share
+            # over, which is the very thing the check exists to prevent.
+            # What may write one at all is decided on the client, where
+            # the key is: EncryptedFS.key_belongs_to_this_share().
+            if not self.encrypted:
+                status = status_codes.UNKNOWN_OBJECT
+                message, log_msg = _("Share not encrypted.", log=True)
+                self.logger.warning(log_msg)
+                return self.build_response(status, message)
+            if self.restore_share:
+                status = status_codes.PERMISSION_DENIED
+                message, log_msg = _("A restore mount does not change a backup.", log=True)
+                self.logger.warning(log_msg)
+                return self.build_response(status, message)
+            try:
+                key_check = command_args['key_check']
+            except KeyError:
+                status = status_codes.UNKNOWN_OBJECT
+                message, log_msg = _("Missing key check.", log=True)
+                self.logger.warning(log_msg)
+                return self.build_response(status, message)
+            try:
+                key_check = bytes.fromhex(key_check)
+            except Exception:
+                status = status_codes.UNKNOWN_OBJECT
+                message, log_msg = _("Invalid key check.", log=True)
+                self.logger.warning(log_msg)
+                return self.build_response(status, message)
+            key_check_file = self.key_check_file()
+            if os.path.exists(key_check_file):
+                status = False
+                message, log_msg = _("Share already has a key check: {share}", log=True)
+                message = message.format(share=self.share)
+                log_msg = log_msg.format(share=self.share)
+                self.logger.warning(log_msg)
+                return self.build_response(status, message)
+            try:
+                fd = open(key_check_file, "wb")
+                try:
+                    fd.write(key_check)
+                finally:
+                    fd.close()
+                os.chmod(key_check_file, 0o644)
+            except Exception as e:
+                status = False
+                message, log_msg = _("Failed to write key check: {share}: {error}", log=True)
+                message = message.format(share=self.share, error=e)
+                log_msg = log_msg.format(share=self.share, error=e)
+                self.logger.warning(log_msg)
+                return self.build_response(status, message)
+            log_msg = _("Key check stored for share: {share}", log=True)[1]
+            log_msg = log_msg.format(share=self.share)
+            self.logger.info(log_msg)
+            message = _("Key check stored.")
+            status = True
+            return self.build_response(status, message)
+
     def process_restore_command(self, command, command_args, binary_data=None):
         status = True
+        # A restore mount shows a backup, and nothing in a backup may be
+        # changed through it.
+        #
+        # Every one of these commands is forwarded to backupd below, and
+        # every one of them runs into "Unknown command" there, because
+        # none of them is in its valid_commands. So it is refused today
+        # -- by the other side not knowing them, which is its accident
+        # and not a rule of this one. Somebody teaching backupd one of
+        # them for a different reason would make this mount writable
+        # without touching it. Said here, where it is meant.
+        if command in RESTORE_WRITE_COMMANDS:
+            log_msg = _("Refused {command} on a restore mount: {share}", log=True)[1]
+            log_msg = log_msg.format(command=command, share=self.share)
+            self.logger.warning(log_msg)
+            message = _("Read-only file system.")
+            return self.build_response(errno.EROFS, message)
         if command == "exists":
             try:
                 path = command_args['path']
@@ -1541,6 +1764,28 @@ class OTPmeFsP1(OTPmeFsServer1):
             msg = msg.format(command=command)
             raise UnknownCommand(msg)
 
+    def _cache_chunk(self, path, h, data):
+        """ Keep a decrypted chunk around for the next read.
+
+        A chunk is CHUNK_SIZE (4 MiB) and a read is a page or two, so
+        without this every read of the same chunk would fetch it over
+        the network and decrypt it again. Kept until RESTORE_CACHE_BYTES
+        of this file are in memory, oldest first out.
+
+        What it used to do was keep everything: every chunk of a file
+        stayed until the file was closed, so copying a 10 GB file out of
+        a restore mount grew this process by 10 GB.
+        """
+        global blob_cache
+        chunks = blob_cache[path]
+        chunks[h] = data
+        # The file info is not a chunk and stays.
+        ids = [x for x in chunks if x != "__file_info__"]
+        held = sum(len(chunks[x]) for x in ids)
+        while held > RESTORE_CACHE_BYTES and len(ids) > 1:
+            oldest = ids.pop(0)
+            held -= len(chunks.pop(oldest, b""))
+
     def restore_read(self, path, size, offset):
         # NOTE: This method was written by claude code!
         global blob_cache
@@ -1578,7 +1823,15 @@ class OTPmeFsP1(OTPmeFsServer1):
         buf = b""
         for i in range(first_chunk, last_chunk + 1):
             if i >= len(chunk_hashes):
-                break
+                # The file says it is longer than the chunks it lists.
+                # Reading short here would look like the end of the file
+                # to whoever is copying it out, and they would keep the
+                # piece and never hear about the rest.
+                log_msg = _("Snapshot file lists {count} chunks but is {size} bytes: {path}", log=True)[1]
+                log_msg = log_msg.format(count=len(chunk_hashes),
+                                        size=original_size, path=path)
+                self.logger.warning(log_msg)
+                return errno.EIO, None
             h = chunk_hashes[i]
             try:
                 data = blob_cache[path][h]
@@ -1589,7 +1842,20 @@ class OTPmeFsP1(OTPmeFsServer1):
                 data = decrypt_block(self.aes_key, encrypted)
                 if flag == FLAG_ZLIB:
                     data = zlib.decompress(data)
-                blob_cache[path][h] = data
+                # And the block has to be the block we asked for.
+                # Decrypting says it is ours and unchanged, not that it
+                # is chunk h -- any other block of this repository
+                # decrypts just as well, so a pack whose records got
+                # mixed up would serve somebody else's content here
+                # without a word. Same question the restore asks, see
+                # data_loss_review, finding 5.
+                if self.block_id_key is not None:
+                    if block_id(self.block_id_key, data) != h:
+                        log_msg = _("Block {hash} does not hold what it should: {path}", log=True)[1]
+                        log_msg = log_msg.format(hash=h, path=path)
+                        self.logger.warning(log_msg)
+                        return errno.EIO, None
+                self._cache_chunk(path, h, data)
             buf += data
         # Slice to the requested range within the chunk-aligned buffer.
         chunk_offset = offset - (first_chunk * CHUNK_SIZE)

@@ -46,6 +46,26 @@ Show currently logged in user.
 Show all users currently logged in on this host (across TTYs and desktop
 sessions).
 
+**message \[**--user** *username*\] \[**--host** *hostname*\] \[**--all**\] \[**--title** *title*\] *text***  
+Show a message box to users that are logged in.
+
+The message is shown in a window with an OK button, in the desktop
+session of the user. Give one of **--user**, **--host** or **--all**:
+one user, all users logged in on one host, or all users of this site.
+The command says how many users were told.
+
+The window is drawn by the first helper the user's host has:
+**kdialog**, **zenity**, **pinentry** or **xmessage**. A host with none
+of them, or a user who is logged in on a terminal, gets a desktop
+notification instead. Such a notification cannot be confirmed, so it
+stays until the user closes it.
+
+Nothing comes back when the user clicks OK.
+
+Nodes may send messages. A host may send them when the site lists it in
+**allow_user_messages**, see **otpme**(7). Only users of your own site
+can be reached, because the message goes through the idled of that site.
+
 **show_sessions**  
 Get otpme-agent login sessions.
 

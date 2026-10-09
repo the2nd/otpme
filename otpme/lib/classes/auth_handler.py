@@ -1909,7 +1909,7 @@ class AuthHandler(object):
                     self.auth_message = "LOGIN_OK_STATIC"
                 else:
                     self.auth_message = "AUTH_OK_STATIC"
-        if self.auth_token.pass_type == "ssh_key":
+        if self.verify_token.pass_type == "ssh_key":
             if self.auth_type == "ssh":
                 if self.password:
                     if self.realm_login:

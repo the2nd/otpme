@@ -16,6 +16,11 @@ def get_class(proto):
     # build protocol class name from protocol version string
     otpme_string = proto.split("-")[0]
     proto_type = proto.split("-")[1]
+    # The major version only, same as on the server side (see
+    # protocols/server/get_class.py): module and class are named without
+    # a minor. A minor counts in the negotiation on connect, which
+    # compares whole version strings -- so different minors do not talk
+    # to each other at all, which is what a minor bump says.
     proto_version = proto.split("-")[2].split(".")[0]
     class_name = f"{otpme_string}{proto_type[0].upper()}{proto_type[1:]}P{proto_version}"
 

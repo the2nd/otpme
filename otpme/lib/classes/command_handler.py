@@ -1775,15 +1775,18 @@ class CommandHandler(object):
             pidfile_name = repository.replace("/", "_")
             pidfile_name = f"backup-{pidfile_name}.pid"
             pid_file = os.path.join(config.pidfile_dir, pidfile_name)
-            if pidfile.is_running(pid_file):
-                msg = _("Already running.")
-                raise OTPmeException(msg)
             if mode is None:
                 mode = backup_mode
             log_msg = _("Starting backup: {backup_object}", log=True)[1]
             log_msg = log_msg.format(backup_object=backup_object)
             self.logger.info(log_msg)
-            pidfile.create_pidfile(pid_file)
+            # Takes the pidfile and raises AlreadyRunning where another
+            # backup of this repository holds it.
+            try:
+                pidfile.create_pidfile(pid_file, proc_name="Backup")
+            except AlreadyRunning:
+                msg = _("Already running.")
+                raise OTPmeException(msg) from None
             backupd_conn.start_backup(mode=backup_mode)
         client = BackupClient(server=backupd_conn, key=aes_key, compress=True)
         try:
@@ -1794,7 +1797,7 @@ class CommandHandler(object):
                                     dry_run=dry_run)
         finally:
             if not dry_run:
-                os.remove(pid_file)
+                pidfile.remove_pidfile(pid_file)
         if not apply_retention:
             if not return_result:
                 return
@@ -1994,6 +1997,9 @@ class CommandHandler(object):
 
         if subcommand == "host_who":
             return self.host_who()
+
+        if subcommand == "message":
+            return self.handle_message_command(command, command_line)
 
         if subcommand == "get_login_token":
             login_token = self.get_login_token()
@@ -5915,6 +5921,48 @@ class CommandHandler(object):
         self.init(use_backend=False)
         login_handler = LoginHandler()
         return login_handler.whoami(verify_server_session=False)
+
+    def handle_message_command(self, command, command_line):
+        """ Show a message box to users that are logged in.
+
+        Who may send is not decided here but by idled, from the
+        certificate of this host: a node may, and a host may where the
+        site put it into allow_user_messages. So this says what it
+        wants and reports what came back, the way "who" does.
+        """
+        from otpme.lib import cli
+        from otpme.lib import help
+        from otpme.lib import idle
+        help_dict = help.get_cmd_help(command)
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            command_args = cli.get_opts(
+                                command_syntax=help_dict['message']['cmd'],
+                                command_line=list(command_line))
+        except Exception as e:
+            if str(e) == "help":
+                return self.get_help()
+            return self.get_help(str(e))
+        self.init()
+        text = command_args.get('text')
+        username = command_args.get('username')
+        host = command_args.get('host')
+        all_users = bool(command_args.get('all_users'))
+        asked_for = [x for x in (username, host, all_users) if x]
+        if len(asked_for) != 1:
+            msg = _("Give one of --user, --host or --all.")
+            raise OTPmeException(msg)
+        told = idle.message(text=text,
+                            title=command_args.get('title'),
+                            username=username,
+                            host=host,
+                            all_users=all_users)
+        if not told:
+            return _("Nobody to tell: no matching user is logged in.")
+        msg = _("Message sent to {count} user(s).")
+        return msg.format(count=told)
 
     def who(self, username=None):
         """ Get online users. """

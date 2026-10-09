@@ -96,7 +96,7 @@ class OTPmeIdleP1(OTPmeServer1):
         """ Handle connections from otpme-agent and notify producers. """
         self.logger = config.logger
 
-        valid_commands = ["wait", "notify", "who",
+        valid_commands = ["wait", "notify", "who", "message",
                         "host_wait", "host_notify", "host_who"]
         if command not in valid_commands:
             message = _("Unknown command: {command}")
@@ -117,6 +117,9 @@ class OTPmeIdleP1(OTPmeServer1):
 
         if command == "notify":
             return self._handle_notify(username, command_args)
+
+        if command == "message":
+            return self._handle_message(username, command_args)
 
         if command == "wait":
             try:
@@ -174,6 +177,81 @@ class OTPmeIdleP1(OTPmeServer1):
         }
         self.dispatcher.publish(username, event)
         return self.build_response(True, "ok")
+
+    def _handle_message(self, username, command_args):
+        """ Put a message in front of users that are logged in.
+
+        A command of its own and not an event_type of notify(), because
+        the two are not allowed to the same senders. notify() is how a
+        node tells an agent to mount a share, so it stays with the
+        nodes. A message does nothing but show text, so a host may send
+        one as well -- if the site says that host may, which is what
+        allow_user_messages is for. Were this an event_type of notify(),
+        allowing a host to send a message would allow it to send a
+        share event too.
+
+        Who gets it is worked out here, because this is where it is
+        known who is connected: one user, every user on one host, or
+        everybody. A host is not filtered here though -- publish()
+        reaches every connection of a user -- but in process_event(),
+        where the connection knows which host it belongs to. The share
+        events do it the same way.
+        """
+        if self.peer is None:
+            return self.build_response(False, "Who are you?")
+        if self.peer.realm_uuid != config.realm_uuid \
+        or self.peer.site_uuid != config.site_uuid:
+            return self.build_response(False, "Permission denied")
+        if self.peer.type == "host":
+            own_site = backend.get_object(uuid=config.site_uuid)
+            # The uuids as they are stored, not the names the getter
+            # turns them into for the CLI: a name belongs to a host for
+            # as long as it has it, the uuid is the host.
+            allowed_hosts = own_site.get_config_parameter("allow_user_messages",
+                                                        apply_getter=False)
+            if not allowed_hosts or self.peer.uuid not in allowed_hosts:
+                return self.build_response(False, "Permission denied")
+        elif self.peer.type != "node":
+            return self.build_response(False, "Permission denied")
+
+        text = command_args.get('text')
+        if not text:
+            return self.build_response(False, "Missing message text")
+        title = command_args.get('title')
+        host = command_args.get('host')
+        all_users = command_args.get('all_users')
+
+        asked_for = [x for x in (username, host, all_users) if x]
+        if len(asked_for) != 1:
+            msg = "Need one of username, host or all_users"
+            return self.build_response(False, msg)
+
+        login_data = self.dispatcher.get_login_data()
+        if username:
+            recipients = [x for x in login_data if x == username]
+        elif host:
+            recipients = [x for x in login_data if host in login_data[x]]
+        else:
+            recipients = list(login_data)
+
+        event = {
+                'event_type'    : "message",
+                'data'          : {
+                                'title'     : title,
+                                'text'      : text,
+                                'host'      : host,
+                                'sender'    : self.peer.name,
+                                },
+                }
+        for x in recipients:
+            self.dispatcher.publish(x, event)
+
+        log_msg = _("Sending message of '{sender}' to {count} user(s): {users}", log=True)[1]
+        log_msg = log_msg.format(sender=self.peer.name,
+                                count=len(recipients),
+                                users=",".join(sorted(recipients)) or "-")
+        self.logger.info(log_msg)
+        return self.build_response(True, len(recipients))
 
     def _handle_host_wait(self):
         """ Long-poll for a host: tell it when there is something for it.
@@ -528,6 +606,23 @@ class OTPmeIdleP1(OTPmeServer1):
             self.logger.info(log_msg)
             mount_event = {'event_type':'share_unmount', 'data':shares}
             return self.build_response(True, mount_event)
+
+        elif event_type == "message":
+            # A message for the users of one host reaches every
+            # connection of those users, because that is what publish()
+            # does. Which of them is on that host is known here and
+            # nowhere else.
+            data = event.get('data') or {}
+            host = data.get('host')
+            if host and host != self.peer.name:
+                return False
+            log_msg = _("Sending message of '{sender}' to {username} on host {host}", log=True)[1]
+            log_msg = log_msg.format(sender=data.get('sender'),
+                                    username=username,
+                                    host=self.peer.name)
+            self.logger.info(log_msg)
+            return self.build_response(True, event)
+
         else:
             msg = _("Received invalid event: {event_type}")
             msg = msg.format(event_type=event_type)

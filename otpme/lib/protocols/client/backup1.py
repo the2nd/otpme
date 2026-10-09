@@ -14,6 +14,7 @@ except Exception:
 from otpme.lib import config
 from otpme.lib.fuse import CONF_FILE
 from otpme.lib.classes.backup import BackupClient
+from otpme.lib.protocols import status_codes
 from otpme.lib.protocols.client.fs import OTPmeFsClient1
 
 from otpme.lib.exceptions import *
@@ -270,6 +271,7 @@ class OTPmeBackupP1(OTPmeFsClient1):
 
     def lock_repo(self):
         command_args = {}
+        status_code = None
         try:
             status, \
             status_code, \
@@ -283,6 +285,11 @@ class OTPmeBackupP1(OTPmeFsClient1):
 
         if status is False:
             config.raise_exception()
+            if status_code == status_codes.BACKUP_REPO_LOCKED:
+                # Somebody else holds the repository. Told apart from
+                # every other failure so the caller can come back later
+                # instead of calling the backup failed.
+                raise ObjectLocked(response)
             raise OTPmeException(response)
 
     def unlock_repo(self):

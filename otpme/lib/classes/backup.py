@@ -12,6 +12,7 @@ import sqlite3
 import fnmatch
 import posix1e
 import hashlib
+import tempfile
 from pathlib import Path
 from typing import Optional
 import time
@@ -92,6 +93,19 @@ except NameError:
         if log:
             return s, s
         return s
+
+try:
+    ObjectLocked
+except NameError:
+    # This module is used without the framework around it: backup_cli.py
+    # and tests/999-test_backup.py put a module of their own in place of
+    # otpme.lib.exceptions, and that one carries OTPmeException alone --
+    # every other name the star import above would bring is then
+    # undefined, and a raise of it is a NameError instead of the error it
+    # meant to report. So the one exception this module needs besides
+    # OTPmeException brings itself, the same way _ does above.
+    class ObjectLocked(OTPmeException):
+        pass
 
 """
 OTPMe Backup - Deduplicated, encrypted backup with filesystem-native metadata.
@@ -239,6 +253,17 @@ def _derive_path_key(key: bytes) -> bytes:
     k1 = _hmac.new(key, _PATH_KEY_LABEL + b'\x01', 'sha256').digest()
     k2 = _hmac.new(key, _PATH_KEY_LABEL + b'\x02', 'sha256').digest()
     return k1 + k2
+
+
+def block_id(id_key: bytes, plaintext: bytes) -> str:
+    """ The chunk ID of a plaintext block.
+
+    The formula in one place, because two different things ask it: the
+    client, through BackupClient.hash_block(), and the restore mount,
+    which has the repository key and no client at all. <id_key> is what
+    _derive_id_key() makes of the repository key.
+    """
+    return _hmac.new(id_key, plaintext, 'sha256').hexdigest()
 
 
 def _derive_id_key(key: bytes) -> bytes:
@@ -572,6 +597,10 @@ class BackupServer:
         self.inode_count   = 0
         self._lock_fd      = None
         self._lock_count   = 0
+        # Called now and then while something long is running, so
+        # whoever asked for it learns that we are still at it. Set by
+        # the protocol handler, see _progress().
+        self.progress = None
         # Pack-file state
         self._pack_db           = None  # sqlite3.Connection for pack index
         self._active_pack_fd    = None
@@ -604,7 +633,13 @@ class BackupServer:
 
         Uses fcntl.flock on a lockfile — automatically released when
         the file descriptor is closed or the process dies.
-        Raises RuntimeError if the repository is locked by another process.
+
+        Raises ObjectLocked if the repository is locked by another
+        process. Its own exception type and not a RuntimeError like the
+        rest in here, because the callers act on it: a backup that finds
+        the repository taken is not a failed backup, it is one to try
+        again later (BackupDaemon.start_backup()), and the server
+        protocol gives it its own status code so a client can tell.
         """
         if self._lock_count > 0:
             self._lock_count += 1
@@ -616,7 +651,8 @@ class BackupServer:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except (OSError, IOError) as err:
             fd.close()
-            raise RuntimeError("Backup repository is locked by another process.") from err
+            msg = _("Backup repository is locked by another process.")
+            raise ObjectLocked(msg) from err
         fd.write(str(os.getpid()) + "\n")
         fd.flush()
         self._lock_fd = fd
@@ -798,6 +834,15 @@ class BackupServer:
     def _seal_active_pack(self) -> None:
         """Close the active pack file descriptor."""
         if self._active_pack_fd is not None:
+            # Down to the disk before anybody commits an index that
+            # names what is in here, same reason as in store_block():
+            # close() hands the bytes to the kernel and no further.
+            try:
+                self._active_pack_fd.flush()
+                os.fsync(self._active_pack_fd.fileno())
+            except OSError as e:
+                logger.warning("Failed to sync pack %06x: %s",
+                            self._active_pack_id, e)
             self._active_pack_fd.close()
             self._active_pack_fd = None
 
@@ -837,10 +882,22 @@ class BackupServer:
 
         first_pid, first_path = packs_to_check[0]
         if len(packs_to_check) == 1 and first_pid == committed_pid:
-            if first_path.stat().st_size <= committed_size:
+            # Only when the two agree exactly. A pack that is *shorter*
+            # than the committed index used to leave through here, and
+            # that is the worse of the two drifts: the index then names
+            # blocks whose bytes never reached the disk, block_exists()
+            # keeps saying yes for them, and the next backup dedups
+            # against them instead of writing them again -- so the new
+            # snapshot inherits the hole. The loop below takes those
+            # entries out.
+            if first_path.stat().st_size == committed_size:
                 return 0
 
         recovered = 0
+        # Index entries of blocks that did not make it to disk, see
+        # below. Counted because the commit at the end has to happen for
+        # them too, not only for what was recovered.
+        removed = 0
         last_pid = committed_pid
         last_offset = committed_size
         for pid, pack_path in packs_to_check:
@@ -872,10 +929,31 @@ class BackupServer:
             if offset < file_size:
                 with open(pack_path, 'r+b') as trunc_f:
                     trunc_f.truncate(offset)
+                pack_end = offset
+            else:
+                # Nothing was scanned because the pack is shorter than
+                # the committed index, or the scan read it to the end.
+                pack_end = file_size
+            # Index entries that describe bytes this pack does not have,
+            # whichever way the two drifted apart: a tail that never
+            # reached the disk leaves the pack short, a record torn in
+            # half leaves it longer than its last whole one. Both ways
+            # the entry has to go -- block_exists() would keep saying
+            # yes, retrieve_block() would read nothing, and the next
+            # backup would dedup against it and pass the hole on. This
+            # function only ever added entries (INSERT OR IGNORE), so
+            # nothing took them out.
+            cursor = self._pack_db.execute(
+                "DELETE FROM pack_index WHERE pack_id=? AND offset+68+length>?",
+                (pid, pack_end))
+            if cursor.rowcount > 0:
+                removed += cursor.rowcount
+                logger.warning("Removed %d index entries of blocks that are "
+                            "not in pack %06x.", cursor.rowcount, pid)
             last_pid = pid
-            last_offset = offset
+            last_offset = pack_end
 
-        if recovered:
+        if recovered or removed:
             self._pack_db.execute(
                 "INSERT OR REPLACE INTO pack_meta (key, value) VALUES (?, ?)",
                 ('last_commit', struct.pack('>IQ', last_pid, last_offset)))
@@ -967,7 +1045,14 @@ class BackupServer:
             (h, self._active_pack_id, offset, len(blob)))
         self._pack_puts_since_commit += 1
         if self._pack_puts_since_commit >= self._commit_interval:
+            # The data before the index that describes it, and really
+            # before: flush() only moves it from this process into the
+            # kernel, so a power cut left the committed index pointing
+            # at a pack whose tail never reached the disk. The index
+            # must not become durable before the blocks it names.
+            # One fsync per commit interval, not per block.
             self._active_pack_fd.flush()
+            os.fsync(self._active_pack_fd.fileno())
             self._pack_db.commit()
             self._pack_db.execute("BEGIN")
             self._pack_puts_since_commit = 0
@@ -981,8 +1066,36 @@ class BackupServer:
             raise KeyError(h)
         pack_id, offset, length = row
         with open(self._pack_path(pack_id), 'rb') as f:
-            f.seek(offset + 68)  # skip 64-byte hash + 4-byte length
-            return f.read(length)
+            f.seek(offset)
+            # The record says itself which block it is, and that is read
+            # instead of skipped. The index is a copy of what the packs
+            # hold, and a copy can be wrong -- a pack rewritten under it,
+            # a tail that never reached the disk, an index rebuilt from
+            # somewhere else. Unchecked, this handed out whatever lay at
+            # that offset, and the one who asked had no way of knowing.
+            header = f.read(68)
+            if len(header) < 68:
+                msg = _("Pack {pack_id:06x} ends before the block the index points at: {hash}")
+                msg = msg.format(pack_id=pack_id, hash=h)
+                raise OTPmeException(msg)
+            stored_hash = header[:64].decode('ascii', errors='replace')
+            if stored_hash != h:
+                msg = _("Wrong block at offset {offset} of pack {pack_id:06x}: {stored} instead of {wanted}")
+                msg = msg.format(offset=offset, pack_id=pack_id,
+                                stored=stored_hash, wanted=h)
+                raise OTPmeException(msg)
+            stored_length = struct.unpack('>I', header[64:68])[0]
+            if stored_length != length:
+                msg = _("Block {hash} is {stored} bytes in pack {pack_id:06x}, the index says {wanted}")
+                msg = msg.format(hash=h, stored=stored_length,
+                                pack_id=pack_id, wanted=length)
+                raise OTPmeException(msg)
+            blob = f.read(length)
+            if len(blob) != length:
+                msg = _("Short read of block {hash}: {got} of {want} bytes")
+                msg = msg.format(hash=h, got=len(blob), want=length)
+                raise OTPmeException(msg)
+            return blob
 
     # -- path helpers --
 
@@ -1339,10 +1452,26 @@ class BackupServer:
                     "JOIN entries e ON e.entry_id = se.entry_id "
                     "WHERE se.snap_id = ? "
                     "ORDER BY e.key, e.entry_id")
+    # INDEXED BY, and it has to stay there.
+    #
+    # Without it SQLite drives this from snap_entries: it walks every
+    # entry of the snapshot, looks each one up in entries by rowid,
+    # applies the path filter afterwards and sorts what is left. On a
+    # repository of 15 million entries that is 53 seconds to answer a
+    # listing of 34 of them (measured 2026-10-06 on a 20 GB index);
+    # with the index on the key it is 7 milliseconds.
+    #
+    # The planner has no statistics to know better -- ANALYZE has never
+    # run on these databases -- and it picks the same plan for a plain
+    # range without the OR, so this is not about the shape of the
+    # condition. Naming the index says what the schema already says
+    # about snap_entries: the path is what this query is looking for,
+    # the snapshot is only the question whether the entry belongs to it.
     _SNAP_ITER_FILTER_SQL = ("SELECT e.key, e.value FROM entries e "
+                    "INDEXED BY idx_entries_key "
                     "JOIN snap_entries se ON se.entry_id = e.entry_id "
-                    "WHERE se.snap_id = ? "
-                    "AND (e.key = ? OR (e.key > ? AND e.key < ?)) "
+                    "AND se.snap_id = ? "
+                    "WHERE (e.key = ? OR (e.key > ? AND e.key < ?)) "
                     "ORDER BY e.key, e.entry_id")
 
     @staticmethod
@@ -2143,7 +2272,6 @@ class BackupServer:
 
         snap_name = self._entry_cursor_snap
         full = self._entry_cursor_full
-        snap_id = self._entry_cursor_snap_id
         filter_path = self._entry_cursor_filter
         entries = []
 
@@ -2336,6 +2464,7 @@ class BackupServer:
         for snap in snaps:
             for h in self.iter_chunks_file(snap):
                 bloom.add(h)
+                self._progress()
         return bloom
 
     def _delete_snapshot_locked(self, snap_name: str) -> int:
@@ -2553,7 +2682,9 @@ class BackupServer:
                 for h in self.iter_chunks_file(name):
                     if bloom is None or h not in bloom:
                         orphaned.add(h)
+                    self._progress()
                 self._remove_snapshot(name)
+                self._progress()
                 deleted.append(name)
             if orphaned:
                 self._gc_remove_from_index(orphaned)
@@ -2587,6 +2718,7 @@ class BackupServer:
             h = row[0]
             if bloom is None or h not in bloom:
                 orphaned.add(h)
+            self._progress()
 
         if not orphaned:
             return 0
@@ -2600,6 +2732,7 @@ class BackupServer:
         pack_hashes = {}
         for h, pid in self._pack_db.execute("SELECT hash, pack_id FROM pack_index"):
             pack_hashes.setdefault(pid, set()).add(h)
+            self._progress()
 
         # Delete orphaned entries
         self._pack_db.executemany(
@@ -2711,48 +2844,170 @@ class BackupServer:
         finally:
             self.unlock_repo()
 
+    def _progress(self) -> None:
+        """ Say that we are still working, if anybody set that up.
+
+        Called from inside the loops of the long running commands --
+        retention, gc, repack -- and often: the one who gets this
+        decides how often something really goes out (every 30s, see
+        OTPmeServer1.send_keepalive()).
+
+        A failure here means the other side is gone. The work goes on
+        regardless, it holds the repository lock and finishing it is
+        better than leaving it half done, so this stops trying and says
+        so once.
+        """
+        if self.progress is None:
+            return
+        try:
+            self.progress()
+        except Exception as e:
+            self.progress = None
+            logger.warning("Nobody is listening any more, going on without "
+                        "saying so: %s", e)
+
+    @staticmethod
+    def _fsync_dir(path) -> None:
+        """ Make a directory entry durable.
+
+        A file that is written and synced can still be missing after a
+        power cut if the entry that names it never reached the disk.
+        """
+        fd = os.open(str(path), os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
     def _repack_locked(self) -> int:
-        """Rewrite packs that contain dead entries."""
+        """Rewrite packs that contain dead entries.
+
+        Every pack is written to one of its own and the index is then
+        pointed at it; the old pack goes once that is committed. So
+        every place this can be interrupted costs nothing:
+
+            before the commit   the index still describes the old pack,
+                                which was not touched. The new file is
+                                left over and holds nothing anybody
+                                asks for.
+            after the commit    the index describes the new pack, which
+                                is whole and on disk. The old one is
+                                left over.
+
+        It used to replace each pack where it stood and update the
+        index for all of them at the end, in one transaction. An abort
+        in between -- the next pack failing, no room, a kill -- left
+        the index pointing at offsets in files that had been rewritten
+        under it. Every block there decrypts to nothing, and that is
+        every snapshot that used them. See data_loss_review, finding 2.
+        """
+        # An append of this session would be lost: the pack it writes to
+        # is left behind here, and its file descriptor would go on
+        # writing into a file nobody reads any more.
+        #
+        # Between processes that cannot happen. lock_repo() holds an
+        # exclusive, non blocking flock on <repo>/.lock for the whole
+        # run of a backup just as of a repack, so a backup that starts
+        # meanwhile does not wait: lock_repo() raises ObjectLocked, and
+        # the one backupd started comes back a few minutes later instead
+        # of calling itself failed (BackupDaemon.start_backup()). That
+        # holds through backupd too: the daemon takes the same flock when
+        # a client asks for it and gives it back on unlock_repo, and
+        # flock belongs to the open file, so even two BackupServer
+        # objects in one process shut each other out.
+        #
+        # What the lock does not cover is a second call on the same
+        # object: it counts reentrant calls and takes no new flock for
+        # them. This is for that case.
+        self._seal_active_pack()
+
         live_by_pack = {}
         for h, pid, offset, length in self._pack_db.execute(
                 "SELECT hash, pack_id, offset, length FROM pack_index"):
             live_by_pack.setdefault(pid, []).append((h, offset, length))
 
         saved = 0
-        updates = []  # (h, pid, new_offset, length)
         for pid, entries in live_by_pack.items():
             pack_path = self._pack_path(pid)
             if not pack_path.exists():
                 continue
             pack_size = pack_path.stat().st_size
-            live_size = sum(64 + 4 + length for _, _, length in entries)
+            live_size = sum(68 + entry_length
+                            for _unused_hash, _unused_offset, entry_length
+                            in entries)
             if live_size >= pack_size:
                 continue  # no dead space
 
-            # Rewrite pack with only live entries
-            tmp_path = pack_path.with_suffix('.tmp')
-            with open(pack_path, 'rb') as src, open(tmp_path, 'wb') as dst:
-                new_offset = 0
-                for h, offset, length in sorted(entries, key=lambda e: e[1]):
-                    src.seek(offset)
-                    entry_data = src.read(64 + 4 + length)
-                    dst.write(entry_data)
-                    updates.append((h, pid, new_offset, length))
-                    new_offset += 64 + 4 + length
-            tmp_path.rename(pack_path)
+            new_pid = self._next_pack_id()
+            new_path = self._pack_path(new_pid)
+            new_path.parent.mkdir(parents=True, exist_ok=True)
+            updates = []  # (new_pid, new_offset, length, h)
+            try:
+                with open(pack_path, 'rb') as src, open(new_path, 'wb') as dst:
+                    new_offset = 0
+                    for h, offset, length in sorted(entries, key=lambda e: e[1]):
+                        record_len = 68 + length
+                        src.seek(offset)
+                        entry_data = src.read(record_len)
+                        # Both checked, because the index is not the
+                        # truth here, the pack file is. An index entry
+                        # that points somewhere else makes this read
+                        # come back short or bring the wrong record,
+                        # and writing that would shift every entry
+                        # behind it -- an index that could have been
+                        # rebuilt would have become lost data.
+                        if len(entry_data) != record_len:
+                            msg = _("Short read in pack {pid:06x} at offset {offset}: {got} of {want} bytes")
+                            msg = msg.format(pid=pid, offset=offset,
+                                            got=len(entry_data),
+                                            want=record_len)
+                            raise OTPmeException(msg)
+                        stored_hash = entry_data[:64].decode('ascii',
+                                                        errors='replace')
+                        if stored_hash != h:
+                            msg = _("Wrong block at offset {offset} of pack {pid:06x}: {stored} instead of {wanted}")
+                            msg = msg.format(offset=offset, pid=pid,
+                                            stored=stored_hash, wanted=h)
+                            raise OTPmeException(msg)
+                        dst.write(entry_data)
+                        updates.append((new_pid, new_offset, length, h))
+                        new_offset += record_len
+                        self._progress()
+                    dst.flush()
+                    os.fsync(dst.fileno())
+                self._fsync_dir(new_path.parent)
+            except Exception:
+                # Nothing points at it, so it would only take up room.
+                try:
+                    new_path.unlink()
+                except OSError:
+                    pass
+                raise
+            self._pack_db.executemany(
+                "UPDATE pack_index SET pack_id=?, offset=?, length=? WHERE hash=?",
+                updates)
+            self._pack_db.commit()
+            # From here on nobody reads the old pack any more.
+            try:
+                pack_path.unlink()
+            except OSError as e:
+                logger.warning("Failed to remove repacked pack %06x: %s",
+                            pid, e)
             saved += pack_size - new_offset
 
-        if updates:
-            max_pid = max(live_by_pack.keys())
+        if saved:
+            max_pid = self._next_pack_id() - 1
             pack_path = self._pack_path(max_pid)
             pack_size = pack_path.stat().st_size if pack_path.exists() else 0
-            self._pack_db.executemany(
-                "UPDATE pack_index SET offset=?, length=? WHERE hash=?",
-                [(offset, length, h) for h, pid, offset, length in updates])
             self._pack_db.execute(
                 "INSERT OR REPLACE INTO pack_meta (key, value) VALUES (?, ?)",
                 ('last_commit', struct.pack('>IQ', max_pid, pack_size)))
             self._pack_db.commit()
+            # The pack this session was appending to may be one of those
+            # that just went. The next append has to choose again, and
+            # _close_pack_db() must not write a marker from the old one.
+            self._active_pack_id = None
+            self._active_pack_size = 0
         return saved
 
     def rebuild_pack_index(self) -> int:
@@ -2909,7 +3164,7 @@ class BackupClient:
         Deduplication is unaffected: it only ever worked within one
         repository, and a repository has one key.
         """
-        return _hmac.new(self._id_key, plaintext, 'sha256').hexdigest()
+        return block_id(self._id_key, plaintext)
 
     def encrypt_block(self, plaintext: bytes) -> bytes:
         """Compress (if enabled) and encrypt a plaintext block.  Returns flag+ciphertext."""
@@ -3581,6 +3836,8 @@ class BackupClient:
 
         restored = []  # (dst_path, entry) for deferred metadata
         deferred_hardlinks = []  # (dst_entry, link_src, entry) created after all files
+        failed = []  # (rel_path, reason) for everything that did not make it
+        entries = 0
 
         # Process the first batch, then continue reading
         pending = first_batch
@@ -3605,6 +3862,7 @@ class BackupClient:
                     dst_entry = os.path.join(dest, rel) if rel != "." else dest
 
                 entry_type = entry["type"]
+                entries += 1
 
                 if dry_run:
                     rel = entry["rel_path"]
@@ -3654,13 +3912,18 @@ class BackupClient:
                         msg = "Restoring file: {file}"
                         msg = msg.format(file=dst_entry)
                         self.logger.info(msg)
-                        with open(dst_entry, "wb") as fh:
-                            for h in entry["chunk_hashes"]:
-                                encrypted_blob = self.server.retrieve_block(h)
-                                fh.write(self.decrypt_block(encrypted_blob))
+                        self._restore_file(dst_entry, entry)
 
-                except (PermissionError, OSError) as exc:
-                    self.logger.warning("Skipping %s: %s", dst_entry, exc)
+                except Exception as exc:
+                    # Every kind of failure, not just the two that used
+                    # to be caught here (PermissionError and OSError). A
+                    # block the repository does not have raises KeyError
+                    # and a block that does not decrypt raises from the
+                    # crypto library, and both ended the whole restore
+                    # on the spot -- halfway through, with everything
+                    # after the bad file not even tried.
+                    self.logger.warning("Failed to restore %s: %s", dst_entry, exc)
+                    failed.append((entry["rel_path"], str(exc)))
                     continue
 
                 restored.append((dst_entry, entry))
@@ -3676,8 +3939,9 @@ class BackupClient:
                 if os.path.lexists(dst_entry):
                     os.unlink(dst_entry)
                 os.link(link_src, dst_entry)
-            except (PermissionError, OSError) as exc:
-                self.logger.warning("Skipping %s: %s", dst_entry, exc)
+            except Exception as exc:
+                self.logger.warning("Failed to restore %s: %s", dst_entry, exc)
+                failed.append((entry["rel_path"], str(exc)))
                 continue
             restored.append((dst_entry, entry))
 
@@ -3715,7 +3979,74 @@ class BackupClient:
             except (OSError, AttributeError):
                 pass
 
+        if failed:
+            # Said once per entry in the log, and then raised. A restore
+            # that lost 200 of 10000 files used to end with "Restore
+            # complete" and a status of 0 -- nobody who ran it had a way
+            # of knowing, because neither caller looks at a return
+            # value and there was none.
+            for rel_path, reason in failed[:20]:
+                self.logger.error("Not restored: %s: %s", rel_path, reason)
+            if len(failed) > 20:
+                self.logger.error("Not restored: %s more entries", len(failed) - 20)
+            msg = _("Restore incomplete: {failed} of {entries} entries failed, see the log")
+            msg = msg.format(failed=len(failed), entries=entries)
+            raise OTPmeException(msg)
+
         self.logger.info("Restore complete: %s", dest)
+
+    def _restore_file(self, dst_entry, entry):
+        """ Write a file from its blocks and move it into place.
+
+        Next to where it belongs and renamed once it is whole, because
+        writing straight into the file cuts what is there to nothing
+        before the first block has even arrived. A restore over a
+        directory somebody is still using, with one block missing from
+        the repository, used to leave the file cut off and the old
+        content gone. Now the old file stays untouched until the new one
+        is complete.
+
+        What this does not cover is a crash in the middle: the rename is
+        atomic, but nothing is synced before it, so a power cut can
+        leave the new, empty file in place. Syncing every file would
+        cost about ten times the time on a share (see data_loss_review,
+        finding 6), and a restore can simply be run again.
+        """
+        dst_dir = os.path.dirname(dst_entry) or "."
+        # mkstemp, so two restores into the same directory cannot pick
+        # the same name. It creates with 0600; the metadata pass sets
+        # the mode the entry is supposed to have.
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=dst_dir,
+                                        prefix=".otpme-restore-")
+        try:
+            with os.fdopen(tmp_fd, "wb") as fh:
+                for h in entry["chunk_hashes"]:
+                    encrypted_blob = self.server.retrieve_block(h)
+                    data = self.decrypt_block(encrypted_blob)
+                    # The block has to be the block that was asked for.
+                    #
+                    # Decrypting proves that this ciphertext is ours and
+                    # unchanged, and nothing more -- not that it is
+                    # chunk h. A block from somewhere else in the
+                    # repository decrypts just as well, so an index that
+                    # points at the wrong one (a repack that went wrong,
+                    # an index rebuilt from the packs) used to put
+                    # somebody else's content into this file without a
+                    # word. The chunk id is a MAC over the plaintext
+                    # (hash_block()), so asking is one hash per block --
+                    # and verify has always asked, see cmd_verify().
+                    if self.hash_block(data) != h:
+                        msg = _("Block {hash} does not hold what it should: the content has another id")
+                        msg = msg.format(hash=h)
+                        raise OTPmeException(msg)
+                    fh.write(data)
+            os.replace(tmp_path, dst_entry)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     def print_contents(self, snap_name: str,
                        filter_path: Optional[str] = None,

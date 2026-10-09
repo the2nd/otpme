@@ -541,6 +541,60 @@ class OTPmeAgent(UnixDaemon):
         except Exception:
             pass
 
+    def show_message(self, login_pid, login_user, data):
+        """ Put a message of the realm in front of the user.
+
+        A message box with an OK button and not a notification: the
+        point of it is that somebody reads it, and a notification is
+        gone again whether anybody did or not.
+
+        The display comes from the login session, which got it from the
+        PAM module when the session was opened. A session without one
+        is a login on a terminal, and there is no window to draw there
+        -- it is said in the log and left at that.
+
+        Nothing is sent back. The OK button closes the window, and
+        whoever sent the message is long gone by then.
+        """
+        from otpme.lib import desktop_dialog
+        text = data.get('text')
+        if not text:
+            return
+        title = data.get('title') or "OTPme"
+        sender = data.get('sender')
+        try:
+            session = self.login_sessions[login_pid]
+        except Exception:
+            session = {}
+        display = session.get('display')
+        try:
+            helper = desktop_dialog.show_message(text=text,
+                                                title=title,
+                                                user=login_user,
+                                                display=display)
+        except Exception as e:
+            log_msg = _("Unable to show message of '{sender}' to {user}: {error}", log=True)[1]
+            log_msg = log_msg.format(sender=sender, user=login_user, error=e)
+            self.logger.warning(log_msg)
+            # Better a message that cannot be confirmed than one
+            # nobody ever sees. A host without any of the helpers ends
+            # up here, and so does a session that has no display.
+            try:
+                desktop_notify.notify(summary=title,
+                                    body=text,
+                                    icon="dialog-information",
+                                    urgency="critical",
+                                    user=login_user,
+                                    timeout_ms=0)
+            except Exception as notify_error:
+                log_msg = _("Unable to notify {user} either: {error}", log=True)[1]
+                log_msg = log_msg.format(user=login_user, error=notify_error)
+                self.logger.warning(log_msg)
+            return
+        log_msg = _("Showed message of '{sender}' to {user} ({helper})", log=True)[1]
+        log_msg = log_msg.format(sender=sender, user=login_user, helper=helper)
+        self.logger.info(log_msg)
+
     def check_idled(self, login_pid, login_user, realm, site):
         """ Wait for events from idled. """
         from otpme import __version__
@@ -632,6 +686,10 @@ class OTPmeAgent(UnixDaemon):
                 try:
                     data = response['data']
                 except KeyError:
+                    continue
+
+                if event_type == "message":
+                    self.show_message(login_pid, login_user, data)
                     continue
 
                 if event_type == "share_mount":

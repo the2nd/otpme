@@ -21,7 +21,20 @@ def get_proto_type(proto):
     return proto_type
 
 def get_proto_version(proto):
-    """ Get protocol version from string. """
+    """ Get protocol version from string.
+
+    The major version only: it picks the module and the class below, and
+    those are named without a minor ("backup1", "OTPmeBackupP1"). A
+    minor with an implementation of its own would need a module of its
+    own, and none of them has one.
+
+    Where a minor would count is the negotiation on connect: it compares
+    whole version strings (conn_handler.py), so a client and a daemon of
+    different minors find no common protocol and say so. That makes a
+    minor bump the way to say "the wire changed, do not mix us" -- at
+    the price of refusing every older peer, which is why nothing in here
+    has gone past 1.0 so far.
+    """
     proto_version = proto.split("-")[2].split(".")[0]
     return proto_version
 

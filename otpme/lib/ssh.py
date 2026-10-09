@@ -322,6 +322,31 @@ def gen_challenge(ssh_public_key, otp_len=0):
     challenge = f"{epoch_time}:{otp_len}:{nonce}:{ssh_public_key}"
     return challenge
 
+def bind_challenge(challenge, session_key):
+    """ Bind a SSH challenge to the connection it is answered on.
+
+    The challenge says nothing about who asked for it, so a signature
+    over it is good at any other server too: a server that gets a
+    challenge from a second one, hands it to the user as its own and
+    passes the signature on logs in there as that user. Appending
+    something only this connection has makes the signature worthless
+    everywhere else. Both ends build this string, so both have to build
+    it here.
+
+    What is appended is a hash of the session key and not the key
+    itself, because the data to be signed is handed to the ssh-agent
+    (sign_challenge -> paramiko sign_ssh_data), and SSH_AUTH_SOCK may
+    be an agent forwarded from another machine. The hash binds the same
+    and tells the agent nothing.
+
+    As a fifth field, so the four the challenge already has keep their
+    index: time, OTP length, nonce, public key.
+    """
+    if not session_key:
+        msg = _("Unable to bind SSH challenge: No session key.")
+        raise OTPmeException(msg)
+    return f"{challenge}:{stuff.gen_sha256(session_key)}"
+
 def sign_challenge(challenge):
     """ Sign OTPme SSH challenge. """
     from paramiko.agent import Agent

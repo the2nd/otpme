@@ -96,9 +96,11 @@ def _probe_unix_socket(path, timeout=0.5):
             pass
 
 
-def _scan_proc_env(uid, var_name="DBUS_SESSION_BUS_ADDRESS"):
+def scan_proc_env(uid, var_name="DBUS_SESSION_BUS_ADDRESS"):
     """ Walk /proc for processes owned by uid and yield distinct values
-    of the named env var. Used as last-resort discovery when neither
+    of the named env var. Read by lib/desktop_dialog.py as well, for
+    DISPLAY and XAUTHORITY, which it has to find the same way and for
+    the same reason. Used as last-resort discovery when neither
     the caller's env nor /run/user/{uid}/bus yields a live bus -- e.g.
     SDDM+classic-KDE that puts the socket in /tmp/dbus-XXX and writes
     a stale ~/.dbus/session-bus/ file. The spec-defined session-bus
@@ -199,7 +201,7 @@ def _session_bus_address(user=None):
     runtime_path = f"/run/user/{uid}/bus"
     if _probe_unix_socket(runtime_path):
         return f"unix:path={runtime_path}"
-    for candidate in _scan_proc_env(uid):
+    for candidate in scan_proc_env(uid):
         candidate_path = _extract_unix_path(candidate)
         if candidate_path and _probe_unix_socket(candidate_path):
             return candidate

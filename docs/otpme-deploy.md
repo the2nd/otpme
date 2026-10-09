@@ -47,6 +47,22 @@ hosts.
 user who created the job, and for users who may create jobs for all of
 its hosts.
 
+## Hosts in another site
+
+A job is made by the management daemon the command goes to, and only the
+nodes of that site hand it to a host. So a job for a host of another
+site is made in that site, with the global option **-s**:
+
+> **otpme-deploy add -s *site* --host *host* type action**
+
+The same **-s** is needed for every command about that job — **list**,
+**show**, **results**, **ack** and **cancel** — because the job is there
+and nowhere else.
+
+Nothing else changes. The job is signed with your key, and the host
+holds the signature against the signers it has, so it needs a signer for
+you like a host of your own site does.
+
 ## How jobs run
 
 On every host, the **confd** daemon asks the nodes of its site for new

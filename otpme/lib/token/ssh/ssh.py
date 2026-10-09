@@ -754,7 +754,8 @@ class SshToken(Token):
             msg = msg.format(error=e)
             callback.error(msg)
 
-        response = callback.sshauth(challenge=challenge)
+        response = callback.sshauth(challenge=challenge,
+                                    token_test=True)
 
         otp = None
         if self.second_factor_token_enabled:

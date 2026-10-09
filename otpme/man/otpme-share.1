@@ -30,7 +30,7 @@ Home shares can be encrypted. Every home dir is then encrypted on its own, with 
 .SS Share Management
 .TP
 .B add \fR[\fB\-\-home\-share\fR] [\fB\-\-home\-share\-uid\fR] [\fB\-\-force\-group\fR \fIgroup\fR] [\fB\-\-force\-directory\-mode\fR \fImode\fR] [\fB\-\-force\-create\-mode\fR \fImode\fR] [\fB\-\-crypt\fR] [\fB\-\-no\-key\-gen\fR] [\fB\-\-block\-size\fR \fIsize\fR] [\fB\-\-key\-len\fR \fIlen\fR] [\fB\-\-restore\fR \fIrestore_share\fR] [\fB\-\-restore\-token\fR \fItoken\fR] \fIshare\fR
-Create a new share. Use \fB\-\-force\-group\fR to set forced group, \fB\-\-force\-directory\-mode\fR and \fB\-\-force\-create\-mode\fR to set permissions for new directories and files. Use \fB\-\-crypt\fR to enable encryption, \fB\-\-restore\fR to add a restore share and \fB\-\-restore\-token\fR for encrypted restore shares.
+Create a new share. Use \fB\-\-force\-group\fR to set forced group, \fB\-\-force\-directory\-mode\fR and \fB\-\-force\-create\-mode\fR to set permissions for new directories and files. Use \fB\-\-crypt\fR to enable encryption, \fB\-\-no\-key\-gen\fR to take over a directory that is already an encrypted share, \fB\-\-restore\fR to add a restore share and \fB\-\-restore\-token\fR for encrypted restore shares.
 .RS
 .TP
 .B \-\-home\-share
@@ -418,6 +418,23 @@ Enable encryption for the share.
 .TP
 .B \-\-no\-key\-gen
 Do not generate an AES key.
+.br
+This is for a directory that is already an encrypted OTPme share, and it belongs together with \fB\-\-add\-share\-key\fR of \fBotpme\-mount\fR.
+Use it after a move to another site, or when the share object is gone and the data is still there.
+The data of such a directory can only be read with the key it was written with, so a new key must not be made.
+.br
+OTPme keeps the settings file that is already in the directory.
+The key is therefore still made the same way from the same master password.
+Get it back in from the login session of root, with a token that may use the master password of the share:
+.br
+\fBotpme\-mount \-\-master\-password\-mount \-\-add\-share\-key\fR \fIshare mountpoint\fR
+.br
+This asks for the master password of the old share, makes the key from it and stores it for your own token.
+After that the share mounts the normal way, and you can add more tokens to it with \fBadd_token\fR.
+.br
+Do not use it for a new, empty share.
+Such a share has no master password settings of its own, and then every master password mount makes a different key.
+Data written under such a mount cannot be read again.
 .TP
 .B \-\-block\-size \fISIZE\fR
 Encrypted share block size (default 4096).
@@ -505,6 +522,12 @@ Create a share
 .B otpme-share add \-\-crypt secureshare
 Create an encrypted share
 .TP
+.B otpme-share add \-\-crypt \-\-no\-key\-gen oldshare
+Take over a directory that is already an encrypted share. Get the key back in with
+.B otpme\-mount \-\-master\-password\-mount \-\-add\-share\-key oldshare /mnt
+(see
+.BR otpme\-mount (1)).
+.TP
 .B otpme-share add_token myshare alice/totp
 Add a token to the share
 .TP
@@ -523,6 +546,7 @@ Let the token "backup/login" mount the share root and reach all home dirs
 .BR otpme (1),
 .BR otpme (7),
 .BR otpme\-acls (7),
+.BR otpme\-mount (1),
 .BR otpme-pool (1),
 .BR otpme-token (1),
 .BR otpme-role (1)

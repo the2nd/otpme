@@ -56,8 +56,9 @@ no root mount token.
 Create a new share. Use **--force-group** to set forced group,
 **--force-directory-mode** and **--force-create-mode** to set
 permissions for new directories and files. Use **--crypt** to enable
-encryption, **--restore** to add a restore share and **--restore-token**
-for encrypted restore shares.
+encryption, **--no-key-gen** to take over a directory that is already an
+encrypted share, **--restore** to add a restore share and
+**--restore-token** for encrypted restore shares.
 
 **--home-share**  
 Create a home share (see **HOME SHARES** above). Each user gets their
@@ -508,7 +509,24 @@ Force file creation mode.
 Enable encryption for the share.
 
 **--no-key-gen**  
-Do not generate an AES key.
+Do not generate an AES key.  
+This is for a directory that is already an encrypted OTPme share, and it
+belongs together with **--add-share-key** of **otpme-mount**. Use it
+after a move to another site, or when the share object is gone and the
+data is still there. The data of such a directory can only be read with
+the key it was written with, so a new key must not be made.  
+OTPme keeps the settings file that is already in the directory. The key
+is therefore still made the same way from the same master password. Get
+it back in from the login session of root, with a token that may use the
+master password of the share:  
+**otpme-mount --master-password-mount --add-share-key** *share
+mountpoint*  
+This asks for the master password of the old share, makes the key from
+it and stores it for your own token. After that the share mounts the
+normal way, and you can add more tokens to it with **add_token**.  
+Do not use it for a new, empty share. Such a share has no master
+password settings of its own, and then every master password mount makes
+a different key. Data written under such a mount cannot be read again.
 
 **--block-size *SIZE***  
 Encrypted share block size (default 4096).
@@ -601,6 +619,11 @@ Create a share
 **otpme-share add --crypt secureshare**  
 Create an encrypted share
 
+**otpme-share add --crypt --no-key-gen oldshare**  
+Take over a directory that is already an encrypted share. Get the key
+back in with **otpme-mount --master-password-mount --add-share-key
+oldshare /mnt** (see **otpme-mount**(1)).
+
 **otpme-share add_token myshare alice/totp**  
 Add a token to the share
 
@@ -619,8 +642,8 @@ dirs
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-pool**(1),
-**otpme-token**(1), **otpme-role**(1)
+**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-mount**(1),
+**otpme-pool**(1), **otpme-token**(1), **otpme-role**(1)
 
 # AUTHOR
 

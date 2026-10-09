@@ -1334,6 +1334,51 @@ def register_config():
                                     setter=backup_interval_setter,
                                     getter=backup_interval_getter,
                                     object_types=object_types)
+    # How long to wait before trying a backup again that found the
+    # repository in somebody else's hands (another backup, a restore, a
+    # repack). Such a backup has not failed: the same attempt works once
+    # the other one is done, see BackupDaemon.start_backup().
+    def backup_retry_interval_setter(backup_retry_interval, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            backup_retry_interval = units.time2int(backup_retry_interval,
+                                                    time_unit="s")
+        except Exception as err:
+            msg = _("Invalid backup retry interval.")
+            raise ValueError(msg) from err
+        if backup_retry_interval < 1:
+            msg = _("Backup retry interval must be at least one second.")
+            raise ValueError(msg)
+        return backup_retry_interval
+    def backup_retry_interval_getter(backup_retry_interval, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            backup_retry_interval = units.int2time(backup_retry_interval,
+                                                    time_unit="s")[0]
+        except Exception as err:
+            msg = _("Invalid backup retry interval.")
+            raise ValueError(msg) from err
+        return backup_retry_interval
+    config.register_config_parameter(name="backup_retry_interval",
+                                    ctype=int,
+                                    setter=backup_retry_interval_setter,
+                                    getter=backup_retry_interval_getter,
+                                    default_value=300,
+                                    object_types=object_types)
+    # How many times to try. The attempts end with the backup window in
+    # any case, so this only bounds a window that stands wide open. Zero
+    # turns the waiting off: a repository somebody else holds is then a
+    # failed backup, which is what it used to be.
+    def backup_retry_count_setter(backup_retry_count, **kwargs):
+        if backup_retry_count < 0:
+            msg = _("Backup retry count cannot be negative.")
+            raise ValueError(msg)
+        return backup_retry_count
+    config.register_config_parameter(name="backup_retry_count",
+                                    ctype=int,
+                                    setter=backup_retry_count_setter,
+                                    default_value=12,
+                                    object_types=object_types)
     # Backup key used for encrypting backups.
     def backup_key_setter(backup_key, callback=default_callback, **kwargs):
         KEY_LEN = 64
@@ -3074,6 +3119,70 @@ def register_config():
     config.register_config_parameter(name="allow_who_from_hosts",
                                     ctype=bool,
                                     default_value=False,
+                                    object_types=['site'])
+    # The hosts that may send messages to the users of this site
+    # ("otpme-tool message"). Nodes may do it anyway, and this says
+    # which hosts may as well -- one host at a time and not a switch
+    # for all of them, because a host that may send one can put a
+    # window in front of somebody.
+    #
+    # admin_only: what it allows happens on other people's desktops,
+    # and an ACL on the site object says nothing about that.
+    def allow_user_messages_setter(hosts, **kwargs):
+        """ Resolve the hosts to their UUIDs.
+
+        Given by name, because that is what somebody types, and kept by
+        uuid, because that is the thing that is one host and no other:
+        a name belongs to a host within its site and can be given to
+        another one after this host is gone. idled asks the certificate
+        of a sender for its uuid, so the uuid is also what it compares.
+        """
+        if isinstance(hosts, str):
+            hosts = hosts.split(",")
+        host_uuids = []
+        for host_name in hosts:
+            host_name = host_name.strip()
+            if not host_name:
+                continue
+            result = backend.search(object_types=['host', 'node'],
+                                    attribute="name",
+                                    value=host_name,
+                                    realm=config.realm,
+                                    site=config.site,
+                                    return_type="uuid")
+            if not result:
+                msg = _("Unknown host: {host_name}")
+                msg = msg.format(host_name=host_name)
+                raise ValueError(msg)
+            host_uuid = result[0]
+            if host_uuid in host_uuids:
+                continue
+            host_uuids.append(host_uuid)
+        return host_uuids
+    def allow_user_messages_getter(host_uuids, **kwargs):
+        """ And back to names, for whoever reads it.
+
+        A uuid that resolves to nothing is handed back as it is rather
+        than refused: the host it named is gone, and the one thing left
+        to do with the entry is to remove it.
+        """
+        host_names = []
+        for host_uuid in host_uuids:
+            result = backend.search(object_types=['host', 'node'],
+                                    attribute="uuid",
+                                    value=host_uuid,
+                                    return_type="name")
+            if not result:
+                host_names.append(host_uuid)
+                continue
+            host_names.append(result[0])
+        return host_names
+    config.register_config_parameter(name="allow_user_messages",
+                                    ctype=list,
+                                    default_value=[],
+                                    setter=allow_user_messages_setter,
+                                    getter=allow_user_messages_getter,
+                                    admin_only=True,
                                     object_types=['site'])
     # Send share notifications.
     config.register_config_parameter(name="send_share_notifications",

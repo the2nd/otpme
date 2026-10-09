@@ -712,10 +712,19 @@ class ControlDaemon(UnixDaemon):
             # walk. So keep it, and put it back on the list a reload
             # just rebuilt without it.
             daemon_proc = self.get_child(x)
-            try:
-                child_running = daemon_proc.is_alive()
-            except Exception:
+            # Not daemon_proc.is_alive() on its own: outside the process
+            # that started the daemon that raises, and the entry would
+            # be dropped here for a daemon that is running perfectly
+            # well -- which is the very thing the comment above says
+            # must not happen. child_is_alive() asks the pid in that
+            # case.
+            if daemon_proc is None:
                 child_running = False
+            else:
+                try:
+                    child_running = self.child_is_alive(daemon_proc)
+                except Exception:
+                    child_running = False
             if child_running:
                 if x not in self.daemons:
                     self.daemons.append(x)
@@ -1625,6 +1634,36 @@ class ControlDaemon(UnixDaemon):
             return
         return daemon
 
+    def child_is_alive(self, daemon):
+        """ Whether a child daemon is still running.
+
+        Process.is_alive() answers only in the process that started the
+        daemon. Anywhere else it does not say no, it raises
+        "can only test a child process" -- and that used to come out of
+        stop_child() before it could escalate to SIGKILL. A daemon that
+        ignores SIGTERM then stays behind, with everything it forked.
+        So where we cannot ask the process object, we ask the pid.
+        """
+        try:
+            return daemon.is_alive()
+        except AssertionError:
+            return stuff.check_pid(daemon.pid)
+
+    def child_join(self, daemon, timeout):
+        """ Wait for a child daemon to be gone, at most <timeout>.
+
+        join() is as particular as is_alive() about who may call it, so
+        the same way out: watch the pid instead.
+        """
+        try:
+            daemon.join(timeout=timeout)
+        except AssertionError:
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                if not stuff.check_pid(daemon.pid):
+                    return
+                time.sleep(0.01)
+
     def stop_child(self, daemon_name):
         """ Stop child daemon. """
         # Get child daemon process.
@@ -1645,7 +1684,7 @@ class ControlDaemon(UnixDaemon):
 
         # Wait until we get 'down' response from child daemon or it dies.
         deadline = time.time() + DAEMON_TERMINATE_WAIT
-        while daemon.is_alive():
+        while self.child_is_alive(daemon):
             if time.time() >= deadline:
                 log_msg = _("Child daemon '{daemon} ({pid})' ignored SIGTERM command. Sending SIGKILL.", log=True)[1]
                 log_msg = log_msg.format(daemon=daemon_name, pid=daemon.pid)
@@ -1672,8 +1711,8 @@ class ControlDaemon(UnixDaemon):
         # Join child daemon process. With a timeout: a SIGKILL that did
         # not take (a process stuck in the kernel) must not keep the
         # whole shutdown here for good.
-        daemon.join(timeout=DAEMON_KILL_WAIT)
-        if daemon.is_alive():
+        self.child_join(daemon, timeout=DAEMON_KILL_WAIT)
+        if self.child_is_alive(daemon):
             log_msg = _("Child daemon '{daemon} ({pid})' is still alive after SIGKILL, giving up on it.", log=True)[1]
             log_msg = log_msg.format(daemon=daemon_name, pid=daemon.pid)
             self.logger.warning(log_msg)

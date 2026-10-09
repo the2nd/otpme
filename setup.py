@@ -209,30 +209,39 @@ data_files = [
                         'deploy/pam/pam-python/README',
                     ]
                 ),
+                # Every page in otpme/man/, in order. otpme-install-manpages
+                # takes whatever is in that directory, this list does not,
+                # so a new page has to be added here as well.
                 ('/usr/share/man/man1',
                     [
                         "otpme/man/otpme.1",
                         "otpme/man/otpme-accessgroup.1",
+                        "otpme/man/otpme-backup.1",
                         "otpme/man/otpme-ca.1",
                         "otpme/man/otpme-client.1",
+                        "otpme/man/otpme-deploy.1",
+                        "otpme/man/otpme-device.1",
                         "otpme/man/otpme-dictionary.1",
                         "otpme/man/otpme-group.1",
                         "otpme/man/otpme-host.1",
+                        "otpme/man/otpme-inventory.1",
+                        "otpme/man/otpme-mount.1",
                         "otpme/man/otpme-node.1",
                         "otpme/man/otpme-policy.1",
                         "otpme/man/otpme-pool.1",
-                        "otpme/man/otpme-device.1",
                         "otpme/man/otpme-realm.1",
                         "otpme/man/otpme-resolver.1",
                         "otpme/man/otpme-role.1",
                         "otpme/man/otpme-script.1",
                         "otpme/man/otpme-share.1",
+                        "otpme/man/otpme-shell.1",
                         "otpme/man/otpme-site.1",
                         "otpme/man/otpme-token.1",
                         "otpme/man/otpme-tool.1",
-                        "otpme/man/otpme-vlan.1",
+                        "otpme/man/otpme-trash.1",
                         "otpme/man/otpme-unit.1",
                         "otpme/man/otpme-user.1",
+                        "otpme/man/otpme-vlan.1",
                     ]
                 ),
                 ('/usr/share/man/man5',
@@ -244,6 +253,11 @@ data_files = [
                     [
                         "otpme/man/otpme.7",
                         "otpme/man/otpme-acls.7",
+                    ]
+                ),
+                ('/usr/share/man/man8',
+                    [
+                        "otpme/man/pam_otpme.8",
                     ]
                 ),
                 #('lib/otpme/freeradius',

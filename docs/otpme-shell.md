@@ -174,8 +174,9 @@ installed while somebody is logged in.
 
 ## Which node you meet at
 
-Both sides meet at the master node of your site. They reach it over the
-management address of the site, which is the floating IP of the master.
+Both sides meet at the master node of the site of the host. They reach
+it over the management address of that site, which is the floating IP of
+its master.
 
 The daemon that brings them together is **racd**, on port 2031. It runs
 on the master node and nowhere else: it is started when a node takes the
@@ -183,6 +184,28 @@ master role and stopped when it loses it. Both sides need to reach that
 address.
 
 There is nothing to choose here, so there is no option for it.
+
+## A host in another site
+
+Name the site with the global option **-s**:
+
+> **otpme-shell -s *site* host**
+
+That one option moves the whole command to that site. The job is made by
+the management daemon there, because that is where the connection goes,
+and only the nodes of a site hand a job to a host of that site. The host
+is looked up there as well, and both sides meet at the master of that
+site.
+
+Nothing else changes. The job is signed with your key here, and the host
+holds the signature against the signers it has — so the host needs a
+signer for you (**otpme-tool add_signer**), the same as a host of your
+own site. The two sides show each other a certificate, and those are
+good across the realm: a host trusts the CA of the realm and the CA of
+every site in it.
+
+Without **-s** the command works against your own site, so a host of
+another site is not found there.
 
 An open session holds the master failover off while it lasts. So a shell
 that is left open overnight keeps the master role where it is.
@@ -247,6 +270,9 @@ A root shell on client1.
 **otpme-shell --user alice client1**  
 A shell as alice. Uses the keys of alice on that host.
 
+**otpme-shell -s munich client2**  
+A root shell on **client2**, which is a host of site **munich**.
+
 **otpme-shell --command 'systemctl status otpme' client1**  
 Run one command and print what it says.
 
@@ -272,6 +298,29 @@ tokens of the realm.
 The log of one session, on the host. Never what was said in the session.
 
 # NOTES
+
+A session is written into the login history of the host, so **last**(1)
+there shows it like any other login:
+
+>     root  pts/3  otpme/edfc63d5  Thu Oct  8 15:53  still logged in
+
+The origin names the job, and the job names the rest: who asked for the
+shell, which key got in and when it was signed (**otpme-deploy show
+***uuid*).
+
+While it runs **last** says **still logged in**, because the record
+names the process of the shell and that one is still there. A session
+whose end was never written — one that was cut off hard — shows as
+**gone - no logout**.
+
+The shell is a login session of that user for the kernel as well, the
+same as a login over **ssh**(1). So the audit of the host puts what
+happens in the session under the user the shell runs as, and not under
+the daemon that started it.
+
+It is not in **who**(1). That reads another file, one in which a record
+has to be found and replaced rather than appended, and which every other
+login on the host writes too.
 
 The size of your terminal is sent when the shell starts. It is not sent
 again, so a window you resize during a session stays at the size it had.

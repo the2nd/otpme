@@ -262,7 +262,15 @@ def end_transaction(write=True):
             log_msg = log_msg.format(id=_transaction.id, error=e)
             logger.critical(log_msg, exc_info=True)
             remove_transaction()
-            _transaction.remove()
+            # The journal stays where it is. It used to be removed right
+            # here, which threw away the one thing that could still
+            # finish the job: a commit that failed halfway through has
+            # done part of its work, and replay_transactions() is what
+            # does the rest. Without it the half done state was
+            # permanent.
+            log_msg = _("Keeping the journal of the failed transaction for a replay: {id}", log=True)[1]
+            log_msg = log_msg.format(id=_transaction.id)
+            logger.critical(log_msg)
             config.raise_exception()
             return False
         # Remove transaction after successful commit.
@@ -293,8 +301,7 @@ def abort_transaction():
         # Delete transaction.
         _transaction.remove()
         # Release object locks.
-        for o in _transaction.locked_objects:
-            o.release_lock(lock_caller=_transaction.lock_caller)
+        _transaction.release_object_locks()
     finally:
         _transaction.release_lock()
     if config.debug_level(DEBUG_SLOT) > 0:
@@ -738,9 +745,28 @@ class BaseTransaction(object):
         return False
 
     def begin(self):
-        """ Start transaction. """
-        self.set_status("new")
+        """ Start transaction.
+
+        The lock first, the spool directory second. The directory is
+        what makes this transaction visible to everybody else, and a
+        replay takes every transaction it finds, is able to lock and
+        does not know as active: a missing or still empty status file
+        reads as an incomplete transaction and it removes the whole
+        directory (replay_transactions, _remove_incomplete_transaction).
+        A transaction we are just starting looks exactly like that, so
+        it must not be findable before we hold its lock.
+
+        Being in one of the slots of current_job_transactions is no
+        help here, because begin_transaction() puts it there after this
+        method returns. The lock is what another thread or process has
+        to ask, and it is an flock, so it answers for both.
+        """
         self.acquire_lock()
+        try:
+            self.set_status("new")
+        except Exception:
+            self.release_lock()
+            raise
 
     def acquire_lock(self, **kwargs):
         """ Lock transaction. """
@@ -810,13 +836,40 @@ class BaseTransaction(object):
         return incomplete
 
     def is_active(self):
-        """ Check if transaction (process) is active. """
-        if self.pid is None:
-            msg = _("Uuuuh, missing transaction PID: {log_name}")
-            msg = msg.format(log_name=self.log_name)
-            raise OTPmeException(msg)
-        if stuff.check_pid(self.pid):
-            return True
+        """ Whether somebody is working on this transaction.
+
+        Not the same question as "does its process still exist", which
+        is what this used to ask (stuff.check_pid). A daemon runs for
+        weeks, so every transaction a failed commit left behind was
+        answered with yes and never replayed -- and those are exactly
+        the ones that have to be. It also answered yes where a pid had
+        been handed out again to somebody else.
+
+        A transaction of this process is active while it sits in one of
+        the slots of current_job_transactions: begin_transaction() puts
+        it there and end_transaction() takes it out, failure and all.
+        Asked over all slots and not only our own, because they are per
+        thread (multiprocessing.get_id() carries the thread id) and a
+        transaction of another thread of this process is not ours to
+        replay.
+
+        For a transaction of another process the answer is no, and the
+        lock decides -- every caller tries acquire_lock(timeout=0.01)
+        right after this one. A live transaction holds its lock from
+        begin() until end_transaction() gives it back in its finally,
+        and the lock is an flock, so a process that died does not hold
+        it any more.
+
+        The pid is not asked at all. One of another process cannot be in
+        our slots, so it would only say the same thing twice -- and the
+        pid of a transaction read back from its id is a string, which
+        made that comparison easy to get wrong.
+        """
+        # A copy: another thread may be starting or ending one of its
+        # own while we walk them.
+        for own_transaction in list(current_job_transactions.values()):
+            if own_transaction.id == self.id:
+                return True
         return False
 
     def set_status(self, status):
@@ -1422,6 +1475,23 @@ class ObjectTransaction(BaseTransaction):
         # Delete object from index.
         return self._index_del(*args, **kwargs)
 
+    def _drop_index_of_deleted_objects(self):
+        """ Remove the index entries of objects this transaction deleted.
+
+        For after a rollback: the files are gone, so the entries have to
+        go with them. Said out loud, because getting here means a commit
+        failed halfway through and somebody should look at why.
+        """
+        deleted_objects = getattr(self, "deleted_objects", None)
+        if not deleted_objects:
+            return
+        for object_id in deleted_objects:
+            self._index_del(object_id, autocommit=True)
+        log_msg = _("Removed {count} index entries of objects a failed transaction had already deleted: {log_name}", log=True)[1]
+        log_msg = log_msg.format(count=len(deleted_objects),
+                                log_name=self.log_name)
+        logger.critical(log_msg)
+
     def cache_modified_object(self, o):
         """ Add modified object to transaction cache. """
         # Make sure OID cache is up to date.
@@ -1454,6 +1524,37 @@ class ObjectTransaction(BaseTransaction):
         if o in self.locked_objects:
             return
         self.locked_objects.append(o)
+
+    def release_object_locks(self):
+        """ Give back the locks of the cached objects, once.
+
+        Called on the way out of commit(), whether it worked or not. A
+        failed commit used to keep them: commit() released them only
+        after session.commit(), the error path only rolled back and
+        raised. Nothing is served by holding them from there. The
+        journal stays for the replay, and the replay takes no object
+        locks -- while holding them blocks every later operation on
+        those very objects for as long as this process lives, which for
+        a daemon means weeks. abort_transaction() gives them back
+        unconditionally as well.
+
+        Emptying the list first makes a second call do nothing, so the
+        error path can ask again without releasing anything twice (the
+        lock refuses a release from a caller it does not know).
+
+        One lock that cannot be given back must not stop the others,
+        and on the error path it must not replace the exception we are
+        on our way out with, so each one is on its own.
+        """
+        locked_objects = self.locked_objects
+        self.locked_objects = []
+        for o in locked_objects:
+            try:
+                o.release_lock(lock_caller=self.lock_caller)
+            except Exception as e:
+                log_msg = _("Failed to release object lock: {object_id}: {error}", log=True)[1]
+                log_msg = log_msg.format(object_id=o.oid, error=e)
+                logger.warning(log_msg)
 
     def add_sign_cache(self, object_id, user_uuid, signer_key, **kwargs):
         """ Add public key to transaction. """
@@ -1798,6 +1899,21 @@ class ObjectTransaction(BaseTransaction):
             except Exception:
                 # Rollback DB transaction on error.
                 self.session.rollback()
+                # And then take back what the rollback brought back.
+                #
+                # _commit() applies the journal entry by entry, so a
+                # failure in the middle leaves everything before it
+                # done -- files of deleted objects are gone. Their index
+                # entries live in this session only, so the rollback
+                # puts them back: an index entry for a file that is not
+                # there any more. That is the one direction that does
+                # not heal itself. end_transaction() used to throw the
+                # journal away on this path, so nothing replayed it, and
+                # every read of that object failed until somebody ran
+                # "otpme-tool index fix". The other direction is
+                # harmless: a file without an index entry comes back
+                # with an index rebuild.
+                self._drop_index_of_deleted_objects()
                 raise
             else:
                 # Commit DB transaction two times because of nested transaction.
@@ -1813,8 +1929,7 @@ class ObjectTransaction(BaseTransaction):
                 o.reset_modified()
                 cache.add_instance(o)
             # Release object locks.
-            for o in self.locked_objects:
-                o.release_lock(lock_caller=self.lock_caller)
+            self.release_object_locks()
 
             # Outdate objects in caches.
             for x in deleted_objects:
@@ -1838,6 +1953,15 @@ class ObjectTransaction(BaseTransaction):
                 log_msg = _("Transaction commited successful: {log_name}", log=True)[1]
                 log_msg = log_msg.format(log_name=self.log_name)
                 logger.debug(log_msg)
+        except Exception:
+            # Give back the object locks here too, see
+            # release_object_locks(). Not in the finally below, so the
+            # successful commit keeps releasing them where it does now,
+            # before the caches are outdated and the cluster journal
+            # goes out -- holding them over those two is a change this
+            # fix does not need to make.
+            self.release_object_locks()
+            raise
         finally:
             try:
                 config.active_transactions.remove(self)
@@ -1854,7 +1978,10 @@ class ObjectTransaction(BaseTransaction):
         #index_cache.invalidate()
 
         added_objects = []
-        deleted_objects = []
+        # On the object itself, because a failure in the middle of this
+        # loop has to be able to say which objects are really gone, see
+        # _drop_index_of_deleted_objects().
+        self.deleted_objects = deleted_objects = []
         for x in self.journal:
             commit_files = []
             journal_entry = self.journal_entries[str(x)]

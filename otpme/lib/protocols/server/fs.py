@@ -39,6 +39,36 @@ ACL_XATTRS = [
 REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']
 
+# The commands that change what is on the backing store. On a name the
+# share needs for itself they are refused, see protected_names.
+#
+# A list and not a flag per handler, for the same reason as
+# RESTORE_WRITE_COMMANDS in fs1.py: a command added later falls out of
+# the test that holds this against the handler, so somebody has to say
+# which of the two sides it belongs to.
+WRITE_COMMANDS = (
+                    "chmod",
+                    "chown",
+                    "create",
+                    "link",
+                    "mkdir",
+                    "open",
+                    "removexattr",
+                    "rename",
+                    "rmdir",
+                    "setxattr",
+                    "symlink",
+                    "truncate",
+                    "unlink",
+                    "utimens",
+                    "write",
+                )
+
+# Where a command carries the path it works on. rename, link and symlink
+# carry two, and both of them have to be looked at: a name is as gone
+# when something is renamed over it as when it is removed.
+PATH_ARGS = ("path", "old", "new", "source", "target")
+
 def _within_root(root: str, path: str) -> bool:
     """ True iff `path` is `root` itself or a descendant of `root`.
 
@@ -85,6 +115,11 @@ class OTPmeFsServer1(OTPmeServer1):
         self._root = None
         # Share is readonly.
         self.read_only = False
+        # The names a client must not change, by basename. Empty here:
+        # a plain share has none, a file called otpmecryptfs.conf in it
+        # is a file like any other. The encrypted ones fill it in, see
+        # OTPmeFsP1 in fs1.py.
+        self.protected_names = ()
         # Get logger.
         self.logger = config.logger
         # Create mode for new files.
@@ -157,7 +192,14 @@ class OTPmeFsServer1(OTPmeServer1):
             mode = self.create_mode
             old_umask = os.umask(0)
         try:
-            fh = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+            # No O_TRUNC. The kernel only asks for a create where it
+            # believes the file is absent, and that belief can be out
+            # of date: the client remembers an ENOENT for two seconds
+            # (no_such_file_cache) and the kernel caches its own
+            # lookups, so a file another client created in the meantime
+            # would be emptied here. A real O_TRUNC on a file that is
+            # there reaches us as open plus truncate, not as a create.
+            fh = os.open(path, os.O_WRONLY | os.O_CREAT, mode)
         finally:
             if old_umask is not None:
                 os.umask(old_umask)
@@ -299,7 +341,28 @@ class OTPmeFsServer1(OTPmeServer1):
         if not _within_root(self.root, new_parent):
             raise OSError(errno.ENOENT, "No such file or directory")
         new = os.path.join(new_parent, os.path.basename(new))
-        return os.rename(old, new)
+        result = os.rename(old, new)
+        # The handles are kept per path, so they have to follow the
+        # rename. Two things went wrong when they did not. They were
+        # never closed, because release() looks them up by path and
+        # after a rename it arrives with the new one -- 20 open handles
+        # for 20 files, measured, against a limit of 65536 per process.
+        # And an open() of the old path found the entry and was answered
+        # without opening anything, so a write to the old name went into
+        # the renamed file.
+        fhs = filehandlers.pop(old, None)
+        # What the new name held is gone now, so its handles are of no
+        # use to anybody.
+        replaced = filehandlers.pop(new, None)
+        if replaced is not None:
+            for replaced_fh in replaced.values():
+                try:
+                    os.close(replaced_fh)
+                except OSError:
+                    pass
+        if fhs is not None:
+            filehandlers[new] = fhs
+        return result
 
     @with_root_path()
     def rmdir(self, path: str) -> int:
@@ -407,6 +470,34 @@ class OTPmeFsServer1(OTPmeServer1):
         write_status = os.write(fh, data)
         #os.fsync(fh)
         return write_status
+
+    @with_root_path()
+    def fsync(self, path: str, datasync: int = 0) -> int:
+        """ Put the file on disk, and say so only once it is there.
+
+        The handle we wrote through is used where there is one. There
+        may not be: the handles are kept per path and release() drops
+        them, so a file that was closed and is being synced by somebody
+        who still has it open has none here. The file is opened for this
+        in that case -- fsync does not need a writable handle, it syncs
+        the file and not our view of it, and a read only share has to be
+        able to answer this too.
+        """
+        global filehandlers
+        fh = filehandlers.get(path, {}).get('write')
+        own_fh = None
+        if fh is None:
+            own_fh = os.open(path, os.O_RDONLY)
+            fh = own_fh
+        try:
+            if datasync:
+                os.fdatasync(fh)
+            else:
+                os.fsync(fh)
+        finally:
+            if own_fh is not None:
+                os.close(own_fh)
+        return 0
 
     @with_root_path()
     def release(self, path: str) -> int:
@@ -537,8 +628,51 @@ class OTPmeFsServer1(OTPmeServer1):
             )
         }
 
+    def check_protected_names(self, command, command_args):
+        """ Keep a client off the files the share needs for itself.
+
+        An encrypted share carries its settings and its key check beside
+        the data (otpmecryptfs.conf, otpmecryptfs.keycheck). The node
+        writes those two and the node reads them; a client never has to
+        touch them, and it must not be able to. Taking the settings away
+        makes the share unreadable, and taking the key check away
+        removes the one thing that catches a mount with a wrong key.
+
+        A client cannot ask for them by their name through the
+        filesystem -- every name it sends is encrypted first, so
+        "rm otpmecryptfs.keycheck" in a mount asks for a different name
+        altogether. It can ask for them over the protocol, which is
+        what this is about: what reaches here is the name on the backing
+        store, whoever built the client.
+
+        The diriv of a directory is not one of them. A client writes one
+        for every directory it makes and takes it along with the
+        directory it removes, so that one is the client's.
+
+        Returns the message to answer with, or None where there is
+        nothing to refuse.
+        """
+        if not self.protected_names:
+            return None
+        if command not in WRITE_COMMANDS:
+            return None
+        for path_arg in PATH_ARGS:
+            path = command_args.get(path_arg)
+            if not path or not isinstance(path, str):
+                continue
+            if os.path.basename(path) not in self.protected_names:
+                continue
+            log_msg = _("Refused {command} on a file of the share itself: {path}", log=True)[1]
+            log_msg = log_msg.format(command=command, path=path)
+            self.logger.warning(log_msg)
+            return _("Permission denied.")
+        return None
+
     def process_file_command(self, command, command_args, binary_data=None):
         status = True
+        message = self.check_protected_names(command, command_args)
+        if message is not None:
+            return self.build_response(errno.EACCES, message)
         if command == "exists":
             try:
                 path = command_args['path']
@@ -934,6 +1068,21 @@ class OTPmeFsServer1(OTPmeServer1):
                 return self.build_response(status, message)
             try:
                 message = self.open(path, flags)
+            except Exception as e:
+                status = getattr(e, 'errno', False)
+                message = str(e)
+            return self.build_response(status, message)
+
+        elif command == "fsync":
+            try:
+                path = command_args['path']
+            except KeyError:
+                status = False
+                message = _("Missing path.")
+                return self.build_response(status, message)
+            datasync = command_args.get('datasync', 0)
+            try:
+                message = self.fsync(path, datasync)
             except Exception as e:
                 status = getattr(e, 'errno', False)
                 message = str(e)
