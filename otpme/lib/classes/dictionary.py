@@ -623,6 +623,7 @@ def register_backend():
         return backend.rebuild_object_index("dictionary", objects, after)
     # Register object to config.
     config.register_object_type(object_type="dictionary",
+                            version=1,
                             tree_object=True,
                             add_after=["unit", "resolver"],
                             sync_after=["user", "token"],

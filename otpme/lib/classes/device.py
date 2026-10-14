@@ -569,6 +569,7 @@ def register_backend():
                                     object_types=["device"])
     # Register object to config.
     config.register_object_type(object_type="device",
+                            version=1,
                             tree_object=True,
                             uniq_name=True,
                             add_after=["node"],

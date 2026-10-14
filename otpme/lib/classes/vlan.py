@@ -823,6 +823,7 @@ def register_backend():
         return backend.rebuild_object_index("vlan", objects, after)
     # Register object to config.
     config.register_object_type(object_type="vlan",
+                            version=1,
                             tree_object=True,
                             uniq_name=True,
                             add_after=["host"],
@@ -1046,15 +1047,11 @@ class Vlan(OTPmeObject):
         callback: JobCallback=default_callback, **kwargs):
         """ Add host to VLAN. """
         if not host_uuid:
-            host = backend.get_object(object_type="host",
-                                    realm=config.realm,
-                                    site=self.site,
-                                    name=host_name)
-            if not host:
+            host_uuid = self.get_host_uuid(host_name)
+            if not host_uuid:
                 msg = _("Host does not exist: {host_name}")
                 msg = msg.format(host_name=host_name)
                 return callback.error(msg)
-            host_uuid = host.uuid
         check_result = self.check_member_vlan("host", host_uuid,
                                             callback=callback)
         if check_result is not True:

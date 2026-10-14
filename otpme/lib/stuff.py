@@ -2645,7 +2645,6 @@ def split_share_id(share_id):
     return share_realm, share_site, share_name
 
 def get_user_shares(auth_token, host_uuid):
-    from otpme.lib import backend
     user_shares = auth_token.get_shares(skip_disabled=True,
                                         return_type="instance")
     shares = {}
@@ -2661,13 +2660,7 @@ def get_user_shares(auth_token, host_uuid):
                 continue
         share_nodes = share.get_nodes(include_pools=True,
                                     return_type="instance")
-        if not share_nodes:
-            share_nodes = backend.search(object_type="node",
-                                        attribute="uuid",
-                                        value="*",
-                                        realm=share.realm,
-                                        site=share.site,
-                                        return_type="instance")
+        # A share with no enabled node is not given out.
         if share_nodes:
             node_fqdns = []
             for node in share_nodes:

@@ -50,6 +50,22 @@ class OTPmeIdleP1(OTPmeServer1):
         self.require_master_node = True
         # We need a clean cluster status.
         self.require_cluster_status = True
+        # A disabled host waits here like any other.
+        #
+        # What it is told is never more than "look now", and what it may
+        # then do is decided where it was always decided -- a disabled
+        # host gets no job from syncd and logs nobody in. So refusing it
+        # here buys nothing, and it costs: the refusal comes back in
+        # microseconds while the long poll it answers takes seconds
+        # (WAIT_TIMEOUT), and the clients read both as "ask again". One
+        # disabled host was enough to keep idled at a full core, because
+        # its hostd asked some hundred times a second and never got a
+        # moment to wait in.
+        #
+        # It also takes a search per request off us: with the check on,
+        # every access to self.peer reads the object again to see
+        # whether it was disabled in the meantime.
+        self.check_peer_disabled = False
         # No encryption for idled.
         self.encrypt_session = False
         self.logger = None
@@ -453,7 +469,7 @@ class OTPmeIdleP1(OTPmeServer1):
                         share_hosts = []
                     if not limit_hosts:
                         continue
-                    if self.peer.name in share_hosts:
+                    if self.peer.uuid in share_hosts:
                         continue
                 shares.pop(share_id)
             share_ids = ",".join(shares.keys())
@@ -488,7 +504,7 @@ class OTPmeIdleP1(OTPmeServer1):
                         share_hosts = []
                     if not limit_hosts:
                         continue
-                    if self.peer.name in share_hosts:
+                    if self.peer.uuid in share_hosts:
                         continue
                 shares.pop(share_id)
             if not shares:
@@ -538,10 +554,10 @@ class OTPmeIdleP1(OTPmeServer1):
                         msg = msg.format(share=share_id)
                         raise OTPmeException(msg)
                     if found_host:
-                        if self.peer.name == host:
+                        if self.peer.uuid == host:
                             continue
                     if found_hosts:
-                        if self.peer.name in hosts:
+                        if self.peer.uuid in hosts:
                             continue
                 shares.pop(share_id)
             if not shares:
@@ -592,10 +608,10 @@ class OTPmeIdleP1(OTPmeServer1):
                         msg = msg.format(share=share_id)
                         raise OTPmeException(msg)
                     if found_host:
-                        if self.peer.name == host:
+                        if self.peer.uuid == host:
                             continue
                     if found_hosts:
-                        if self.peer.name not in hosts:
+                        if self.peer.uuid not in hosts:
                             continue
                 shares.pop(share_id)
             if not shares:

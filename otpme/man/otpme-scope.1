@@ -1,0 +1,632 @@
+.TH OTPME-SCOPE 1 "2026-10-10" "OTPme 0.3.0a281" "OTPme Manual"
+.SH NAME
+otpme-scope \- say what an application may learn about a user
+.SH SYNOPSIS
+.B otpme-scope
+.I command
+[\fIoptions\fR] [\fIscope\fR]
+.SH DESCRIPTION
+A scope is what an application asks for when it sends a user to the SSO portal to sign in, and what OTPme hands out in return.
+\fBemail\fR gets the application the mail address of the user, \fBprofile\fR their name, \fBgroups\fR the groups they are in.
+The names come from OpenID Connect; OTPme is the OpenID Provider and the application is the Relying Party, see
+.BR otpme (7).
+.PP
+The application is a
+.B client
+of the realm, and that is the word for the object as well \(em the one
+.BR otpme\-client (1)
+manages.
+Where this page says application, that object is what holds it.
+.PP
+A scope object says who may hand that scope out.
+It holds tokens and roles \(em the users that may give it away \(em and the clients that may receive it.
+A scope is granted only if all three agree: the application asked for it, the token of the user has it, and the client has it.
+See \fBHOW A SCOPE IS GRANTED\fR.
+.PP
+So this is the second of two questions about one login.
+The access group of the client decides whether the user gets in at all (see \fBotpme\-accessgroup\fR(1)); the scopes decide what the application is told about them afterwards.
+.PP
+A scope lives in the \fBscopes\fR unit of a site, and the nodes of that site are what answers with it.
+OIDC does not cross a site boundary: a scope is only ever looked up on the site that owns it, and the clients and groups it takes are the ones of that site.
+.PP
+Every site is created with seven scopes of its own, see \fBTHE SCOPES A SITE BRINGS\fR.
+.SH COMMANDS
+.SS Scope Management
+.TP
+.B add \fIscope\fR \fR[\fIscope_id\fR]
+Create a scope.
+.br
+It is created in the \fBscopes\fR unit of your site; a path puts it into another unit, and
+.B move
+takes it there afterwards.
+A name is unique in its site, whatever unit it sits in.
+.br
+\fIscope_id\fR is the name the application sends, and without one it is the name of the scope, see \fBTHE SCOPE ID\fR.
+.br
+A new scope holds nobody.
+Both sides have to be named: the clients that receive it, with
+.BR add_client ,
+and the roles whose users hand it out, with
+.BR add_role .
+.br
+Needs the ACL \fBadd:scope\fR on the unit it is created in, not on the scope \(em there is none yet.
+.TP
+.B del \fR[\fB\-\-no\-trash\fR] \fIscope\fR
+Delete a scope.
+It goes to the trash, from where
+.BR otpme\-trash (1)
+can bring it back; \fB\-\-no\-trash\fR deletes it right away.
+.br
+Needs the ACL \fBdelete:object\fR on the scope, or \fBdelete:scope\fR on the unit it sits in.
+.br
+A scope a site brings with it cannot be deleted.
+Switch it off with
+.B disable
+instead.
+.TP
+.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIscope\fR]
+Without a scope: a table of all of them, with their unit, their roles, tokens, clients and groups, their scope ID and their policies.
+.RS
+.TP
+.B \-a
+Also the scopes you may only look at, not just the ones you may change.
+.TP
+.B \-z \fIN\fR
+How many scopes to print.
+.TP
+.B \-\-fields \fIF1,F2\fR
+Print these columns and no others.
+The names are the ones in the header of the table.
+.TP
+.B \-\-limit \fIN\fR, \fB\-\-policy\-limit \fIN\fR
+How many items to print per scope, and the same for the policies alone.
+.TP
+.B \-\-sort\-by \fIfield\fR, \fB\-\-reverse\fR
+Which column to sort by, and the other way round.
+.TP
+.B \-\-raw\fR, \fB\-\-csv\fR, \fB\-\-csv\-sep\fR \fIsep\fR
+For reading with something other than your eyes: \fB\-\-raw\fR leaves the header and the borders out, \fB\-\-csv\fR prints one row per line with \fB;\fR between the columns, and \fB\-\-csv\-sep\fR uses another separator.
+.RE
+.IP
+A column you may not see says \fB\-\fR.
+Which ACL opens which column is the \fBview:\fR ACL of that value, and the \fBedit:\fR, \fBenable:\fR or \fBremove:\fR ACL of it does as well \(em whoever may set a thing may read it.
+.br
+With a scope named, this prints the object itself instead of a table row: its scope ID and its roles, tokens, clients and groups, each line a value.
+A reference to an object that is gone is printed as the bare UUID, which is how
+.B remove_orphans
+has something to find.
+.TP
+.B list \fR[\fB\-a\fR] \fR[\fIregex\fR]
+List the scope names, and with a regex only those that match it.
+You get the scopes you may change; \fB\-a\fR adds those you may only look at.
+.TP
+.B enable \fIscope\fR
+Enable a disabled scope.
+.br
+Needs the ACL \fBenable:object\fR.
+.TP
+.B disable \fIscope\fR
+Switch a scope off without deleting it.
+.br
+It is then handed out to nobody, and it is gone from the \fIscopes_supported\fR list of the discovery document.
+An application that asks for it still gets its login; the scope is simply missing from the answer.
+.br
+This is what to do with a scope a site brings with it, which cannot be deleted.
+.br
+Needs the ACL \fBdisable:object\fR.
+.TP
+.B rename \fIscope\fR \fInew_name\fR
+Rename a scope.
+.br
+The name is not what the application sends \(em that is the scope ID, and a rename leaves it alone.
+A scope a site brings with it cannot be renamed.
+.br
+Needs the ACL \fBrename:object\fR.
+.TP
+.B move \fR[\fB\-\-keep\-acls\fR] \fIscope\fR \fIunit\fR
+Move the scope into another unit.
+Its ACLs move with it: the default ACLs of the old unit are taken away and those of the new one are applied.
+\fB\-\-keep\-acls\fR leaves the ACLs of the scope as they are.
+.br
+A scope does not inherit ACLs by default, see
+.B enable_acl_inheritance
+below.
+.TP
+.B scope_id \fIscope\fR \fIscope_id\fR
+Set the name the application sends for this scope, see \fBTHE SCOPE ID\fR.
+.br
+Needs the ACL \fBedit:scope_id\fR.
+.TP
+.B touch \fIscope\fR
+Re-index the object to fix potential index problems.
+.br
+Needs the ACL \fBtouch\fR.
+.SS Who May Hand the Scope Out
+A token is named by its path, \fIuser\fB/\fItoken\fR.
+A role is named by its name, which is looked for in the site of the scope, or as \fIsite\fB/\fIrole\fR to take one from another site of the realm.
+.TP
+.B add_token \fIscope\fR \fItoken_path\fR
+Let this token hand the scope out.
+.br
+Whoever signs in with it can give the scope to an application that asks for it \(em if that application has the scope as well.
+.br
+Needs the ACL \fBadd:token\fR.
+.TP
+.B remove_token \fIscope\fR \fItoken_path\fR
+Take the token out of the scope.
+A UUID is taken as well, which is how a reference to a token that is gone is cleared out.
+.br
+Needs the ACL \fBremove:token\fR.
+.TP
+.B list_tokens \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fR[\fIscope\fR]
+List the tokens in the scope, disabled ones included.
+.br
+\fB\-\-return\-type\fR selects what is printed per token; the default is the path.
+\fB\-\-token\-types\fR lists only tokens of the given types, for example \fBhotp,totp\fR.
+.br
+Needs the ACL \fBview:tokens\fR.
+.TP
+.B add_role \fIscope\fR \fIrole\fR
+Let every token of this role hand the scope out.
+.br
+This is the way to do it for more than one user: a role holds the tokens, the scope holds the role.
+A role from another site is named \fIsite\fB/\fIrole\fR.
+.br
+Needs the ACL \fBadd:role\fR.
+.TP
+.B remove_role \fIscope\fR \fIrole\fR
+Take the role out of the scope.
+.br
+Needs the ACL \fBremove:role\fR.
+.TP
+.B list_roles \fIscope\fR
+List the roles in the scope.
+.br
+Needs the ACL \fBview:roles\fR.
+.SS Which Applications Get It
+A client is named by its name and has to be a client of the site of the scope, see
+.BR otpme\-client (1).
+.TP
+.B add_client \fIscope\fR \fIclient\fR
+Let this application receive the scope.
+.br
+One scope ID per application: adding a client that another scope with the same scope ID already holds is refused, and the other scope is named.
+That is what keeps the answer unambiguous, see \fBTHE SCOPE ID\fR.
+.br
+Needs the ACL \fBadd:client\fR.
+.TP
+.B remove_client \fIscope\fR \fIclient\fR
+Take the application out of the scope.
+From then on it no longer gets it, whatever it asks for.
+.br
+Needs the ACL \fBremove:client\fR.
+.TP
+.B list_clients \fIscope\fR
+List the applications in the scope, disabled ones included.
+.br
+Needs the ACL \fBview:clients\fR.
+.SS The Groups Claim
+This list is read by one scope only, the one whose scope ID is \fBgroups\fR.
+What it does is under \fBTHE GROUPS CLAIM\fR below.
+.TP
+.B add_group \fIscope\fR \fIgroup\fR
+Allow this group to be named to the application.
+.br
+The group has to be a group of the site of the scope, see
+.BR otpme\-group (1).
+.br
+Needs the ACL \fBadd:group\fR.
+.TP
+.B remove_group \fIscope\fR \fIgroup\fR
+Take the group off the list.
+The application is no longer told about it, even if the user is in it.
+.br
+Needs the ACL \fBremove:group\fR.
+.TP
+.B list_groups \fIscope\fR
+List the groups on the list.
+.br
+Needs the ACL \fBview:groups\fR.
+.SS Object Changelog
+Every change to the object writes an entry: who made it, when, and what was done.
+A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
+.PP
+An \fIentry_id\fR is the number the listing shows in front of an entry, counted from 0.
+.PP
+Only the comment of an entry can be changed or removed.
+What was done and by whom stays as it is.
+.TP
+.B changelog \fIscope\fR
+Show the changelog of the scope.
+Needs the ACL \fBview:changelog\fR.
+.TP
+.B edit_changelog \fIscope\fR \fIentry_id\fR \fIcomment\fR
+Set the comment of that entry, or replace the one it has.
+Needs the ACL \fBedit:changelog\fR.
+.TP
+.B del_changelog \fIscope\fR \fIentry_id\fR
+Remove the comment of that entry.
+The entry itself stays, and an entry without a comment is refused.
+Needs the ACL \fBedit:changelog\fR.
+.TP
+.B clear_changelog \fIscope\fR
+Remove every entry of the changelog.
+.br
+This needs more than the ACL \fBclear:changelog\fR: the config parameter
+.B allow_changelog_clearing
+has to allow it (see \fBotpme\fR(7)).
+It is true by default, but where no value is found at all, clearing is refused.
+OTPme asks the token you are signed in with first, then the object.
+.SS Policy Management
+A \fIpolicy\fR is the name of a policy, not a path.
+It is looked for in the site of the scope.
+Which policies there are, and what each of them does, is in
+.BR otpme\-policy (1).
+.TP
+.B add_policy \fIscope\fR \fIpolicy\fR
+Attach a policy to the scope.
+.br
+A policy has a list of object types it is for; one that does not name \fBscope\fR is refused.
+So is a second policy of a type that allows only one per object.
+.br
+Needs the ACL \fBassign:policy\fR.
+.TP
+.B remove_policy \fIscope\fR \fIpolicy\fR
+Remove a policy from the scope.
+.br
+Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
+Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
+.TP
+.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIscope\fR
+List the policies attached to the scope.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
+.br
+Needs the ACL \fBview:policies\fR.
+.SS ACL Management
+An ACL says what somebody may do with this scope.
+The somebody is a role or a token, never a user.
+.PP
+What the three forms \fBacl\fR, \fB+acl\fR and \fB++acl\fR mean, and which ACLs exist, is under \fBACLs\fR in
+.BR otpme (7).
+.TP
+.B add_acl \fIscope\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
+Give a role or a token one or more ACLs on this scope.
+.br
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR, and \fIowner\fR the path of that role or token.
+An ACL may carry a value, for example \fBview:clients\fR, and several are separated by commas.
+.br
+Needs the ACL \fBadd:acl\fR.
+.TP
+.B del_acl \fIscope\fR \fIacl\fR[,\fIacl\fR]
+Take those ACLs away again.
+.br
+Here an \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fBrole:berlin/sso\-admins:view\fR.
+.br
+Needs the ACL \fBdelete:acl\fR.
+.TP
+.B list_acls \fIscope\fR
+Show the ACLs that lie on this scope, i.e. who may do what with it.
+Needs the ACL \fBview:acl\fR.
+.TP
+.B enable_acl_inheritance \fIscope\fR
+Let the scope inherit the default ACLs of the unit above it.
+.RS
+.PP
+A scope does not, and that is on purpose: whoever may change a unit full of other objects should not get a say over who may hand out a scope by that alone.
+.PP
+Only default ACLs are inherited.
+An ordinary ACL on the unit never is.
+.PP
+Moving the scope into another unit then takes away the default ACLs of the old unit and applies those of the new one.
+While inheritance is off, a move leaves the ACLs of the scope as they are.
+.PP
+Needs the ACL \fBenable:acl_inheritance\fR.
+.RE
+.TP
+.B disable_acl_inheritance \fIscope\fR
+Stop inheriting them.
+Only the ACLs on the scope itself count from then on.
+Needs the ACL \fBdisable:acl_inheritance\fR.
+.SS Configuration
+A config parameter is looked for on the scope, then on the units above it, then on the site.
+The first value found is the one that applies, and the realm holds none.
+A site can turn that around for a parameter it names in
+.B force_site_config_parameters\fR,
+and then its own value wins (see \fBotpme\fR(7)).
+.PP
+Which parameters a scope takes is in
+.B CONFIG PARAMETERS
+below.
+.TP
+.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIscope\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set a parameter on the scope.
+.RS
+.TP
+.B \-d
+Remove the parameter from the scope, or with a value only that one value from a list.
+It is not set back to a default: what applies afterwards is whatever the unit or the site says.
+.TP
+.B \-a
+Append the value to a parameter that holds a list, instead of replacing what is there.
+.RE
+.IP
+Without a \fIvalue\fR the parameter is set to its default, which is not the same as leaving it unset: the value then stands on the scope and nothing above it is read any more.
+.br
+The ACL is per parameter, \fBset:config:\fIparameter\fR.
+.TP
+.B show_config \fIscope\fR \fR[\fIparameter\fR]
+The config parameters set on the scope itself, or only the one named.
+.br
+Nothing is shown for a parameter that the scope gets from a unit or from the site, and nothing for one whose ACL \fBview:config:\fIparameter\fR you do not hold.
+The scope ID and the members of the scope are not config parameters: \fBshow\fR and \fBexport\fR are where those are.
+.TP
+.B get_config \fIscope\fR \fIparameter\fR
+What the parameter comes to for this scope, once the scope, its units and its site have been looked at.
+So this answers what applies, where \fBshow_config\fR answers what was set here.
+.br
+Needs the ACL \fBview:config:\fIparameter\fR, the same one that opens it in \fBshow_config\fR.
+.TP
+.B description \fIscope\fR \fR[\fIdescription\fR]
+Set the description.
+Without one OTPme asks and offers the current text for editing.
+.br
+Needs the ACL \fBedit:description\fR.
+.TP
+.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIscope\fR \fR[\fIinfo\fR]
+Set free-form info text.
+If \fIinfo\fR is omitted, the current text is opened in the editor named by the \fBEDITOR\fR environment variable.
+.br
+Without
+.B \-\-language
+the text is the administrator's own note about the object, which no user is ever shown.
+With a language it is text for the users in that language.
+.br
+Needs the ACL \fBedit:info\fR.
+.TP
+.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIscope\fR
+Print the info text, of that language or the administrator's own.
+.br
+Needs the ACL \fBview:info\fR.
+.SS Export and Cleanup
+.TP
+.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIscope\fR
+Write the whole object of the scope to stdout, as JSON.
+.br
+Without \fB\-\-password\fR it is written as it is, in clear.
+With one, a key is derived from that password and the object is encrypted with it; the salt goes into the output, so the password is all you need to read it back.
+.br
+What a scope holds are references by UUID \(em its tokens, its roles, its clients, its groups \(em so an export says something only in the realm it came from.
+.br
+Needs the ACL \fBexport\fR.
+.TP
+.B remove_orphans \fIscope\fR
+Remove references to objects that are gone.
+.br
+A token, a role or a client that is deleted leaves its UUID behind in every scope that held it.
+Nothing is handed out to it any more \(em the UUID resolves to nothing \(em but it stays in the object and \fBshow\fR prints it as a bare UUID.
+This clears those out, together with orphan ACLs, policies and signatures.
+.br
+It asks once for everything it found; the global option \fB\-f\fR skips the question.
+.br
+A group that is gone is not cleaned up here: the group list is not one of the lists this command walks, and
+.B remove_group
+wants a name.
+Such a reference stays, and it does no harm \(em a group that does not resolve is left out of the claim.
+.br
+Needs the ACL \fBremove:orphans\fR.
+.SH HOW A SCOPE IS GRANTED
+A login through the SSO portal grants a scope only if it is in all three of these:
+.PP
+.RS
+.IP \(bu 2
+what the application asked for, the \fIscope\fR parameter of its \fI/authorize\fR request,
+.IP \(bu 2
+what the token of the user may hand out: the scopes that hold the token, plus the scopes that hold one of its roles,
+.IP \(bu 2
+what the application may receive: the scopes that hold that client, roles not counted.
+.RE
+.PP
+A disabled scope is in none of them.
+.PP
+Everything else is left out silently, in the order the application asked.
+So an application that asks for \fBopenid profile email\fR and whose users have only \fBopenid\fR and \fBprofile\fR gets those two, and no error.
+What it did get is in the answer of the token endpoint, as the \fIscope\fR field.
+That is the shape of the mistake to look for: a user signs in, the application is happy, and it knows nothing about them because their token reaches no scope.
+.PP
+Nothing fills the user side by itself.
+A role is put into a scope with
+.B add_role
+and stays there until it is taken out; the only ones that come with somebody in them are the three default scopes of a site, which hold its \fBSSO_USER\fR role.
+.PP
+A request that does not ask for \fBopenid\fR at all is a different matter: that one is refused with \fIinvalid_scope\fR, because OpenID Connect says every request has to carry it.
+.PP
+The claims of the granted scopes are handed out at \fI/userinfo\fR.
+They are in the ID Token as well only where the client, its unit or its site sets
+.B oidc_id_token_user_claims
+(see \fBotpme\fR(7)).
+.PP
+What the user sees of all this is the consent screen of the portal, which lists the scopes of the request with the values they would hand over.
+.SH THE SCOPE ID
+The name of a scope is for the administrator, the scope ID is what goes over the wire.
+.PP
+A scope ID may be used by more than one scope object, and that is the point: every application that wants the \fBgroups\fR scope needs its own list of groups, so every one of them gets its own scope object with the scope ID \fBgroups\fR.
+A client can be in one scope per scope ID \(em
+.B add_client
+refuses the second \(em so which object answers for which application is never in doubt.
+.PP
+.B add
+takes the scope ID as its second argument, and without one it is the name of the scope.
+.B scope_id
+changes it afterwards.
+.PP
+The discovery document of the site lists the scope IDs of all its enabled scopes under \fIscopes_supported\fR, each one once.
+Which application really gets which of them is still decided per scope object.
+.SH THE GROUPS CLAIM
+The \fBgroups\fR scope tells an application which groups the user is in, which is how applications like Nextcloud or Grafana decide what somebody may do inside them.
+It is not a scope of the OIDC standard, but a widely used one.
+.PP
+What the application is told is the overlap of two lists: the groups of the user, and the groups on the scope.
+A group the user is in and the scope does not name is not mentioned, and neither is one the scope names and the user is not in.
+.PP
+So the scope is the list of groups an application is allowed to know about.
+An application for one department does not learn the group structure of the whole realm, and a group is never named to an application that was not meant to see it.
+.PP
+The list is empty to begin with, which means no group is ever named.
+Adding the scope to an application is not enough; the groups have to be added as well.
+.PP
+The scope OTPme asks for this is the one whose \fBscope ID\fR is \fBgroups\fR and that holds this client.
+.SH THE SCOPES A SITE BRINGS
+Every site is created with seven scopes.
+They cannot be renamed or deleted, only disabled.
+.PP
+Three of them \(em \fBopenid\fR, \fBprofile\fR and \fBemail\fR \(em are also written into the site parameter
+.B oidc_default_scopes\fR,
+which is the list a new OIDC client is given (see \fBotpme\fR(7)).
+Those three are given the \fBSSO_USER\fR role as well, so whoever may use the portal can hand them out, and an application created with the default scopes works without anybody being added to a scope.
+.PP
+The other four hold nobody.
+A scope one of them is wanted from needs both sides named: the client with
+.BR add_client ,
+and the users with
+.BR add_role .
+.TP
+.B openid
+Carries no claim of its own.
+Every request has to ask for it, and an application that has it not granted sees it missing from the answer.
+.TP
+.B profile
+The name and the like: \fIname\fR, \fIgiven_name\fR, \fIfamily_name\fR, \fIpreferred_username\fR, and where the user has them \fImiddle_name\fR, \fInickname\fR, \fIwebsite\fR, \fIlocale\fR, \fIupdated_at\fR and \fIpicture\fR.
+.br
+They are read from the LDAP attributes of the user \(em \fBcn\fR, \fBgivenName\fR, \fBsn\fR, \fBinitials\fR, \fBdisplayName\fR, \fBlabeledURI\fR \(em and \fIlocale\fR only where the user set a language of their own.
+\fIpicture\fR is a URL of the portal, and only where the user has a photo.
+.TP
+.B email
+The \fIemail\fR claim, from the LDAP attribute \fBmail\fR, or from whatever the site names in
+.B oidc_email_attribute\fR.
+.TP
+.B address
+The \fIaddress\fR claim, built from \fBpostalAddress\fR or \fBstreet\fR, \fBl\fR, \fBst\fR, \fBpostalCode\fR and \fBc\fR.
+.TP
+.B phone
+The \fIphone_number\fR claim, from the LDAP attribute \fBtelephoneNumber\fR.
+.TP
+.B offline_access
+In OpenID Connect this is how an application says that it wants to go on working for the user while they are not there: it asks for a refresh token, with which it fetches new access tokens without the user signing in again.
+.br
+It carries no claim, and OTPme reads it nowhere.
+Whether an application gets a refresh token is decided by its grant types alone \(em \fBrefresh_token\fR has to be one of them, see
+.B add_oidc_grant_type
+in
+.BR otpme\-client (1)
+\(em and nothing asks whether this scope was granted.
+.br
+So what it does today is appear in the \fIscope\fR field of the token answer, and on the consent screen, where the portal has a line for it (that screen is shown where
+.B oidc_require_consent
+is set, see \fBotpme\fR(7)).
+Granting it to an application that has no \fBrefresh_token\fR grant type promises something it will not get; keeping it from one that has the grant type takes nothing away.
+.TP
+.B groups
+The \fIgroups\fR claim, see \fBTHE GROUPS CLAIM\fR.
+.SH OPTIONS
+Every option belongs to one command and is described with that command above.
+.PP
+Global options work with every command, see
+.BR otpme (1).
+.SH CONFIG PARAMETERS
+A scope takes these:
+.TP
+.B changelog \fR(bool)
+Whether the commands on this scope are written to its changelog.
+.br
+Default: true
+.TP
+.B allow_changelog_clearing \fR(bool)
+Whether the changelog of this scope may be cleared, see
+.B clear_changelog
+above.
+.br
+Default: true
+.PP
+What each of them does, and how a parameter is resolved, is in
+.BR otpme (7).
+.PP
+The parameters of the OIDC provider itself \(em \fBoidc_default_scopes\fR, \fBoidc_email_attribute\fR, \fBoidc_id_token_user_claims\fR and the rest \(em are set on the site, the unit or the client, not here.
+.SH EXAMPLES
+.SS Looking at what is there
+.TP
+.B otpme-scope show
+All scopes of the site with their members and their scope IDs.
+.TP
+.B otpme-scope show profile
+The \fBprofile\fR scope itself: who may hand it out and which applications get it.
+.TP
+.B otpme-scope list_clients email
+The applications that are told the mail address.
+.SS A new application
+.TP
+.B otpme-client add \-\-enable\-oidc wiki
+Create the application.
+It is given the default scopes of the site, which are \fBopenid\fR, \fBprofile\fR and \fBemail\fR.
+Those three hold the \fBSSO_USER\fR role already, so nothing has to be added here for them.
+.TP
+.B otpme-accessgroup add_role wiki wiki-users
+Let those users sign in to it.
+Who gets in is the access group of the client \(em here one of the same name \(em and not the scope (see \fBotpme\-accessgroup\fR(1)).
+.TP
+.B otpme-scope add_client phone wiki
+Let the application have the phone number as well.
+.TP
+.B otpme-scope add_role phone wiki-users
+And let its users hand that one out.
+Both lines are needed: the client side says which application may receive the scope, the role side who may give it away.
+.SS Group memberships for one application
+.TP
+.B otpme-scope add wiki_groups groups
+A scope of its own for the \fBwiki\fR, with the scope ID \fBgroups\fR.
+.TP
+.B otpme-scope add_client wiki_groups wiki
+This one answers for the \fBwiki\fR.
+.TP
+.B otpme-scope add_group wiki_groups wiki-editors
+.TP
+.B otpme-scope add_group wiki_groups wiki-admins
+The two groups the \fBwiki\fR may know about.
+Every other group of the realm stays unmentioned.
+.TP
+.B otpme-scope add_role wiki_groups wiki-users
+The users that hand the scope out.
+.SS Keeping something to yourself
+.TP
+.B otpme-scope remove_client email mailinglist
+The application no longer gets the mail address, whatever it asks for.
+.TP
+.B otpme-scope disable address
+Nobody hands out postal addresses on this site any more, and the scope is gone from the discovery document.
+.SS Handing the work over
+.TP
+.B otpme-scope add_acl wiki_groups role it\-support add:group,remove:group,view:groups
+The service desk may change the group list of this one scope, and nothing else about it.
+.TP
+.B otpme-scope remove_orphans profile
+Clear out the applications and tokens that were deleted since.
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme (7),
+.BR otpme\-acls (7),
+.BR otpme\-client (1),
+.BR otpme\-accessgroup (1),
+.BR otpme\-group (1),
+.BR otpme\-role (1),
+.BR otpme\-token (1),
+.BR otpme\-user (1),
+.BR otpme\-site (1),
+.BR otpme\-unit (1),
+.BR otpme\-policy (1),
+.BR otpme\-trash (1)
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2026 the2nd. License: GPLv3

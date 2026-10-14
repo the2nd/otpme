@@ -1087,6 +1087,7 @@ def register_backend():
         return backend.rebuild_object_index("token", objects, after)
     # Register object to config.
     config.register_object_type(object_type="token",
+                            version=1,
                             tree_object=True,
                             uniq_name=False,
                             add_after=["user"],
@@ -1589,27 +1590,9 @@ class Token(OTPmeObject):
         offline_config['NEED_OFFLINE_ENCRYPTION'] = need_encryption
         return offline_config
 
-    def get_parent_object(
-        self,
-        run_policies: bool=True,
-        callback: JobCallback=default_callback,
-        ):
-        """ Get parent object of this token (user). """
-        owner_uuid = self.owner_uuid
-        if not owner_uuid:
-            msg = _("Unable to get user of token: {token_oid}")
-            msg = msg.format(token_oid=self.oid)
-            return callback.error(msg)
-
-        parent_object = backend.get_object(uuid=owner_uuid,
-                                        object_type="user",
-                                        run_policies=run_policies)
-        if not parent_object:
-            msg = _("Unknown parent object: {owner_uuid}")
-            msg = msg.format(owner_uuid=owner_uuid)
-            return callback.error(msg)
-
-        return parent_object
+    def get_parent_uuid(self):
+        """ The parent of a token is its owner (see get_parent_object()). """
+        return "user", self.owner_uuid
 
     def get_sftoken(self, **kwargs):
         """ Get second factor token instance. """
@@ -4335,20 +4318,16 @@ class Token(OTPmeObject):
                     continue
             share_nodes = share.get_nodes(include_pools=True,
                                           return_type="instance")
-            if not share_nodes:
-                share_nodes = backend.search(object_type="node",
-                                            attribute="uuid",
-                                            value="*",
-                                            realm=share.realm,
-                                            site=share.site,
-                                            return_type="instance")
-            if not share_nodes:
+            # No enabled node, nothing to mount from. An unmount is
+            # sent anyway; skip_no_mount is set for a mount only.
+            if not share_nodes and skip_no_mount:
                 continue
             node_fqdns = [node.fqdn for node in share_nodes]
             share_hosts = []
             if share.limit_by_hosts:
                 share_hosts = share.get_hosts(include_groups=True,
-                                              return_type="name")
+                                              include_roles=True,
+                                              return_type="uuid")
             share_id = share.share_id
             shares_data[share_id] = {
                 'name': share.name,
@@ -4673,19 +4652,39 @@ class Token(OTPmeObject):
 
         return self._write(callback=callback)
 
-    def delete_used_data_objects(self):
-        """ Delete 'used' objects (e.g. token counter). """
-        if self.pass_type != "otp":
-            return
-        # Used OTPs must be deleted for counter based tokens too.
-        used_otps = self._get_used_otps()
-        for used_otp in used_otps:
-            used_otp.delete()
-        if self.otp_type != "counter":
-            return
-        counter_list = self._get_token_counter()
-        for token_counter in counter_list:
+    def _del_token_counter(self):
+        """ Forget every counter this token has.
+
+        A counter only says something as long as the same thing keeps
+        counting. A token that replaces another one takes its UUID
+        over, and a fido2 token that is deployed again gets a new
+        credential with a counter of its own -- in both cases what the
+        old one counted is not an answer about the new one, and it is
+        above it: a replaced fido2 token was refused with
+
+            Already used token counter: 4 vs. 164
+
+        for every assertion it made, because the authenticator that was
+        replaced had got to 164.
+        """
+        for token_counter in self._get_token_counter():
             token_counter.delete()
+
+    def delete_used_data_objects(self):
+        """ Delete 'used' objects (e.g. token counter).
+
+        The counter is asked for whatever the token is, and not only
+        for an OTP token: a fido2 or passkey token keeps one as well,
+        from the signature counter of its authenticator, and that one
+        belongs to the credential this token had. Used OTPs are an OTP
+        thing and stay with the OTP tokens.
+        """
+        if self.pass_type == "otp":
+            # Used OTPs must be deleted for counter based tokens too.
+            used_otps = self._get_used_otps()
+            for used_otp in used_otps:
+                used_otp.delete()
+        self._del_token_counter()
 
     @object_lock(full_lock=True)
     @backend.transaction

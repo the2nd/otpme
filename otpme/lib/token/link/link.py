@@ -124,7 +124,7 @@ def register():
 
 def register_token_type():
     """ Register token type. """
-    config.register_sub_object_type("token", "link")
+    config.register_sub_object_type("token", "link", version=1)
     config.register_ssh_token("link")
     # Followed when a node builds the sync parameters for a host it
     # serves (OTPmeHost.get_sync_parameters()), so a node holding tokens

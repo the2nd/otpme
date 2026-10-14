@@ -943,6 +943,7 @@ def register_backend():
                                     object_types=role_types)
     # Register object to config.
     config.register_object_type(object_type="role",
+                            version=1,
                             tree_object=True,
                             uniq_name=True,
                             # FIXME: must be roles added before tokens?
@@ -1521,13 +1522,9 @@ class Role(OTPmeObject):
                 # Get share nodes.
                 share_nodes = share.get_nodes(include_pools=True,
                                             return_type="instance")
+                # No enabled node, nothing to mount from.
                 if not share_nodes:
-                    share_nodes = backend.search(object_type="node",
-                                                attribute="uuid",
-                                                value="*",
-                                                realm=share.realm,
-                                                site=share.site,
-                                                return_type="instance")
+                    continue
                 node_fqdns = []
                 for node in share_nodes:
                     node_fqdns.append(node.fqdn)
@@ -1535,7 +1532,7 @@ class Role(OTPmeObject):
                 if share.limit_by_hosts:
                     share_hosts = share.get_hosts(include_groups=True,
                                                 include_roles=True,
-                                                return_type="name")
+                                                return_type="uuid")
                 share_id = share.share_id
                 shares[share_id] = {}
                 shares[share_id]['name'] = share.name
@@ -1610,13 +1607,6 @@ class Role(OTPmeObject):
                     continue
                 share_nodes = share.get_nodes(include_pools=True,
                                               return_type="instance")
-                if not share_nodes:
-                    share_nodes = backend.search(object_type="node",
-                                                attribute="uuid",
-                                                value="*",
-                                                realm=share.realm,
-                                                site=share.site,
-                                                return_type="instance")
                 node_fqdns = []
                 for node in share_nodes:
                     node_fqdns.append(node.fqdn)
@@ -1690,13 +1680,9 @@ class Role(OTPmeObject):
                 # Get share nodes.
                 share_nodes = share.get_nodes(include_pools=True,
                                             return_type="instance")
+                # No enabled node, nothing to mount from.
                 if not share_nodes:
-                    share_nodes = backend.search(object_type="node",
-                                                attribute="uuid",
-                                                value="*",
-                                                realm=share.realm,
-                                                site=share.site,
-                                                return_type="instance")
+                    continue
                 node_fqdns = []
                 for node in share_nodes:
                     node_fqdns.append(node.fqdn)
@@ -1704,7 +1690,7 @@ class Role(OTPmeObject):
                 if share.limit_by_hosts:
                     share_hosts = share.get_hosts(include_groups=True,
                                                 include_roles=True,
-                                                return_type="name")
+                                                return_type="uuid")
                 shares = {}
                 share_id = share.share_id
                 shares[share_id] = {}
@@ -1817,17 +1803,9 @@ class Role(OTPmeObject):
                 notify_tokens = set(role_to_remove_tokens) - set(share_tokens_after)
                 if not notify_tokens:
                     continue
+                # An unmount is sent with no enabled node too.
                 share_nodes = share.get_nodes(include_pools=True,
                                               return_type="instance")
-                if not share_nodes:
-                    share_nodes = backend.search(object_type="node",
-                                                attribute="uuid",
-                                                value="*",
-                                                realm=share.realm,
-                                                site=share.site,
-                                                return_type="instance")
-                if not share_nodes:
-                    continue
                 node_fqdns = []
                 for node in share_nodes:
                     node_fqdns.append(node.fqdn)
@@ -1894,6 +1872,8 @@ class Role(OTPmeObject):
                                          return_type="instance")
         affected_shares = [s for s in affected_shares if s.limit_by_hosts]
 
+        if not host_uuid and host_name:
+            host_uuid = self.get_host_uuid(host_name)
         # Try to add host via parent class.
         result = super().add_host(*args, host_name=host_name,
                                 host_uuid=host_uuid,
@@ -1902,12 +1882,8 @@ class Role(OTPmeObject):
         if not result:
             return result
 
-        if not host_name:
-            host = backend.get_object(uuid=host_uuid)
-            host_name = host.name
-
         for share in affected_shares:
-            share._notify_share_metadata_change("share_add_host", callback, host=host_name,
+            share._notify_share_metadata_change("share_add_host", callback, host_uuid=host_uuid,
                                                 persist_mount=persist_mount,
                                                 share_notifications=share_notifications)
         return result
@@ -1918,26 +1894,30 @@ class Role(OTPmeObject):
         self,
         *args,
         host_name: str=None,
+        host_uuid: str=None,
         persist_mount: bool=None,
         share_notifications: bool=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Adds a host to this group. """
+        """ Removes a host from this role. """
         affected_shares = backend.search(object_type="share",
                                          attribute="role",
                                          value=self.uuid,
                                          return_type="instance")
         affected_shares = [s for s in affected_shares if s.limit_by_hosts]
 
+        if not host_uuid and host_name:
+            host_uuid = self.get_host_uuid(host_name)
         # Try to remove host via parent class.
         result = super().remove_host(*args, host_name=host_name,
+                                    host_uuid=host_uuid,
                                     callback=callback, **kwargs)
         if not result:
             return result
 
         for share in affected_shares:
-            share._notify_share_metadata_change("share_remove_host", callback, host=host_name,
+            share._notify_share_metadata_change("share_remove_host", callback, host_uuid=host_uuid,
                                                 persist_mount=persist_mount,
                                                 share_notifications=share_notifications)
         return result
@@ -1970,6 +1950,12 @@ class Role(OTPmeObject):
                     host_name = search_result[uuid][return_type]
                 except Exception:
                     continue
+                # A host of another site is named with its site, like
+                # the hosts of every other object type.
+                if return_type == "name":
+                    x_site = search_result[uuid]['site']
+                    if x_site != config.site:
+                        host_name = f"{x_site}/{host_name}"
                 result.append(host_name)
 
         if not recursive:
@@ -2051,20 +2037,13 @@ class Role(OTPmeObject):
                 share_nodes = share.get_nodes(include_pools=True,
                                               return_type="instance")
                 if not share_nodes:
-                    share_nodes = backend.search(object_type="node",
-                                                attribute="uuid",
-                                                value="*",
-                                                realm=share.realm,
-                                                site=share.site,
-                                                return_type="instance")
-                if not share_nodes:
                     continue
                 node_fqdns = [node.fqdn for node in share_nodes]
                 share_hosts = []
                 if share.limit_by_hosts:
                     share_hosts = share.get_hosts(include_groups=True,
                                                 include_roles=True,
-                                                return_type="name")
+                                                return_type="uuid")
                 share_id = share.share_id
                 shares = {}
                 shares[share_id] = {}
@@ -2151,23 +2130,15 @@ class Role(OTPmeObject):
                 notify_tokens = set(role_tokens) - share_tokens_after
                 if not notify_tokens:
                     continue
+                # An unmount is sent with no enabled node too.
                 share_nodes = share.get_nodes(include_pools=True,
                                               return_type="instance")
-                if not share_nodes:
-                    share_nodes = backend.search(object_type="node",
-                                                attribute="uuid",
-                                                value="*",
-                                                realm=share.realm,
-                                                site=share.site,
-                                                return_type="instance")
-                if not share_nodes:
-                    continue
                 node_fqdns = [node.fqdn for node in share_nodes]
                 share_hosts = []
                 if share.limit_by_hosts:
                     share_hosts = share.get_hosts(include_groups=True,
                                                 include_roles=True,
-                                                return_type="name")
+                                                return_type="uuid")
                 share_id = share.share_id
                 shares = {}
                 shares[share_id] = {}

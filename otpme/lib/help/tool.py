@@ -28,7 +28,7 @@ cmd_help = {
                 },
 
     'dump'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool dump [acl_cache|sync_map|instance_cache|...] {object_id}'),
+                    '_cmd_usage_help' : _('Usage: otpme-tool dump [acl_cache|sync_map] {object_id}'),
                     'cmd'   :   '<cache_type> [object_id]',
                     '_help' :   {
                                     'cmd'                   : _('Tell OTPme daemon to dump the given cache.'),

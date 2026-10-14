@@ -786,6 +786,7 @@ def register_backend():
         return backend.rebuild_object_index("ca", objects, after)
     # Register object to config.
     config.register_object_type(object_type="ca",
+                            version=1,
                             tree_object=True,
                             add_after=["unit"],
                             sync_after=["unit"],

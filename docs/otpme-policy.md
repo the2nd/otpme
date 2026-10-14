@@ -502,7 +502,7 @@ Require at least one special character
 **otpme-policy enable_strength_checker strong_passwords**  
 Enable password strength checking
 
-**otpme-policy test --password MyP@ss123 strong_passwords**  
+**otpme-policy test --password "MyP@ss123" strong_passwords**  
 Test a password against the policy
 
 **otpme-user add_policy alice strong_passwords**  
@@ -513,7 +513,7 @@ Apply policy to user alice
 **otpme-policy --type logintimes add workhours**  
 Create login times policy
 
-**otpme-policy login_times workhours mon-fri 08:00-18:00**  
+**otpme-policy login_times workhours "mon-fri 08:00-18:00"**  
 Set allowed login times
 
 **otpme-group add_policy contractors workhours**  

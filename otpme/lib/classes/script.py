@@ -606,6 +606,7 @@ def register_backend():
         return backend.rebuild_object_index("script", objects, after)
     # Register object to config.
     config.register_object_type(object_type="script",
+                            version=1,
                             tree_object=True,
                             uniq_name=False,
                             add_after=["unit", "policy"],

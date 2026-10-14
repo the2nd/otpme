@@ -445,11 +445,19 @@ SYNC_AUDIENCES = [
 #
 # Not for the full view, which is the whole object and keeps the
 # checksum of the whole object.
+#
+# The versions of the config are left out for the same reason. An
+# upgrade writes a new version into every object it looks at, and most
+# of the time it changes nothing a given view carries. A peer is to
+# fetch an object when a field of its view changed, not because the
+# number did.
 VOLATILE_SYNC_FIELDS = [
                 "CHANGELOG",
                 "LAST_MODIFIED",
                 "LAST_MODIFIED_BY",
                 "LAST_MODIFIED_BY_CACHE",
+                "VERSION",
+                "SUB_VERSION",
                 ]
 
 # Where a field is written a second time. Taking the field out of a view
@@ -803,6 +811,14 @@ def register_backend():
                                     object_types="all")
     config.register_index_attribute('extension', sync=True,
                                     object_types="all")
+    # The versions of the object config, so an upgrade can ask for the
+    # objects it still has to do. Asked on the site that owns the
+    # object only, and kept out of every view: a peer is not to fetch
+    # an object because its version moved (see VOLATILE_SYNC_FIELDS).
+    config.register_index_attribute('version', sync=False,
+                                    object_types="all")
+    config.register_index_attribute('sub_version', sync=False,
+                                    object_types="all")
     # A node answers LDAP queries about these objects and needs the
     # description for that; a host serves no LDAP.
     config.register_index_attribute('description', sync=["node:untrusted"],
@@ -1047,11 +1063,16 @@ def register_config_parameters():
     # not while the parameter was not registered for it: the value was
     # then looked for on the unit above it and on the site, which was
     # nobody's decision.
+    #
+    # Not the client: a signature on an assignment of a client is read
+    # by nothing (the only verification of a token signature is the
+    # authorized_keys a host writes, and that asks whose token it is,
+    # never which client it was assigned to), so Client.add_token()
+    # signs nothing and there is nothing here to decide.
     assignment_types = [
                     'role',
                     'group',
                     'accessgroup',
-                    'client',
                     'host',
                     'node',
                     ]
@@ -1431,9 +1452,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         self.cert = None
         self.key = None
         self.public_key = None
-        self.pickable = True
         self.cache_expire = 30
-        self.sub_type = None
         self.list_attributes = []
         self.dict_attributes = []
         self.template_name = None
@@ -1463,8 +1482,15 @@ class OTPmeBaseObject(OTPmeLockObject):
         self.ldif_journal = []
         self.no_transaction = no_transaction
         self.kwargs_object_config = object_config
-        # Object version.
+        # Version of the object config: of the fields every object of
+        # the type has, and of the fields only its sub type has. None
+        # for an object without a sub type.
         self.version = 1
+        self.sub_version = None
+        # Set when loading brought the config up to the versions of
+        # this code (see upgrade_object_config()). The stored object is
+        # still the old one until somebody writes this one.
+        self.config_upgraded = False
         self.add_properties()
         super().__init__()
 
@@ -1802,7 +1828,7 @@ class OTPmeBaseObject(OTPmeLockObject):
             relationship = "trusted"
             extra_fields = list(HOST_SELF_SYNC_FIELDS)
 
-        allowed_fields = ['VERSION']
+        allowed_fields = ['VERSION', 'SUB_VERSION']
         # Get base sync fields (e.g. UUID, REALM, SITE...)
         try:
             allowed_fields += list(self._base_sync_fields[peer_type][relationship])
@@ -2211,10 +2237,283 @@ class OTPmeBaseObject(OTPmeLockObject):
         if not object_config:
             return False
 
+        # Bring it up to the versions of this code before anything is
+        # read from it. Not caught: a config this code does not
+        # understand must not be loaded as if it did.
+        stored_versions = self.get_config_versions(object_config)
+        modified_attributes = list(object_config.modified_attributes)
+        deleted_attributes = list(object_config.deleted_attributes)
+        if self.upgrade_object_config(object_config):
+            # What is stored is behind this code. Whether it is to be
+            # stored anew is for the site to say: as long as the site
+            # writes the old version, the upgrade is a matter of this
+            # process alone, and the object did not change by it.
+            sub_type = self.get_config_sub_type(object_config)
+            write_versions = self.get_write_versions(sub_type, object_config)
+            if write_versions > stored_versions:
+                self.config_upgraded = True
+            else:
+                object_config.forget_changes_since(modified_attributes,
+                                                    deleted_attributes)
+
         # Set new object config.
         self.object_config = object_config
 
         return True
+
+    def get_sub_type(self):
+        """ The sub type of this object, None if its type has none.
+
+        Every object that has one says it in <type>_type: a token in
+        self.token_type, a policy in self.policy_type. Only a
+        registered sub type counts: an attribute that merely ends in
+        _type is not one.
+        """
+        sub_type = getattr(self, f"{self.type}_type", None)
+        if sub_type not in config.get_sub_object_types(self.type):
+            return None
+        return sub_type
+
+    def get_config_versions(self, object_config):
+        """ The versions a config was written with, as (type, sub type).
+
+        1 for what is not counted yet, and for the sub type of a
+        config that has none: that way two of these compare.
+        """
+        versions = []
+        for field in ('VERSION', 'SUB_VERSION'):
+            try:
+                x_version = object_config[field]
+            except KeyError:
+                x_version = None
+            if x_version is None:
+                x_version = 1
+            versions.append(x_version)
+        return tuple(versions)
+
+    def get_site_config_versions(self, object_config=None):
+        """ The versions the site of this object writes configs with.
+
+        Site.config_versions of the site the object is of; of the
+        master site of the realm for an object that is of no site, as
+        the realm itself. Empty if the site cannot be found, which
+        reads as version 1 for everything.
+
+        A site and a realm are asked about themselves while they are
+        being loaded, and then the answer is in the config they are
+        loaded from and not in the instance yet. That config is handed
+        in.
+        """
+        if self.type == "site":
+            if object_config is None:
+                config_versions = self.config_versions
+            else:
+                try:
+                    config_versions = object_config['CONFIG_VERSIONS']
+                except KeyError:
+                    config_versions = None
+            return config_versions or {}
+        site = None
+        site_name = None
+        if self.type != "realm":
+            site_name = self.oid.site
+        if site_name:
+            site = backend.get_object(object_type="site",
+                                    realm=self.oid.realm,
+                                    name=site_name)
+        else:
+            master_uuid = None
+            if self.type == "realm":
+                if object_config is None:
+                    master_uuid = self.master
+                else:
+                    try:
+                        master_uuid = object_config['MASTER']
+                    except KeyError:
+                        pass
+            else:
+                realm = backend.get_object(object_type="realm",
+                                        name=self.oid.realm)
+                if realm:
+                    master_uuid = realm.master
+            if master_uuid:
+                site = backend.get_object(uuid=master_uuid)
+        if not site:
+            return {}
+        return site.config_versions or {}
+
+    def get_write_versions(self, sub_type, object_config=None):
+        """ The versions this object is stored with, as (type, sub type).
+
+        Those of its site, see Site.config_versions: all nodes of a
+        site store the same version whatever code they run, until
+        "otpme-site upgrade" raises it. Never above what this code
+        writes.
+
+        The site is not asked while this code is at version 1: there
+        is nothing below it to store.
+        """
+        code_version = config.get_object_version(self.type)
+        code_sub_version = 1
+        if sub_type is not None:
+            code_sub_version = config.get_sub_object_version(self.type,
+                                                            sub_type)
+        if code_version == 1 and code_sub_version == 1:
+            return (1, 1)
+        site_versions = self.get_site_config_versions(object_config)
+        version = site_versions.get(self.type, 1)
+        sub_version = 1
+        if sub_type is not None:
+            sub_version = site_versions.get(f"{self.type}:{sub_type}", 1)
+        return (min(version, code_version),
+                min(sub_version, code_sub_version))
+
+    def raise_object_config(self, forget=False):
+        """ Bring the config in memory back up after it was written.
+
+        _write() takes it down to what the site stores. <forget> says
+        that the write went through: what is in memory then differs
+        from what is stored by the upgrade alone, and that is not a
+        change to the object.
+        """
+        modified_attributes = list(self.object_config.modified_attributes)
+        deleted_attributes = list(self.object_config.deleted_attributes)
+        self.upgrade_object_config(self.object_config)
+        if forget:
+            self.object_config.forget_changes_since(modified_attributes,
+                                                    deleted_attributes)
+
+    def get_config_sub_type(self, object_config):
+        """ The sub type a config says it is of, None if it has none.
+
+        Read from the config and not from the instance, because this
+        is asked before the object is loaded, and by a sync that never
+        loads it (see get_sync_config()). A token says it in
+        TOKEN_TYPE, a policy in POLICY_TYPE and so on.
+        """
+        try:
+            sub_type = object_config[f"{self.type.upper()}_TYPE"]
+        except KeyError:
+            return None
+        if sub_type not in config.get_sub_object_types(self.type):
+            return None
+        return sub_type
+
+    def get_config_version_chains(self, object_config):
+        """ What is counted in a config, one line for each number.
+
+        The field the version is in, the version this code writes, and
+        how the methods that go a step up and a step down are named.
+        VERSION first: get_config_versions() and get_write_versions()
+        give their two numbers in the same order.
+        """
+        chains = [(
+                'VERSION',
+                config.get_object_version(self.type),
+                "upgrade_to_{version}",
+                "downgrade_to_{version}",
+                )]
+        sub_type = self.get_config_sub_type(object_config)
+        if sub_type is not None:
+            chains.append((
+                'SUB_VERSION',
+                config.get_sub_object_version(self.type, sub_type),
+                "sub_upgrade_to_{version}",
+                "sub_downgrade_to_{version}",
+                ))
+        return chains
+
+    def upgrade_object_config(self, object_config):
+        """ Bring a config up to the versions this code writes.
+
+        Runs upgrade_to_<n>() for every version between the one the
+        config was written with and the one of this code, then the
+        same with sub_upgrade_to_<n>() for the fields of the sub type.
+        Each of them gets the config and changes it in place.
+
+        A step works on the config it is handed and on nothing else:
+        the object is not loaded yet when this runs, and
+        get_sync_config() runs the way down on an object that never
+        is. It reads and writes with [], pop() and "in", which is what
+        an ObjectConfig and a dict have in common.
+
+        A step that is missing is an error. Counting past it would
+        write a number over a config nobody brought up to it.
+
+        Returns True if the config was changed.
+        """
+        upgraded = False
+        for field, code_version, up_name, down_name in \
+        self.get_config_version_chains(object_config):
+            try:
+                x_version = object_config[field]
+            except KeyError:
+                x_version = None
+            # Nothing counted yet is the first version.
+            if x_version is None:
+                x_version = 1
+            if x_version > code_version:
+                msg = _("Object config is newer than this code: {oid}: {field} {version} > {code_version}")
+                msg = msg.format(oid=self.oid,
+                                field=field,
+                                version=x_version,
+                                code_version=code_version)
+                raise OTPmeException(msg)
+            while x_version < code_version:
+                x_version += 1
+                method_name = up_name.format(version=x_version)
+                method = getattr(self, method_name, None)
+                if method is None:
+                    msg = _("Missing object config upgrade: {object_type}: {method_name}")
+                    msg = msg.format(object_type=self.type,
+                                    method_name=method_name)
+                    raise OTPmeException(msg)
+                method(object_config)
+                object_config[field] = x_version
+                upgraded = True
+        return upgraded
+
+    def downgrade_object_config(self, object_config, version=1, sub_version=1):
+        """ Take a config down to the versions a peer runs.
+
+        The other way of upgrade_object_config(): downgrade_to_<n>()
+        takes a config of version n+1 to version n, and
+        sub_downgrade_to_<n>() does it for the fields of the sub type.
+
+        A step that is missing means there is no way down, and that
+        is raised: a peer is better told that it is too old than
+        handed a config it will misread.
+
+        Returns True if the config was changed.
+        """
+        wanted_versions = {
+                        'VERSION'       : version,
+                        'SUB_VERSION'   : sub_version,
+                        }
+        downgraded = False
+        for field, code_version, up_name, down_name in \
+        self.get_config_version_chains(object_config):
+            wanted_version = wanted_versions[field]
+            try:
+                x_version = object_config[field]
+            except KeyError:
+                x_version = None
+            if x_version is None:
+                x_version = 1
+            while x_version > wanted_version:
+                x_version -= 1
+                method_name = down_name.format(version=x_version)
+                method = getattr(self, method_name, None)
+                if method is None:
+                    msg = _("Object config cannot be downgraded: {object_type}: {field} {version}")
+                    msg = msg.format(object_type=self.type,
+                                    field=field,
+                                    version=x_version)
+                    raise OTPmeException(msg)
+                method(object_config)
+                object_config[field] = x_version
+                downgraded = True
+        return downgraded
 
     def _set_variables(self):
         """ Set instance variables. """
@@ -2696,6 +2995,17 @@ class OTPmeBaseObject(OTPmeLockObject):
             if self.ldif_journal:
                 ldif_journal = copy.deepcopy(self.ldif_journal)
 
+        # What is in memory is of the versions of this code: a config
+        # that was loaded has been brought up to them (see
+        # upgrade_object_config()), and an object that is new was
+        # built by this code. Said here, so the config says it before
+        # it is taken down to what the site stores.
+        self.version = config.get_object_version(self.type)
+        sub_type = self.get_sub_type()
+        if sub_type is not None:
+            self.sub_version = config.get_sub_object_version(self.type,
+                                                            sub_type)
+
         # Update object config from variables.
         self.update_object_config()
 
@@ -2708,61 +3018,84 @@ class OTPmeBaseObject(OTPmeLockObject):
         if not self.object_config.modified:
             return
 
-        # Hash the views of this object. After the check above, not
-        # before it: writing the checksums marks the config modified,
-        # and an object nothing changed about would then be written
-        # every time somebody asked it to.
-        #
-        # A full index update takes the checksums out of the config
-        # itself (see backends/file/file.py); an incremental one only
-        # applies what the journal says, so they have to be said there.
-        sync_checksum_journal = self.update_sync_checksums()
-        if not full_index_update:
-            index_journal += sync_checksum_journal
-
-        log_msg = _("Writing object: {oid}", log=True)[1]
-        log_msg = log_msg.format(oid=self.oid)
-        logger.debug(log_msg)
-
-        # Check for replacement method when being offline (e.g. offline tokens).
-        write_method = backend.write_config
-        if self.offline:
-            try:
-                write_method = config.offline_methods['write_config'][self.oid.read_oid]
-            except Exception:
-                pass
-        elif not backend.is_available():
-            raise BackendUnavailable("Backend not available.")
-
-        # Try to write object config to backend.
+        # Take the config down to the versions the site stores. After
+        # the check above: this is not what makes an object worth
+        # writing. Before the checksums: they are of what is stored,
+        # and every node has to arrive at the same ones whatever code
+        # it runs. The config is brought up again below, however this
+        # ends.
+        write_version, \
+        write_sub_version = self.get_write_versions(self.get_sub_type())
+        downgraded = self.downgrade_object_config(self.object_config,
+                                            version=write_version,
+                                            sub_version=write_sub_version)
+        written = False
         try:
-            write_method(object_id=self.oid,
-                        instance=self,
-                        cluster=cluster,
-                        wait_for_cluster_writes=wait_for_cluster_writes,
-                        no_transaction=no_transaction,
-                        full_index_update=full_index_update,
-                        use_index_journal=use_index_journal,
-                        full_ldif_update=full_ldif_update,
-                        use_ldif_journal=use_ldif_journal,
-                        full_acl_update=full_acl_update,
-                        use_acl_journal=use_acl_journal,
-                        index_journal=index_journal,
-                        ldif_journal=ldif_journal,
-                        acl_journal=acl_journal)
-        except Exception as e:
-            config.raise_exception()
-            msg, log_msg = _("Error writing config for {obj_type} '{oid}': {error}", log=True)
-            msg = msg.format(obj_type=self.type, oid=self.oid, error=e)
-            log_msg = log_msg.format(obj_type=self.type, oid=self.oid, error=e)
-            if config.daemon_mode:
-                # When running in daemon mode we never want to raise an exception
-                # but log the error and return the status via callback on write
-                # failure.
-                logger.critical(log_msg)
-                return callback.error(msg, raise_exception=False)
-            else:
-                return callback.error(msg)
+            # Hash the views of this object. After the check above, not
+            # before it: writing the checksums marks the config modified,
+            # and an object nothing changed about would then be written
+            # every time somebody asked it to.
+            #
+            # A full index update takes the checksums out of the config
+            # itself (see backends/file/file.py); an incremental one only
+            # applies what the journal says, so they have to be said there.
+            sync_checksum_journal = self.update_sync_checksums()
+            if not full_index_update:
+                index_journal += sync_checksum_journal
+
+            log_msg = _("Writing object: {oid}", log=True)[1]
+            log_msg = log_msg.format(oid=self.oid)
+            logger.debug(log_msg)
+
+            # Check for replacement method when being offline (e.g. offline tokens).
+            write_method = backend.write_config
+            if self.offline:
+                try:
+                    write_method = config.offline_methods['write_config'][self.oid.read_oid]
+                except Exception:
+                    pass
+            elif not backend.is_available():
+                raise BackendUnavailable("Backend not available.")
+
+            # Try to write object config to backend.
+            try:
+                write_method(object_id=self.oid,
+                            instance=self,
+                            cluster=cluster,
+                            wait_for_cluster_writes=wait_for_cluster_writes,
+                            no_transaction=no_transaction,
+                            full_index_update=full_index_update,
+                            use_index_journal=use_index_journal,
+                            full_ldif_update=full_ldif_update,
+                            use_ldif_journal=use_ldif_journal,
+                            full_acl_update=full_acl_update,
+                            use_acl_journal=use_acl_journal,
+                            index_journal=index_journal,
+                            ldif_journal=ldif_journal,
+                            acl_journal=acl_journal)
+            except Exception as e:
+                config.raise_exception()
+                msg, log_msg = _("Error writing config for {obj_type} '{oid}': {error}", log=True)
+                msg = msg.format(obj_type=self.type, oid=self.oid, error=e)
+                log_msg = log_msg.format(obj_type=self.type, oid=self.oid, error=e)
+                if config.daemon_mode:
+                    # When running in daemon mode we never want to raise an exception
+                    # but log the error and return the status via callback on write
+                    # failure.
+                    logger.critical(log_msg)
+                    return callback.error(msg, raise_exception=False)
+                else:
+                    return callback.error(msg)
+            written = True
+        finally:
+            if downgraded:
+                # A write that went through leaves nothing counted as
+                # changed. If something is, the lists name fields of
+                # the stored version, and they are kept as they are.
+                forget = written and not self.object_config.modified
+                self.raise_object_config(forget=forget)
+            if written:
+                self.config_upgraded = False
 
         # Clear journals only after a successful write so that a
         # transient write failure does not permanently discard the
@@ -3798,6 +4131,11 @@ class OTPmeObject(OTPmeBaseObject):
                                             'type'          : int,
                                             'required'      : True,
                                         },
+            'SUB_VERSION'               : {
+                                            'var_name'      : 'sub_version',
+                                            'type'          : int,
+                                            'required'      : False,
+                                        },
             'CHANGELOG'                 : {
                                             'var_name'      : 'changelog',
                                             'type'          : dict,
@@ -4275,6 +4613,8 @@ class OTPmeObject(OTPmeBaseObject):
             self.update_extensions("update_modified_timestamp",
                                     callback=callback)
 
+        self.update_version_index()
+
         # Call base class write method.
         write_result = super()._write(update_last_modified=False,
                                         update_last_modified_by=False,
@@ -4322,6 +4662,38 @@ class OTPmeObject(OTPmeBaseObject):
                 # Reset write status.
                 self._transaction_written = False
         return callback.ok()
+
+    def update_version_index(self):
+        """ Put the versions this object is stored with into the index.
+
+        The ones its site stores (see get_write_versions()), which is
+        what "otpme-site upgrade" asks the index for. Not the ones of
+        this code: those are what the object is in memory.
+
+        Only when they are not there as they are: a write is not to
+        add two index lines to its journal every time.
+        """
+        versions = self.get_stale_version_index()
+        for key, value in versions.items():
+            self.update_index(key, value)
+
+    def get_stale_version_index(self):
+        """ The versions the index of this object does not say yet.
+
+        As {index attribute: version}; empty if the index is right.
+        """
+        sub_type = self.get_sub_type()
+        write_version, \
+        write_sub_version = self.get_write_versions(sub_type)
+        versions = {'version': write_version}
+        if sub_type is not None:
+            versions['sub_version'] = write_sub_version
+        stale = {}
+        for key, value in versions.items():
+            if self.get_index(key) == [value]:
+                continue
+            stale[key] = value
+        return stale
 
     @check_acls(acls=['export'])
     @audit_log()
@@ -4386,16 +4758,16 @@ class OTPmeObject(OTPmeBaseObject):
         """ Dummy method, to be overridden by child class. """
         return []
 
-    def get_parent_object(
-        self,
-        run_policies: bool=True,
-        callback: JobCallback=default_callback,
-        ):
-        """ Get parent object of this object (e.g. its unit). """
+    def get_parent_uuid(self):
+        """ Type and UUID of the parent object of this object.
+
+        Both are part of the object, so nothing is loaded for them. A
+        realm has no parent: (None, None).
+        """
+        if self.type == "realm":
+            return None, None
         parent_type = "unit"
         parent_uuid = self.unit_uuid
-        if self.type == "realm":
-            return
         if self.type == "site":
             parent_uuid = self.realm_uuid
             parent_type = "realm"
@@ -4403,6 +4775,18 @@ class OTPmeObject(OTPmeBaseObject):
             if not self.unit_uuid:
                 parent_type = "site"
                 parent_uuid = self.site_uuid
+        return parent_type, parent_uuid
+
+    def get_parent_object(
+        self,
+        run_policies: bool=True,
+        add_to_cache: bool=True,
+        callback: JobCallback=default_callback,
+        ):
+        """ Get parent object of this object (e.g. its unit). """
+        if self.type == "realm":
+            return
+        parent_type, parent_uuid = self.get_parent_uuid()
 
         if not parent_uuid:
             msg = _("Unable to get parent object of: {oid}")
@@ -4411,7 +4795,8 @@ class OTPmeObject(OTPmeBaseObject):
 
         parent_object = backend.get_object(uuid=parent_uuid,
                                         object_type=parent_type,
-                                        run_policies=run_policies)
+                                        run_policies=run_policies,
+                                        add_to_cache=add_to_cache)
         if not parent_object:
             msg = _("Unknown parent object: {parent_uuid}")
             msg = msg.format(parent_uuid=parent_uuid)
@@ -5769,6 +6154,26 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
+    def get_host_uuid(self, host_name: str):
+        """ Get the UUID of a host given as name or as site/name.
+
+        A bare name is looked for in our own site, like get_role_uuid()
+        does it for roles. Returns None for a host that does not exist.
+        """
+        if "/" in host_name:
+            search_site, host_name = host_name.split("/", 1)
+        else:
+            search_site = self.site
+        result = backend.search(object_type="host",
+                                attribute="name",
+                                value=host_name,
+                                return_type="uuid",
+                                realm=self.realm,
+                                site=search_site)
+        if not result:
+            return None
+        return result[0]
+
     @check_acls(['add:host'])
     @object_lock()
     @backend.transaction
@@ -5790,15 +6195,11 @@ class OTPmeObject(OTPmeBaseObject):
             raise OTPmeException(msg)
 
         if not host_uuid:
-            host = backend.get_object(object_type="host",
-                                    realm=config.realm,
-                                    site=self.site,
-                                    name=host_name)
-            if not host:
+            host_uuid = self.get_host_uuid(host_name)
+            if not host_uuid:
                 msg = _("Host does not exist: {host_name}")
                 msg = msg.format(host_name=host_name)
                 return callback.error(msg)
-            host_uuid = host.uuid
 
         if host_uuid in self.hosts:
             msg = _("Host is already assigned to {obj_type} '{obj_name}'.")
@@ -5846,22 +6247,18 @@ class OTPmeObject(OTPmeBaseObject):
         ):
         """ Removes a host from this object.
 
-        The host may be given by UUID, which is what callers that hold a
-        host of another site need: the name lookup is limited to our own
-        site, but e.g. a role of the master site may hold hosts of any
-        site.
+        The host may be given by UUID, or by name: a bare name is looked
+        for in our own site, site/name in another one.
         """
         if self.hosts is None:
             msg = _("Object does not support hosts.")
             raise OTPmeException(msg)
 
+        if not host_uuid:
+            host_uuid = self.get_host_uuid(host_name)
+        host = None
         if host_uuid:
             host = backend.get_object(object_type="host", uuid=host_uuid)
-        else:
-            host = backend.get_object(object_type="host",
-                                    realm=config.realm,
-                                    site=self.site,
-                                    name=host_name)
         if not host:
             msg = _("Host does not exist: {host_name}")
             msg = msg.format(host_name=host_name or host_uuid)
@@ -6296,11 +6693,11 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error(exception)
 
         result = []
+        search_attr = {}
+        if skip_disabled:
+            search_attr['enabled'] = {}
+            search_attr['enabled']['value'] = True
         if self.nodes:
-            search_attr = {}
-            if skip_disabled:
-                search_attr['enabled'] = {}
-                search_attr['enabled']['value'] = True
             result = backend.search(object_type="node",
                                     attribute="uuid",
                                     values=self.nodes,
@@ -6323,10 +6720,12 @@ class OTPmeObject(OTPmeBaseObject):
                     pool_nodes = []
                 result += pool_nodes
 
+        # The filter again: a node that comes from a pool was not checked.
         if result:
             result = backend.search(object_type="node",
                                     attribute="uuid",
                                     values=result,
+                                    attributes=search_attr,
                                     return_type=return_type)
         if _caller == "RAPI":
             result = ",".join(result)
@@ -6949,7 +7348,10 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
-    @check_acls(acls=['view:token_users'])
+    # Who may see the tokens sees their users in the token paths
+    # anyway. The ACL asked here before, view:token_users, is in the
+    # ACL list of no object type and so could not be granted.
+    @check_acls(acls=['view:tokens'])
     def list_token_users(
         self,
         **kwargs,
@@ -9227,7 +9629,7 @@ class OTPmeObject(OTPmeBaseObject):
         raise_exception: bool=False,
         force: bool=False,
         # How many workers walk the members, where a walk has any and
-        # there are enough of them (Unit.get_acl_workers()). Carried
+        # there are enough of them (worker_pool.get_worker_count()). Carried
         # through because the command says it and the unit uses it.
         procs: Union[int,None]=None,
         verify_acls: bool=True,
@@ -11030,11 +11432,12 @@ class OTPmeObject(OTPmeBaseObject):
                 add_acl = f"add:{self.type}"
             if not parent_object.verify_acl(add_acl,
                         need_exact_acl=need_exact_acl):
-                if not self.sub_type:
+                sub_type = self.get_sub_type()
+                if not sub_type:
                     msg = _("Permission denied: {parent_path}")
                     msg = msg.format(parent_path=parent_object.path)
                     return callback.error(msg, exception=PermissionDenied)
-                sub_type_acl = f"add:{self.type}:{self.sub_type}"
+                sub_type_acl = f"add:{self.type}:{sub_type}"
                 if not parent_object.verify_acl(sub_type_acl,
                                 need_exact_acl=need_exact_acl):
                     msg = _("Permission denied: {parent_path}")
@@ -12410,7 +12813,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         policies = ",".join(pol_list)
         if self.verify_acl("view:policies") \
-        or self.verify_acl("add:policy") \
+        or self.verify_acl("assign:policy") \
         or self.verify_acl("remove:policy"):
             lines.append(f'POLICIES="{policies}"')
         else:

@@ -36,7 +36,6 @@ def register():
                         'description',
                         'auth_enabled',
                         'sync_enabled',
-                        'acl_inheritance_enabled',
                         ]
     read_acls, write_acls = get_acls(split=True)
     read_value_acls, write_value_acls = get_value_acls(split=True)
@@ -86,10 +85,6 @@ def row_getter(realm, site, realm_order, realm_data, acls,
             description = realm_data[realm_uuid]['description'][0]
         except Exception:
             description = None
-        try:
-            acl_inheritance_enabled = realm_data[realm_uuid]['acl_inheritance_enabled'][0]
-        except Exception:
-            acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
@@ -115,7 +110,7 @@ def row_getter(realm, site, realm_order, realm_data, acls,
         # Auth enabled.
         if "auth" in output_fields:
             if check_acl("view:auth") \
-            or check_acl("disable:auth") \
+            or check_acl("enable:auth") \
             or check_acl("disable:auth"):
                 if auth_enabled:
                     row.append(_("Enabled"))
@@ -126,7 +121,7 @@ def row_getter(realm, site, realm_order, realm_data, acls,
         # Sync enabled.
         if "sync" in output_fields:
             if check_acl("view:sync") \
-            or check_acl("disable:sync") \
+            or check_acl("enable:sync") \
             or check_acl("disable:sync"):
                 if sync_enabled:
                     row.append(_("Enabled"))
@@ -137,24 +132,12 @@ def row_getter(realm, site, realm_order, realm_data, acls,
         # Policies.
         if "policies" in output_fields:
             if check_acl("view:policies") \
-            or check_acl("add:policy") \
+            or check_acl("assign:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="realm",
                                                     object_uuid=realm_uuid,
                                                     max_policies=max_policies)
                 row.append(policies_string)
-            else:
-                row.append("-")
-        # Inherit.
-        if "inherit" in output_fields:
-            if check_acl("view:acl_inheritance") \
-            or check_acl("enable:acl_inheritance") \
-            or check_acl("disable:acl_inheritance"):
-                if acl_inheritance_enabled:
-                    acl_inheritance_string = _("Enabled")
-                else:
-                    acl_inheritance_string = _("Disabled")
-                row.append(acl_inheritance_string)
             else:
                 row.append("-")
         # Description.

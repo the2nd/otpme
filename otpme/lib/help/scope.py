@@ -73,23 +73,6 @@ cmd_help = {
                 },
 
 
-     'enable_auto_member'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-scope enable_auto_member {scope}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Enable auto member for scope'),
-                                },
-                },
-
-
-     'disable_auto_member'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-scope disable_auto_member {scope}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Disable auto member for scope'),
-                                },
-                },
-
     'get_config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-scope get_config {scope} {parameter}'),
                     'cmd'   :   '<|object|> <parameter>',

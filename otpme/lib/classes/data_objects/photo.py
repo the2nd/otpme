@@ -260,6 +260,7 @@ def register_backend():
     # Register object to config. A small object cache: the objects are
     # large, and the fast path does not use it.
     config.register_object_type(object_type="photo",
+                            version=1,
                             tree_object=False,
                             uniq_name=False,
                             add_after=["user"],

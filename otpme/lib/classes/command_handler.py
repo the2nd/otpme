@@ -5308,14 +5308,7 @@ class CommandHandler(object):
         except Exception:
             object_id = None
 
-        if dump_type == "instance_cache":
-            command_args = {}
-            cmd = "dump_instance_cache"
-            if object_id:
-                command_args['parameter'] = object_id
-            dump_result = self.send_command(daemon="hostd", command=cmd,
-                                            command_args=command_args)
-        elif dump_type == "acl_cache":
+        if dump_type == "acl_cache":
             command_args = {}
             cmd = "dump_acl_cache"
             if object_id:
@@ -8628,12 +8621,15 @@ class CommandHandler(object):
                         break
                     except Exception as e:
                         msg = str(e)
-                        if wait:
-                            msg = colored(msg, 'red')
-                            print(msg)
-                            continue
-                        else:
+                        if not wait:
                             return msg
+                        # Not as fast as the loop can go: the master
+                        # says no for as long as a management job runs,
+                        # and every round opens a connection to it and
+                        # writes the same line to the screen.
+                        msg = colored(msg, 'red')
+                        print(msg)
+                        time.sleep(1)
             msg = _("Trying to switch to new master node: {new_master_node}")
             msg = msg.format(new_master_node=new_master_node)
             msg = colored(msg, 'green')
@@ -8681,34 +8677,28 @@ class CommandHandler(object):
         msg = colored(msg, 'green')
         print(msg)
         while True:
+            # Both, and both before the role is moved: a vote other than
+            # zero says the node could be master, the sync status says it
+            # has what the role needs. The first used to end the loop by
+            # itself, so the second was only ever asked of a node that
+            # had just answered with a zero -- which is the one case
+            # where the answer was known already. The random path asks
+            # both, and that is what was meant here too.
             try:
                 self.check_node_vote_status(new_master_node)
-                break
-            except Exception as e:
-                msg, log_msg = _("Will not switch to not ready node: {new_master_node}: {e}", log=True)
-                msg = msg.format(new_master_node=new_master_node, e=e)
-                log_msg = log_msg.format(new_master_node=new_master_node, e=e)
-                self.logger.debug(log_msg)
-                msg = colored(msg, 'red')
-                if wait:
-                    print(msg)
-                    time.sleep(1)
-                else:
-                    return msg
-            try:
                 self.check_node_sync_status(new_master_node)
-                break
             except Exception as e:
-                msg, log_msg = _("Will not switch to unsync node: {new_master_node}: {e}", log=True)
+                msg, log_msg = _("Will not switch to node that is not ready: {new_master_node}: {e}", log=True)
                 msg = msg.format(new_master_node=new_master_node, e=e)
                 log_msg = log_msg.format(new_master_node=new_master_node, e=e)
                 self.logger.debug(log_msg)
                 msg = colored(msg, 'red')
-                if wait:
-                    print(msg)
-                    time.sleep(1)
-                else:
+                if not wait:
                     return msg
+                print(msg)
+                time.sleep(1)
+                continue
+            break
         try:
             socket_uri = hostd_conn.get_daemon_socket("clusterd", new_master_node)
         except Exception as e:
@@ -8742,12 +8732,12 @@ class CommandHandler(object):
                     break
                 except Exception as e:
                     msg = str(e)
-                    if wait:
-                        msg = colored(msg, 'red')
-                        print(msg)
-                        continue
-                    else:
+                    if not wait:
                         return msg
+                    # Not as fast as the loop can go, see above.
+                    msg = colored(msg, 'red')
+                    print(msg)
+                    time.sleep(1)
         msg = _("Trying to switch to new master node: {new_master_node}")
         msg = msg.format(new_master_node=new_master_node)
         msg = colored(msg, 'green')

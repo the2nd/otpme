@@ -135,6 +135,7 @@ def register_backend():
                                     full_index_update=True)
     # Register object to config.
     config.register_object_type(object_type="used_otp",
+                            version=1,
                             tree_object=False,
                             uniq_name=False,
                             add_after=["token"],

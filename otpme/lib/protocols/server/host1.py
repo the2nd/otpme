@@ -162,7 +162,6 @@ class OTPmeHostP1(OTPmeServer1):
                             "get_host_status",
                             "get_pass_strength",
                             "authorize_token",
-                            "dump_instance_cache",
                             "dump_acl_cache",
                             "dump_sync_map",
                             "sync_sites",
@@ -195,7 +194,6 @@ class OTPmeHostP1(OTPmeServer1):
                             "resync_nsscache",
                             "sync_ssh_authorized_keys",
                             "reload_radius",
-                            "dump_instance_cache",
                             "dump_acl_cache",
                             "dump_sync_map",
                         ]
@@ -682,30 +680,6 @@ class OTPmeHostP1(OTPmeServer1):
                     log_msg = message
                     logger.warning(log_msg)
 
-        elif command == "dump_instance_cache":
-            try:
-                parameter = command_args['parameter']
-            except Exception:
-                parameter = None
-
-            if parameter:
-                if '*' in parameter:
-                    object_id = None
-                    search_regex = parameter
-                else:
-                    object_id = parameter
-                    search_regex = None
-            else:
-                object_id = None
-                search_regex = None
-
-            try:
-                message = cache.dump_instance_cache(object_id=object_id,
-                                                search_regex=search_regex)
-            except Exception as e:
-                message = str(e)
-            status = True
-
         elif command == "dump_acl_cache":
             try:
                 parameter = command_args['parameter']
@@ -965,6 +939,13 @@ class OTPmeHostP1(OTPmeServer1):
                 status = True
                 message = {'message':"Share disabled.", 'try_other_node':False}
                 return self.build_response(status, message, encrypt=False)
+            # Only a node of the share serves it.
+            share_node_uuids = share.get_nodes(include_pools=True,
+                                            return_type="uuid")
+            if config.uuid not in share_node_uuids:
+                status = True
+                message = {'message':"Share not served by this node.", 'try_other_node':True}
+                return self.build_response(status, message, encrypt=False)
             # Check token assignment.
             if not share.is_assigned_token(token_uuid=token_uuid):
                 if not share.is_master_password_token(token_uuid=token_uuid):
@@ -995,9 +976,23 @@ class OTPmeHostP1(OTPmeServer1):
                 create_mode = None
             else:
                 create_mode = int(share.create_mode, 0)
+            # The name, not the GID: the file server resolves it the
+            # way it does at mount.
+            force_group = None
+            if share.force_group_uuid is not None:
+                result = backend.search(object_type="group",
+                                        attribute="uuid",
+                                        value=share.force_group_uuid,
+                                        return_type="name")
+                if not result:
+                    status = True
+                    message = {'message':"Unknown force group.", 'try_other_node':False}
+                    return self.build_response(status, message, encrypt=False)
+                force_group = result[0]
             status = False
             message = {
                         'read_only'         : share.read_only,
+                        'force_group'       : force_group,
                         'directory_mode'    : directory_mode,
                         'create_mode'       : create_mode,
                         'message'           : "Share access allowed.",

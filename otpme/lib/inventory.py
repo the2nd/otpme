@@ -127,6 +127,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'oargs'             : ['package', 'os_version',
+                                            'kernel', 'reboot_required',
                                             'hardware', 'host'],
                     'job_type'          : 'thread',
                     },
@@ -422,13 +423,22 @@ def show_inventory(host, _caller="API", callback=default_callback, **kwargs):
                             time.localtime(inventory.last_inventory_update))
     os_name = "-"
     os_version = "-"
+    kernel = "-"
+    reboot_required = "-"
     if inventory:
         os_name = inventory.os or "-"
         os_version = inventory.os_version or "-"
+        kernel = inventory.kernel or "-"
+        # A no is an answer, so it is not "or '-'": that is for a host
+        # that has not said anything.
+        if inventory.reboot_required is not None:
+            reboot_required = "yes" if inventory.reboot_required else "no"
     lines = [
             f"host: {host_object.name}",
             f"os: {os_name}",
             f"os_version: {os_version}",
+            f"kernel: {kernel}",
+            f"reboot_required: {reboot_required}",
             f"packages: {packages}",
             ]
     # The three that say which machine this is. The rest of the
@@ -518,14 +528,21 @@ def list_packages(host, package_filter=None, _caller="API",
         return callback.ok(_("No packages."))
     return callback.ok("\n".join(lines))
 
-def search_inventory(package=None, os_version=None, hardware=None,
-    host=None, _caller="API", callback=default_callback, **kwargs):
-    """ The hosts that have a package, run a system version, or are
-    built a certain way.
+def search_inventory(package=None, os_version=None, kernel=None,
+    reboot_required=None, hardware=None, host=None, _caller="API",
+    callback=default_callback, **kwargs):
+    """ The hosts that have a package, run a system version or a
+    kernel, wait for a reboot, or are built a certain way.
 
     <package> is a name ("openssl"), a name and a version
     ("openssl=3.0.15-1~deb12u1"), and either may have wildcards
     ("libreoffice*", "openssl=3.0.*").
+
+    <kernel> is the kernel a host is running ("6.1.0-37-amd64"), with
+    wildcards ("6.1.0-3*").
+
+    <reboot_required> is a yes or nothing: the hosts that have to be
+    rebooted to run what is installed on them.
 
     <hardware> is "<field><op><value>": "serial=ABC123",
     "model=PowerEdge*", "memory<8G", "cpu_count>8". See
@@ -536,8 +553,9 @@ def search_inventory(package=None, os_version=None, hardware=None,
 
     Whatever is given has to match, so they narrow each other down.
     """
-    if not package and not os_version and not hardware and not host:
-        msg = _("Need a package, an OS version, a hardware field or a host.")
+    if not package and not os_version and not kernel \
+    and not reboot_required and not hardware and not host:
+        msg = _("Need a package, an OS version, a kernel, a reboot, a hardware field or a host.")
         return callback.error(msg)
     # The hosts still in the running. None means every host of our
     # site; each of the filters below takes hosts out of it.
@@ -562,6 +580,32 @@ def search_inventory(package=None, os_version=None, hardware=None,
         else:
             host_uuids &= os_uuids
 
+    if kernel:
+        kernel_inventories = backend.search(object_type="host_inventory",
+                                            attribute="kernel",
+                                            value=kernel,
+                                            return_type="instance")
+        kernel_uuids = {x.host_uuid for x in kernel_inventories}
+        if host_uuids is None:
+            host_uuids = kernel_uuids
+        else:
+            host_uuids &= kernel_uuids
+
+    if reboot_required:
+        # A yes and nothing else. The hosts that answered no are the
+        # ones that are as they should be, and nobody looks for those;
+        # a host that cannot say has no value here and is left out, the
+        # same as one that never reported.
+        reboot_inventories = backend.search(object_type="host_inventory",
+                                            attribute="reboot_required",
+                                            value=True,
+                                            return_type="instance")
+        reboot_uuids = {x.host_uuid for x in reboot_inventories}
+        if host_uuids is None:
+            host_uuids = reboot_uuids
+        else:
+            host_uuids &= reboot_uuids
+
     if hardware:
         try:
             hw_name, hw_attribute, hw_search = parse_hardware_search(hardware)
@@ -582,6 +626,7 @@ def search_inventory(package=None, os_version=None, hardware=None,
     if not package:
         return show_search_hosts(host_uuids,
                                 os_version=os_version,
+                                kernel=kernel,
                                 hardware_field=hardware and hw_name,
                                 hardware_search=hardware and hw_search,
                                 callback=callback)
@@ -639,8 +684,8 @@ def hardware_value_matches(value, search):
         return fnmatch.fnmatchcase(str(value), wanted)
     return value == wanted
 
-def show_search_hosts(host_uuids, os_version=None, hardware_field=None,
-    hardware_search=None, callback=default_callback):
+def show_search_hosts(host_uuids, os_version=None, kernel=None,
+    hardware_field=None, hardware_search=None, callback=default_callback):
     """ The hosts a search without a package found.
 
     Each line says the host and what it was found by, so that a search
@@ -663,10 +708,12 @@ def show_search_hosts(host_uuids, os_version=None, hardware_field=None,
             continue
         line = x_host.name
         inventory = None
-        if os_version or hardware_field:
+        if os_version or kernel or hardware_field:
             inventory = get_host_inventory(x_host.uuid)
         if os_version:
             line = f"{line} {inventory and inventory.os_version or '-'}"
+        if kernel:
+            line = f"{line} {inventory and inventory.kernel or '-'}"
         if hardware_field:
             x_hardware = {}
             if inventory:

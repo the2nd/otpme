@@ -747,6 +747,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="exists",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -762,6 +766,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="get_mtime",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -777,6 +785,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="get_ctime",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -792,6 +804,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="access",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -807,6 +823,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="create",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -822,6 +842,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="getattr",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -836,6 +860,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="link",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -851,6 +879,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="read",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -866,6 +898,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="readdir",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -942,6 +978,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="readlink",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -956,6 +996,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="rename",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -971,6 +1015,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="statfs",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -985,6 +1033,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="symlink",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -1000,6 +1052,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="truncate",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -1015,6 +1071,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="utimens",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -1030,6 +1090,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="unlink",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -1045,6 +1109,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="mkdir",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -1060,6 +1128,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="rmdir",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -1075,6 +1147,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="chmod",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -1090,6 +1166,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="chown",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -1106,6 +1186,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             binary_data = self.send(command="write",
                                     command_args=command_args,
                                     binary_data=data)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -1121,6 +1205,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="open",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -1136,6 +1224,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="release",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -1151,6 +1243,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="getxattr",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -1172,6 +1268,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="setxattr",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -1187,6 +1287,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="listxattr",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -1202,6 +1306,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="removexattr",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -1217,6 +1325,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="read_restore_file",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -1235,6 +1347,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="read_cryptfs_settings",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400
@@ -1248,6 +1364,10 @@ class OTPmeBackupP1(OTPmeFsClient1):
             response, \
             binary_data = self.send(command="get_chunk",
                                     command_args=command_args)
+        except (ConnectionError, ConnectionTimeout, ConnectionQuit):
+            # The connection to backupd is gone. fsd answers that with
+            # BACKUP_CONNECTION_BROKEN and the client mounts again.
+            raise
         except Exception as e:
             config.raise_exception()
             status_code = 400

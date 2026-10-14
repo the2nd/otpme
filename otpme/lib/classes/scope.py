@@ -56,7 +56,6 @@ read_value_acls =    {
                                 # remove:client below.
                                 "clients",
                                 "scope_id",
-                                "auto_member",
                                 ],
             }
 
@@ -79,12 +78,6 @@ write_value_acls = {
                     "edit"      : [
                                 "name",
                                 "scope_id",
-                                ],
-                    "enable"      : [
-                                "auto_member",
-                                ],
-                    "disable"      : [
-                                "auto_member",
                                 ],
                 }
 
@@ -162,22 +155,6 @@ commands = {
                 'exists'    : {
                     'method'            : 'change_scope_id',
                     'args'              : ['scope_id'],
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    'enable_auto_member'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'enable_auto_member',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    'disable_auto_member'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'disable_auto_member',
                     'job_type'          : 'thread',
                     },
                 },
@@ -680,16 +657,18 @@ def get_recursive_default_acls(**kwargs):
     acls += config.get_recursive_default_acls("scope")
     return acls
 
+# Whether a base scope goes into the site config parameter
+# "oidc_default_scopes", i.e. whether a new OIDC client is given it. The
+# ones that do also get the SSO user role, so the users of the portal can
+# hand them out (see Site.add_base_objects()).
 BASE_SCOPE_DEFAULTS = {
-    # default: add scope to config paramter "oidc_default_scopes"
-    # auto_member: add token/role to this scope on client.add_token/role().
-    "openid":         {"auto_member": True,  'default': True},
-    "profile":        {"auto_member": True,  'default': True},
-    "email":          {"auto_member": True,  'default': True},
-    "address":        {"auto_member": True,  'default': False},
-    "phone":          {"auto_member": True,  'default': False},
-    "offline_access": {"auto_member": True,  'default': False},
-    "groups":         {"auto_member": False, 'default': False},
+    "openid":         True,
+    "profile":        True,
+    "email":          True,
+    "address":        False,
+    "phone":          False,
+    "offline_access": False,
+    "groups":         False,
 }
 
 DEFAULT_UNIT = "scopes"
@@ -727,9 +706,6 @@ def register():
     # its own site. The share and the user name groups too, see there.
     config.register_index_attribute("group", sync=[],
                                     object_types=scope_types)
-    # An OIDC scope is applied by the SSO server of its own site.
-    config.register_index_attribute("auto_member", sync=[],
-                                    object_types=scope_types)
     for scope in BASE_SCOPE_DEFAULTS:
         config.register_base_object("scope", scope)
 
@@ -742,8 +718,6 @@ def register_hooks():
     config.register_auth_on_action_hook("scope", "remove_client")
     config.register_auth_on_action_hook("scope", "add_group")
     config.register_auth_on_action_hook("scope", "remove_group")
-    config.register_auth_on_action_hook("scope", "enable_auto_member")
-    config.register_auth_on_action_hook("scope", "disable_auto_member")
     config.register_auth_on_action_hook("scope", "set_config_parameter")
 
 def register_object_unit():
@@ -797,6 +771,7 @@ def register_backend():
         return backend.rebuild_object_index("scope", objects, after)
     # Register object to config.
     config.register_object_type(object_type="scope",
+                            version=1,
                             tree_object=True,
                             uniq_name=True,
                             add_after=["host"],
@@ -847,7 +822,6 @@ class Scope(OTPmeObject):
         self._recursive_default_acls = get_recursive_default_acls()
 
         self.scope_id = None
-        self.auto_member = False
 
         # Scopes should not inherit ACLs by default.
         self.acl_inheritance_enabled = False
@@ -872,12 +846,6 @@ class Scope(OTPmeObject):
                         'SCOPE_ID'                  : {
                                                         'var_name'  : 'scope_id',
                                                         'type'      : str,
-                                                        'required'  : False,
-                                                    },
-
-                        'AUTO_MEMBER'                : {
-                                                        'var_name'  : 'auto_member',
-                                                        'type'      : bool,
                                                         'required'  : False,
                                                     },
 
@@ -1009,12 +977,6 @@ class Scope(OTPmeObject):
         if scope_id is None:
             scope_id = self.name
         self.change_scope_id(scope_id, force=True, verify_acls=False)
-        defaults = BASE_SCOPE_DEFAULTS.get(self.name)
-        if defaults:
-            auto_member = defaults["auto_member"]
-            if auto_member:
-                self.enable_auto_member(force=True,
-                                        verify_acls=False)
         return callback.ok()
 
     @object_lock(full_lock=True)
@@ -1206,80 +1168,6 @@ class Scope(OTPmeObject):
 
         self.scope_id = scope_id
         self.add_index("scope_id", scope_id)
-        return self._cache(callback=callback)
-
-    @check_acls(['enable:auto_member'])
-    @object_lock()
-    @audit_log()
-    @object_changelog("enable auto member")
-    def enable_auto_member(
-        self,
-        force: bool=False,
-        run_policies: bool=True,
-        _caller: str="API",
-        verbose_level: int=0,
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Change scope ID. """
-        if self.auto_member:
-            msg = _("Auto member already enabled.")
-            return callback.error(msg)
-
-        msg = _("Enable auto member for scope '{scope_name}'?: ")
-        msg = msg.format(scope_name=self.name)
-        if not self.ask_change_confirmation(msg, force=force, callback=callback):
-            return callback.abort()
-
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("enable_auto_member",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
-        self.auto_member = True
-        self.update_index("auto_member", self.auto_member)
-        return self._cache(callback=callback)
-
-    @check_acls(['disable:auto_member'])
-    @object_lock()
-    @audit_log()
-    @object_changelog("disable auto member")
-    def disable_auto_member(
-        self,
-        force: bool=False,
-        run_policies: bool=True,
-        _caller: str="API",
-        verbose_level: int=0,
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Change scope ID. """
-        if not self.auto_member:
-            msg = _("Auto member already disabled.")
-            return callback.error(msg)
-
-        msg = _("Disable auto member for scope '{scope_name}'?: ")
-        msg = msg.format(scope_name=self.name)
-        if not self.ask_change_confirmation(msg, force=force, callback=callback):
-            return callback.abort()
-
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("disable_auto_member",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
-        self.auto_member = False
-        self.update_index("auto_member", self.auto_member)
         return self._cache(callback=callback)
 
     @check_acls(['view:clients'])

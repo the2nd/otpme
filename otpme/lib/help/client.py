@@ -156,53 +156,11 @@ cmd_help = {
                                 },
                 },
 
-     'add_extension'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-client add_extension {client} {extension}'),
-                    'cmd'   :   '<|object|> <extension>',
-                    '_help' :   {
-                                    'cmd'                   : _('Add extension to client'),
-                                },
-                },
-
-     'remove_extension'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-client remove_extension {client} {extension}'),
-                    'cmd'   :   '<|object|> <extension>',
-                    '_help' :   {
-                                    'cmd'                   : _('Remove extension from client'),
-                                },
-                },
-
-     'add_attribute'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-client add_attribute {client} {attribute}=[value]'),
-                    'cmd'   :   '<|object|> <attribute>=[value]',
-                    '_help' :   {
-                                    'cmd'                   : _('Add (ldap) attribute to client'),
-                                },
-                },
-
-     'del_attribute'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-client del_attribute {client} {attribute}=[value]'),
-                    'cmd'   :   '<|object|> <attribute>=[value]',
-                    '_help' :   {
-                                    'cmd'                   : _('Delete (ldap) attribute from client'),
-                                },
-                },
-
-     'add_object_class'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-client add_object_class {client} {object_class}'),
-                    'cmd'   :   '<|object|> <object_class>',
-                    '_help' :   {
-                                    'cmd'                   : _('Add (ldap) object class to client'),
-                                },
-                },
-
-     'del_object_class'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-client del_object_class {client} {object_class}'),
-                    'cmd'   :   '<|object|> <object_class>',
-                    '_help' :   {
-                                    'cmd'                   : _('Delete (ldap) object class from client'),
-                                },
-                },
+     # No LDAP commands here. A client is no LDAP object (nothing
+     # calls register_ldap_object() for it) and no extension names
+     # "client" among its object types, so add_extension could only
+     # ever answer "not valid for this object type" and the attribute
+     # and object class commands had nothing to work on.
 
      #'show_ldif'    : {
      #               '_cmd_usage_help' : 'Usage: otpme-client show_ldif {client}',

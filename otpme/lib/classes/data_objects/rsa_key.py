@@ -52,6 +52,7 @@ def register_oid():
 
 def register_config():
     config.register_object_type(object_type="rsa_key",
+                            version=1,
                             backend_object=False,
                             object_cache=1024,
                             cache_region="data_object")
@@ -74,7 +75,6 @@ class OTPmeRSAKey(RSAKey):
         self.type = "rsa_key"
         self.realm = realm
         self.site = site
-        self.pickable = False
         self._modified = False
         self._object_lock = None
         # Call parent class init.

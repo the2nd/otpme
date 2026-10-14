@@ -30,6 +30,10 @@ from otpme.lib.exceptions import *
 # gives it, with the architecture of a multi-arch package (libc6:amd64).
 OS_NAME_RE = r'^[A-Za-z0-9._-]{1,32}$'
 OS_VERSION_RE = r'^[A-Za-z0-9._+~-]{1,64}$'
+# A kernel release as uname -r gives it: "6.1.0-37-amd64",
+# "6.12.9-1-pve", "5.15.0-1055-aws". A locally built one carries
+# whatever was set as its local version, so "+" and "_" belong in here.
+KERNEL_RE = r'^[A-Za-z0-9._+~-]{1,128}$'
 PACKAGE_NAME_RE = r'^[a-zA-Z0-9][a-zA-Z0-9+._:-]{0,191}$'
 PACKAGE_VERSION_RE = r'^[a-zA-Z0-9.+~:_-]{1,128}$'
 # How many packages a host may have, and how many change in one request.
@@ -67,7 +71,8 @@ def diff_packages(old_packages, new_packages):
         del_packages.append(name)
     return set_packages, sorted(del_packages)
 
-def check_inventory(os_name, os_version, set_packages, del_packages):
+def check_inventory(os_name, os_version, set_packages, del_packages,
+    kernel=None, reboot_required=None):
     """ Refuse an inventory update that does not look like one.
 
     Asked by syncd before anything of it reaches the host object: the
@@ -83,6 +88,18 @@ def check_inventory(os_name, os_version, set_packages, del_packages):
         or not re.match(OS_VERSION_RE, os_version):
             msg = _("Invalid OS version: {os_version}")
             msg = msg.format(os_version=os_version)
+            raise OTPmeException(msg)
+    if kernel is not None:
+        if not isinstance(kernel, str) or not re.match(KERNEL_RE, kernel):
+            msg = _("Invalid kernel: {kernel}")
+            msg = msg.format(kernel=kernel)
+            raise OTPmeException(msg)
+    if reboot_required is not None:
+        # A yes or a no and nothing else: it goes into the index as it
+        # is, and a host saying "maybe" would be a third value there.
+        if not isinstance(reboot_required, bool):
+            msg = _("Invalid reboot required: {reboot_required}")
+            msg = msg.format(reboot_required=reboot_required)
             raise OTPmeException(msg)
     if not isinstance(set_packages, dict):
         msg = _("Invalid package list.")

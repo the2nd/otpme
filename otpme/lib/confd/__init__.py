@@ -90,6 +90,23 @@ def get_os_info(os_release_file=OS_RELEASE_FILE):
         return os_name, os_id
     return os_name, f"{os_id}-{version}"
 
+def get_kernel():
+    """ The kernel this host is running right now, as uname -r says it.
+
+    What is running and not what is installed. A host that took a
+    kernel update and was not rebooted still runs the old one, and its
+    package list cannot say so: the package is there, the kernel is
+    not. So this is the one value an inventory cannot work out from the
+    rest of itself.
+
+    Empty on a system that does not say, and then nothing is reported
+    rather than an empty string.
+    """
+    kernel = platform.release()
+    if not kernel:
+        return None
+    return kernel
+
 def get_handler(logger=None, os_release_file=OS_RELEASE_FILE):
     """ The handler for this system. """
     os_ids = get_os_ids(os_release_file=os_release_file)

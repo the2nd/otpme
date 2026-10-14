@@ -60,8 +60,11 @@ def compute_at_hash(access_token, alg):
     elif alg in ("HS512", "RS512", "ES512", "PS512"):
         digest = hashlib.sha512(access_token.encode("ascii")).digest()
     elif alg == "EdDSA":
-        # FAPI 1.0 §5.2.2.1: Ed25519 -> SHA-512, take left 256 bits.
-        #   https://openid.net/specs/openid-financial-api-part-2-1_0.html
+        # Neither OIDC Core nor RFC 8037 says which hash at_hash uses
+        # for EdDSA -- the rule is "the hash algorithm of the alg", and
+        # EdDSA names none. Ed25519 signs with SHA-512 (RFC 8032 §5.1),
+        # so that is the one, and the left half of it is 256 bits.
+        #   https://datatracker.ietf.org/doc/html/rfc8032#section-5.1
         digest = hashlib.sha512(access_token.encode("ascii")).digest()
     else:
         return None
@@ -84,8 +87,8 @@ def verify_pkce(code_verifier, code_challenge, code_challenge_method):
     Spec: RFC 7636 "Proof Key for Code Exchange by OAuth Public Clients"
       §4.6 "Server Verifies code_verifier before Returning the Tokens"
       https://datatracker.ietf.org/doc/html/rfc7636#section-4.6
-    Spec: OAuth 2.1 §7.5.2 forbids "plain" (S256 is the only
-      compliant method going forward)
+    Spec: OAuth 2.1 §4.1.1 "Authorization Request" (a client that can
+      use S256 MUST use it; "plain" is for a client that cannot)
       https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
     """
     if not code_challenge:

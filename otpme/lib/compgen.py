@@ -256,6 +256,30 @@ def command_positionals(opts, comp_words, comp_cword, sub_command_pos):
         positionals.append(positional)
     return positionals
 
+def words_without_options(opts, comp_words):
+    """ The command line without its options and without their values.
+
+    The value of an option is a word of its own: "--procs 8" left the
+    8 behind, and it was taken for the object of the command.
+    """
+    words = []
+    word_pos = 0
+    while word_pos < len(comp_words):
+        word = comp_words[word_pos]
+        word_pos += 1
+        if not word.startswith("-"):
+            words.append(word)
+            continue
+        if not opts.get(word):
+            continue
+        # Its value, and a list "a,b,c" in all of its pieces.
+        word_pos += 1
+        while word_pos < len(comp_words):
+            if comp_words[word_pos] not in WORD_JOINERS:
+                break
+            word_pos += 2
+    return words
+
 def object_type_values(object_type):
     """ The object types the tree holds. """
     from otpme.lib import config
@@ -753,14 +777,17 @@ def show_compgen():
     # What the word being completed is: the value of an option, one of
     # the parameters of the command, or the object it is for.
     parameter = None
+    option_value = None
     object_types = []
     positionals = []
+    cmd_opts = {}
     member_command = None
     if command_syntax:
         cmd_opts, cmd_parameters = split_command_syntax(command_syntax)
         positionals = command_positionals(cmd_opts, comp_words,
                                         comp_cword, sub_command_pos)
         parameter = option_value_parameter(cmd_opts, comp_words, comp_cword)
+        option_value = parameter
         if parameter is None:
             if len(positionals) < len(cmd_parameters):
                 parameter = cmd_parameters[len(positionals)]
@@ -861,6 +888,13 @@ def show_compgen():
     if object_type == "token":
         need_objects = True
 
+    if sub_command in OWN_COMPLETION_COMMANDS and option_value:
+        # The value of one of their options, not an object.
+        if option_value in PARAMETER_VALUE_SOURCES:
+            get_values = PARAMETER_VALUE_SOURCES[option_value]
+            print("\n".join(get_values(object_type)))
+        return
+
     if sub_command == "add_acl":
         show_acls = False
         acl_object = None
@@ -870,12 +904,7 @@ def show_compgen():
         found_add_acl_token = False
         found_add_acl_role_cmd = False
         found_add_acl_token_cmd = False
-        # Remove options.
-        check_words = list(comp_words)
-        for word in list(check_words):
-            if not word.startswith("-"):
-                continue
-            check_words.remove(word)
+        check_words = words_without_options(cmd_opts, comp_words)
         found_object = False
         word_counter = -1
         for word in check_words:
@@ -1117,12 +1146,7 @@ def show_compgen():
             return
 
     if sub_command == "del_acl":
-        # Remove options.
-        check_words = list(comp_words)
-        for word in list(check_words):
-            if not word.startswith("-"):
-                continue
-            check_words.remove(word)
+        check_words = words_without_options(cmd_opts, comp_words)
         show_acls = False
         acl_object = None
         word_counter = -1

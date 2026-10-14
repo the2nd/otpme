@@ -95,6 +95,11 @@ def register():
     multiprocessing.register_shared_dict("ready_nodes")
     multiprocessing.register_shared_dict("master_node")
     multiprocessing.register_shared_dict("online_nodes")
+    # The object config versions the code of each peer node writes, as
+    # it said when it set itself online (see OTPmeClusterP1's
+    # set_node_online()). "otpme-site upgrade" reads it to know
+    # whether every node can read what it is about to store.
+    multiprocessing.register_shared_dict("node_config_versions")
     multiprocessing.register_shared_dict("member_nodes")
     multiprocessing.register_shared_list("pause_writes")
     multiprocessing.register_shared_dict("master_failover_blockers")
@@ -1765,6 +1770,12 @@ class ClusterDaemon(OTPmeDaemon):
         self.node_disconnect(node_name)
         try:
             multiprocessing.online_nodes.pop(node_name)
+        except KeyError:
+            pass
+        # It says them again when it comes back, with the code it then
+        # runs.
+        try:
+            multiprocessing.node_config_versions.pop(node_name)
         except KeyError:
             pass
         try:

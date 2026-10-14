@@ -1,126 +1,476 @@
-.TH OTPME-SITE 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.TH OTPME-SITE 1 "2026-10-11" "OTPme 0.3.0a281" "OTPme Manual"
 .SH NAME
-otpme-site \- manage OTPme sites
+otpme-site \- add the sites of a realm and say how each of them is reached, trusted and signed for
 .SH SYNOPSIS
 .B otpme-site
 .I command
 [\fIoptions\fR] [\fIsite\fR]
 .SH DESCRIPTION
-.B otpme-site
-manages sites in the OTPme system. A site contains nodes and has its own CA hierarchy. Sites can establish trust relationships with other sites to enable cross-site authentication and synchronization.
+A site is a part of a realm with its own administration, usually one per location.
+It has its own nodes, which form a cluster, its own CA, and its own units, roles, policies and clients.
+Users and groups belong to one site and are known in all of them.
+.PP
+The site object is what this command works on.
+It holds how the site is reached \(em an address and the names for logins, for management and for the SSO portal \(em and what it proves itself with: its certificate and key, the certificates of the portal and of RADIUS, the signing keys of the OIDC provider and a handful of secrets.
+It also holds which other sites it trusts, and it is the last place a config parameter is looked for, so what is set on it holds for everything in the site that says nothing of its own.
+.PP
+A realm has one master site.
+Sites are added and deleted there, and every other site is a slave site, or a sub site of the site it was added on.
+.PP
+\fBA site is changed on the site itself.\fR
+Every site has a copy of the others, and the sync brings the values of each site back to its copies.
+So on a site that is not your own only what your site decides about that one can be set: its description, whether it is enabled, and whether your site authenticates and syncs with it.
+.PP
+For the bigger picture \(em realms, sites, sub sites, how a login runs across them \(em see
+.BR otpme (7).
 .SH COMMANDS
 .SS Site Management
 .TP
-.B add \fR[\fIoptions\fR] \fIsite\fR \fInode_name\fR \fIsite_fqdn\fR \fIsite_address\fR
-Create a new site with a master node.
+.B add \fR[\fIoptions\fR] \fIsite\fR \fInode_name\fR \fIsite_fqdn\fR \fR[\fIsite_address\fR]
+Create a site, and with it its CA, its base objects and the object of its first node.
+.br
+The name is stored in lower case.
+A site is added on the master site of the realm.
+The one exception is a name that starts with the name of your own site and a dot, like \fBberlin.files\fR on \fBberlin\fR: that makes a sub site of the site you are on.
+.br
+\fInode_name\fR is the first node of the site, its master node.
+Only the object is created here; the machine itself still has to join, see
+.BR otpme\-tool (1).
+The site is created disabled, and it is enabled when that node has joined.
+A name a host or a node of the new site already has is refused.
+.br
+\fIsite_fqdn\fR becomes the auth, the management and the SSO FQDN of the site.
+.BR auth_fqdn ,
+.B mgmt_fqdn
+and
+.B sso_fqdn
+change each of them on its own afterwards.
+.br
+\fIsite_address\fR is the floating address of the site, the one its cluster answers on.
+Without it the address is looked up in DNS under \fIsite_fqdn\fR; a name with more than one address is refused, and so is one with none.
 .br
 .B \-\-trust \fIsite1\fB,\fIsite2\fR
 names the sites the new site trusts, so the trusts need not be added one by one afterwards (see
 .BR add_trust ).
 A name that belongs to no site is refused before anything is created.
+.br
+The other options are under \fBADD OPTIONS\fR.
+.br
+Needs the ACL \fBadd:site\fR on the realm, not on the site \(em there is none yet.
 .TP
-.B del \fIsite\fR
-Delete a site.
+.B del \fR[\fB\-\-no\-trash\fR] \fIsite\fR
+Delete a site and every object in it.
+All of it goes to the trash, from where
+.BR otpme\-trash (1)
+can bring it back; \fB\-\-no\-trash\fR deletes it right away, the objects as well.
+.br
+A site is deleted on the master site of the realm, and a sub site also on the site it belongs to.
+Your own site cannot be deleted.
+.br
+Asks first; the global option \fB\-f\fR skips the question.
+.br
+Needs the ACL \fBdelete:object\fR.
 .TP
-.B show \fR[\fIsite\fR]
-Display site information.
+.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIsite\fR]
+Without a site: a table of all of them, with their status, whether authentication and synchronization with them are on, the sites they trust, their address, their three FQDNs, their policies and their description.
+.br
+The status is \fBMaster\fR for the master site of the realm, \fBSub\fR for a sub site and \fBSlave\fR for every other one; a \fB(D)\fR behind it says the site is disabled.
+.RS
 .TP
-.B list \fR[\fIregex\fR]
-List sites, optionally filtered by regex pattern.
+.B \-a
+Also the sites you may only look at, not just the ones you may change.
+.TP
+.B \-z \fIN\fR
+How many sites to print.
+.TP
+.B \-\-fields \fIF1,F2\fR
+Print these columns and no others, in the order they are named.
+The names are the ones in the header of the table.
+A name with a \fB+\fR in front is added to the columns that are shown anyway, and one with a \fB\-\fR is left out of them.
+.TP
+.B \-\-limit \fIN\fR, \fB\-\-policy\-limit \fIN\fR
+How many policies to print per site.
+.TP
+.B \-\-sort\-by \fIfield\fR, \fB\-\-reverse\fR
+Which column to sort by, and the other way round.
+.TP
+.B \-\-raw\fR, \fB\-\-csv\fR, \fB\-\-csv\-sep\fR \fIsep\fR
+For reading with something other than your eyes: \fB\-\-raw\fR leaves the header and the borders out, \fB\-\-csv\fR prints one row per line with \fB;\fR between the columns, and \fB\-\-csv\-sep\fR uses another separator.
+.RE
+.IP
+A column you may not see says \fB\-\fR.
+Which ACL opens which column is the \fBview:\fR ACL of that value, and the ACL that sets the same value does as well \(em whoever may set a thing may read it.
+.br
+With a site named, this prints the object itself instead of a table row: one value per line, and with them what the table leaves out \(em the certificates, the secrets, the CA, the admin role and the SSO hosts.
+A value you may not see is left empty.
+That needs the ACL \fBview_public:object\fR.
+.TP
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
+List the site names, and with a regex only those that match it.
+You get the sites you may change; \fB\-a\fR adds those you may only look at.
+.br
+\fB\-\-attribute\fR matches the regex against that attribute instead of the name.
 .TP
 .B enable \fIsite\fR
 Enable a disabled site.
+.br
+Needs the ACL \fBenable:object\fR.
 .TP
 .B disable \fIsite\fR
-Disable a site without deleting it.
+Switch a site off without deleting it.
+The nodes of your site stop contacting it, and the master site of the realm no longer hands it out to the other sites.
+.br
+Needs the ACL \fBdisable:object\fR.
+.IP
+Both ask first, and both work on a site that is not your own.
+That is rare on this page: a site is changed on the site itself, and from anywhere else all but a few commands are refused.
 .TP
 .B touch \fIsite\fR
 Re-index the object to fix potential index problems.
+.br
+Needs the ACL \fBtouch\fR.
 .SS Site Configuration
+A site is changed on the site itself.
+From another site only a few things can be set, the ones that say how your site deals with that one:
+.BR description ,
+.B enable
+and
+.BR disable ,
+.B enable_auth
+and
+.BR disable_auth ,
+.B enable_sync
+and
+.BR disable_sync .
+Everything else is refused there, because the next sync would bring the site's own values back.
+.PP
+The three commands that change how the site is reached ask first; the global option \fB\-f\fR skips the question.
 .TP
-.B address \fIsite\fR \fR[\fIip_address\fR]
-Change site IP address.
+.B address \fIsite\fR \fIip_address\fR
+Change the address of the site.
+This is the floating address: the node that is master of the cluster holds it, and it moves with that role.
+.br
+The address is taken as it is given; nothing checks that it is one.
+.br
+Needs the ACL \fBedit:address\fR.
 .TP
 .B auth_fqdn \fIsite\fR \fIfqdn\fR
-Change site auth FQDN.
+Change the name the hosts of the site connect to for a login.
+.br
+Needs the ACL \fBedit:auth_fqdn\fR.
 .TP
 .B mgmt_fqdn \fIsite\fR \fIfqdn\fR
-Change site management FQDN.
+Change the name the management commands connect to.
+A new management certificate is made for that name, signed by the CA of the site; it is the one the LDAP server of the site shows.
+.br
+Needs the ACL \fBedit:mgmt_fqdn\fR.
+.IP
+Both names start out as the \fIsite_fqdn\fR of
+.BR add .
+A host looks the name up in DNS, so a name that is changed here has to be there first.
+The third name, the one of the SSO portal, is
+.B sso_fqdn
+below.
 .TP
 .B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIsite\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
+Set a parameter on the site.
+.br
+A config parameter is looked for on the object, then on the units above it, then on the site, and the first value found applies.
+So what is set here is what holds for everything in the site that says nothing of its own.
+A site can turn that around for a parameter it names in
+.B force_site_config_parameters\fR,
+and then its own value wins (see \fBotpme\fR(7)).
+.RS
 .TP
-.B upgrade \fIsite\fR
-Add the configuration parameters the site is missing, with their defaults. A site gets every parameter when it is created, so parameters introduced by a later OTPme version are not set on an existing site until this is run. Parameters that are already set are not changed.
+.B \-d
+Remove the parameter from the site, or with a value only that one value from a list.
+It is not set back to a default: the site is where the search ends, so nothing is found any more.
+.B upgrade
+brings it back with its default.
 .TP
-.B show_config \fIsite\fR [\fIparameter\fR]
-Show all configuration parameters.
+.B \-a
+Append the value to a parameter that holds a list, instead of replacing what is there.
+.RE
+.IP
+Without a \fIvalue\fR the parameter is set to its default.
+.br
+The ACL is per parameter, \fBset:config:\fIparameter\fR.
+.TP
+.B upgrade \fR[\fB\-\-all\fR] [\fB\-\-procs\fR \fINUM\fR] \fIsite\fR
+Bring the site up to the OTPme version its nodes run.
+Run it after an update, when all nodes of the site run the new version.
+It does two things.
+.RS
+.PP
+It adds the config parameters the site is missing, with their defaults.
+A site gets every parameter when it is created, so one that a later OTPme version brings is not on an older site until this is run.
+A parameter that is already set is not changed.
+.PP
+It stores the objects of the site in the format of the new version.
+A new version may store an object in another way.
+Until this is run the site keeps the old format, so the nodes can be updated one after the other and still work together.
+The command then writes every object that is still in the old format.
+The first run on a site writes every object once, and can take a while.
+.PP
+The objects are not changed while a node of the site is offline or runs an older version; the command says which node.
+A disabled node does not count.
+The command can be run again after it was cut short; it goes on where it stopped.
+.TP
+.B \-\-all
+Look at every object, and not only at those that are known to be in the old format.
+Use it after objects came in from an old backup.
+.TP
+.B \-\-procs \fINUM\fR
+Write the objects with \fINUM\fR processes.
+Without it a quarter of the CPU cores is used, so the node can still answer logins.
+Fewer than 500 objects of a kind are written without extra processes.
+.RE
+.IP
+Run it on a node of the site.
+.br
+Needs the ACL \fBset:config\fR, for all parameters and not just one.
+.TP
+.B show_config \fIsite\fR \fR[\fIparameter\fR]
+The config parameters set on the site, or only the one named.
+.br
+Nothing is shown for a parameter whose ACL \fBview:config:\fIparameter\fR you do not hold.
+The settings of the site \(em its address, its names, its certificates and secrets \(em are not config parameters: \fBshow\fR and \fBexport\fR are where those are.
 .TP
 .B get_config \fIsite\fR \fIparameter\fR
-Show the value of a single configuration parameter.
+The value of one parameter.
+.br
+Needs the ACL \fBview:config:\fIparameter\fR, the same one that opens it in \fBshow_config\fR.
 .TP
 .B description \fIsite\fR \fR[\fIdescription\fR]
-Set site description.
+Set the description.
+Without one OTPme asks and offers the current text for editing.
+.br
+Needs the ACL \fBedit:description\fR.
 .TP
 .B info \fR[\fB\-\-language\fR \fILANG\fR] \fIsite\fR \fR[\fIinfo\fR]
-Set free-form info text. If \fIinfo\fR is omitted, the current info text is
-opened in the editor specified by the \fBEDITOR\fR environment variable.
+Set free-form info text.
+If \fIinfo\fR is omitted, the current text is opened in the editor named by the \fBEDITOR\fR environment variable.
+.br
+Without
+.B \-\-language
+the text is the administrator's own note about the object, which no user is ever shown.
+With a language it is text for the users in that language.
+.br
+Needs the ACL \fBedit:info\fR.
 .TP
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIsite\fR
-Dump the info text to stdout.
+Print the info text, of that language or the administrator's own.
+.br
+Needs the ACL \fBview:info\fR.
 .SS Trust Relationships
+A site that trusts another one hands it its token secrets.
+The users and tokens of a site are known in every site of the realm, but their secrets stay at home.
+If \fBberlin\fR trusts \fBmunich\fR, the secrets of berlin are synced to the nodes of munich, and munich checks the login of a berlin user itself.
+Without the trust munich has no secrets of berlin and sends such a login on to berlin, so it only works while berlin can be reached.
+.PP
+A trust goes one way.
+That berlin trusts munich says nothing about the secrets of munich; for those munich has to trust berlin.
+.PP
+A trust is set on the site that trusts, and only there: \fIsite\fR has to be your own site.
+Both commands ask first; the global option \fB\-f\fR skips the question.
+.PP
+This trust is not what the config parameters ending in \fB_trusts\fR name.
+Those are lists of their own, each for one thing, see
+.BR otpme (7).
 .TP
 .B add_trust \fIsite\fR \fItrusted_site\fR
-Add a trust relationship with another site.
+Let \fIsite\fR trust \fItrusted_site\fR.
+A name that belongs to no site is refused, and so is the site itself and a site that is trusted already.
+.br
+Needs the ACL \fBadd:trust\fR.
 .TP
 .B del_trust \fIsite\fR \fItrusted_site\fR
-Delete a trust relationship.
+Take the trust away again.
+Takes a UUID as well, so a site that was deleted while it was trusted can still be taken off the list.
+.br
+Needs the ACL \fBdelete:trust\fR.
+.PP
+The sites a site trusts are in the \fBTrusts\fR column of
+.B show
+and in the object itself; the ACL \fBview:trusts\fR opens them, and so do the two above.
 .SS Authentication and Synchronization
-.TP
-.B enable_auth \fIsite\fR
-Enable authentication with site.
+Two switches per site, both on by default.
+They are settings of your site about the site that is named, so they also work on a site that is not your own, and what berlin sets about munich holds in berlin only.
+The sync between the sites leaves them as they are.
+.PP
+All four commands ask first; the global option \fB\-f\fR skips the question.
+The \fBAuth\fR and \fBSync\fR columns of
+.B show
+say how the switches stand.
 .TP
 .B disable_auth \fIsite\fR
-Disable authentication with site.
+Stop logins.
+.br
+With another site named, the users of that site are no longer let in on your site.
+.br
+With your own site named, nobody is let in on it any more, whichever site the user is from.
+.br
+An admin is let in either way, and a logout still works.
+.br
+Needs the ACL \fBdisable:auth\fR.
 .TP
-.B enable_sync \fIsite\fR
-Enable synchronization with site.
+.B enable_auth \fIsite\fR
+Allow logins again.
+.br
+Needs the ACL \fBenable:auth\fR.
 .TP
 .B disable_sync \fIsite\fR
-Disable synchronization with site.
+Stop the sync with another site.
+The nodes of your site no longer fetch from it and no longer tell it about changes, and a node of that site that asks yours is refused.
+.br
+Your own site cannot be named here.
+.br
+Needs the ACL \fBdisable:sync\fR.
+.TP
+.B enable_sync \fIsite\fR
+Sync with the site again.
+.br
+Needs the ACL \fBenable:sync\fR.
+.PP
+.B disable
+goes further than both: a site that is disabled is not contacted at all.
 .SS Certificate Management
+A site has a certificate and a key of its own, signed by the CA of the site.
+With the key the site signs what it tells other sites, for example the answer to a login that was sent on to it, and the other sites check that with the certificate.
+.PP
+Every node and every host keeps the certificates of the sites it knows, those of other sites as well, in
+.IR /etc/otpme/ssl/ realm \- site .pem .
+What is in that file is not replaced by the sync.
+The certificate is pinned there on purpose: a host goes on trusting the one it has, whatever it is told later.
+A host that joins can be told the fingerprint to expect, see \fB\-\-check\-site\-cert\fR in
+.BR otpme\-tool (1).
+.PP
+This is not the certificate of the SSO portal, of RADIUS or of the management name; those have sections and commands of their own.
 .TP
 .B dump_cert \fIsite\fR
-Dump site certificate to stdout.
+Print the certificate of the site.
+A certificate is public, so no ACL of its own is asked for.
 .TP
 .B dump_key \fR[\fB\-p\fR \fIpassphrase\fR] \fIsite\fR
-Dump site private key to stdout. Use \fB\-p\fR to encrypt with passphrase.
+Print the private key of the site.
+With \fB\-p\fR it is encrypted with that passphrase, which then stands on the command line for others on the machine to see.
+.br
+Needs the ACL \fBview_all:cert_key\fR.
 .TP
 .B dump_ca_chain \fIsite\fR
-Dump site certificate chain to stdout.
+Print the CA certificates the certificate of the site is checked with, up to the CA of the realm.
+No ACL of its own is asked for.
 .TP
 .B renew_cert \fIsite\fR
-Renew site certificate.
+Make a new key and a new certificate for the site.
+The old certificate is revoked.
+.br
+No node and no host takes the new one by itself, because the old one is pinned.
+After a renewal, run this on every node and every host, in the other sites as well:
+.RS
+.IP
+.B otpme\-tool sync \-\-request\-site\-cert sites
+.RE
+.IP
+Asks first; the global option \fB\-f\fR skips the question.
+.br
+Needs the ACL \fBrenew:cert\fR.
 .TP
-.B site_cert \fIsite\fR \fR[\fIcert_file\fR]
-Change the site certificate. Without \fIcert_file\fR the certificate is read from stdin.
+.B site_cert \fIsite\fR \fIcert_file\fR
+Put the certificate from that file in the place of the one the site has.
+The key stays, and nothing checks that the two belong together.
+The nodes and hosts keep the old one here too, until they are told to fetch it as under
+.BR renew_cert .
+.br
+Asks first; the global option \fB\-f\fR skips the question.
+.br
+Needs the ACL \fBedit:site_cert\fR.
 .SS RADIUS Certificate
+The RADIUS server of a site needs a certificate for the EAP methods that open a TLS tunnel, which is what 802.1X on a switch or an access point uses.
+Without anything set here it shows the certificate of the site, with the key of the site and the CA certificates of the realm.
+.PP
+That works for devices that were given the CA of the realm and that expect the name of the site in the certificate.
+A certificate of its own is for the others: one with a name just for RADIUS in it, or one from a CA the devices already know.
+.PP
+Each of the three can be set on its own, and what is not set stays what it was above.
+All three take a file in PEM format.
+Without a file the value is taken away again and RADIUS goes back to the one of the site.
+.PP
+The RADIUS server is reloaded on every node of the site after a change.
+While the certificate and the key it would get do not fit each other, it is not reloaded and goes on with what it had, and the command says so.
+That is also the case for a certificate that is set without its key: it would be paired with the key of the site.
+So set the two in one call, with
+.BR \-\-key ,
+and do not leave a pair that does not fit: the next start of RADIUS would get it.
+.PP
+All three commands ask first; the global option \fB\-f\fR skips the question.
 .TP
-.B radius_cert \fR[\fB\-\-key\fR \fIradius_key\fR] [\fB\-\-ca\-cert\fR \fIradius_ca_cert\fR] \fIsite\fR \fR[\fIradius_cert\fR]
-Change the RADIUS certificate. The optional \fB\-\-key\fR and \fB\-\-ca\-cert\fR flags set the matching private key and CA certificate in one call.
+.B radius_cert \fR[\fB\-\-key\fR \fIkey_file\fR] [\fB\-\-ca\-cert\fR \fIca_cert_file\fR] \fIsite\fR \fR[\fIcert_file\fR]
+Set the certificate the RADIUS server shows.
+.br
+.B \-\-key
+sets the key that belongs to it in the same call, and
+.B \-\-ca\-cert
+the CA certificates.
+.br
+Needs the ACL \fBedit:radius_cert\fR, and for what is given with it the ACL of that as well: \fBedit:radius_key\fR for \fB\-\-key\fR and \fBedit:radius_ca_cert\fR for \fB\-\-ca\-cert\fR.
 .TP
-.B radius_key \fIsite\fR \fIkey_file\fR
-Change RADIUS certificate key.
+.B radius_key \fIsite\fR \fR[\fIkey_file\fR]
+Set the key of that certificate.
+.br
+Needs the ACL \fBedit:radius_key\fR.
 .TP
-.B radius_ca_cert \fIsite\fR \fR[\fIradius_ca_cert\fR]
-Change the RADIUS CA certificate used to verify the RADIUS certificate above.
+.B radius_ca_cert \fIsite\fR \fR[\fIca_cert_file\fR]
+Set the CA certificates the RADIUS server is given.
+.br
+Needs the ACL \fBedit:radius_ca_cert\fR.
+.PP
+.B show
+\fIsite\fR prints the three as \fBRADIUS_CERT\fR, \fBRADIUS_KEY\fR and \fBRADIUS_CA_CERT\fR, each to whoever holds its \fBview:\fR ACL.
 .SS SSO Configuration
+The SSO portal is the web page users sign in on, and the OIDC provider behind it.
+It runs on every node and host of the site that has
+.B SSO_SERVER="True"
+in
+.IR /etc/otpme/otpme.conf ,
+see
+.BR otpme.conf (5);
+a host has to be made an SSO host first, see
+.B add_sso_host
+below.
+.PP
+What the portal needs from the site is its name, a certificate and a key for that name, and two secrets.
+A site has all of them from the start: the certificate is made by the CA of the site, the secrets are random.
+.PP
+All of this is set on your own site, and the commands that change something ask first; the global option \fB\-f\fR skips the question.
 .TP
 .B sso_fqdn \fIsite\fR \fIfqdn\fR
-Change the site's SSO FQDN (see the OIDC OP section below).
+Change the name of the portal.
+It is the name in the address users open, and the issuer of the OIDC provider is built from it, so the applications that sign in through it have to be told as well.
+.br
+A new certificate and key are made for that name, by the CA of the site, and they \fBreplace\fR the ones that are set.
+A certificate of your own has to be set again afterwards.
+.br
+Needs the ACL \fBedit:sso_fqdn\fR.
 .TP
-.B sso_cert \fR[\fB\-\-key\fR \fIsso_key\fR] \fIsite\fR \fR[\fIcert_file\fR]
-Change the SSO certificate. Use \fB\-\-key\fR to set the matching private key in the same call.
+.B sso_cert \fR[\fB\-\-key\fR \fIkey_file\fR] \fIsite\fR \fR[\fIcert_file\fR]
+Set the certificate the portal shows, from a file in PEM format.
+The one the site makes itself is from a CA no browser knows, so this is where a public one goes.
+.br
+.B \-\-key
+sets the key that belongs to it in the same call.
+A certificate and a key that do not fit each other are stored, and the command says so: the portal keeps the pair it has when it is reloaded, and does not start with the new one.
+.br
+The portal takes a new pair when it is reloaded, on each machine it runs on:
+.RS
+.IP
+.B otpme\-controld reload httpd
+.RE
+.IP
+.br
+Without a file the certificate is taken away, and nothing is put in its place.
+.br
+Needs the ACL \fBedit:sso_cert\fR, and \fBedit:sso_key\fR as well for \fB\-\-key\fR.
 .br
 Pass the \fBfull chain\fR, not the leaf certificate alone: the file may hold the
 certificate followed by every CA certificate needed to establish it, and that is
@@ -135,60 +485,86 @@ the client refusing the chain. To see what is actually served:
 .IP
 openssl s_client \-connect \fIsso_fqdn\fR:443 \-servername \fIsso_fqdn\fR \-showcerts </dev/null | grep \-c 'BEGIN CERTIFICATE'
 .TP
-.B sso_key \fIsite\fR \fIkey_file\fR
-Change SSO certificate key.
+.B sso_key \fIsite\fR \fR[\fIkey_file\fR]
+Set the key of that certificate, from a file in PEM format.
+Without a file the key is taken away.
+.br
+Needs the ACL \fBedit:sso_key\fR.
 .TP
 .B sso_secret \fIsite\fR \fIsecret\fR
-Change SSO secret.
+Change the secret the portal signs its session cookies with.
+Every session of the portal that is open becomes invalid, and the users have to sign in again.
+.br
+Needs the ACL \fBedit:sso_secret\fR.
 .TP
 .B sso_csrf_secret \fIsite\fR \fIsecret\fR
-Change SSO CSRF secret.
+Change the secret the portal protects its forms with.
+A form that is open in a browser has to be loaded again.
+.br
+Needs the ACL \fBedit:sso_csrf_secret\fR.
+.IP
+Both secrets are given on the command line, where others on the machine can see them, and neither command makes one up.
+The portal reads them when it starts.
 .TP
 .B add_sso_host \fIsite\fR \fIhost_name\fR
-Mark a host as SSO host. An SSO host is a host that can provide the SSO
-portal. The following SSO related data will be synchronized to this host:
+Make a host an SSO host.
+.br
+A node has everything of its site and can run the portal as it is.
+A host has not: it gets no key and no secret of the site.
+An SSO host is the exception, and is synced what the portal needs:
 .RS
+.IP "\fBSSO_CERT\fR, \fBSSO_KEY\fR"
+The certificate the portal shows, and its key.
 .IP \fBSSO_SECRET\fR
-Flask session secret used by the SSO portal to sign session cookies.
+The secret the session cookies are signed with.
 .IP \fBSSO_CSRF_SECRET\fR
-Secret used by the SSO portal for CSRF token protection.
-.IP \fBSSO_CERT\fR
-TLS certificate presented by the SSO portal (\fBhttpd\fR).
-.IP \fBSSO_KEY\fR
-Private key matching the SSO TLS certificate.
-.IP \fBOIDC_PAIRWISE_SECRET\fR
-HMAC key used to derive pairwise OIDC \fIsub\fR claims. Replicated to
-all SSO hosts of a site so every host computes the same \fIsub\fR for
-the same (RP, user) pair.
+The secret the forms are protected with.
 .PP
-To actually start the SSO portal on the host, set
-.B SSO_SERVER="True"
-in
-.IR /etc/otpme/otpme.conf .
-See
-.BR otpme.conf (5).
+With them come the config parameters of the site that the portal reads itself.
+.PP
+The host has to be a host of this site; a node cannot be named, and needs no naming.
+To start the portal on it, set \fBSSO_SERVER\fR as above.
 .RE
+.IP
+Needs the ACL \fBadd:sso_host\fR.
 .TP
 .B remove_sso_host \fIsite\fR \fIhost_name\fR
-Remove the SSO host role from a host. The SSO data will no longer be
-synchronized to this host.
-The host itself stays as it is.
+Take the host off the list again.
+It is no longer synced what is listed above; the host itself stays as it is.
+.br
 Takes a UUID as well, so a host that was deleted while it was an SSO host can still be taken off the site.
+.br
 Needs the ACL \fBremove:sso_host\fR.
 .TP
-.B sso_logo \fIsite\fR \fIimage_path\fR
-Set the logo the SSO portal of this site shows on its login and
-recovery pages. PNG or JPEG, at most 512 KiB \(em it is part of the
-site object, which every node and host of the realm synchronizes. A
-site without a logo shows the OTPme logo the portal ships with. The
-tiqr app shows the same logo for the accounts enrolled here.
+.B sso_logo \fIsite\fR \fIimage_file\fR
+Set the logo the portal of this site shows on its login and recovery pages.
+PNG or JPEG, at most 512 KiB \(em it is part of the site object, which every node and host of the realm syncs.
+A site without a logo shows the OTPme logo the portal comes with.
+The tiqr app shows the same logo for the accounts enrolled here.
+.br
+Needs the ACL \fBadd:sso_logo\fR.
 .TP
 .B dump_sso_logo \fIsite\fR
-Dump the site's SSO portal logo as base64 to stdout.
+Print the logo as base64.
+.br
+Needs the ACL \fBdump:sso_logo\fR.
 .TP
 .B del_sso_logo \fIsite\fR
-Remove the site's SSO portal logo, so the portal shows the default one
-again.
+Remove the logo, so the portal shows the default one again.
+.br
+Needs the ACL \fBdelete:sso_logo\fR.
+.TP
+.B tiqr_secret \fIsite\fR \fR[\fIsecret\fR]
+Change the secret the tiqr logins of the portal are made with.
+Without \fIsecret\fR a new one is made, 64 hex characters; give one only to bring a known value back.
+.br
+The challenge and the poll id of a tiqr login are made from it, and both live for
+.B tiqr_challenge_expiry
+seconds.
+So a change breaks the logins that are under way at that moment and nothing else: the phones that are enrolled, their token secrets and the sessions stay.
+That is why this one does not ask.
+.br
+Needs the ACL \fBedit:tiqr_secret\fR.
 .SS OIDC OpenID Connect Provider
 OTPme can act as an OpenID Connect Provider (OP) per site. The OP is
 \fBsite-local\fR: each site exposes its own discovery document at
@@ -208,9 +584,12 @@ own clients.
 Supported flow: only the OAuth 2.1 \fBAuthorization Code Flow with
 PKCE\fR is implemented (response_type=code, grant_type=authorization_code
 + refresh_token). The legacy \fBImplicit Flow\fR (response_type=id_token)
-is intentionally not supported -- OAuth 2.1 §1.4 deprecates it because
-tokens delivered via the URL fragment leak through browser history,
-referrers, XSS and extensions; modern SPAs should use Code+PKCE
+is intentionally not supported: what comes back through the URL fragment
+leaks through browser history, referrers, XSS and extensions. OAuth 2.1
+§10.1 drops the implicit grant for that reason, following RFC 9700
+§2.1.2, although both speak of \fBresponse_type=token\fR and leave the
+OIDC \fBid_token\fR response types to OIDC; not implementing them is
+this implementation's own decision. Modern SPAs should use Code+PKCE
 instead. The \fBHybrid Flow\fR (response_type="code id_token") is
 likewise not supported; its only marginal benefit (immediate identity
 rendering before the /token call) does not justify the additional
@@ -218,95 +597,133 @@ fragment-based delivery surface. PKCE is mandatory by default
 (\fBoidc_pkce_required=True\fR) and only \fBS256\fR is advertised in
 discovery; \fBplain\fR can be enabled per client for legacy interop
 but is never advertised (see \fBoidc_allow_plain_pkce\fR).
+.PP
+The commands below ask first, except for \fBshow_oidc_keys\fR; the global option \fB\-f\fR skips the question.
 .TP
 .B enable_oidc \fIsite\fR
-Enable the OIDC OP on this site. On first activation, an active
-signing key (\fBrenew_oidc_key\fR) and a pairwise secret are
-auto-generated.
+Switch the OIDC provider of the site on.
+A signing key is made if the site has no active one, and a pairwise secret if it has none.
+.br
+Needs the ACL \fBenable:oidc\fR.
 .TP
 .B disable_oidc \fIsite\fR
-Disable the OIDC OP. Existing keys and secrets are kept on disk so
-\fBenable_oidc\fR resumes without re-issuing tokens.
+Switch the OIDC provider off.
+The keys and the pairwise secret stay, so switching it on again goes on where it stopped.
+.br
+Needs the ACL \fBdisable:oidc\fR.
 .TP
-.B renew_oidc_key \fR[\fB\-\-key-type\fR \fIpreset\fR] [\fB\-\-kty\fR \fIRSA|EC|OKP\fR] [\fB\-\-size\fR \fIN\fR] [\fB\-\-alg\fR \fIalg\fR] \fIsite\fR
-Rotate the active OIDC signing key. The previous active key is
-demoted to \fBretired\fR and removed from JWKS once the site's
-\fBoidc_retired_max_age\fR config parameter (default 7200s) has
-elapsed, so RPs that fetched ID Tokens just before rotation can
-still verify them.
-Presets: \fBrsa\fR, \fBrsa-3072\fR, \fBrsa-4096\fR,
-\fBec\fR, \fBec-p256\fR, \fBec-p384\fR, \fBec-p521\fR, \fBed25519\fR.
-Direct configuration: \fB\-\-kty\fR (\fBRSA\fR/\fBEC\fR/\fBOKP\fR),
-\fB\-\-size\fR (RSA bits or EC/OKP curve), \fB\-\-alg\fR
-(\fBRS256\fR/\fBRS384\fR/\fBRS512\fR/\fBES256\fR/\fBES384\fR/\fBES512\fR/\fBEdDSA\fR).
+.B renew_oidc_key \fR[\fB\-\-key\-type\fR \fIpreset\fR] [\fB\-\-kty\fR \fIRSA|EC|OKP\fR] [\fB\-\-size\fR \fIN\fR] [\fB\-\-alg\fR \fIalg\fR] \fIsite\fR
+Make a new signing key and sign with it from now on.
+The key that was active becomes \fBretired\fR: nothing is signed with it any more, but it stays published, so what it signed can still be checked.
+.br
+It stays published for as long as the config parameter
+.B oidc_retired_max_age
+says, two hours by default (see \fBotpme\fR(7)).
+After that it is no longer handed out, and the next run of this command removes it.
+.br
+Without an option the key is RSA with 2048 bits, signing with RS256.
+.RS
+.TP
+.B \-\-key\-type \fIpreset\fR
+One of \fBrsa\fR (2048 bits), \fBrsa\-3072\fR, \fBrsa\-4096\fR, \fBec\fR and \fBec\-p256\fR (the same), \fBec\-p384\fR, \fBec\-p521\fR, \fBed25519\fR.
+The algorithm comes with the preset.
+Not together with the three below.
+.TP
+.B \-\-kty \fIRSA|EC|OKP\fR, \fB\-\-size \fIN\fR, \fB\-\-alg \fIalg\fR
+The same by hand: the key type, the bits of an RSA key or the name of the curve (\fBP\-256\fR, \fBP\-384\fR, \fBP\-521\fR, \fBEd25519\fR), and the algorithm (\fBRS256\fR, \fBRS384\fR, \fBRS512\fR, \fBES256\fR, \fBES384\fR, \fBES512\fR, \fBEdDSA\fR).
+Without \fB\-\-alg\fR the algorithm is the one that goes with the key, and one that does not fit the key is refused.
+.RE
+.IP
+Needs the ACL \fBrenew:oidc_key\fR.
 .TP
 .B revoke_oidc_key \fIsite\fR \fIkid\fR
-Permanently remove a signing key from JWKS. Tokens signed by it stop
-verifying immediately. If the revoked key was the active one, a
-replacement is generated automatically.
+Remove a signing key at once, for a key that got out.
+It is no longer published, so everything it signed stops being accepted.
+If it was the active key, a new one is made in its place.
+.br
+Needs the ACL \fBrevoke:oidc_key\fR.
 .TP
 .B show_oidc_keys \fIsite\fR
-List the OIDC signing keys currently on the site (active, retired,
-and their algorithms / kid).
+Print the signing keys of the site, the active one and the retired ones, each under its \fIkid\fR.
+.br
+This prints the keys whole, \fBthe private parts included\fR.
+.br
+Needs the ACL \fBview_all:oidc_keys\fR.
+A plain \fBview\fR does not open it; \fBview:oidc_keys\fR does, because it names these keys.
 .TP
-.B oidc_pairwise_secret \fIsite\fR [\fIsecret\fR]
-Rotate (or set) the pairwise sub HMAC secret for this site. Without
-\fIsecret\fR a fresh 64-hex-char key is auto-generated. Asks for
-confirmation; use the global \fB\-f\fR to skip it. \fBWARNING:\fR
-rotating invalidates every existing pairwise \fIsub\fR on every RP --
-RPs that key their account model on \fIsub\fR will see a "fresh" user
-on next login. Coordinate with each RP before rotating.
-.TP
-.B tiqr_secret \fIsite\fR [\fIsecret\fR]
-Rotate (or set) the tiqr HMAC secret for this site. Without
-\fIsecret\fR a fresh 64-byte key is auto-generated. The secret derives
-the challenge and the poll id of a tiqr login attempt, both of which
-live for \fBtiqr_challenge_expiry\fR seconds, so rotating only breaks
-logins that are in progress at that moment. Enrolled phones, token
-secrets and existing sessions are unaffected.
+.B oidc_pairwise_secret \fIsite\fR \fR[\fIsecret\fR]
+Change the secret the pairwise \fIsub\fR of a user is made from.
+Without \fIsecret\fR a new one is made, 64 hex characters; give one only to bring a known value back.
+.br
+\fBEvery pairwise sub changes with it.\fR
+An application that knows its users by their \fIsub\fR sees a new user at the next login, so talk to each of them before.
+.br
+Needs the ACL \fBedit:oidc_pairwise_secret\fR.
 .PP
-Site / Unit / Client config parameters relevant to OIDC:
-.RS
-.IP \fBoidc_pkce_required\fR 4
-Whether PKCE is mandatory for the authorize flow. Default \fBTrue\fR
-(OAuth 2.1).
-.IP \fBoidc_allow_plain_pkce\fR 4
-Whether the deprecated \fBplain\fR PKCE method is accepted. Default
-\fBFalse\fR. Override per client only for legacy RPs that hardcode
-\fBplain\fR; the discovery document never advertises it regardless.
-.IP \fBoidc_logout_scope\fR 4
-Scope of \fI/end_session\fR: \fBsso\fR (default) terminates the whole
-SSO session via the regular logout cascade; \fBrp\fR terminates only
-the OIDCSession for this RP.
-.IP \fBoidc_require_consent\fR 4
-Whether the OP renders an end-user consent screen at \fI/authorize\fR.
-Default \fBFalse\fR -- enterprise-SSO assumes admin-side Scope
-allowlists are the policy boundary. Set \fBTrue\fR per client for
-public-facing / multi-tenant RPs. Granted consents are remembered
-per (user, client) trust-on-first-use; a wider scope request
-re-prompts. The OIDC \fBprompt=consent\fR request parameter forces
-the screen even when a stored consent exists. End users review and
-revoke their consents in the SSO portal Settings page.
-.IP \fBoidc_default_scopes\fR 4
-Comma-separated list of scopes auto-granted to RPs without an
-explicit Scope-object grant.
-.IP \fBoidc_email_attribute\fR 4
-LDIF attribute used as the source for the \fIemail\fR claim.
-.RE
+The config parameters of OIDC are
+.BR oidc_pkce_required ,
+.BR oidc_allow_plain_pkce ,
+.BR oidc_logout_scope ,
+.BR oidc_require_consent ,
+.BR oidc_default_scopes ,
+.B oidc_email_attribute
+and
+.BR oidc_retired_max_age .
+What they do is in
+.BR otpme (7),
+and how an application is registered in
+.BR otpme\-client (1).
 .SS Cluster
+The nodes of a site form a cluster, and the cluster key is what a node shows another one when it connects to its cluster daemon.
+A node that shows another key is turned away.
+A site gets a random key when it is created, and there is rarely a reason to change it.
 .TP
 .B cluster_key \fIsite\fR \fIcluster_key\fR
-Change cluster key.
+Set the cluster key.
+It is given on the command line, where others on the machine can see it, and is not made up for you.
+.br
+\fBA node that does not get the new key drops out of the cluster.\fR
+.br
+Asks first; the global option \fB\-f\fR skips the question.
+.br
+Needs the ACL \fBedit:cluster_key\fR.
 .SS FIDO2 CA Certificates
+A FIDO2 or U2F key carries an attestation certificate that says who made it.
+Where the config parameter
+.B check_fido2_attestation_cert
+or
+.B check_u2f_attestation_cert
+is on, a key is only taken when that certificate is valid and was signed by one of the CA certificates kept here (see \fBotpme\fR(7)).
+.PP
+The CA certificate is found by its subject: it has to be the one the attestation certificate names as its issuer.
+A CA further up does not count, so add the certificate that signed the keys themselves.
+.PP
+A site has none of them at first.
+With the check on and no certificate for the maker of a key, that key is refused.
 .TP
 .B add_fido2_ca_cert \fIsite\fR \fIca_cert_file\fR
-Add a FIDO2 CA certificate.
+Add a CA certificate from a file in PEM format.
+A file that is no certificate is refused, and so is one whose subject the site already has.
+.br
+Asks first; the global option \fB\-f\fR skips the question.
+.br
+Needs the ACL \fBadd:fido2_ca_cert\fR.
 .TP
 .B del_fido2_ca_cert \fIsite\fR \fIsubject\fR
-Delete a FIDO2 CA certificate by subject.
+Remove a CA certificate.
+The \fIsubject\fR has to be written as
+.B list_fido2_ca_certs
+prints it, and in quotes where it holds spaces.
+Keys that are deployed stay as they are; the check is made when a key is deployed.
+.br
+Asks first; the global option \fB\-f\fR skips the question.
+.br
+Needs the ACL \fBdelete:fido2_ca_cert\fR.
 .TP
 .B list_fido2_ca_certs \fIsite\fR
-List FIDO2 CA certificates.
+Print the subjects of the CA certificates of the site, one per line.
+.br
+Needs the ACL \fBview:fido2_ca_cert\fR.
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
@@ -368,61 +785,161 @@ Use \fB\-\-policy\-types\fR to list only policies of the given types; these are 
 .br
 Needs the ACL \fBview:policies\fR.
 .SS ACL Management
-.TP
-.B add_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] [\fB\-\-procs\fR \fInum\fR] \fIsite\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
-Add an access control entry. Use \fB\-r\fR for recursive, \fB\-a\fR to apply default ACLs to existing objects.
-.RS
+An ACL says what somebody may do with this site.
+The somebody is a role or a token, never a user.
 .PP
-A recursive run walks every unit of the site and every object in them. Where a unit holds many, its objects are shared out over several processes.
-\fB\-\-procs\fR says how many. Without it a quarter of the cores of the node, which leaves the rest for the daemons that go on serving logins while this runs.
-.RE
+A site is also the top of everything in it, so it is where an ACL for all of it is set.
+A normal ACL is for the site object alone.
+A default ACL, \fB+acl\fR or \fB++acl\fR, is not for the site: it is handed down to the units of the site and from there to the objects it names.
+What the three forms mean, and which ACLs exist, is under \fBACLs\fR in
+.BR otpme (7)
+and in
+.BR otpme\-acls (7).
+.PP
+Adding and removing ask first, once for the whole command; the global option \fB\-f\fR skips the question.
 .TP
-.B del_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] [\fB\-\-procs\fR \fInum\fR] \fIsite\fR \fIacl\fR
-Remove an access control entry. \fB\-\-procs\fR as above.
+.B add_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] [\fB\-\-procs\fR \fInum\fR] \fIsite\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
+Give a role or a token one or more ACLs on this site.
+.br
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR, and \fIowner\fR the path of that role or token.
+An ACL may carry a value, for example \fBview:trusts\fR, and several are separated by commas.
+.br
+Without an option only the site is changed.
+A default ACL then reaches what is created from now on, and nothing that is already there.
+.RS
+.TP
+.B \-a
+Hand a default ACL down to what is already there.
+The units at the top of the site get it, and the objects in those units get what it gives them: with \fB+user:edit\fR every user there gets \fBedit\fR.
+It is of no use for a normal ACL.
+.br
+This goes one level deep.
+For the units below those and what is in them, add \fB\-r\fR.
+.TP
+.B \-r
+Set the ACL, as it is written, on everything below the site that knows it: every unit and every object in them, all the way down.
+So \fB\-r\fR with \fBview\fR puts \fBview\fR on all of them.
+.br
+With \fB\-a\fR it also hands a default ACL down all the way.
+.TP
+.B \-\-objects \fItype1,type2\fR
+Only touch objects of these types, for example \fBuser,token\fR.
+.TP
+.B \-\-procs \fInum\fR
+A run with \fB\-r\fR or \fB\-a\fR walks every unit of the site and every object in them.
+Where a unit holds many, its objects are shared out over several processes, and this says how many.
+Without it a quarter of the cores of the node, which leaves the rest for the daemons that go on serving logins while this runs.
+.RE
+.IP
+Needs the ACL \fBadd:acl\fR.
+.TP
+.B del_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] [\fB\-\-procs\fR \fInum\fR] \fIsite\fR \fIacl\fR[,\fIacl\fR]
+Take those ACLs away again.
+.br
+Here an \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fBrole:berlin/helpdesk:view\fR.
+.br
+Without an option only the entry on the site goes, and what was handed down stays where it is.
+.RS
+.TP
+.B \-a
+Take back what a default ACL handed down: the units at the top of the site lose it, and the objects in those units lose the ACL it gave them.
+Removing \fB+user:edit\fR this way takes \fBedit\fR from every user there.
+.br
+OTPme does not keep where an ACL came from.
+If the same role or token was given \fBedit\fR on one of those users by hand, that goes as well.
+.TP
+.B \-r
+Remove the ACL, as it is written, from everything below the site that has it; with \fB\-a\fR, take back all the way down.
+.TP
+.B \-\-objects\fR, \fB\-\-procs\fR
+As with
+.BR add_acl .
+.RE
+.IP
+Needs the ACL \fBdelete:acl\fR.
 .TP
 .B list_acls \fIsite\fR
-Display all ACLs for the site.
-.SS Extension and Attribute Management
+Show the ACLs that lie on this site, i.e. who may do what with it.
+.br
+Needs the ACL \fBview:acl\fR.
+.PP
+A site cannot inherit ACLs, so there is no \fBenable_acl_inheritance\fR here.
+.SS Extensions and LDAP Attributes
+A site is also an LDAP entry, \fBou=\fIsite\fR under the realm, and an extension is what gives it one: the object classes it is of, and the attributes those classes allow.
+What \fBldapd\fR serves and what \fBshow_ldif\fR prints comes from them.
+.PP
+A site has the extension \fBbase\fR, which makes it an \fBorganizationalUnit\fR with \fBou\fR and \fBdescription\fR.
+The class allows more, an address or a phone number for example, and those can be set here.
 .TP
 .B add_extension \fIsite\fR \fIextension\fR
 Add an extension to the site.
+One that is not for sites is refused, and so is one the site already has.
+.br
+Needs the ACL \fBadd:extension\fR.
 .TP
 .B remove_extension \fIsite\fR \fIextension\fR
-Remove an extension from the site.
+Take it away again, with the classes and attributes it brought.
+.br
+Needs the ACL \fBremove:extension\fR.
 .TP
-.B add_attribute \fIsite\fR \fIattribute\fR=\fIvalue\fR
-Add an LDAP attribute to the site.
+.B add_attribute \fIsite\fR \fIattribute\fR\fB=\fR[\fIvalue\fR]
+Set an LDAP attribute of the site.
+.RS
+.PP
+Only an attribute one of its classes allows: there is no setting an attribute OTPme knows nothing about.
+An attribute can hold more than one value, so this adds one and leaves the others.
+.PP
+The ACL is per attribute, \fBadd:attribute:\fIattribute\fR, and a plain \fBadd:attribute\fR covers all of them.
+.RE
 .TP
 .B modify_attribute \fIsite\fR \fIattribute\fR \fIold_value\fR \fInew_value\fR
-Modify an LDAP attribute of the site.
+Put \fInew_value\fR in the place of \fIold_value\fR, and leave the other values of the attribute alone.
+.br
+The ACL is \fBedit:attribute:\fIattribute\fR.
 .TP
-.B del_attribute \fIsite\fR \fIattribute\fR=\fIvalue\fR
-Remove an LDAP attribute from the site.
+.B del_attribute \fIsite\fR \fIattribute\fR\fB=\fR[\fIvalue\fR]
+Remove that value, or the whole attribute where no value is given.
+.br
+A mandatory attribute of a class the site is of cannot be removed, and neither can a read-only one.
+The ACL is \fBdelete:attribute:\fIattribute\fR.
 .TP
 .B add_object_class \fIsite\fR \fIclass\fR
-Add an LDAP object class to the site.
+Add an LDAP object class to the site, beyond the ones its extensions brought.
+.br
+Needs the ACL \fBadd:object_class\fR.
 .TP
 .B del_object_class \fIsite\fR \fIclass\fR
-Remove an LDAP object class from the site.
+Remove one again.
+.br
+Needs the ACL \fBdelete:object_class\fR.
 .TP
-.B show_ldif \fR[\fB\-a\fR \fIattributes\fR] \fIsite\fR
-Show LDIF representation of the site. Use \fB\-a\fR to show only specific attributes.
-.SS Import/Export
+.B show_ldif \fIsite\fR \fR[\fB\-a\fR \fIattribute1,attribute2\fR]
+The site as LDAP sees it.
+.B \-a
+prints only those attributes.
+.SS Export and Cleanup
 .TP
-.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIsite\fR
-Export site configuration.
+.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIsite\fR
+Write the whole object of the site to stdout, as JSON.
+.br
+Without \fB\-\-password\fR it is written as it is, in clear \(em \fBand that is every key and every secret the site has\fR: the key of the site, the keys of the portal and of RADIUS, the signing keys of OIDC, the secrets of the portal and the cluster key.
+With one, a key is derived from that password and the object is encrypted with it; the salt goes into the output, so the password is all you need to read it back.
+.br
+Needs the ACL \fBexport\fR.
 .TP
 .B remove_orphans \fR[\fB\-r\fR] \fIsite\fR
-Remove orphaned object references. Use \fB\-r\fR for recursive.
+Remove references to objects that are gone: orphan ACLs, policies and signatures of the site, a trusted site that was deleted, and an SSO host that was deleted.
+.br
+.B \-r
+goes on through every unit of the site and the objects in them, and cleans those up as well.
+.br
+It asks once for what it found on an object; the global option \fB\-f\fR skips the question.
+.br
+Needs the ACL \fBremove:orphans\fR.
 .SH ADD OPTIONS
-These options are used with the \fBadd\fR command:
+These options are used with the \fBadd\fR command, next to \fB\-\-trust\fR which is described there.
 .SS CA Certificate Options
-.TP
-.B \-\-ca\-valid \fIDAYS\fR
-CA certificate validity in days.
-.TP
-.B \-\-ca\-key\-len \fIBITS\fR
-Key length for CA certificates in bits.
+These are kept in the CA of the new site and go into its certificate when the master node joins.
 .TP
 .B \-\-country \fICOUNTRY\fR
 Set CA certificate country field.
@@ -441,104 +958,129 @@ Set CA certificate organizational unit field.
 .TP
 .B \-\-email \fIEMAIL\fR
 Set CA certificate email field.
-.SS Site and Node Certificate Options
-.TP
-.B \-\-site\-valid \fIDAYS\fR
-Site certificate validity in days.
-.TP
-.B \-\-site\-key\-len \fIBITS\fR
-Key length for site certificate in bits.
-.TP
-.B \-\-node\-valid \fIDAYS\fR
-Master node certificate validity in days.
-.TP
-.B \-\-node\-key\-len \fIBITS\fR
-Key length for master node certificate in bits.
+.PP
+There is no option for a key length or for how long a certificate is valid.
+.B add
+makes no key and no certificate: the CA of the site, the site itself and the master node get theirs when that node joins, and the keys are made on it.
+The lengths are then the
+.B \-\-site\-key\-len
+(the key of the CA) and the
+.B \-\-host\-key\-len
+(the key of the node) of \fBotpme\-tool join\fR, see
+.BR otpme\-tool (1).
+The key of the site and all three validities are the defaults.
 .SS Dictionary and ID Range Options
 .TP
-.B \-\-no\-dicts
-Do not add any word dictionaries for password strength checking.
-.TP
 .B \-\-dicts \fIdict1,dict2\fR
-Add the given word dictionaries for password strength checking.
+The word dictionaries the new site checks the strength of a password against.
+They are added to the site and put into its \fBpassword_strength\fR policy, in this order.
+.br
+Only the dictionaries OTPme comes with can be named: \fBenglish\fR, \fBgerman\fR, \fBcommon\-passwords\fR, \fBen\-top10000\fR, \fBde\-top10000\fR, \fBenglish\-guessing\fR, \fBgerman\-guessing\fR, \fBus\-male\fR, \fBus\-female\fR, \fBus\-surnames\fR, \fBde\-male\fR, \fBde\-female\fR, \fBde\-surnames\fR, \fBat\-surnames\fR and \fBabbreviations\-it\fR.
+A name that is not one of them is refused.
+.br
+Without this option the site gets none.
+More can be added later, see
+.BR otpme\-dictionary (1).
+.TP
+.B \-\-no\-dicts
+Add no dictionary, whatever \fB\-\-dicts\fR says.
 .TP
 .B \-\-id\-ranges \fIrange1,range2\fR
-ID ranges to add.
+The ranges the site takes the numbers of new users and groups from, each written as \fIattribute\fB:\fItype\fB:\fIfirst\fB\-\fIlast\fR.
+They go into the ID range policy of the site, see
+.BR otpme\-policy (1).
+.br
+Without this option the site gets \fBuidNumber:s:70000\-80000,gidNumber:s:70000\-80000\fR.
+Every site gets that same default, so give each site a range of its own: a user of one site is known in all of them, with its number.
 .SH OPTIONS
-.SS Display Options
-.TP
-.B \-a
-Show all sites.
-.TP
-.B \-z \fISIZE\fR
-Limit output size.
-.TP
-.B \-\-fields \fIFIELD1,FIELD2\fR
-Display only specified fields.
-.TP
-.B \-\-policy\-limit \fIN\fR
-Limit number of policies shown.
-.TP
-.B \-\-limit \fIN\fR
-Limit number of items shown per object.
-.TP
-.B \-\-sort\-by \fIFIELD\fR
-Sort output by field.
-.TP
-.B \-\-reverse
-Reverse sort order.
-.TP
-.B \-\-raw
-Output without headers/borders.
-.TP
-.B \-\-csv
-Output as CSV.
-.TP
-.B \-\-csv\-sep \fISEP\fR
-CSV separator character.
-.TP
-.B \-\-attribute \fIATTR\fR
-Display specific attribute in list command.
-.SS General Options
-.TP
-.B \-\-password \fIPASS\fR
-Password for encrypting exports.
-.TP
-.B \-\-objects \fItype1,type2\fR
-Limit ACL operations to specific object types.
+Every option belongs to one command and is described with that command above.
 .PP
-Global options are available for all commands. See
-.BR otpme (1)
-for details.
+Global options work with every command, see
+.BR otpme (1).
 .SH CONFIG PARAMETERS
-Configuration parameters can be set with the \fBconfig\fR command and displayed with \fBshow_config\fR.
-For a complete description of all available parameters and their applicable object types, see
-.BR otpme (7).
+A site is where the search for a config parameter ends, so it takes nearly every one of them, and it has a value for each from the day it is created.
+Which there are, and what each of them does, is in
+.BR otpme (7);
+.B show_config
+\fIsite\fR prints the ones that are set.
+.PP
+One of them is for sites alone:
+.B force_site_config_parameters
+names the parameters for which the value of the site wins over what an object or a unit says.
 .SH EXAMPLES
+.SS A second site
+On the master site:
 .TP
-.B otpme-site add mysite node1 site.example.com 10.0.0.1
-Create a new site
+.B otpme-site add \-\-trust berlin \-\-id\-ranges uidNumber:s:90000\-100000,gidNumber:s:90000\-100000 munich node1 login.munich.example.org 10.1.0.10
+Create the site \fBmunich\fR with its first node, and let it trust \fBberlin\fR.
+.PP
+The site is disabled until that node has joined, which is done on the node itself, see
+.BR otpme\-tool (1).
 .TP
-.B otpme-site add_trust mysite othersite
-Add trust relationship
+.B otpme-site show
+All sites, and whether the new one is enabled by now.
+.SS Logins that do not depend on the other site
+On \fBberlin\fR:
 .TP
-.B otpme-site dump_cert mysite
-Dump site certificate
+.B otpme-site add_trust berlin munich
+The token secrets of berlin are synced to munich, so munich checks a berlin user itself.
+.SS A public certificate for the portal
+.TP
+.B otpme-site sso_fqdn berlin login.example.org
+The name users open. This makes a certificate of the site CA for it.
+.TP
+.B otpme-site sso_cert \-\-key privkey.pem berlin fullchain.pem
+Put the public one in its place, with its key and the full chain.
+.PP
+Then, on every machine the portal runs on:
+.TP
+.B otpme-controld reload httpd
+.SS A new certificate for the site
+.TP
+.B otpme-site renew_cert berlin
+.PP
+Then, on every node and every host of every site:
+.TP
+.B otpme-tool sync \-\-request\-site\-cert sites
+.SS Keeping another site out
+On \fBberlin\fR:
+.TP
+.B otpme-site disable_auth munich
+No user of munich is let in on berlin any more.
+.TP
+.B otpme-site disable_sync munich
+Berlin no longer syncs with munich.
+.SS ACLs for all of a site
+.TP
+.B otpme-site add_acl \-r \-a berlin role helpdesk \(dq++user:edit\(dq
+The role may change every user of the site, the ones that are there and the ones that come later.
+.TP
+.B otpme-site add_acl berlin role auditors view
+The role may look at the site object itself, and at nothing below it.
 .SH FILES
 .TP
-.I /var/lib/otpme/
-OTPme data directory
+.I /etc/otpme/ssl/\fIrealm\fB\-\fIsite\fB.pem\fR
+The certificate of a site, as each node and host keeps it. It is not replaced by the sync, see
+.BR renew_cert .
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
 .BR otpme\-acls (7),
-.BR otpme-realm (1),
-.BR otpme-node (1),
-.BR otpme-ca (1)
-
+.BR otpme.conf (5),
+.BR otpme\-realm (1),
+.BR otpme\-node (1),
+.BR otpme\-host (1),
+.BR otpme\-ca (1),
+.BR otpme\-tool (1),
+.BR otpme\-client (1),
+.BR otpme\-scope (1),
+.BR otpme\-policy (1),
+.BR otpme\-dictionary (1),
+.BR otpme\-unit (1),
+.BR otpme\-trash (1)
 .SH AUTHOR
 the2nd <the2nd@otpme.org>
 .SH NOTE
 This manual page was created with AI assistance.
 .SH COPYRIGHT
-Copyright \(co 2014-2025 the2nd. License: GPLv3
+Copyright \(co 2014-2026 the2nd. License: GPLv3

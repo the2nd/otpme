@@ -226,7 +226,7 @@ Output as CSV.
 CSV separator character.
 
 **--attribute *ATTR***  
-Display specific attribute in list command.
+Of **list**: match the regex against this attribute instead of the name.
 
 ## General Options
 
@@ -253,7 +253,7 @@ Add device to access group for MAB
 **otpme-vlan add_device voice ip-phone-1**  
 Put the device into the voice VLAN
 
-**otpme-device description ip-phone-1 Reception IP Phone**  
+**otpme-device description ip-phone-1 "Reception IP Phone"**  
 Set description
 
 **otpme-device show ip-phone-1**  

@@ -147,6 +147,7 @@ def register_backend():
                                     full_index_update=True)
     # Register object to config.
     config.register_object_type(object_type="failed_pass",
+                            version=1,
                             tree_object=False,
                             uniq_name=False,
                             add_after=["user"],

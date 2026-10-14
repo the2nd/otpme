@@ -541,7 +541,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
         # Policies.
         if "policies" in output_fields:
             if check_acl("view:policies") \
-            or check_acl("add:policy") \
+            or check_acl("assign:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="role",
                                                     object_uuid=role_uuid,

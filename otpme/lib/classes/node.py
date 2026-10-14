@@ -985,6 +985,7 @@ def register_backend():
         return backend.rebuild_object_index("node", objects, after)
     # Register object to config.
     config.register_object_type(object_type="node",
+                            version=1,
                             tree_object=True,
                             add_after=["accessgroup"],
                             sync_after=["user", "token"],

@@ -3245,24 +3245,13 @@ class OTPmeClient1(OTPmeClientBase):
                 self.logger.critical(log_msg)
                 raise
             # When doing JWT authentication we must make sure that the JWT we will
-            # send is for the realm/site we connect to.
-            # Get users site certificate.
-            hostd_conn = self.get_hostd_conn()
-            user_site = hostd_conn.get_user_site(self.username)
-            cert_pem = hostd_conn.get_site_cert(realm=config.realm, site=user_site)
-            if not cert_pem:
-                msg = _("Unable to get certificate for site: {site}")
-                msg = msg.format(site=user_site)
-                raise OTPmeException(msg)
-            _cert = SSLCert(cert=cert_pem)
-            # Get public key as JWT key.
-            _jwt_key = _cert.public_key()
-            _jwt_key = RSAKey(key=_jwt_key)
-            # Decode outer JWT.
+            # send is for the realm/site we connect to. The outer JWT is signed by
+            # the site the user logged in to and the site we connect to verifies
+            # it. The inner JWT is the challenge the site we connect to signed.
             try:
                 jwt_data = _jwt.decode(jwt=self.jwt,
-                                    key=_jwt_key,
-                                    algorithm='RS256')
+                                    algorithm='RS256',
+                                    options={'verify_signature': False})
             except Exception as e:
                 msg = _("Unable to decode outer JWT: {error}")
                 msg = msg.format(error=e)
@@ -3652,7 +3641,7 @@ class OTPmeClient1(OTPmeClientBase):
             exception = AuthFailed
         if status_code == status_codes.HOST_DISABLED:
             exception = HostDisabled
-        if status_code == status_codes.HOST_DISABLED:
+        if status_code == status_codes.NO_CLUSTER_SERVICE:
             exception = NoClusterService
 
         if exception:

@@ -524,7 +524,13 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'change_access_group',
-                    'args'              : ['access_group'],
+                    # Optional, the way the usage line has always said
+                    # it is: without a group change_access_group()
+                    # clears the one that is set, and as a required
+                    # argument that was unreachable -- mgmt1 refused
+                    # the command with "Missing required argument"
+                    # before the method ever ran.
+                    'oargs'             : ['access_group'],
                     'job_type'          : 'process',
                     },
                 },
@@ -744,7 +750,13 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['token_options', 'login_interfaces', 'sign', 'tags', 'skip_portal_token'],
+                    # No sign/tags: add_token() of the client signs
+                    # nothing, see there. No login_interfaces either:
+                    # authorize_token() asks a client without naming an
+                    # interface, so a positive interface option on such
+                    # an assignment matches nothing and would refuse
+                    # every login through this client.
+                    'oargs'             : ['token_options', 'skip_portal_token'],
                     'job_type'          : 'process',
                     },
                 },
@@ -814,62 +826,10 @@ commands = {
                     },
                 },
             },
-    'add_extension'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'add_extension',
-                    'args'              : ['extension'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'remove_extension'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'remove_extension',
-                    'args'              : ['extension'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'add_attribute'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'add_attribute',
-                    'args'              : ['attribute'],
-                    'oargs'             : ['value'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'del_attribute'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'del_attribute',
-                    'args'              : ['attribute'],
-                    'oargs'             : ['value'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'add_object_class'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'add_object_class',
-                    'args'              : ['object_class'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'del_object_class'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'del_object_class',
-                    'args'              : ['object_class'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
+    # No add_extension/add_attribute/add_object_class here, and no
+    # remove counterparts: a client is no LDAP object and no extension
+    # names "client" among its object types, so there is nothing for
+    # them to add. The methods of the parent class stay as they are.
     'add_acl'   : {
             'default'    : {
                 'exists'    : {
@@ -1218,6 +1178,7 @@ def register_backend():
         return backend.rebuild_object_index("client", objects, after)
     # Register object to config.
     config.register_object_type(object_type="client",
+                            version=1,
                             tree_object=True,
                             uniq_name=True,
                             add_after=["host"],
@@ -3359,50 +3320,6 @@ class Client(OTPmeClientObject):
         self.radius_reload = True
         return callback.ok()
 
-    @check_acls(['add:role'])
-    @object_lock()
-    def add_role(
-        self,
-        role_name: str=None,
-        role_uuid: str=None,
-        return_uuid: bool=False,
-        verbose_level: int=0,
-        _caller: str="API",
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Adds a role to objects member roles list and add role to default scopes. """
-        add_status = super().add_role(role_name=role_name,
-                                        role_uuid=role_uuid,
-                                        return_uuid=True,
-                                        verbose_level=verbose_level,
-                                        _caller=_caller,
-                                        callback=callback,
-                                        **kwargs)
-        if not add_status:
-            return callback.error()
-
-        role_uuid = add_status
-        role_oid = backend.get_oid(uuid=role_uuid, instance=True)
-
-        scopes = self.get_scopes(include_roles=False,
-                                skip_disabled=True,
-                                return_type="uuid")
-
-        for scope_uuid in scopes:
-            scope = backend.get_object(uuid=scope_uuid)
-            if not scope:
-                continue
-            if not scope.auto_member:
-                continue
-            scope.add_role(role_name=role_oid.name,
-                            force=True,
-                            verify_acls=False,
-                            callback=callback)
-        if return_uuid:
-            return role_uuid
-        return callback.ok()
-
     @check_acls(['add:token'])
     @object_lock()
     def add_token(
@@ -3415,10 +3332,30 @@ class Client(OTPmeClientObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Adds a token to objects member tokens list and add token to default scopes. """
+        """ Adds a token to objects member tokens list, and with the SSO
+        token of a portal the tokens the portal manages.
+
+        Never signs the assignment. A token signature is verified in
+        one place, the authorized_keys a host writes (see lib/ssh.py),
+        and what is asked for there is whose token it is and which key
+        options it carries -- never which client it was assigned to. So
+        a signature made here says nothing to anybody, and the one
+        thing it does do is count as a valid signature of that token
+        somewhere else. auto_sign is not a parameter of a client for
+        the same reason, so neither a request nor a config parameter
+        gets to make one.
+        """
+        # Dropped rather than passed on: both are named below, and a
+        # caller that sent one of them would otherwise end in
+        # "multiple values for keyword argument".
+        kwargs.pop('sign', None)
+        kwargs.pop('auto_sign', None)
+        kwargs.pop('tags', None)
         add_status = super().add_token(token_path=token_path,
                                         return_uuid=True,
                                         force=force,
+                                        sign=False,
+                                        auto_sign=False,
                                         _caller=_caller,
                                         verbose_level=verbose_level,
                                         callback=callback,
@@ -3427,22 +3364,7 @@ class Client(OTPmeClientObject):
             return callback.error()
 
         token_uuid = add_status
-        token_oid = backend.get_oid(uuid=token_uuid, instance=True)
 
-        scopes = self.get_scopes(include_roles=False,
-                                skip_disabled=True,
-                                return_type="uuid")
-
-        for scope_uuid in scopes:
-            scope = backend.get_object(uuid=scope_uuid)
-            if not scope:
-                continue
-            if not scope.auto_member:
-                continue
-            scope.add_token(token_path=token_oid.rel_path,
-                            force=True,
-                            verify_acls=False,
-                            callback=callback)
         # The SSO token of a portal brings the tokens the portal manages.
         self._add_portal_tokens(token_path,
                                 force=force,

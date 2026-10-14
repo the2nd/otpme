@@ -7,7 +7,6 @@ from fido2.utils import sha256
 from fido2.ctap1 import SignatureData
 from fido2.ctap1 import RegistrationData
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import padding
 
 from typing import Union
 
@@ -163,7 +162,7 @@ def register_hooks():
 
 def register_token_type():
     """ Register token type. """
-    config.register_sub_object_type("token", "u2f")
+    config.register_sub_object_type("token", "u2f", version=1)
 
 def register_config_parameters():
     """ Registger config parameters. """
@@ -371,13 +370,11 @@ class U2fToken(Token):
                 msg = _("Failed to load fido2 CA cert: {subject}")
                 msg = msg.format(subject=subject)
                 return callback.error(msg)
-            # Verify signature.
-            ca_cert_public_key = ca_cert.public_key()
+            # Verify signature. Left to the library, which knows how
+            # each key type signs (see verify_attestation_cert() of
+            # the fido2 token).
             try:
-                ca_cert_public_key.verify(attestation_cert.signature,
-                                    attestation_cert.tbs_certificate_bytes,
-                                    padding.PKCS1v15(),
-                                    attestation_cert.signature_hash_algorithm)
+                attestation_cert.verify_directly_issued_by(ca_cert)
             except Exception as e:
                 msg = _("Failed to verify signature: {error}")
                 msg = msg.format(error=e)

@@ -212,6 +212,20 @@ class ObjectConfig(object):
             return True
         return False
 
+    def forget_changes_since(self, modified_attributes, deleted_attributes):
+        """ Count as changed what was counted before, and nothing since.
+
+        For a change to the config that is not a change to the object:
+        bringing a config up to the version of the code, when what is
+        stored stays as it is (see OTPmeBaseObject._load() and
+        _write()). Without this the object would be written again
+        every time, to store what is stored already.
+
+        The caller hands in the two lists as it copied them before.
+        """
+        self.modified_attributes[:] = modified_attributes
+        self.deleted_attributes[:] = deleted_attributes
+
     def reset_modified(self):
         self.modified_attributes.clear()
         self.deleted_attributes.clear()

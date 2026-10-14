@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-import time
 import importlib
 from typing import List
 from typing import Union
@@ -16,10 +15,10 @@ except Exception:
 
 from otpme.lib import oid
 from otpme.lib import cli
-from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
+from otpme.lib import worker_pool
 from otpme.lib import multiprocessing
 from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
@@ -48,79 +47,9 @@ default_callback = config.get_callback()
 
 logger = config.logger
 
-# From how many members on it is worth starting workers at all. Below
-# that the forking and the queues cost more than they save.
-ACL_WORKER_MIN_MEMBERS = 500
-
-# How many progress lines go over the connection in one message. One
-# message per line is more than the connection takes where the walk is
-# quick: five ACLs on fourteen thousand objects are seventy thousand of
-# them, and the walk outruns the client.
-ACL_MESSAGE_BLOCK = 100
-
-# How many seconds may pass without anything going to the client, in
-# seconds. Whatever has piled up goes then, and if there is nothing --
-# with verbose off there are no progress lines at all -- a keepalive goes
-# instead, or the connection of the job times out. Same cadence the mass
-# add uses (see mgmt1.py).
-ACL_KEEPALIVE_INTERVAL = 1
-
-
-def get_acl_workers(procs=None):
-    """ How many workers walk the members of a unit.
-
-    A quarter of the cores, and not more, because the node goes on
-    answering logins while this runs: authd and ldapd want cores too,
-    and a bulk ACL change is not more urgent than somebody signing in.
-    A quarter is also where the measurements sit -- four workers on
-    sixteen cores took a walk over 28095 users from 19:36 to 7:26,
-    which is a factor of 2.6 and so 65% of what four could give. The
-    curve is flat enough by then that taking half would not buy half
-    again. Whoever knows the node has nothing else to do says --procs.
-
-    The cores this process may actually use, which on a machine that
-    was given a subset is not what os.cpu_count() answers.
-    """
-    if procs:
-        return max(1, int(procs))
-    try:
-        cores = len(os.sched_getaffinity(0))
-    except AttributeError:
-        cores = os.cpu_count() or 1
-    return max(1, int(cores / 4))
-
-# Set in a worker, so it does not start a pool of its own: a member that
-# is a unit is walked where it was handed to, and a sub unit with enough
-# members below it would otherwise fork four more workers per worker.
-# A module level name, which is per process, which is what a worker is.
-in_acl_worker = False
-
-
-class AclWorkerCallback(JobCallback):
-    """ A callback that keeps the messages instead of sending them.
-
-    A worker has no business writing to the connection of the job: the
-    workers of one walk would be writing to the same socket, and what
-    the client reads would be their output cut into each other. So a
-    worker collects what it would have said and hands it back with its
-    result, and the process that owns the connection sends it.
-    """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.messages = []
-
-    def send(self, message='\0OTPME_NULL\0', error=False, **kwargs):
-        if message == '\0OTPME_NULL\0':
-            return True
-        self.messages.append((bool(error), str(message)))
-        return True
-
-    def take_messages(self):
-        """ What was said since the last time somebody asked. """
-        messages = self.messages
-        self.messages = []
-        return messages
-
+# The workers that walk the members of a unit, how many there are and
+# from how many members on they are started at all, are in
+# otpme.lib.worker_pool.
 
 read_acls = []
 write_acls = []
@@ -795,6 +724,7 @@ def register_backend():
         return backend.rebuild_object_index("unit", objects, after)
     # Register object to config.
     config.register_object_type(object_type="unit",
+                            version=1,
                             tree_object=True,
                             uniq_name=False,
                             add_after=["site"],
@@ -1011,7 +941,8 @@ class Unit(OTPmeObject):
         # on its own -- so the only thing a worker needs is which one to
         # do, and the time goes into the index and the caches, which
         # take more than one process at a time.
-        if member_count >= ACL_WORKER_MIN_MEMBERS and not in_acl_worker:
+        if member_count >= worker_pool.WORKER_MIN_ITEMS \
+        and not worker_pool.in_worker:
             return self.handle_acl_members_in_workers(members,
                                             member_count=member_count,
                                             action=action,
@@ -1046,310 +977,64 @@ class Unit(OTPmeObject):
         acls, callback=default_callback, **member_kwargs):
         """ Walk the members of this unit with a pool of workers.
 
-        Built like the one that merges a sync (sync1.py): a pool that
-        stays for the whole walk, work and results over POSIX message
-        queues, and a parent that counts what it pushed against what
-        came back so a worker that dies does not make it wait for ever.
+        The pool is the one in otpme.lib.worker_pool, see there for how
+        it is built and why.
 
         What travels the queue is the type and the UUID of a member,
         which is small. Everything a worker needs besides -- the ACLs of
         this walk, what to do with them, who is asking -- it inherits
         when it is forked; none of that changes while the walk runs.
 
-        The messages come back with the results and are sent from here.
-        A worker must not write to the connection of the job: they would
-        all be writing to the same socket.
+        The lines of a member say where in the walk it is ("3/100"), so
+        they are said in the order the members went out.
         """
-        from otpme.lib.multiprocessing import MessageQueue
+        def handle_member(item, worker_callback):
+            # True or False: anything that is not a yes is a failure
+            # here, and the pool takes only False for one.
+            status = self.handle_acl_member(action, acls,
+                                object_type=item['type'],
+                                member_uuid=item['uuid'],
+                                member_progress={
+                                            'pos'   : item['pos'],
+                                            'total' : member_count,
+                                            },
+                                callback=worker_callback,
+                                **member_kwargs)
+            return bool(status)
 
-        queue_id = stuff.gen_uuid()
-        work_queue = MessageQueue(name="acl_work", identifier=queue_id)
-        result_queue = MessageQueue(name="acl_result", identifier=queue_id)
-
-        workers = []
-        # Out of the kwargs of the members and not a named argument of
-        # our own: they carry it down to a member that is a unit, and
-        # naming it here as well would be the same argument twice.
-        worker_count = get_acl_workers(member_kwargs.get("procs"))
-        for x in range(worker_count):
-            worker = multiprocessing.start_process(
-                                name=f"acl_worker_{x}",
-                                target=self._acl_worker_loop,
-                                hard_exit=True,
-                                target_args=(work_queue, result_queue,
-                                            action, acls, member_count,
-                                            member_kwargs),
-                                daemon=True,
-                                start=True)
-            workers.append(worker)
-
-        exception = False
-        pushed = 0
-        seen = 0
-        # The messages of a member that is done, by its place in the
-        # walk. A worker answers when it is done, so the answers do not
-        # come back in the order the members went out, and the lines the
-        # user reads would count up and down again. They are kept here
-        # until the one before them has been said. What is held back is
-        # what the workers have in their hands, so a handful of members.
-        waiting_messages = {}
-        next_pos = 1
-
-        # The lines on their way to the client, and when something last
-        # went. They go in blocks, and where nothing goes for a while a
-        # keepalive goes instead.
-        message_block = []
-        last_sent = [time.time()]
-
-        def flush_messages():
-            if not message_block:
-                return
-            callback.send("\n".join(message_block))
-            message_block.clear()
-            last_sent[0] = time.time()
-
-        def say(messages):
-            for is_error, text in messages:
-                if not is_error:
-                    message_block.append(text)
-                    continue
-                # An error goes on its own and at once, but in its place:
-                # what was said before it goes first.
-                flush_messages()
-                callback.send(text, error=True)
-                last_sent[0] = time.time()
-            if len(message_block) >= ACL_MESSAGE_BLOCK:
-                flush_messages()
-
-        def keep_the_line_open():
-            """ Let the client hear something now and then.
-
-            Whatever has piled up, or a keepalive where nothing has. With
-            verbose off no progress lines are made at all, and then this is
-            the only thing that travels -- without it the job's connection
-            times out on a long walk.
-            """
-            if time.time() - last_sent[0] < ACL_KEEPALIVE_INTERVAL:
-                return
-            if message_block:
-                flush_messages()
-                return
-            callback.keepalive()
-            last_sent[0] = time.time()
-
-        def say_in_order(pos, messages):
-            """ Say this one once everything before it has been said. """
-            nonlocal next_pos
-            if pos is None:
-                say(messages)
-                return
-            waiting_messages[pos] = messages
-            while next_pos in waiting_messages:
-                say(waiting_messages.pop(next_pos))
-                next_pos += 1
-
-        def say_the_rest():
-            """ Say what is left, whatever is missing before it. """
-            nonlocal next_pos
-            for pos in sorted(waiting_messages):
-                say(waiting_messages.pop(pos))
-                next_pos = pos + 1
-
-        def drain(timeout=0):
-            """ Take what came back and say it. """
-            nonlocal seen, exception
-            drained = 0
-            while True:
-                x_timeout = timeout if drained == 0 else 0
-                try:
-                    msg = result_queue.recv(timeout=x_timeout)
-                except TimeoutReached:
-                    break
-                except (QueueClosed, ExitOnSignal):
-                    break
-                if msg is None:
-                    break
-                drained += 1
-                seen += 1
-                say_in_order(msg.get("pos"), msg.get("messages") or [])
-                if not msg.get("status"):
-                    exception = True
-            return drained
-
-        try:
+        def get_items():
+            pos = 0
             for object_type in members:
                 try:
                     object_uuids = members[object_type]
                 except Exception:
                     continue
                 for x_uuid in object_uuids:
-                    pushed += 1
-                    work_queue.send({
-                                'type'  : object_type,
-                                'uuid'  : x_uuid,
-                                'pos'   : pushed,
-                                })
-                    drain()
-                    keep_the_line_open()
+                    pos += 1
+                    yield {
+                            'type'  : object_type,
+                            'uuid'  : x_uuid,
+                            'pos'   : pos,
+                            }
 
-            # Ten seconds without a single result, at half a second a
-            # look. A worker takes one member at a time, so one that
-            # dies takes that one with it and no result for it is ever
-            # sent -- waiting for all of them to die first would mean
-            # waiting while the others sit idle.
-            quiet_rounds = 0
-            while seen < pushed:
-                if drain(timeout=0.5) > 0:
-                    quiet_rounds = 0
-                    keep_the_line_open()
-                    continue
-                keep_the_line_open()
-                quiet_rounds += 1
-                alive = sum(1 for w in workers if w.is_alive())
-                dead = len(workers) - alive
-                outstanding = pushed - seen
-                if alive > 0:
-                    if dead < outstanding:
-                        continue
-                    if quiet_rounds < 20:
-                        continue
-                drain()
-                lost = pushed - seen
-                if lost > 0:
-                    exception = True
-                    # Whatever was being held back for the members that
-                    # never came back has to be said now, out of order or
-                    # not, or it would be dropped. And before the line
-                    # below it, which does not go through say().
-                    say_the_rest()
-                    flush_messages()
-                    msg = _("Lost {count} object(s): {dead} worker(s) gone.")
-                    msg = msg.format(count=lost, dead=dead)
-                    callback.send(msg, error=True)
-                break
+        # Out of the kwargs of the members and not a named argument of
+        # our own: they carry it down to a member that is a unit, and
+        # naming it here as well would be the same argument twice.
+        pool = worker_pool.WorkerPool(name="acl",
+                                    handler=handle_member,
+                                    callback=callback,
+                                    procs=member_kwargs.get("procs"),
+                                    ordered=True)
+        pool.start()
+        try:
+            status = pool.run(get_items())
         finally:
-            # Whatever is still held back goes now, whichever way this was
-            # left -- the lines are of no use to anybody in here.
-            say_the_rest()
-            flush_messages()
-            # One sentinel per worker, and a timeout on it: a worker
-            # that is already gone takes none, and the queue would fill
-            # up and hold us here.
-            for _worker in workers:
-                try:
-                    work_queue.send({'stop': True}, timeout=5)
-                except Exception:
-                    pass
-            for worker in workers:
-                try:
-                    worker.join(timeout=10)
-                    if worker.is_alive():
-                        worker.terminate()
-                        worker.join(timeout=5)
-                except Exception:
-                    pass
-            # Closed and unlinked: a posix message queue outlives the
-            # process that made it until somebody takes it out of the
-            # kernel.
-            for queue in [work_queue, result_queue]:
-                for method in ["close", "unlink"]:
-                    try:
-                        getattr(queue, method)()
-                    except Exception:
-                        pass
+            pool.stop()
 
-        if exception:
+        if not status:
             return callback.error()
 
         return callback.ok()
-
-    def _acl_worker_loop(self, work_queue, result_queue, action, acls,
-        member_count, member_kwargs):
-        """ Take one member at a time and put the ACLs of the walk on it.
-
-        Every turn ends in exactly one result, whatever happened, or the
-        parent waits for one that is never coming.
-        """
-        import signal
-        import setproctitle
-
-        global in_acl_worker
-        in_acl_worker = True
-
-        # A worker has nobody to ask. The policies that want an answer
-        # from whoever gave the command -- an auth_on_action wanting
-        # them to authenticate again -- ran once before the walk
-        # started, in the process that has the connection (see
-        # add_acl()). Asking again from here would be asking the void.
-        if "interactive" not in config.ignore_policy_tags:
-            config.ignore_policy_tags.append("interactive")
-
-        parent_pid = os.getppid()
-
-        proctitle = setproctitle.getproctitle()
-        setproctitle.setproctitle(f"{proctitle}: ACL worker")
-
-        # Our own database and cache connections, once per worker.
-        multiprocessing.atfork()
-
-        # Remembered and acted on between two members, so a write that
-        # was running when the signal came is finished first.
-        stop_flag = [False]
-        def signal_handler(_signal, _frame):
-            stop_flag[0] = True
-        signal.signal(signal.SIGTERM, signal_handler)
-        signal.signal(signal.SIGINT, signal_handler)
-
-        while True:
-            if stop_flag[0] and not config.active_transactions:
-                return
-            if os.getppid() != parent_pid:
-                # A note and not a warning. Nobody is waiting for this
-                # worker any more, so there is nothing wrong with it going;
-                # whether anything was lost is counted by the process that
-                # handed the members out, and that one says so ("Lost N
-                # object(s)"). As a warning it made the end of every walk
-                # look like a fault, once per worker.
-                log_msg = _("ACL worker ending: the process that started it is gone.", log=True)[1]
-                logger.debug(log_msg)
-                return
-            try:
-                msg = work_queue.recv(timeout=1)
-            except TimeoutReached:
-                continue
-            except (QueueClosed, ExitOnSignal):
-                return
-            if msg is None:
-                continue
-            if msg.get("stop"):
-                return
-            member_uuid = msg.get("uuid")
-            worker_callback = AclWorkerCallback(name="acl_worker")
-            status = False
-            try:
-                status = self.handle_acl_member(action, acls,
-                                    object_type=msg.get("type"),
-                                    member_uuid=member_uuid,
-                                    member_progress={
-                                                'pos'   : msg.get("pos"),
-                                                'total' : member_count,
-                                                },
-                                    callback=worker_callback,
-                                    **member_kwargs)
-            except Exception as e:
-                log_msg = _("Failed to handle ACLs of {uuid}: {error}", log=True)[1]
-                log_msg = log_msg.format(uuid=member_uuid, error=e)
-                logger.critical(log_msg)
-                worker_callback.send(str(e), error=True)
-            try:
-                result_queue.send({
-                            'uuid'      : member_uuid,
-                            'pos'       : msg.get("pos"),
-                            'status'    : bool(status),
-                            'messages'  : worker_callback.take_messages(),
-                            })
-            except (QueueClosed, ExitOnSignal):
-                return
 
     def handle_acl_member(self, action, acls, object_type, member_uuid,
         member_progress, inherit_method, recursive_acls=False,

@@ -3763,6 +3763,8 @@ class BackupClient:
         log_msg = _("Done: {file_count} files, {skipped_files} skipped, {new_blocks} new blocks, {dedup_blocks} dedup blocks", log=True)[1]
         log_msg = log_msg.format(file_count=file_count, skipped_files=skipped_files, new_blocks=new_blocks, dedup_blocks=dedup_blocks)
         log_lines.append(log_msg)
+        # "% s" of "% saved" is no %-placeholder.
+        # xgettext: no-python-format
         log_msg = _("Data: {total_mb} MiB total -> {stored_mb} MiB stored ({saved_pct}% saved)", log=True)[1]
         log_msg = log_msg.format(total_mb=f"{total_mb:.2f}",
                          stored_mb=f"{stored_mb:.2f}",

@@ -471,6 +471,12 @@ class OTPmeLock(OTPmeFakeLock):
                                                     log_wait_message=True,
                                                     callback=self.callback)
             if not lock_status:
+                # Not got, and no caller of ours holds it: let go of the
+                # file, or every busy lock asked for once stays open here.
+                # replay_transactions() asks for each transaction of
+                # somebody else on every read.
+                self.flock.close()
+                self.forget_lock()
                 raise LockWaitTimeout()
 
             if config.debug_level("locking") > 0:

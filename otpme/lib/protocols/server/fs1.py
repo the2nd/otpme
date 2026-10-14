@@ -229,6 +229,36 @@ class OTPmeFsP1(OTPmeFsServer1):
                 self.deny_access = True
                 continue
 
+            # The forced group of a mount that is there. Checked before
+            # access is given back: a user who is not in the group is
+            # refused at mount, and a mount that is running cannot give
+            # a file to a group its process is not in either.
+            if not self.restore_share and 'force_group' in response:
+                force_group = response['force_group']
+                if force_group is None:
+                    self.force_group_gid = None
+                else:
+                    try:
+                        force_group_gid = grp.getgrnam(force_group).gr_gid
+                    except KeyError:
+                        force_group_gid = None
+                    is_member = False
+                    if force_group_gid is not None:
+                        if os.geteuid() == 0:
+                            is_member = True
+                        elif force_group_gid == os.getegid():
+                            is_member = True
+                        elif force_group_gid in os.getgroups():
+                            is_member = True
+                    if not is_member:
+                        if not self.deny_access:
+                            log_msg = _("Share access denied: {share}: User not in force group: {group_name}", log=True)[1]
+                            log_msg = log_msg.format(share=self.share, group_name=force_group)
+                            self.logger.warning(log_msg)
+                        self.deny_access = True
+                        continue
+                    self.force_group_gid = force_group_gid
+
             self.deny_access = False
 
             # Nothing more to do for restore shares.
@@ -322,9 +352,11 @@ class OTPmeFsP1(OTPmeFsServer1):
             if self.try_other_node:
                 multiprocessing.cleanup(keep_queues=True)
                 os._exit(0)
-            status = status_codes.PERMISSION_DENIED
-            message, log_msg = _("Permission denied.", log=True)
+            log_msg = _("{user}: Permission denied", log=True)[1]
+            log_msg = log_msg.format(user=self.username)
             self.logger.warning(log_msg)
+            status = status_codes.PERMISSION_DENIED
+            message = _("Permission denied.")
             response = {'try_other_node':self.try_other_node, 'message':message}
             return self.build_response(status, response)
 
@@ -427,6 +459,18 @@ class OTPmeFsP1(OTPmeFsServer1):
                 log_msg = log_msg.format(share=self.share)
                 self.logger.warning(log_msg)
                 response = {'try_other_node':False, 'message':message}
+                return self.build_response(status, response)
+            # Only a node of the share serves it. The client may hold
+            # an old list of nodes, so it is sent on to the next one.
+            share_node_uuids = share.get_nodes(include_pools=True,
+                                            return_type="uuid")
+            if config.uuid not in share_node_uuids:
+                status = status_codes.PERMISSION_DENIED
+                message, log_msg = _("Share is not served by this node: {share}", log=True)
+                message = message.format(share=self.share)
+                log_msg = log_msg.format(share=self.share)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
                 return self.build_response(status, response)
             self.home_share = share.home_share
             self.home_share_uid = share.home_share_uid
@@ -908,7 +952,10 @@ class OTPmeFsP1(OTPmeFsServer1):
                     share_key_share = share
                     if self.restore_share:
                         share_key_share = restore_share
+                    # No policies: the mount is not a session anybody
+                    # could be asked to authenticate again in.
                     share_key = share_key_share.get_share_key(username=config.auth_user.name,
+                                                            run_policies=False,
                                                             verify_acls=False)
                     if not share_key:
                         status = status_codes.PERMISSION_DENIED

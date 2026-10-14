@@ -1,4 +1,4 @@
-.TH OTPME-INVENTORY 1 "2026-09-18" "OTPme 0.3.0a278" "OTPme Manual"
+.TH OTPME-INVENTORY 1 "2026-10-10" "OTPme 0.3.0a281" "OTPme Manual"
 .SH NAME
 otpme-inventory \- show the system, the packages and the hardware of hosts
 .SH SYNOPSIS
@@ -7,21 +7,22 @@ otpme-inventory \- show the system, the packages and the hardware of hosts
 [\fIoptions\fR]
 .SH DESCRIPTION
 .B otpme-inventory
-shows which system a host runs, which packages are installed on it, and what it is made of.
-You can also search for hosts that have a package, run a system version, or have certain hardware.
+shows which system a host runs, which kernel it is running, whether it has to be rebooted, which packages are installed on it, and what it is made of.
+You can also search for hosts that have a package, run a system version or a kernel, wait for a reboot, or have certain hardware.
 .PP
 Use it to find the hosts a job has to run on, for example all hosts with an old version of a package.
 See
 .BR otpme\-deploy (1).
 Use it to find a machine by its serial number, or to see how much memory and disk a host has.
+Use it to find the hosts that still have to be rebooted, see \fBWHEN A HOST HAS TO BE REBOOTED\fR.
 .PP
 The \fBconfd\fR daemon on each host (and node) reports this data to the nodes of its site.
 It checks the host every 60 seconds and only sends what changed.
 It does not take stock while a job is running on the host.
 A package manager at work is no good moment for it, the next round does it.
 .PP
-The OS, the OS version, the packages and the hardware are stored in a separate inventory object for each host, not on the host object.
-All four are what the host reported about itself, and an inventory has to stand on its own.
+The OS, the OS version, the kernel, the reboot, the packages and the hardware are stored in a separate inventory object for each host, not on the host object.
+All of it is what the host reported about itself, and an inventory has to stand on its own.
 Host objects are synced to all hosts, and the package lists of all hosts should not be, so the inventory stays on the nodes of the host's site.
 .PP
 Changing the inventory does not change the last modified time of the host.
@@ -34,13 +35,13 @@ See \fBPERMISSIONS\fR below.
 .PP
 Shown are the hosts whose inventory this site keeps: its own, and those of other sites that report here, see \fBA CENTRAL INVENTORY\fR.
 .PP
-The hardware is read on any Linux host.
-Package lists need a package manager the host knows, which today means Debian and Ubuntu.
-A host without one still reports its system and its hardware.
+The hardware is read on any Linux host, and the system and the kernel on any host at all.
+Package lists need a package manager the host knows, which today means Debian and Ubuntu, and so does the answer whether the host has to be rebooted.
+A host without one still reports its system, its kernel and its hardware.
 .SH COMMANDS
 .TP
 .B show \fIhost\fR
-Show the OS, the OS version, the number of packages, the vendor, the model, the serial number and the time of the last update.
+Show the OS, the OS version, the running kernel, whether the host has to be rebooted, the number of packages, the vendor, the model, the serial number and the time of the last update.
 .TP
 .B packages \fR[\fB\-\-filter\fR \fIpattern\fR] \fIhost\fR
 List the packages of a host, one per line with name and version.
@@ -50,8 +51,8 @@ Show what a host is made of: CPU, memory, disks, serial number and so on.
 Sizes are shown in human form, for example \fB9.7G\fR.
 Says so if the host has not reported its hardware yet.
 .TP
-.B search \fR[\fB\-\-host\fR \fIhost\fR] [\fB\-\-os\-version\fR \fIversion\fR] [\fB\-\-hardware\fR \fIexpression\fR] [\fIpackage\fR]
-Find hosts by package, by OS version, or by hardware.
+.B search \fR[\fB\-\-host\fR \fIhost\fR] [\fB\-\-os\-version\fR \fIversion\fR] [\fB\-\-kernel\fR \fIkernel\fR] [\fB\-\-reboot\-required\fR] [\fB\-\-hardware\fR \fIexpression\fR] [\fIpackage\fR]
+Find hosts by package, by OS version, by kernel, by a waiting reboot, or by hardware.
 \fIpackage\fR is a package name, or a name and a version in the form \fIname\fB=\fIversion\fR.
 Both can contain wildcards (\fB*\fR).
 Every option you give has to match, so they narrow the result down.
@@ -60,6 +61,7 @@ You have to give at least one of them.
 Each line says a host and what made it match.
 With a \fIpackage\fR that is the package and its version, one line per package.
 With \fB\-\-hardware\fR it is the value that matched.
+With \fB\-\-reboot\-required\fR it is the host name alone, because the answer is the same for every host that is listed.
 A host has several disks, and then only the disks that match are shown, with their name.
 So a search for \fB'disk_size>=100G'\fR shows \fBsdb=150.0G\fR and not all disks of the host.
 Behind the size comes what says which disk it is, the vendor, the model and the serial, where the host knows them: \fBsdb=150.0G(SEAGATE ST1000NM0055 ZA12345)\fR.
@@ -75,6 +77,16 @@ Use it to search the packages of one host instead of listing all of them.
 .B \-\-os\-version \fIversion\fR
 Only hosts with this OS version, for example \fBdebian\-12\fR.
 Wildcards are allowed, for example \fB'debian\-*'\fR.
+.TP
+.B \-\-kernel \fIkernel\fR
+Only hosts running this kernel, for example \fB6.1.0\-37\-amd64\fR.
+Wildcards are allowed, for example \fB'6.1.0\-3*'\fR.
+.TP
+.B \-\-reboot\-required
+Only hosts that have to be rebooted to run what is installed on them.
+Takes no value.
+Hosts that answered no, and hosts that cannot say, are left out.
+See \fBWHEN A HOST HAS TO BE REBOOTED\fR.
 .TP
 .B \-\-hardware \fIexpression\fR
 Only hosts whose hardware matches.
@@ -172,10 +184,72 @@ See \fBPERMISSIONS\fR.
 .PP
 A host that reported to its own site before keeps that inventory there.
 It is not moved and not deleted, and it stops being updated.
-.SH OS AND OS VERSION
+.SH OS, OS VERSION AND KERNEL
 \fBos\fR is \fBLinux\fR, \fBWindows\fR or \fBMacOS\fR.
 \fBos_version\fR is the ID and the version from \fI/etc/os\-release\fR, for example \fBdebian\-13\fR or \fBubuntu\-24.04\fR.
 A system without a version number uses its code name, for example \fBdebian\-trixie\fR.
+.PP
+\fBkernel\fR is the kernel the host is running, the way \fBuname \-r\fR says it, for example \fB6.1.0\-37\-amd64\fR.
+.PP
+Running, not installed.
+A host that took a kernel update and was not rebooted has the new kernel installed and the old one running, and its package list cannot tell you that: the package is there either way.
+So this is the one value an inventory cannot work out from the rest of itself.
+.PP
+The kernel packages of a host say which kernels are installed, and
+.B show
+says which one is running.
+A host where the two do not match is waiting for a reboot:
+.PP
+.RS
+.nf
+$ otpme\-inventory search \-\-host server1 'linux\-image\-6*'
+server1 linux\-image\-6.1.0\-38\-amd64=6.1.146\-1
+$ otpme\-inventory show server1
+host: server1
+os: Linux
+os_version: debian\-12
+kernel: 6.1.0\-37\-amd64
+\&...
+.fi
+.RE
+.PP
+You do not have to compare them yourself.
+The host does it and says so, see \fBWHEN A HOST HAS TO BE REBOOTED\fR.
+.SH WHEN A HOST HAS TO BE REBOOTED
+.B reboot_required
+is \fByes\fR when the host has to be rebooted to run what is installed on it, \fBno\fR when it does not, and \fB\-\fR when the host cannot say.
+.PP
+The host works this out itself, because what says it differs from system to system.
+On Debian and Ubuntu two things are asked:
+.RS
+.IP \(bu 2
+\fI/var/run/reboot\-required\fR, the file a package writes when it needs a reboot.
+Not only the kernel does that, libc and systemd ask for one too.
+The file is written by \fBupdate\-notifier\-common\fR or by \fBneedrestart\fR.
+Ubuntu has one of them, Debian usually has neither, and then the file never shows up however much the host needs a reboot.
+.IP \(bu 2
+The kernel, compared.
+The newest kernel that is installed against the one that is running, and for a kernel that was updated in place \(em same \fBuname \-r\fR, new package version \(em the version of the package against the version the running kernel was built from.
+This needs nothing installed, and the kernel is the reason for a reboot in nearly every case.
+.RE
+.PP
+So a plain Debian host says \fByes\fR for a kernel and \fBno\fR for everything else.
+Install
+.B needrestart
+there if a reboot that libc or systemd asks for should show up as well.
+.PP
+\fB\-\fR means the host said nothing.
+Either there is no handler for its system, and then it reports its kernel and its hardware but no packages and no reboot, or its running kernel has no package to compare against \(em a kernel built by hand \(em and nothing on it writes the file.
+.PP
+A host that says \fByes\fR goes on saying it until it is rebooted.
+Reboot it with
+.BR otpme\-deploy (1):
+.PP
+.RS
+.nf
+otpme\-deploy add \-\-host server1 \-\-expiry 1h host_mgmt reboot
+.fi
+.RE
 .SH PACKAGE NAMES
 Package names are the names dpkg uses.
 A multi-arch package has its architecture in the name, for example \fBlibc6:amd64\fR.
@@ -276,6 +350,8 @@ $ otpme\-inventory show client1
 host: client1
 os: Linux
 os_version: debian\-13
+kernel: 6.12.43\-amd64
+reboot_required: no
 packages: 686
 vendor: Dell Inc.
 model: PowerEdge R640
@@ -346,6 +422,54 @@ Show all hosts that run Debian 12.
 .TP
 .B otpme-inventory search \-\-os\-version 'debian\-*'
 Show all Debian hosts, whatever the version.
+.SS Find hosts by kernel
+.TP
+.B otpme-inventory search \-\-kernel 6.1.0\-37\-amd64
+Show all hosts running this kernel.
+.TP
+.B otpme-inventory search \-\-kernel '6.1.0\-3*'
+Show all hosts running a 6.1.0\-3 kernel.
+.PP
+The line says the kernel, so this is also how you see which kernels are running at all:
+.PP
+.RS
+.nf
+$ otpme\-inventory search \-\-kernel '*'
+client1 6.12.43\-amd64
+dev1 6.1.0\-37\-amd64
+server1 6.1.0\-37\-amd64
+server2 6.1.0\-38\-amd64
+.fi
+.RE
+.PP
+A host that has not reported since the kernel was added shows nothing here.
+It is left out, the same as a host that never reported at all.
+.SS Find hosts that have to be rebooted
+.TP
+.B otpme-inventory search \-\-reboot\-required
+Show all hosts that have to be rebooted to run what is installed on them.
+.PP
+The host name alone, because every host listed is one that has to be rebooted:
+.PP
+.RS
+.nf
+$ otpme\-inventory search \-\-reboot\-required
+dev1
+server1
+server2
+.fi
+.RE
+.PP
+Which kernel each of them runs is one question further:
+.PP
+.RS
+.nf
+$ otpme\-inventory search \-\-reboot\-required \-\-kernel '*'
+dev1 6.1.0\-37\-amd64
+server1 6.1.0\-37\-amd64
+server2 6.1.0\-38\-amd64
+.fi
+.RE
 .SS Find hosts by hardware
 .TP
 .B otpme-inventory search \-\-hardware service_tag=ABC1234
@@ -442,6 +566,12 @@ The Debian 13 hosts that have a disk larger than 1 TB.
 .TP
 .B otpme-inventory search \-\-os\-version debian\-12 \-\-hardware virtual=no openssl
 The physical Debian 12 machines that have openssl.
+.TP
+.B otpme-inventory search \-\-os\-version debian\-12 \-\-kernel '6.1.0\-37*'
+The Debian 12 hosts that still run this kernel.
+.TP
+.B otpme-inventory search \-\-reboot\-required \-\-os\-version debian\-12
+The Debian 12 hosts that have to be rebooted.
 .SH SEE ALSO
 .BR otpme (7),
 .BR otpme\-deploy (1),

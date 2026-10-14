@@ -25,6 +25,8 @@ from otpme.lib import cache
 from otpme.lib import trash
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib import worker_pool
+from otpme.lib import multiprocessing
 from otpme.lib.audit import audit_log
 from otpme.lib.audit import emit_audit
 from otpme.lib.classes.node import Node
@@ -70,6 +72,20 @@ DUMP_SCRIPTS = ['key_script.sh', 'agent_script.sh', 'login_script.sh']
 # has to stay small.
 SSO_LOGO_TYPES = ['image/png', 'image/jpeg']
 SSO_LOGO_MAX_SIZE = 512 * 1024
+
+# How long a retired OIDC signing key stays published, in seconds. The
+# default of the config parameter oidc_retired_max_age, and what a site
+# that does not have the parameter yet falls back to.
+OIDC_RETIRED_MAX_AGE = 7200
+
+# The algorithm an OIDC signing key signs with when none is named.
+OIDC_DEFAULT_ALGS = {
+                    'RSA'       : "RS256",
+                    'P-256'     : "ES256",
+                    'P-384'     : "ES384",
+                    'P-521'     : "ES512",
+                    'OKP'       : "EdDSA",
+                    }
 
 # What the profile page of the portal shows by default, in this order:
 # name first, then how to reach the user, then where and since when.
@@ -1028,6 +1044,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'upgrade',
+                    'oargs'             : ['all_objects', 'procs'],
                     'job_type'          : 'process',
                     },
                 },
@@ -2743,12 +2760,13 @@ def register_config():
                                     ctype=bool,
                                     default_value=True,
                                     object_types=['site', 'unit', 'client'])
-    # Whether the deprecated PKCE method ``plain`` is acceptable for
-    # the authorize flow. OAuth 2.1 §7.5.2 forbids ``plain`` because
-    # an attacker who steals the auth code immediately also has the
-    # verifier (verifier == challenge). Default False; the only use
-    # case for True is interop with a legacy RP that hardcodes plain
-    # and cannot be upgraded.
+    # Whether the PKCE method ``plain`` is acceptable for the authorize
+    # flow. With plain the challenge is the verifier, so whoever sees
+    # the authorization request has both. OAuth 2.1 §4.1.1 lets a
+    # client use plain only where it cannot do S256, and refusing it
+    # altogether is this implementation's own decision. Default False;
+    # the only use case for True is interop with a legacy RP that
+    # hardcodes plain and cannot be upgraded.
     config.register_config_parameter(name="oidc_allow_plain_pkce",
                                     ctype=bool,
                                     default_value=False,
@@ -2807,6 +2825,34 @@ def register_config():
                                     getter=oidc_access_token_ttl_getter,
                                     default_value=3600,
                                     object_types=['site', 'unit', 'client'])
+    # How long a retired signing key stays published after a renewal,
+    # so what it signed can still be checked. Past that it is left out
+    # of /jwks and of the discovery document, and the next renewal
+    # removes it for good. It should not be shorter than the longest
+    # oidc_access_token_ttl in use: an ID Token lives that long, and an
+    # RP checks it against /jwks. Of the site alone, because the keys
+    # are. Accepts human units (e.g. ``2h``, ``1D``); stored as int
+    # seconds on disk.
+    def oidc_retired_max_age_setter(value, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            return units.time2int(value, time_unit="s")
+        except Exception as err:
+            msg = _("Invalid OIDC retired key max age.")
+            raise ValueError(msg) from err
+    def oidc_retired_max_age_getter(value, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            return units.int2time(value, time_unit="s")[0]
+        except Exception as err:
+            msg = _("Invalid OIDC retired key max age.")
+            raise ValueError(msg) from err
+    config.register_config_parameter(name="oidc_retired_max_age",
+                                    ctype=int,
+                                    setter=oidc_retired_max_age_setter,
+                                    getter=oidc_retired_max_age_getter,
+                                    default_value=OIDC_RETIRED_MAX_AGE,
+                                    object_types=['site'])
     # Authentication Context Class Reference (acr) scheme used in
     # ID Tokens. Heuristic: hardware-backed (hwk/fido/sc) or explicit
     # mfa marker => "2", any single non-empty factor => "1", nothing
@@ -3179,7 +3225,6 @@ def register_config():
         return host_names
     config.register_config_parameter(name="allow_user_messages",
                                     ctype=list,
-                                    default_value=[],
                                     setter=allow_user_messages_setter,
                                     getter=allow_user_messages_getter,
                                     admin_only=True,
@@ -3350,6 +3395,7 @@ def register_backend():
     class_getter = lambda: Site
     # Register object to config.
     config.register_object_type(object_type="site",
+                            version=1,
                             tree_object=True,
                             add_before=["unit"],
                             add_after=["realm"],
@@ -3401,6 +3447,17 @@ class Site(OTPmeObject):
         self.address = None
         self.auth_enabled = True
         self.sync_enabled = True
+        # The version each object config of this site is written with,
+        # by object type ("token") and by sub type ("token:hotp"). A
+        # type that is not named is written with version 1. Nodes may
+        # run newer code than this; they bring a config up when they
+        # load it and take it down again when they write it (see
+        # OTPmeBaseObject.get_write_versions()).
+        self.config_versions = {}
+        # The workers of a running "otpme-site upgrade", and how many
+        # the command asked for. See write_objects_to_upgrade().
+        self._config_upgrade_pool = None
+        self._config_upgrade_procs = None
         self.oidc_enabled = False
         self.admin_token_uuid = None
         self._base_policies_post_methods = {}
@@ -3607,6 +3664,12 @@ class Site(OTPmeObject):
                                             'required'  : False,
                                         },
 
+            'CONFIG_VERSIONS'           : {
+                                            'var_name'  : 'config_versions',
+                                            'type'      : dict,
+                                            'required'  : False,
+                                        },
+
             'SSO_USER_ROLE'             : {
                                             'var_name'  : 'sso_user_role_uuid',
                                             'type'      : 'uuid',
@@ -3786,8 +3849,12 @@ class Site(OTPmeObject):
         """ Set instance variables. """
         return True
 
-    def verify_acl(self, action: str, **kwargs):
-        """ Verify ACLs required to allow <action>. """
+    def verify_acl(self, acl: str, **kwargs):
+        """ Verify ACLs required to allow <acl>.
+
+        The parameter is named as in OTPmeObject.verify_acl(), because
+        callers pass it by keyword.
+        """
         # A site is managed on the site itself: the realms/sites sync
         # overwrites our copy with the data we get from it and keeps only
         # the settings of sync_safe_acls (see otpme/lib/daemon/hostd.py).
@@ -3801,12 +3868,12 @@ class Site(OTPmeObject):
                 # Removing the site is not a change the sync could
                 # overwrite. Where a site may be removed is handled by
                 # mgmt1.
-                if action != "delete:object" and action not in sync_safe_acls:
-                    acl_type = action.split(":")[0]
+                if acl != "delete:object" and acl not in sync_safe_acls:
+                    acl_type = acl.split(":")[0]
                     if acl_type in write_acl_types:
                         return False
         # Finally try to verify ACL via parent class method.
-        return self._verify_acl(action, **kwargs)
+        return self._verify_acl(acl, **kwargs)
 
     def _write(self, **kwargs):
         """ Wrapper to make sure radius gets reloaded. """
@@ -3814,15 +3881,35 @@ class Site(OTPmeObject):
         if not self.radius_reload:
             return result
         self.radius_reload = False
-        reload_radius = True
-        if self.radius_cert and self.radius_key:
-            try:
-                check_ssl_cert_key(self.radius_cert, self.radius_key)
-            except Exception:
-                reload_radius = False
-        if reload_radius:
+        if self.check_radius_cert_key():
             cluster_radius_reload()
         return result
+
+    def check_radius_cert_key(self):
+        """ Check if the certificate and the key RADIUS gets fit together.
+
+        What it gets is what create_cert_files() writes: the RADIUS
+        certificate and key where they are set, those of the site where
+        they are not. So a certificate set without its key is checked
+        against the key of the site, which is what RADIUS would be
+        started with.
+        """
+        radius_cert = self.radius_cert or self.cert
+        radius_key = self.radius_key or self.key
+        if not radius_cert or not radius_key:
+            return True
+        try:
+            check_ssl_cert_key(radius_cert, radius_key)
+        except Exception:
+            return False
+        return True
+
+    def warn_radius_cert_key(self, callback: JobCallback=default_callback):
+        """ Tell the user about a certificate and a key that do not fit. """
+        if self.check_radius_cert_key():
+            return
+        msg = _("WARNING: RADIUS certificate and key do not match. RADIUS is not reloaded and keeps what it has until they do.")
+        callback.send(msg)
 
     def get_master_site(self):
         own_realm = backend.get_object(uuid=config.realm_uuid)
@@ -4250,12 +4337,26 @@ class Site(OTPmeObject):
         radius_key: str=None,
         radius_ca_cert: str=None,
         force: bool=False,
+        verify_acls: bool=True,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change radius cert. """
+        # The key and the CA certificate have commands and ACLs of their
+        # own. Giving them with the certificate must not be a way around
+        # those.
+        if verify_acls:
+            if radius_key and not self.verify_acl("edit:radius_key"):
+                msg = _("Permission denied: {acl}")
+                msg = msg.format(acl="edit:radius_key")
+                return callback.error(msg, exception=PermissionDenied)
+            if radius_ca_cert and not self.verify_acl("edit:radius_ca_cert"):
+                msg = _("Permission denied: {acl}")
+                msg = msg.format(acl="edit:radius_ca_cert")
+                return callback.error(msg, exception=PermissionDenied)
+
         msg = _("Change RADIUS certificate of site '{site_name}'?: ")
         msg = msg.format(site_name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -4276,7 +4377,7 @@ class Site(OTPmeObject):
             self.radius_key = radius_key
         if radius_ca_cert:
             self.radius_ca_cert = radius_ca_cert
-        self.radius_cert = radius_cert
+        self.warn_radius_cert_key(callback=callback)
         # Make sure radius gets reloaded.
         self.radius_reload = True
         return self._cache(callback=callback)
@@ -4312,6 +4413,7 @@ class Site(OTPmeObject):
             except Exception as e:
                 return callback.error()
         self.radius_key = radius_key
+        self.warn_radius_cert_key(callback=callback)
         # Make sure radius gets reloaded.
         self.radius_reload = True
         return self._cache(callback=callback)
@@ -4361,12 +4463,21 @@ class Site(OTPmeObject):
         sso_cert: str=None,
         sso_key: str=None,
         force: bool=False,
+        verify_acls: bool=True,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change sso cert. """
+        # The key has a command and an ACL of its own, as with the
+        # RADIUS certificate above.
+        if verify_acls:
+            if sso_key and not self.verify_acl("edit:sso_key"):
+                msg = _("Permission denied: {acl}")
+                msg = msg.format(acl="edit:sso_key")
+                return callback.error(msg, exception=PermissionDenied)
+
         msg = _("Change SSO certificate of site '{site_name}'?: ")
         msg = msg.format(site_name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -4385,6 +4496,7 @@ class Site(OTPmeObject):
         self.sso_cert = sso_cert
         if sso_key:
             self.sso_key = sso_key
+        self.warn_sso_cert_key(callback=callback)
         return self._cache(callback=callback)
 
     @check_acls(['edit:sso_key'])
@@ -4418,7 +4530,23 @@ class Site(OTPmeObject):
             except Exception as e:
                 return callback.error()
         self.sso_key = sso_key
+        self.warn_sso_cert_key(callback=callback)
         return self._cache(callback=callback)
+
+    def warn_sso_cert_key(self, callback: JobCallback=default_callback):
+        """ Tell the user about an SSO certificate and key that do not fit.
+
+        httpd checks the pair itself: it keeps the old one on a reload
+        and refuses to start with it (see otpme/lib/daemon/httpd.py).
+        Both only say so in the log of the host the portal runs on.
+        """
+        if not self.sso_cert or not self.sso_key:
+            return
+        try:
+            check_ssl_cert_key(self.sso_cert, self.sso_key)
+        except Exception:
+            msg = _("WARNING: SSO certificate and key do not match. The portal keeps the old pair on a reload and does not start with this one.")
+            callback.send(msg)
 
     @check_acls(['edit:sso_secret'])
     @object_lock()
@@ -4945,9 +5073,8 @@ class Site(OTPmeObject):
         logger.debug(log_msg)
         callback.send(msg)
 
-        # FIXME: make this a config paramter.
         if retired_max_age is None:
-            retired_max_age = 7200
+            retired_max_age = self.get_oidc_retired_max_age()
 
         # Resolve key_type preset, or fall back to explicit kty/size/alg.
         if key_type is not None:
@@ -4966,10 +5093,32 @@ class Site(OTPmeObject):
         else:
             if kty is None:
                 kty = "RSA"
-            if alg is None:
-                alg = "RS256"
             if size is None:
                 size = 2048 if kty == "RSA" else ("P-256" if kty == "EC" else "Ed25519")
+            # The algorithm that goes with the key. It used to be RS256
+            # whatever the key type, which only an RSA key can sign with.
+            if alg is None:
+                if kty == "EC":
+                    alg = OIDC_DEFAULT_ALGS.get(str(size))
+                else:
+                    alg = OIDC_DEFAULT_ALGS.get(kty)
+                if alg is None:
+                    msg = _("No default algorithm for a {kty} key of size {size}. Please give --alg.")
+                    msg = msg.format(kty=kty, size=size)
+                    return callback.error(msg)
+            # A key is made whatever algorithm it is labelled with, and
+            # one that cannot sign with its own label only fails when
+            # the first token is issued.
+            if kty == "RSA":
+                alg_fits = alg in ("RS256", "RS384", "RS512")
+            elif kty == "EC":
+                alg_fits = alg == OIDC_DEFAULT_ALGS.get(str(size))
+            else:
+                alg_fits = alg == OIDC_DEFAULT_ALGS.get(kty)
+            if not alg_fits:
+                msg = _("Algorithm {alg} does not fit a {kty} key of size {size}.")
+                msg = msg.format(alg=alg, kty=kty, size=size)
+                return callback.error(msg)
             # CLI passes everything as string; RSA needs int bits.
             if kty == "RSA" and isinstance(size, str):
                 try:
@@ -5096,7 +5245,9 @@ class Site(OTPmeObject):
 
         return self._cache(callback=callback)
 
-    @check_acls(['view:oidc_keys'])
+    # view_all, because what is shown are the keys whole, the private
+    # parts included. A plain "view" does not cover it.
+    @check_acls(['view_all:oidc_keys'])
     @audit_log()
     def show_oidc_keys(
         self,
@@ -5107,6 +5258,42 @@ class Site(OTPmeObject):
         ):
         oidc_keys = self.get_oidc_keys()
         return callback.ok(oidc_keys)
+
+    def get_oidc_retired_max_age(self):
+        """ How long a retired signing key stays published, in seconds. """
+        try:
+            max_age = self.get_config_parameter("oidc_retired_max_age",
+                                                apply_getter=False)
+        except Exception:
+            max_age = None
+        if max_age is None:
+            return OIDC_RETIRED_MAX_AGE
+        try:
+            return int(max_age)
+        except (TypeError, ValueError):
+            return OIDC_RETIRED_MAX_AGE
+
+    def get_published_oidc_keys(self):
+        """ The signing keys an RP is told about: /jwks and discovery.
+
+        The active key, and the retired ones for as long as
+        oidc_retired_max_age says. A retired key past that stays in
+        oidc_keys until the next renewal removes it, and the OP itself
+        goes on checking with it (an id_token_hint may be far older,
+        see oidc_id_token_hint_max_age) -- it is only no longer handed
+        out.
+        """
+        max_age = self.get_oidc_retired_max_age()
+        now = int(time.time())
+        published = {}
+        oidc_keys = self.get_oidc_keys()
+        for key_id in oidc_keys:
+            k = oidc_keys[key_id]
+            if k.get("otpme_status") == "retired":
+                if (now - k.get("retired_at", 0)) >= max_age:
+                    continue
+            published[key_id] = k
+        return published
 
     def get_oidc_keys(self):
         """ Return a plain ``dict`` snapshot of OIDC signing keys.
@@ -5573,7 +5760,7 @@ class Site(OTPmeObject):
             msg = msg.format(site_name=site_name)
             return callback.error(msg)
 
-        msg = _("Trust site '{trusted_site}' from site '{site_name}'? Tokens of the trusted site may then authenticate here.: ")
+        msg = _("Trust site '{trusted_site}'? The token secrets of {site_name} are then synced to {trusted_site}.: ")
         msg = msg.format(trusted_site=site_name, site_name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
@@ -5657,9 +5844,394 @@ class Site(OTPmeObject):
 
     @check_acls(['set:config'])
     @object_lock(full_lock=True)
-    @backend.transaction
     @audit_log()
     def upgrade(
+        self,
+        all_objects: bool=False,
+        procs: Union[int,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Bring this site up to the code that runs it.
+
+        Two things an update leaves behind: config parameters the site
+        does not have yet, and object configs stored in an older
+        version than the code writes. See upgrade_config_params() and
+        upgrade_object_configs().
+
+        <procs> is how many workers write the objects, where there
+        are enough of them to start any (see worker_pool).
+        """
+        result = self.upgrade_config_params(run_policies=run_policies,
+                                            callback=callback,
+                                            _caller=_caller)
+        if result is False:
+            return result
+        self._config_upgrade_procs = procs
+        try:
+            return self.upgrade_object_configs(all_objects=all_objects,
+                                                callback=callback)
+        finally:
+            self.stop_config_upgrade_pool()
+
+    def get_config_upgrade_blockers(self, config_versions):
+        """ The nodes of this site that cannot read the given versions.
+
+        As {node name: [what it is behind in]}. What a node can read
+        it said itself when it set itself online, see
+        node_config_versions in clusterd. A node that said nothing
+        runs code from before versions were counted, or is not there,
+        and reads version 1 of everything -- so nothing is in the way
+        of a site that stays at version 1.
+
+        A disabled node is left out: it serves nothing, and it is
+        brought up to date before it is enabled again.
+        """
+        node_names = backend.search(object_type="node",
+                                    attributes={
+                                        'uuid'      : {'value':"*"},
+                                        'enabled'   : {'value':True},
+                                        },
+                                    realm=self.realm,
+                                    site=self.name,
+                                    return_type="name")
+        online_nodes = multiprocessing.get_dict("online_nodes")
+        node_config_versions = multiprocessing.get_dict("node_config_versions")
+        blockers = {}
+        for node_name in node_names:
+            # Ours are the versions we are asked about.
+            if node_name == config.host_data['name']:
+                continue
+            node_versions = {}
+            if node_name in online_nodes:
+                try:
+                    node_versions = node_config_versions[node_name]
+                except KeyError:
+                    pass
+            behind = []
+            for key in sorted(config_versions):
+                if node_versions.get(key, 1) < config_versions[key]:
+                    behind.append(key)
+            if behind:
+                blockers[node_name] = behind
+        return blockers
+
+    def get_objects_to_upgrade(self, object_type, sub_type, version,
+        all_objects=False):
+        """ The UUIDs of the objects stored below the given version.
+
+        Asked of the index, where every write says the versions an
+        object is stored with (see OTPmeObject.update_version_index()).
+
+        An object that was never written since versions are counted
+        has no such entry, and a search for "less than" does not find
+        it. <all_objects> finds those as well: every object of the
+        type that is not in the index with exactly this version. That
+        is the first run on a site, and the run after objects came in
+        by a way that does not write the index, as a restore of an old
+        backup does.
+        """
+        index_attribute = "version"
+        type_filter = {}
+        if sub_type is not None:
+            index_attribute = "sub_version"
+            type_filter[f"{object_type}_type"] = {'value': sub_type}
+        search_site = self.name
+        if object_type == "realm":
+            search_site = None
+        if object_type == "site":
+            # A search for sites is not narrowed by a site, it finds
+            # all of the realm. Only this one is ours to write.
+            type_filter['uuid'] = {'value': self.uuid}
+        if not all_objects:
+            search_attributes = dict(type_filter)
+            search_attributes[index_attribute] = {'less_than': version}
+            return backend.search(object_type=object_type,
+                                attributes=search_attributes,
+                                realm=self.realm,
+                                site=search_site,
+                                return_type="uuid")
+        all_attributes = dict(type_filter)
+        if 'uuid' not in all_attributes:
+            all_attributes['uuid'] = {'value': "*"}
+        all_uuids = backend.search(object_type=object_type,
+                                attributes=all_attributes,
+                                realm=self.realm,
+                                site=search_site,
+                                return_type="uuid")
+        # The number and not the string: the index holds the version
+        # as it was written, an int, and "1" does not find it.
+        done_attributes = dict(type_filter)
+        done_attributes[index_attribute] = {'value': version}
+        done_uuids = backend.search(object_type=object_type,
+                                attributes=done_attributes,
+                                realm=self.realm,
+                                site=search_site,
+                                return_type="uuid")
+        done_uuids = set(done_uuids)
+        return [x for x in all_uuids if x not in done_uuids]
+
+    def upgrade_object_configs(
+        self,
+        all_objects: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Store the object configs of this site in the versions of the code.
+
+        A site stores every object type in the version it says in
+        config_versions, however new the code on its nodes is, so that
+        nodes can be updated one after the other. This raises those
+        versions to the ones of the code, one step at a time, and
+        after each step writes every object that is still stored below
+        it: loading an object brings its config up, writing it stores
+        that.
+
+        Not before every enabled node of the site runs code that reads
+        the new versions. A node that does not could no longer load an
+        object afterwards.
+
+        It can be run again after it was cut short: the versions that
+        were reached are on the site, and the index says which objects
+        are still behind.
+
+        Objects that are not in the tree, as sessions and used OTPs,
+        are not written here. There are too many, and they do not
+        live long: the site version is raised for them, and each of
+        them is stored anew when it is written the next time.
+        """
+        if self.uuid != config.site_uuid:
+            msg = _("Object configs of a site are upgraded on one of its nodes: {name}")
+            msg = msg.format(name=self.name)
+            return callback.error(msg)
+
+        code_versions = config.get_config_versions()
+
+        # What would be raised, and whether every node can read it.
+        site_versions = self.config_versions or {}
+        raised_versions = {}
+        for key in code_versions:
+            if code_versions[key] > site_versions.get(key, 1):
+                raised_versions[key] = code_versions[key]
+        blockers = self.get_config_upgrade_blockers(raised_versions)
+        if blockers:
+            for node_name in sorted(blockers):
+                msg = _("Node is offline or runs older code: {node_name}: {behind}")
+                msg = msg.format(node_name=node_name,
+                                behind=", ".join(blockers[node_name]))
+                callback.send(msg)
+            msg = _("Cannot upgrade object configs of site '{name}': update all nodes first.")
+            msg = msg.format(name=self.name)
+            return callback.error(msg)
+
+        # A site that never ran this has objects without a version in
+        # the index.
+        if not self.config_versions:
+            all_objects = True
+            self.config_versions = {}
+
+        realm = backend.get_object(object_type="realm", uuid=self.realm_uuid)
+        realm_master = False
+        if realm and realm.master == self.uuid:
+            realm_master = True
+
+        upgraded = False
+        # What was stored, as (key, version, count), for the end.
+        summary = []
+        for key in code_versions:
+            object_type = key.split(":")[0]
+            sub_type = None
+            if ":" in key:
+                sub_type = key.split(":")[1]
+            # The realm is of no site; it follows its master site.
+            if object_type == "realm" and not realm_master:
+                continue
+            code_version = code_versions[key]
+            try:
+                site_version = self.config_versions[key]
+            except KeyError:
+                site_version = None
+            # A type the site does not name is stored in version 1.
+            # The version the site is at is looked at again only when
+            # all objects are: that is what gets those into the index
+            # that are not in it.
+            if site_version is None:
+                first_version = 1
+            elif all_objects:
+                first_version = site_version
+            else:
+                first_version = site_version + 1
+            for x_version in range(first_version, code_version + 1):
+                if site_version != x_version:
+                    # Said and stored before any object is written:
+                    # the write of an object asks the site which
+                    # version to store.
+                    site_version = x_version
+                    self.config_versions[key] = x_version
+                    if self._write(callback=callback) is False:
+                        return callback.error()
+                    upgraded = True
+                if object_type not in config.tree_object_types:
+                    continue
+                object_uuids = self.get_objects_to_upgrade(object_type,
+                                                        sub_type,
+                                                        x_version,
+                                                        all_objects=all_objects)
+                if not object_uuids:
+                    continue
+                written, failed = self.write_objects_to_upgrade(object_uuids,
+                                                            x_version,
+                                                            callback=callback)
+                if written:
+                    summary.append((key, x_version, written))
+                    upgraded = True
+                if failed:
+                    # The next step builds on this one.
+                    self.send_config_upgrade_summary(summary, callback)
+                    msg = _("Failed to upgrade {count} objects of site '{name}': {key}")
+                    msg = msg.format(count=failed, name=self.name, key=key)
+                    return callback.error(msg)
+
+        if not upgraded:
+            msg = _("Object configs of site '{name}' are up to date.")
+            msg = msg.format(name=self.name)
+            return callback.ok(msg)
+        self.send_config_upgrade_summary(summary, callback)
+        return callback.ok()
+
+    def send_config_upgrade_summary(self, summary, callback=default_callback):
+        """ Say how many objects were stored, by type and in all. """
+        total = 0
+        for key, x_version, written in summary:
+            total += written
+            msg = _("{key}: {count} objects stored in version {version}")
+            msg = msg.format(key=key, count=written, version=x_version)
+            callback.send(msg)
+        msg = _("Stored {count} objects of site '{name}'.")
+        msg = msg.format(count=total, name=self.name)
+        callback.send(msg)
+
+    def write_objects_to_upgrade(self, object_uuids, version,
+        callback=default_callback):
+        """ Load and write each object, with workers where there are many.
+
+        Returns how many were written and how many failed. Each one
+        that was written is said through the callback: that is what
+        tells an administrator the command is alive, and what keeps
+        the job from timing out, which it does when it says nothing
+        for config.job_timeout seconds.
+
+        An object that needs no write is neither. That is one the
+        index named but that was written in between, as a token is by
+        the pass for its type before the pass for its sub type.
+
+        last_modified is left alone: the object did not change, the
+        way it is stored did.
+        """
+        counts = {'written': 0, 'failed': 0, 'skipped': 0}
+
+        def count(status):
+            if status is False:
+                counts['failed'] += 1
+            else:
+                counts[status] += 1
+
+        # We are locked by the caller, and written by it: a worker
+        # would be waiting for that lock.
+        object_uuids = list(object_uuids)
+        if self.uuid in object_uuids:
+            object_uuids.remove(self.uuid)
+            count(self.write_object_to_upgrade(self.uuid, version, callback))
+
+        # Many objects are worth sharing out, see worker_pool. Once the
+        # workers are there they take the short lists as well.
+        use_pool = self._config_upgrade_pool is not None
+        if len(object_uuids) >= worker_pool.WORKER_MIN_ITEMS:
+            use_pool = True
+        if not use_pool:
+            for object_uuid in object_uuids:
+                count(self.write_object_to_upgrade(object_uuid, version,
+                                                    callback))
+            return counts['written'], counts['failed']
+
+        if self._config_upgrade_pool is None:
+            pool = worker_pool.WorkerPool(name="upgrade",
+                                    handler=self._write_object_to_upgrade,
+                                    callback=callback,
+                                    procs=self._config_upgrade_procs)
+            pool.start()
+            self._config_upgrade_pool = pool
+        items = [{'uuid': x, 'version': version} for x in object_uuids]
+        self._config_upgrade_pool.run(items, on_result=count)
+        # An object that went with a worker that died was not stored.
+        lost = len(object_uuids) - sum(counts.values())
+        return counts['written'], counts['failed'] + lost
+
+    def _write_object_to_upgrade(self, item, callback):
+        """ write_object_to_upgrade() for an item of the worker pool. """
+        return self.write_object_to_upgrade(item['uuid'], item['version'],
+                                            callback)
+
+    def stop_config_upgrade_pool(self):
+        """ End the workers of an upgrade, if there are any. """
+        if self._config_upgrade_pool is None:
+            return
+        try:
+            self._config_upgrade_pool.stop()
+        finally:
+            self._config_upgrade_pool = None
+
+    def write_object_to_upgrade(self, object_uuid, version,
+        callback=default_callback):
+        """ Load one object and write it. In a worker, or in the job.
+
+        Returns "written", "skipped" for an object that needs no
+        write, and False for one that could not be written.
+        """
+        if object_uuid == self.uuid:
+            x_object = self
+        else:
+            # Not into the cache: every object is touched once, so what
+            # it would keep is of no use to anybody, and a worker would
+            # end up holding an instance of every object it was given.
+            x_object = backend.get_object(uuid=object_uuid,
+                                        add_to_cache=False)
+        if not x_object:
+            return "skipped"
+        # Loading brought the config up if it was behind. If it was
+        # not, and the index says so already, there is nothing to
+        # store.
+        if not x_object.config_upgraded:
+            if not x_object.get_stale_version_index():
+                return "skipped"
+        if x_object is not self:
+            x_object.acquire_lock(lock_caller="upgrade")
+        try:
+            result = x_object._write(update_last_modified=False,
+                                    update_last_modified_by=False,
+                                    callback=callback)
+        except Exception as e:
+            result = False
+            log_msg = _("Failed to upgrade object config: {oid}: {error}", log=True)[1]
+            log_msg = log_msg.format(oid=x_object.oid, error=e)
+            logger.warning(log_msg)
+        finally:
+            if x_object is not self:
+                x_object.release_lock(lock_caller="upgrade")
+        if result is False:
+            msg = _("Failed to store in version {version}: {oid}")
+            msg = msg.format(version=version, oid=x_object.oid)
+            callback.send(msg, error=True)
+            return False
+        msg = _("Stored in version {version}: {oid}")
+        msg = msg.format(version=version, oid=x_object.oid)
+        callback.send(msg)
+        return "written"
+
+    @backend.transaction
+    def upgrade_config_params(
         self,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
@@ -5946,18 +6518,25 @@ class Site(OTPmeObject):
                 trusted_sites_checked.append(x_site)
 
         if not site_address:
-            # Try to get site address from DNS.
-            result = net.query_dns(site_fqdn)
+            # Try to get site address from DNS. A name that does not
+            # resolve is answered with an exception, not an empty list.
+            try:
+                result = net.query_dns(site_fqdn)
+            except Exception as e:
+                msg = _("Unable to resolve {site_fqdn}: {error}")
+                msg = msg.format(site_fqdn=site_fqdn, error=e)
+                return callback.error(msg)
             if len(result) > 1:
                 msg = _("Found round-robin DNS. Please give floating IP.")
                 return callback.error(msg)
-            site_address = result[0]
+            if result:
+                site_address = result[0]
 
         # We always need a site address as floaging cluster IP.
         if not site_address:
             msg = _("Unable to resolve: {site_fqdn}")
             msg = msg.format(site_fqdn=site_fqdn)
-            raise OTPmeException(msg)
+            return callback.error(msg)
 
         if not config.realm_init:
             result = backend.search(object_type="host",
@@ -6058,7 +6637,8 @@ class Site(OTPmeObject):
         if no_dicts:
             dictionaries_sorted = []
         else:
-            dictionaries_sorted = dictionaries
+            # None without --dicts, and the loops below want a list.
+            dictionaries_sorted = dictionaries or []
 
         # Get base dictionaries.
         base_dictionaries = config.get_base_objects("dictionary")
@@ -6742,11 +7322,7 @@ class Site(OTPmeObject):
                 msg = _("Problem adding base scope '{s}'.")
                 msg = msg.format(s=s)
                 return callback.error(msg)
-            defaults = BASE_SCOPE_DEFAULTS.get(s)
-            if not defaults:
-                continue
-            default = defaults["default"]
-            if not default:
+            if not BASE_SCOPE_DEFAULTS.get(s):
                 continue
             # Add SSO user role to default scopes.
             scope.add_role(sso_user_role.name,
@@ -7175,7 +7751,14 @@ class Site(OTPmeObject):
         **kwargs,
         ):
         """ Remove orphan UUIDs. """
-        extra_ref_lists = []
+        # The two lists of the site that hold UUIDs of other objects. A
+        # site that is deleted stays in trusted_sites and a host that is
+        # deleted stays in sso_hosts; del_trust() and remove_sso_host()
+        # take a UUID for those, but one has to know there is one.
+        extra_ref_lists = [
+                ('trusted_sites', 'site', None),
+                ('sso_hosts', 'host', None),
+                ]
         return super().remove_orphans(force=force,
                                     run_policies=run_policies,
                                     verbose_level=verbose_level,

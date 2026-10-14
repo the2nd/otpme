@@ -201,7 +201,7 @@ def row_getter(realm, site, ca_order, ca_data, acls,
         # Policies.
         if "policies" in output_fields:
             if check_acl("view:policies") \
-            or check_acl("add:policy") \
+            or check_acl("assign:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="ca",
                                                     object_uuid=ca_uuid,

@@ -658,7 +658,7 @@ def _append_state(target_uri, state):
 
     Spec: OIDC RP-Initiated Logout 1.0 §3 "Redirection to RP After
       Logout" (state parameter handling)
-      https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RPLogout
+      https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RedirectionAfterLogout
     """
     if not target_uri or not state:
         return target_uri

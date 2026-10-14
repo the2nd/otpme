@@ -1552,6 +1552,8 @@ class OTPmeHost(OTPmeClientObject):
         # that has not reported yet.
         os_name = ""
         os_version = ""
+        kernel = ""
+        reboot_required = ""
         packages = ""
         last_inventory_update = ""
         if self.realm == config.realm:
@@ -1560,11 +1562,17 @@ class OTPmeHost(OTPmeClientObject):
             if inventory:
                 os_name = inventory.os or ""
                 os_version = inventory.os_version or ""
+                kernel = inventory.kernel or ""
+                # A no is an answer, empty is a host that has not said.
+                if inventory.reboot_required is not None:
+                    reboot_required = "yes" if inventory.reboot_required else "no"
                 packages = len(inventory.packages)
                 if inventory.last_inventory_update:
                     last_inventory_update = datetime.datetime.fromtimestamp(inventory.last_inventory_update)
         lines.append(f'OS="{os_name}"')
         lines.append(f'OS_VERSION="{os_version}"')
+        lines.append(f'KERNEL="{kernel}"')
+        lines.append(f'REBOOT_REQUIRED="{reboot_required}"')
         lines.append(f'PACKAGES="{packages}"')
         lines.append(f'LAST_INVENTORY_UPDATE="{last_inventory_update}"')
         return super().show_config(config_lines=lines,

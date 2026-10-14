@@ -3066,6 +3066,25 @@ def index_del(object_id, no_lock=False,
     index_object = index_get_object(object_id)
     # Make sure caches get cleared.
     if index_object:
+        # Which DB session the entry belongs to.
+        #
+        # index_get_object() is cached with the session left out of the
+        # key (ignore_args of index_cache in lib/cache), and the cache
+        # hands back the instance it holds rather than a copy. So the
+        # entry may have been loaded in another session than the one
+        # this delete runs in, and a delete that goes to a session
+        # nobody commits leaves the row where it is -- while the caller
+        # removes the files of the object either way. That is an index
+        # entry for a file that is not there, and nothing of it is ever
+        # said. Said here instead, because it depends on who ran
+        # before: it is the one step of a delete that does not always
+        # do the same thing.
+        from sqlalchemy.orm import object_session
+        entry_session = object_session(index_object)
+        if entry_session is not None and entry_session is not session:
+            log_msg = _("Index entry belongs to another DB session: {object_id}", log=True)[1]
+            log_msg = log_msg.format(object_id=object_id)
+            logger.warning(log_msg)
         # Delete object from DB.
         session.delete(index_object)
         if autocommit:
@@ -3073,6 +3092,14 @@ def index_del(object_id, no_lock=False,
         # Clear ACL cache.
         if index_object.uuid:
             index_acl_cache.invalidate(index_object.uuid)
+    else:
+        # Nothing here to delete. Ordinary where the entry went with an
+        # earlier delete of the same object, and the one thing that
+        # would explain an index entry outliving the files of its
+        # object -- whoever asked for this goes on to remove them.
+        log_msg = _("No index entry to delete: {object_id}", log=True)[1]
+        log_msg = log_msg.format(object_id=object_id)
+        logger.debug(log_msg)
     # Make sure caches get cleared.
     clear_index_caches(object_id)
 
@@ -3087,7 +3114,7 @@ def index_get(object_id, no_lock=False):
 
 # FIXME: caching of this function does not work. why?
 @handle_transaction
-@index_cache.cache_function()
+#@index_cache.cache_function()
 def index_get_object(object_id=None, object_type=None,
     uuid=None, session=None, **kwargs):
     """ Get index object from DB. """

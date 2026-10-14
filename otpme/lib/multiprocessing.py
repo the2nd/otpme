@@ -1023,20 +1023,25 @@ class MessageQueue(object):
             self._queue = queue
         return self._queue
 
-    def send(self, message, timeout=None):
+    def send(self, message, timeout=None, raise_timeout=False):
         """ Send a message. Uses a 4-byte big-endian length prefix packed
         in front of the JSON-encoded payload — same framing style as
         otpme.lib.socket.send_recv1. If the resulting (header+payload)
         fits into one POSIX message the whole thing is delivered as a
         single send; otherwise we fall back to chunking and hold an
         external lock so chunks from concurrent senders don't interleave.
+
+        A message that does not fit into a full queue within <timeout>
+        is dropped, unless <raise_timeout> is set: then TimeoutReached
+        is raised and nothing was sent, so the caller can try again.
         """
         data = json.dumps(message).encode("utf-8")
         header = struct.pack(">I", len(data))
         payload = header + data
         # Fast path: everything fits into one POSIX message.
         if len(payload) <= self.max_message_size:
-            self.raw_send(payload, timeout=timeout)
+            self.raw_send(payload, timeout=timeout,
+                        raise_timeout=raise_timeout)
             return
         # Slow path: must chunk. Hold the external lock so chunks from
         # different senders don't interleave on the queue.
@@ -1046,7 +1051,13 @@ class MessageQueue(object):
         try:
             for i in range(0, len(payload), self.max_message_size):
                 chunk = payload[i:i + self.max_message_size]
-                self.raw_send(chunk, timeout=timeout)
+                chunk_timeout = timeout
+                if raise_timeout and i > 0:
+                    # Half a message cannot be taken back. Only the
+                    # first chunk may time out, the rest is waited for.
+                    chunk_timeout = None
+                self.raw_send(chunk, timeout=chunk_timeout,
+                            raise_timeout=(raise_timeout and i == 0))
         finally:
             lock.release_lock()
 
@@ -1084,11 +1095,14 @@ class MessageQueue(object):
             msg = msg.format(e=e)
             raise OTPmeException(msg) from e
 
-    def raw_send(self, data, timeout=None):
+    def raw_send(self, data, timeout=None, raise_timeout=False):
         try:
             self.queue.send(data, timeout=timeout)
-        except posix_ipc.BusyError:
-            pass
+        except posix_ipc.BusyError as err:
+            if raise_timeout:
+                msg = _("Queue timeout reached: {queue}")
+                msg = msg.format(queue=self.queue)
+                raise TimeoutReached(msg) from err
         except posix_ipc.ExistentialError as err:
             msg = _("Queue closed.")
             raise QueueClosed(msg) from err

@@ -455,7 +455,7 @@ Require at least one special character
 .B otpme-policy enable_strength_checker strong_passwords
 Enable password strength checking
 .TP
-.B otpme-policy test \-\-password "MyP@ss123" strong_passwords
+.B otpme-policy test \-\-password \(dqMyP@ss123\(dq strong_passwords
 Test a password against the policy
 .TP
 .B otpme-user add_policy alice strong_passwords
@@ -465,7 +465,7 @@ Apply policy to user alice
 .B otpme-policy \-\-type logintimes add workhours
 Create login times policy
 .TP
-.B otpme-policy login_times workhours "mon-fri 08:00-18:00"
+.B otpme-policy login_times workhours \(dqmon-fri 08:00-18:00\(dq
 Set allowed login times
 .TP
 .B otpme-group add_policy contractors workhours

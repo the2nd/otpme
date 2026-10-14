@@ -1,0 +1,345 @@
+.TH OTPME-CLUSTER 1 "2026-10-10" "OTPme 0.3.0a281" "OTPme Manual"
+.SH NAME
+otpme-cluster \- show the cluster of a site, move the master role, set the votes
+.SH SYNOPSIS
+.B otpme-cluster status
+\fR[\fB\-\-diff\fR] [\fB\-\-full\fR] [\fB\-\-full\-index\fR]
+.br
+.B otpme-cluster master_failover
+\fR[\fB\-\-to\fR \fInode\fR] [\fB\-\-random\fR] [\fB\-\-wait\fR]
+.br
+.B otpme-cluster required_votes
+.I votes
+.SH DESCRIPTION
+The cluster of a site is the nodes of that site.
+Every node runs \fBclusterd\fR, and that is what keeps them alike: a write on one node goes to the others, and so do the sessions and the short-lived states that go with a login.
+One node holds the master role, and that is the node every object of the site is written to.
+.PP
+This is not the sync to the hosts and to the other sites, that is \fBsyncd\fR.
+See
+.BR otpme (7).
+.PP
+.B otpme-cluster
+is how you look at that from the outside and how you take a hand in it.
+Three things: \fBstatus\fR says where the cluster stands, \fBmaster_failover\fR hands the master role to another node, and \fBrequired_votes\fR sets how many votes the site needs.
+.PP
+It works differently from every other OTPme command.
+It runs on a node, as root, and talks to the \fBclusterd\fR of the nodes directly \(em not through \fBmgmtd\fR, so there is no token and no ACL.
+That is on purpose: a site without a quorum refuses management, and that is exactly when these questions are asked.
+.PP
+So you need a root shell on one of the nodes, the OTPme daemon has to be running there, and the machine has to be a node.
+On a host the command says so and stops.
+It also needs the node install (\fBpip install 'otpme[node]'\fR); without it the command is there but refuses to run.
+.SH COMMANDS
+.TP
+.B status \fR[\fB\-\-diff\fR] [\fB\-\-full\fR] [\fB\-\-full\-index\fR]
+Ask every enabled node of this site where it stands.
+.IP
+One line per node: whether it has a quorum, which node it thinks is master, and three checksums \(em the objects of the tree, the data objects, and the sessions.
+Above them one line for the site.
+See \fBWHAT STATUS SHOWS\fR.
+.IP
+Every node is asked at the same time, and a node that does not answer is \fBOffline\fR.
+Nothing is written, and nothing is decided here: the command reads.
+.TP
+.B master_failover \fR[\fB\-\-to\fR \fInode\fR] [\fB\-\-random\fR] [\fB\-\-wait\fR]
+Hand the master role to another node.
+.IP
+Without an option the node you run it on takes the role.
+With
+.B \-\-to
+the named node takes it.
+With
+.B \-\-random
+a node is picked, which only works on the node that holds the role.
+.IP
+The role is elected and not configured, so this does not set it: it makes the node that is to have it win the next election.
+See \fBMOVING THE MASTER ROLE\fR.
+.TP
+.B required_votes \fIvotes\fR
+Set how many votes the site needs for a quorum.
+.IP
+.B 0
+puts it back to the default, which is half the enabled nodes.
+See \fBVOTES AND QUORUM\fR.
+.SH OPTIONS
+.TP
+.B \-\-diff
+Say which objects differ.
+Only with \fBstatus\fR, and only where the nodes do not hold the same thing.
+See \fBFINDING WHAT DIFFERS\fR.
+.TP
+.B \-\-full
+Read every object instead of asking the index for its checksum.
+Slow on a big site, and the only way to see that the index of a node says the wrong thing about an object.
+.TP
+.B \-\-full\-index
+Compare the whole index entry of every object instead of the object.
+Catches what the object checksum does not: an attribute or an ACL that is in the index of one node and not of another.
+.TP
+.B \-\-to \fInode\fR
+The node that is to take the master role.
+It has to be a node of this site.
+.TP
+.B \-\-random
+Pick the node to hand the role to.
+Only a node that is in sync and may be master is picked.
+Run it on the node that holds the role; another node answers "Node not the master node".
+.TP
+.B \-\-wait
+Wait instead of giving up.
+The role is not handed over while a management job is running on the master, and a node that is not ready cannot take it \(em with this the command keeps trying until it can.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH VOTES AND QUORUM
+Every node has a vote, and the vote is the time that node was last in sync with the master.
+A vote of zero says "I cannot be master".
+The whole of it is in
+.BR otpme\-node (1),
+under \fBThe Master Role\fR.
+.PP
+Two numbers are counted from those votes:
+.TP
+.B current votes
+How many nodes can be master right now: this node, plus every node it is connected to that answers with a vote other than zero.
+A node that is online but has not finished its sync with the master does not count.
+.br
+Each node counts for itself, which is why \fBstatus\fR shows the number per node.
+Two nodes that answer with different numbers are two nodes that see different parts of the site.
+.TP
+.B required votes
+How many of them the site needs.
+.br
+Unset, which is the default, this is half the enabled nodes of the site \(em and half is enough, because the count only has to reach it.
+Three enabled nodes need two votes, four need two as well, two need one.
+.br
+.B otpme-cluster required_votes
+sets a number of your own.
+.PP
+A node with a quorum works.
+A node without one refuses nearly everything: \fBmgmtd\fR, \fBauthd\fR, \fBjoind\fR, \fBssod\fR, \fBfsd\fR, \fBracd\fR and \fBidled\fR answer "No cluster quorum".
+Only the daemons the node needs to find its way back keep answering: \fBhostd\fR, \fBsyncd\fR, \fBclusterd\fR and \fBbackupd\fR.
+.PP
+The quorum is one of two things that have to be true.
+The other is the site itself: a node serves the site when the nodes it has are at least the required votes \fIand\fR it has synced with the master at all (\fI/var/spool/otpme/node_synced\fR).
+Where that does not hold, the same daemons answer "Cluster not ready", and \fBldapd\fR is stopped outright \(em it is the one daemon that is started and stopped with this, instead of refusing.
+That is the \fBCluster status\fR line of \fBstatus\fR, and it is read from the master node.
+.SH WHAT STATUS SHOWS
+.PP
+.RS
+.nf
+$ otpme\-cluster status
+Reading cluster data from node: node1
+Reading cluster data from node: node2
+Reading cluster data from node: node3
+Cluster status: Online
+node1 (Quorum: 3) (Master: node1) (Objects: 7b1c...) (Data: 4f0a...) (Sessions: e391...)
+node2 (Quorum: 3) (Master: node1) (Objects: 7b1c...) (Data: 4f0a...) (Sessions: e391...)
+node3 (Quorum: 3) (Master: node1) (Objects: 7b1c...) (Data: 4f0a...) (Sessions: e391...)
+.fi
+.RE
+.PP
+The first line is the site, as the master node sees it.
+\fBOnline\fR means the site is served; \fBOffline\fR means it is not, see \fBVOTES AND QUORUM\fR.
+A number set with
+.B required_votes
+is named here as a warning, because it is a number that does not follow the site.
+.PP
+Then one line per node:
+.TP
+.B (Quorum: \fIn\fB)
+The votes that node counted, itself included.
+.B False
+means that node has no quorum.
+.TP
+.B (Master: \fInode\fB)
+Who that node thinks holds the master role.
+All lines should say the same name.
+.TP
+.B (Objects: ...) (Data: ...) (Sessions: ...)
+What that node holds, in three checksums: the objects of the tree, the data objects, and the sessions.
+Nodes that hold the same thing show the same three.
+.PP
+A node can also be a word instead of a line of values:
+.TP
+.B Disabled
+The node object is disabled.
+It is not asked, it takes no part in the election, and it does not count towards the required votes.
+.TP
+.B (Offline)
+The node did not answer.
+Either it is down, or its \fBclusterd\fR is not answering, or it has no quorum to answer with.
+.TP
+.B (Error)
+The node answered, but not with its checksums.
+.PP
+The colours say the same thing more quickly: green is a node with a quorum that holds what the master holds, yellow is a node without a quorum or one that holds something else, red is a node that is gone or does not know who is master, grey is a disabled node.
+.SH FINDING WHAT DIFFERS
+A node whose checksums differ from the master's is a node that holds something else.
+.B \-\-diff
+says what:
+.PP
+.RS
+.nf
+$ otpme\-cluster status \-\-diff
+Object user|example.org/berlin/john differs: node1=2b9f..., node2=c417...
+Data object host_inventory|example.org/berlin/8f3c... missing on: node2 (present on: node1, node3)
+Misses: 1
+Diffs: 1
+
+Cluster status: Online
+\&...
+.fi
+.RE
+.PP
+.B differs
+means every node has the object and they do not agree about it.
+.B missing on
+names the nodes that do not have it at all.
+The two counts at the end are how many of each there are.
+.PP
+Two nodes have to be online for this, and the nodes have to disagree in the first place: where the checksums match there is nothing to list.
+.PP
+By default the checksums come from the index, which is what the nodes compare all day anyway.
+Two options read deeper:
+.PP
+.B \-\-full
+reads every object from disk and works out its checksum again.
+Use it when the index of a node may be saying the wrong thing about an object.
+It reads the whole site on every node, so it takes its time.
+.PP
+.B \-\-full\-index
+compares the whole index entry of every object.
+An attribute or an ACL that one node has in its index and another does not shows up here and nowhere else.
+.PP
+An object that the index of a node lists while its file is gone is left alone by all of this, and the node writes a warning to its log instead.
+.B otpme-tool index fix
+is what repairs it \(em afterwards, because how such an entry got there is worth more than the repair.
+.SH MOVING THE MASTER ROLE
+.B master_failover
+does not move the role by hand.
+It makes the node that is to have it win the next election, and the nodes do the rest.
+In order:
+.IP \(bu 2
+The node you run it on asks itself whether the site has a quorum.
+Without one nothing happens: "No cluster quorum".
+.IP \(bu 2
+The node that is to take the role is asked for its vote.
+A node that cannot be master is not switched to \(em it would hand the role straight back.
+.IP \(bu 2
+The node that holds the role is asked to give it up.
+It says no while a management job is running on it, and the answer names the job.
+That is what
+.B \-\-wait
+waits for.
+.IP \(bu 2
+The new node starts the failover.
+Every node of the site is told that one is going on, and while it is, they refuse what they would otherwise answer: "Ongoing master failover".
+Logins keep working \(em \fBauthd\fR is the one daemon that goes on answering.
+.IP \(bu 2
+The new node stamps its own sync file until it wins the election, the old master stops \fBidled\fR and \fBracd\fR and gives up the floating IP of the site, and the new one starts them and takes it.
+When the address is in place the nodes answer again.
+.PP
+So a failover is a short break for everything but logins, and it is over in seconds unless something is waited for.
+.PP
+The node that already holds the role is refused: "Node already the master node".
+.PP
+There is a second way to say which node should hold the role, and it is not this command:
+.B preferred_master_node
+on the site.
+\fBclusterd\fR hands the role to that node once, when the daemon has started and the site has a quorum, and never again while it runs.
+Use it for the node that should have the role after a restart, and use \fBmaster_failover\fR for right now.
+See
+.BR otpme (7).
+.PP
+.B MASTER_FAILOVER_SYNC
+in
+.BR otpme.conf (5)
+adds one step before the switch: the new master syncs the data objects and the sessions once more, so nothing of them is lost that the old master had and it did not.
+That makes the break longer, which is why it is off by default.
+.SH REQUIRED VOTES
+.B required_votes
+writes the number on the site object, and from there it reaches the other nodes like every other write.
+It counts from the next quorum check, a few seconds later.
+.PP
+Set it when the default does not say what you mean.
+Four nodes in two rooms need three votes, or each room has a quorum of its own and both halves go on writing.
+.PP
+.B status
+names it as a warning for as long as it is set, because the number stays as it is when the site grows: set it to 2 on a three-node site, add two nodes, and the site still has a quorum with two of five.
+.PP
+.B 0
+takes it back to the default.
+Setting the number it already has changes nothing and says so.
+.SH TWO NODES
+A site with two enabled nodes runs in two-node mode, and two nodes mean one required vote: each of them keeps the site alive alone.
+.PP
+While the other node is away, a write is not kept for it.
+It is written here and it is not journalled, because there is nobody to send it to \(em the node gets it when it is back, from the sync that runs as soon as it connects.
+A delete is kept, because a delete that is lost brings the object back.
+.PP
+.B required_votes 1
+puts a node in that mode as well, as soon as it has no other node online.
+That is how a node of a bigger site is made to go on working alone, and it is also how two halves of a site go on writing side by side.
+Both are what the number is for, and which of the two you get is yours to know.
+.SH FILES
+.TP
+.I /var/spool/otpme/node_sync_time
+When this node was last in sync with the master.
+This is where its vote is read from.
+.TP
+.I /var/spool/otpme/node_synced
+Says that this node has synced with the master at all.
+Without it the node serves nothing, see \fBVOTES AND QUORUM\fR.
+.TP
+.I /var/spool/otpme/cluster_out_journal/\fR, \fI/var/spool/otpme/cluster_in_journal/
+The writes on their way to the other nodes, and the ones that came from them.
+See
+.BR otpme\-node (1).
+.SH EXAMPLES
+.SS Where does the cluster stand
+.TP
+.B otpme-cluster status
+Who is master, who has a quorum, who holds what.
+.TP
+.B otpme-cluster status \-\-diff
+The same, and the objects the nodes do not agree about.
+.TP
+.B otpme-cluster status \-\-diff \-\-full
+The same, with every object read from disk.
+Use it when the index may be wrong.
+.SS Move the master role
+.TP
+.B otpme-cluster master_failover \-\-to node2
+Hand the role to \fInode2\fR.
+.TP
+.B otpme-cluster master_failover
+Take the role, run on the node that is to have it.
+.TP
+.B otpme-cluster master_failover \-\-random \-\-wait
+Run on the master before you take it down: the role goes to one of the other nodes, and the command waits for the jobs that are still running.
+.SS Votes
+.TP
+.B otpme-cluster required_votes 3
+Four nodes in two rooms: three votes, so one room alone cannot write.
+.TP
+.B otpme-cluster required_votes 1
+One node is enough.
+A node left alone goes on serving the site.
+.TP
+.B otpme-cluster required_votes 0
+Back to the default, half the enabled nodes.
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme (7),
+.BR otpme\-node (1),
+.BR otpme\-site (1),
+.BR otpme.conf (5)
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2026 the2nd. License: GPLv3

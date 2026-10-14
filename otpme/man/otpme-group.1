@@ -93,6 +93,7 @@ Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread
 .TP
 .B add_host \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIgroup\fR \fIhost\fR
 Add a host to the group.
+The host is looked for in the site of the group, or written as \fIsite\fB/\fIhost\fR to take one from another site of the realm.
 .RS
 .TP
 .B \-\-share\-notify
@@ -300,7 +301,7 @@ Output as CSV.
 CSV separator character.
 .TP
 .B \-\-attribute \fIATTR\fR
-Display specific attribute in list command.
+Of \fBlist\fR: match the regex against this attribute instead of the name.
 .SS Token Options
 .TP
 .B \-\-sign

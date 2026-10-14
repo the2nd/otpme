@@ -120,6 +120,8 @@ Runs on: nodes and hosts.
 Cluster daemon.
 It manages the nodes of a site: quorum, the master node and failover.
 It also syncs the objects of the own site between the nodes.
+See
+.BR otpme\-cluster (1).
 .br
 Runs on: nodes.
 .TP
@@ -174,7 +176,7 @@ Runs on: the master node only. clusterd starts it on the new master node when th
 Configuration daemon. It runs as root.
 It gets signed configuration jobs from the nodes, checks them and runs them. See
 .BR otpme\-deploy (1).
-It also reports the OS and the installed packages of the host to the nodes. See
+It also reports the system, the kernel, the packages and the hardware of the host to the nodes, and whether the host has to be rebooted. See
 .BR otpme\-inventory (1).
 .br
 Runs on: nodes and hosts.
@@ -719,7 +721,7 @@ confd does not run a job itself.
 It starts a service of its own for each job (\fBotpme\-confd\-job\fR).
 So a long job does not block confd, and a job that restarts OTPme keeps running and can report its result afterwards.
 .PP
-confd also reports which system the host runs and which packages are installed.
+confd also reports which system and which kernel the host runs, whether it has to be rebooted, and which packages are installed.
 You can see and search this with
 .BR otpme\-inventory (1).
 .SH CONFIG PARAMETERS
@@ -800,13 +802,13 @@ Object types: site, unit, token
 .B auto_sign \fR(bool, default: false)
 Offer to sign the object after each change.
 .br
-On an object a token can be assigned to \(em a role, a group, an access group, a client, a host or a node \(em it says to sign the token for that assignment, which is what
+On an object a token can be assigned to \(em a role, a group, an access group, a host or a node \(em it says to sign the token for that assignment, which is what
 .B add_token \-\-sign
 does by hand.
 A host can be told to let an SSH key in only with such a signature, see
 .BR otpme\-role (1).
 .br
-Object types: site, unit, user, token, script, role, group, accessgroup, client, host, node
+Object types: site, unit, user, token, script, role, group, accessgroup, host, node
 .TP
 .B auto_revoke \fR(bool, default: true)
 Revoke the signatures of an object when it is changed.
@@ -2256,6 +2258,8 @@ A name has to be the name of an existing
 .B scope
 object, and setting an unknown one is refused.
 A site starts with the scopes \fBopenid\fR, \fBprofile\fR, \fBemail\fR, \fBaddress\fR, \fBphone\fR, \fBoffline_access\fR and \fBgroups\fR, of which the first three are in this list.
+What each of them hands out, and how a scope is granted at all, is in
+.BR otpme\-scope (1).
 .br
 Example:
 .RS
@@ -2312,7 +2316,8 @@ Object types: site, unit, client
 .B oidc_allow_plain_pkce \fR(bool, default: false)
 Whether the old PKCE method \fBplain\fR is accepted in the authorize flow.
 .br
-OAuth 2.1 §7.5.2 forbids \fBplain\fR, because whoever steals the authorization code has the verifier as well.
+With \fBplain\fR the challenge is the verifier, so whoever sees the authorization request has both and PKCE protects nothing.
+OAuth 2.1 §4.1.1 leaves it to clients that cannot do \fBS256\fR; OTPme refuses it unless this says otherwise.
 The only reason to turn it on is an old client that has \fBplain\fR built in and cannot be changed.
 .br
 The discovery document never offers \fBplain\fR, whatever this is set to.
@@ -2341,6 +2346,20 @@ A refresh token is not bound by this value but by the SSO session above it.
 It takes time units, e.g. \fB5m\fR, \fB1h\fR or \fB8h\fR.
 .br
 Object types: site, unit, client
+.TP
+.B oidc_retired_max_age \fR(time, default: 2h)
+How long a signing key stays published after
+.B otpme\-site renew_oidc_key
+has retired it.
+For that long an application can still check what the old key signed.
+After that the key is left out of \fI/jwks\fR and of the discovery document, and the next renewal removes it.
+.br
+Do not set it lower than the longest \fBoidc_access_token_ttl\fR in use.
+An ID Token lives that long, and an application checks it with the keys it is given.
+.br
+It takes time units, e.g. \fB2h\fR or \fB1D\fR.
+.br
+Object types: site
 .TP
 .B oidc_acr_scheme \fR(str, default: numeric)
 Which Authentication Context Class Reference (\fIacr\fR) an ID Token carries.
@@ -3415,6 +3434,7 @@ The settings of one user, e.g. which agent to talk to.
 .BR otpme-backup (1),
 .BR otpme-ca (1),
 .BR otpme-client (1),
+.BR otpme-cluster (1),
 .BR otpme-deploy (1),
 .BR otpme-device (1),
 .BR otpme-dictionary (1),
@@ -3428,6 +3448,7 @@ The settings of one user, e.g. which agent to talk to.
 .BR otpme-realm (1),
 .BR otpme-resolver (1),
 .BR otpme-role (1),
+.BR otpme-scope (1),
 .BR otpme-script (1),
 .BR otpme-share (1),
 .BR otpme-site (1),

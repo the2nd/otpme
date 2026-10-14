@@ -77,7 +77,10 @@ between the columns, and **--csv-sep** uses another separator.
 List the role names, and with a regex only those that match it.  
 You get the roles you may change; **-a** adds those you may only look
 at.  
-**--attribute** prints that attribute of each role next to its name.
+**--attribute** matches the regex against that attribute instead of the
+name: **list --attribute enabled True** lists the roles that are
+enabled. A value that is not text has to be spelled out — **\*** matches
+none of it.
 
 **enable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role***  
 Enable a disabled role.
@@ -341,7 +344,9 @@ IP phone, and is let onto the network by its MAC address. See
 **otpme-device**(1).
 
 **add_host *role* *host***  
-Put a host into the role.
+Put a host into the role. The host is looked for in the site of the
+role, or written as *site***/***host* to take one from another site of
+the realm.
 
 **remove_host *role* *host***  
 Take it out again.

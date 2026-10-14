@@ -28,9 +28,9 @@ Specs governing this module:
     https://datatracker.ietf.org/doc/html/rfc7519
   RFC 7636 "Proof Key for Code Exchange (PKCE)"
     https://datatracker.ietf.org/doc/html/rfc7636
-  OAuth 2.1 §6.1 "Refresh Token Protection" (RT rotation +
-    chain invalidation on replay)
-    https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
+  RFC 9700 §4.14.2 "Recommendations" (RT rotation + chain
+    invalidation on replay)
+    https://datatracker.ietf.org/doc/html/rfc9700#section-4.14.2
 """
 import os
 import time
@@ -106,9 +106,9 @@ def register():
     via this index instead of ``refresh_token_hash`` is a replay
     attempt -- the whole token chain is invalidated in that case.
 
-    Spec: OAuth 2.1 §6.1 "Refresh Token Protection"
+    Spec: RFC 9700 §4.14.2 "Recommendations"
       (rotate + invalidate chain on replay)
-      https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
+      https://datatracker.ietf.org/doc/html/rfc9700#section-4.14.2
     """
     # Looked up by the SSO server of the site the session belongs to,
     # and by nothing else anywhere.
@@ -269,8 +269,11 @@ class OIDCSession(Session):
           https://datatracker.ietf.org/doc/html/rfc6749#section-5.1
         Spec: RFC 6749 §6 "Refreshing an Access Token"
           https://datatracker.ietf.org/doc/html/rfc6749#section-6
-        Spec: OAuth 2.1 §6.1 "Refresh Token Protection"
+        Spec: RFC 9700 §4.14.2 "Recommendations"
           (sender-constrain or rotate-and-invalidate-chain on replay)
+          https://datatracker.ietf.org/doc/html/rfc9700#section-4.14.2
+        Spec: OAuth 2.1 §4.3.3 "Refresh Token Recommendations"
+          (the AS MAY revoke the old RT when it issues a new one)
           https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
         """
         new_at = secrets.token_urlsafe(32)
@@ -340,10 +343,12 @@ class OIDCSession(Session):
           https://openid.net/specs/openid-connect-core-1_0.html#IDToken
         Spec: OIDC Core 1.0 §3.1.3.6 "ID Token" (at_hash computation)
           https://openid.net/specs/openid-connect-core-1_0.html#CodeIDToken
-        Spec: OIDC Front-Channel Logout 1.0 §3 / OIDC Session 1.0 §5
-          (sid claim)
-          https://openid.net/specs/openid-connect-frontchannel-1_0.html
-          https://openid.net/specs/openid-connect-session-1_0.html
+        Spec: OIDC Front-Channel Logout 1.0 §3 "OpenID Provider Logout
+          Functionality" (defines the sid claim)
+          https://openid.net/specs/openid-connect-frontchannel-1_0.html#OPLogout
+        Spec: OIDC Back-Channel Logout 1.0 §2.4 "Logout Token"
+          (sid in the logout token, and in the ID Token with it)
+          https://openid.net/specs/openid-connect-backchannel-1_0.html#LogoutToken
         Spec: RFC 7519 §4.1 "Registered Claim Names"
           (iss, sub, aud, exp, nbf, iat, jti)
           https://datatracker.ietf.org/doc/html/rfc7519#section-4.1
@@ -455,7 +460,7 @@ class OIDCSession(Session):
 
         Spec: OIDC Back-Channel Logout 1.0 §2 "Back-Channel Logout"
           (OP-initiated POST to RP's backchannel_logout_uri)
-          https://openid.net/specs/openid-connect-backchannel-1_0.html#BCLogout
+          https://openid.net/specs/openid-connect-backchannel-1_0.html#Backchannel
         """
         client = None
         if self.client:

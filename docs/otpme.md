@@ -362,14 +362,15 @@ On the master node: do not remove the floating IP when the daemons stop.
 
 **otpme**(7), **otpme.conf**(5), **pam_otpme**(8),
 **otpme-accessgroup**(1), **otpme-backup**(1), **otpme-ca**(1),
-**otpme-client**(1), **otpme-deploy**(1), **otpme-device**(1),
-**otpme-dictionary**(1), **otpme-group**(1), **otpme-host**(1),
-**otpme-inventory**(1), **otpme-node**(1), **otpme-policy**(1),
-**otpme-pool**(1), **otpme-realm**(1), **otpme-resolver**(1),
-**otpme-role**(1), **otpme-script**(1), **otpme-share**(1),
-**otpme-shell**(1), **otpme-site**(1), **otpme-token**(1),
-**otpme-tool**(1), **otpme-trash**(1), **otpme-unit**(1),
-**otpme-user**(1), **otpme-vlan**(1)
+**otpme-client**(1), **otpme-cluster**(1), **otpme-deploy**(1),
+**otpme-device**(1), **otpme-dictionary**(1), **otpme-group**(1),
+**otpme-host**(1), **otpme-inventory**(1), **otpme-node**(1),
+**otpme-policy**(1), **otpme-pool**(1), **otpme-realm**(1),
+**otpme-resolver**(1), **otpme-role**(1), **otpme-scope**(1),
+**otpme-script**(1), **otpme-share**(1), **otpme-shell**(1),
+**otpme-site**(1), **otpme-token**(1), **otpme-tool**(1),
+**otpme-trash**(1), **otpme-unit**(1), **otpme-user**(1),
+**otpme-vlan**(1)
 
 # AUTHOR
 

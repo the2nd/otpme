@@ -309,7 +309,7 @@ def register_hooks():
 
 def register_token_type():
     """ Register token type. """
-    config.register_sub_object_type("token", "yubikey_piv")
+    config.register_sub_object_type("token", "yubikey_piv", version=1)
     config.register_ssh_token("yubikey_piv")
 
 @match_class_typing

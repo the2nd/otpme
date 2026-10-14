@@ -510,26 +510,38 @@ class OTPmeAuthP1(OTPmeServer1):
                 msg = msg.format(token_path=token.rel_path, access_group=access_group)
                 raise AccessDenied(msg)
 
+        # Load our site.
+        result = backend.search(object_type="site",
+                                attribute="name",
+                                value=config.site,
+                                realm=config.realm,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown site: {site}")
+            msg = msg.format(site=config.site)
+            raise Exception(msg)
+        own_site = result[0]
         # Load JWT signing key.
         user_site = backend.get_object(uuid=token.site_uuid)
-        sign_key = user_site._key
-        if not sign_key:
-            emit_audit("AuthZ", "denied",
-                       level='warning',
-                       actor=token.rel_path,
-                       user=username,
-                       method='gen_jwt',
-                       reason='site_signing_key_missing',
-                       site=getattr(user_site, 'name', None))
-            msg = _("Access denied")
-            raise AccessDenied(msg)
+        if user_site.name != config.site:
+            if own_site.uuid not in user_site.trusted_sites:
+                emit_audit("AuthZ", "denied",
+                           level='warning',
+                           actor=token.rel_path,
+                           user=username,
+                           method='gen_jwt',
+                           reason='site_not_trusted',
+                           site=getattr(user_site, 'name', None))
+                msg = _("Access denied")
+                raise AccessDenied(msg)
+        sign_key = own_site._key
 
         # Get JWT validity from site config.
         if sso:
             jwt_valid_para = "sso_jwt_valid"
         else:
             jwt_valid_para = "auth_jwt_valid"
-        jwt_valid = user_site.get_config_parameter(jwt_valid_para)
+        jwt_valid = own_site.get_config_parameter(jwt_valid_para)
         try:
             jwt_valid = units.time2int(jwt_valid, time_unit="s")
         except Exception as err:

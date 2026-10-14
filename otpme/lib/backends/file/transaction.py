@@ -326,9 +326,12 @@ def replay_transactions():
                 log_msg = log_msg.format(id=_transaction.id)
                 logger.debug(log_msg)
             continue
-        # Lock transaction.
+        # Lock transaction. Asked once and not waited for: a live
+        # transaction holds its lock, and every read of an object comes
+        # through here, so a wait is paid once per transaction of
+        # somebody else on every read.
         try:
-            _transaction.acquire_lock(timeout=0.01)
+            _transaction.acquire_lock(timeout=0)
         except ObjectLocked:
             continue
         except LockWaitTimeout:
@@ -378,9 +381,12 @@ def replay_transactions():
                 log_msg = log_msg.format(id=_transaction.id)
                 logger.debug(log_msg)
             continue
-        # Lock transaction.
+        # Lock transaction. Asked once and not waited for: a live
+        # transaction holds its lock, and every read of an object comes
+        # through here, so a wait is paid once per transaction of
+        # somebody else on every read.
         try:
-            _transaction.acquire_lock(timeout=0.01)
+            _transaction.acquire_lock(timeout=0)
         except ObjectLocked:
             continue
         try:
@@ -854,7 +860,7 @@ class BaseTransaction(object):
         replay.
 
         For a transaction of another process the answer is no, and the
-        lock decides -- every caller tries acquire_lock(timeout=0.01)
+        lock decides -- every caller tries acquire_lock(timeout=0)
         right after this one. A live transaction holds its lock from
         begin() until end_transaction() gives it back in its finally,
         and the lock is an flock, so a process that died does not hold
@@ -1896,6 +1902,20 @@ class ObjectTransaction(BaseTransaction):
             try:
                 added_objects, \
                 deleted_objects = self._commit(no_index_writes=no_index_writes)
+                # Commit DB transaction two times because of nested transaction.
+                # https://docs.sqlalchemy.org/en/14/orm/session_transaction.html#nested-transaction
+                #
+                # In here with _commit(), because this is the write that
+                # makes the index agree with what _commit() did to the
+                # files. It used to sit in an else of its own, where a
+                # failure was answered by nothing but the session.close()
+                # below -- and closing a session rolls back what was not
+                # committed, while the files of the deleted objects were
+                # already gone. That leaves an index entry for a file
+                # that is not there, which is the one direction that
+                # does not heal itself.
+                self.session.commit()
+                self.session.commit()
             except Exception:
                 # Rollback DB transaction on error.
                 self.session.rollback()
@@ -1913,13 +1933,10 @@ class ObjectTransaction(BaseTransaction):
                 # "otpme-tool index fix". The other direction is
                 # harmless: a file without an index entry comes back
                 # with an index rebuild.
+                # Dropping one that is already gone costs nothing:
+                # index_del() asks for the entry first (file.index_del).
                 self._drop_index_of_deleted_objects()
                 raise
-            else:
-                # Commit DB transaction two times because of nested transaction.
-                # https://docs.sqlalchemy.org/en/14/orm/session_transaction.html#nested-transaction
-                self.session.commit()
-                self.session.commit()
             finally:
                 # Close DB session.
                 self.session.close()
@@ -2000,6 +2017,16 @@ class ObjectTransaction(BaseTransaction):
                     self._index_add(object_id, **kwargs)
                     self._remove_file(journal_file)
             elif action == "index_del":
+                # Only where the index is ours to write, which is a
+                # replay. In the ordinary commit the entry was already
+                # taken out of the DB session when the delete was asked
+                # for, and the delete of the files below says so
+                # (no_exists_check=True).
+                #
+                # Applying it here as well would make the outcome
+                # independent of whether that live change took effect --
+                # and that is exactly the trace we are following, so it
+                # is not done. See the comment in file.index_del().
                 if not no_index_writes:
                     object_id = journal_entry['object_id']
                     object_id = oid.get(object_id)

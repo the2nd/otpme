@@ -352,40 +352,44 @@ def row_getter(realm, site, client_order, client_data, acls,
                     row.append(_("Unlimited"))
             else:
                 row.append("-")
-        # Addresses.
+        # Addresses. An address is taken away with "delete:address",
+        # the way it is registered (write_value_acls in
+        # classes/client.py): asking for "remove:address" asked for an
+        # ACL that does not exist.
         if "addresses" in output_fields:
             if check_acl("view:address") \
             or check_acl("add:address") \
-            or check_acl("remove:address"):
+            or check_acl("delete:address"):
                 if addresses:
                     row.append("\n".join(addresses))
                 else:
                     row.append("")
             else:
                 row.append("-")
-        # Auth cache status.
+        # Auth cache status. It is switched with enable:/disable:, not
+        # with add:/remove: -- those two ACLs do not exist.
         if "auth_cache" in output_fields:
             if check_acl("view:auth_cache") \
-            or check_acl("add:auth_cache") \
-            or check_acl("remove:auth_cache"):
+            or check_acl("enable:auth_cache") \
+            or check_acl("disable:auth_cache"):
                 if auth_cache_enabled:
                     row.append(_("Enabled"))
                 else:
                     row.append(_("Disabled"))
             else:
                 row.append("-")
-        # Auth cache timeout.
+        # Auth cache timeout. Set with edit:, like every other value
+        # of this object that holds a number.
         if "tmo" in output_fields:
             if check_acl("view:auth_cache_timeout") \
-            or check_acl("add:auth_cache_timeout") \
-            or check_acl("remove:auth_cache_timeout"):
+            or check_acl("edit:auth_cache_timeout"):
                 row.append(auth_cache_timeout)
             else:
                 row.append("-")
         # Policies.
         if "policies" in output_fields:
             if check_acl("view:policies") \
-            or check_acl("add:policy") \
+            or check_acl("assign:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="client",
                                                     object_uuid=client_uuid,

@@ -824,6 +824,7 @@ def register_backend():
         return backend.rebuild_object_index("group", objects, after)
     # Register object to config.
     config.register_object_type(object_type="group",
+                            version=1,
                             tree_object=True,
                             add_after=["dictionary"],
                             sync_before=["token", "user"],
@@ -1099,6 +1100,8 @@ class Group(OTPmeObject):
                                          return_type="instance")
         affected_shares = [s for s in affected_shares if s.limit_by_hosts]
 
+        if not host_uuid and host_name:
+            host_uuid = self.get_host_uuid(host_name)
         # Try to add host via parent class.
         result = super().add_host(*args, host_name=host_name,
                                 host_uuid=host_uuid,
@@ -1108,7 +1111,7 @@ class Group(OTPmeObject):
             return result
 
         for share in affected_shares:
-            share._notify_share_metadata_change("share_add_host", callback, host=host_name,
+            share._notify_share_metadata_change("share_add_host", callback, host_uuid=host_uuid,
                                                 persist_mount=persist_mount,
                                                 share_notifications=share_notifications)
         return result
@@ -1119,27 +1122,31 @@ class Group(OTPmeObject):
         self,
         *args,
         host_name: str=None,
+        host_uuid: str=None,
         persist_mount: bool=None,
         share_notifications: bool=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Adds a host to this group. """
+        """ Removes a host from this group. """
         affected_shares = backend.search(object_type="share",
                                          attribute="group",
                                          value=self.uuid,
                                          return_type="instance")
         affected_shares = [s for s in affected_shares if s.limit_by_hosts]
 
+        if not host_uuid and host_name:
+            host_uuid = self.get_host_uuid(host_name)
         # Try to remove host via parent class.
         result = super().remove_host(*args, host_name=host_name,
+                                    host_uuid=host_uuid,
                                     callback=callback, **kwargs)
 
         if not result:
             return result
 
         for share in affected_shares:
-            share._notify_share_metadata_change("share_remove_host", callback, host=host_name,
+            share._notify_share_metadata_change("share_remove_host", callback, host_uuid=host_uuid,
                                                 persist_mount=persist_mount,
                                                 share_notifications=share_notifications)
         return result

@@ -82,7 +82,10 @@ between the columns, and **--csv-sep** uses another separator.
 **list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
 List the host names, and with a regex only those that match it. You get
 the hosts you may change; **-a** adds those you may only look at.  
-**--attribute** prints that attribute of each host next to its name.
+**--attribute** matches the regex against that attribute instead of the
+name: **list --attribute enabled True** lists the hosts that are
+enabled. A value that is not text has to be spelled out — **\*** matches
+none of it.
 
 **enable *host***  
 Enable a disabled host.
@@ -440,11 +443,20 @@ holds the ACL **view:jotp** or **view:lotp**.
 ## Certificates and Keys
 
 A host gets a certificate and a key pair of its own when it joins. The
-certificate is how a daemon knows which host it is talking to, and the
-public key is how anything that has to tell this host from another one
-checks what the host says — a remote shell starts with the host vouching
-for its SSH host key, and this is what the other end holds that against
-(see **otpme-shell**(1)).
+certificate is for TLS, and it is how a daemon knows which host is at
+the other end of a connection.
+
+The key pair is how a host proves that it is that host. **syncd** and
+**backupd** ask for it before they answer anything: both ends sign a
+challenge of the other, and each checks the answer against the public
+key on the host object in the tree. A challenge older than five seconds
+is refused. The private half never leaves the machine, it stays in
+**hostkey.pem**; the public half is what the commands below show and
+set.
+
+The same key is the SSH host key of a remote shell — the host vouches
+for it, and the other end holds that against the public key here (see
+**otpme-shell**(1)).
 
 The certificate is renewed on the machine itself, with **otpme-tool
 renew_cert**. The certificate request is made there, with the key of the
@@ -479,9 +491,11 @@ On the machine itself sshd does not read this. It calls
 > **AuthorizedKeysCommand /usr/local/bin/otpme-get-authorized-keys**  
 > **AuthorizedKeysCommandUser root**
 
-The keys are synced before the answer, but at most every 30 seconds:
-sshd asks this for every attempt, and one sync per attempt would be one
-sync per port scan.
+The keys are synced before the answer, or the first login of a token
+that was just added would be refused. Not more often than every 30
+seconds, though: sshd runs the command on every login attempt, and
+anybody who reaches port 22 can make one. A sync per attempt would let
+whoever knocks at the door decide how often this host syncs.
 
 ## Configuration Jobs and Inventory
 

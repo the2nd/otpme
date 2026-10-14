@@ -243,6 +243,7 @@ commands = {
                                         'site',
                                         'max_nodes',
                                         'max_hosts',
+                                        'max_groups',
                                         'max_pools',
                                         'max_roles',
                                         'max_tokens',
@@ -271,7 +272,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'force_group',
-                    'args'              : ['group_name'],
+                    'oargs'             : ['group_name'],
                     'job_type'          : 'process',
                     },
                 },
@@ -538,7 +539,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'remove_no_mount_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['keep_share_key'],
+                    'oargs'             : ['keep_share_key', 'persist_mount', 'share_notifications'],
                     'job_type'          : 'process',
                     },
                 },
@@ -703,7 +704,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'list_roles',
-                    'oargs'             : ['recursive'],
+                    'dargs'             : {'skip_disabled':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -1193,6 +1194,7 @@ def register_backend():
         return backend.rebuild_object_index("share", objects, after)
     # Register object to config.
     config.register_object_type(object_type="share",
+                            version=1,
                             tree_object=True,
                             uniq_name=True,
                             add_after=["node"],
@@ -1573,7 +1575,7 @@ class Share(OTPmeObject):
                 share_key = None
                 if share.encrypted:
                     token_user = restore_token.split("/")[0]
-                    share_key = share.get_share_key(username=token_user)
+                    share_key = share.get_share_key(username=token_user, run_policies=False)
                     if not share_key:
                         msg = _("No share key available for user: {user}")
                         msg = msg.format(user=token_user)
@@ -1642,7 +1644,8 @@ class Share(OTPmeObject):
         root_dir = os.path.join(self.share_root, self.name)
         # Run share add script.
         try:
-            self.run_share_script(self.add_script, root_dir)
+            self.run_share_script(self.add_script, root_dir,
+                                options=self.add_script_options)
         except Exception as e:
             msg = _("Failed to run share add script: {add_script}: {e}")
             msg = msg.format(add_script=self.add_script, e=e)
@@ -1734,6 +1737,14 @@ class Share(OTPmeObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
+        if not os.path.isabs(root_dir):
+            msg = _("Root dir must be an absolute path: {root_dir}")
+            msg = msg.format(root_dir=root_dir)
+            return callback.error(msg)
+        # Resolved before it is compared: commonpath() takes ".." and a
+        # symlink as they are written, and the file server serves what
+        # the path resolves to.
+        root_dir = os.path.realpath(root_dir)
         if self.root_dir == root_dir:
             msg = _("Root dir already set to: {root_dir}")
             msg = msg.format(root_dir=self.root_dir)
@@ -1773,12 +1784,16 @@ class Share(OTPmeObject):
         **kwargs,
         ):
         if not group_name and not group_uuid:
+            if self.force_group_uuid is None:
+                msg = _("Share has no force group.")
+                return callback.error(msg)
             msg = _("Remove force group of share '{share_name}'?: ")
             msg = msg.format(share_name=self.name)
             if not self.ask_change_confirmation(msg, force=force, callback=callback):
                 return callback.abort()
             self.del_index('force_group_uuid', self.force_group_uuid)
             self.force_group_uuid = None
+            self.set_changelog("removed")
             return self._cache(callback=callback)
         if group_name:
             result = backend.search(object_type="group",
@@ -1830,6 +1845,16 @@ class Share(OTPmeObject):
         if not create_mode.startswith("0o"):
             msg = _("Invalid mode. Use python format, e.g. 0o700")
             return callback.error(msg)
+        # The file server does int(mode, 0) on every mount.
+        try:
+            mode = int(create_mode, 0)
+        except ValueError:
+            msg = _("Invalid mode. Use python format, e.g. 0o700")
+            return callback.error(msg)
+        if mode < 0 or mode > 0o7777:
+            msg = _("Mode out of range: {create_mode}")
+            msg = msg.format(create_mode=create_mode)
+            return callback.error(msg)
 
         msg = _("Set create mode of share '{share_name}' to '{create_mode}'?: ")
         msg = msg.format(share_name=self.name, create_mode=create_mode)
@@ -1854,11 +1879,20 @@ class Share(OTPmeObject):
         **kwargs,
         ):
         if self.directory_mode == create_mode:
-            msg = _("Create mode already set to: {directory_mode}")
+            msg = _("Directory mode already set to: {directory_mode}")
             msg = msg.format(directory_mode=self.directory_mode)
             return callback.error(msg)
         if not create_mode.startswith("0o"):
             msg = _("Invalid mode. Use python format, e.g. 0o700")
+            return callback.error(msg)
+        try:
+            mode = int(create_mode, 0)
+        except ValueError:
+            msg = _("Invalid mode. Use python format, e.g. 0o700")
+            return callback.error(msg)
+        if mode < 0 or mode > 0o7777:
+            msg = _("Mode out of range: {create_mode}")
+            msg = msg.format(create_mode=create_mode)
             return callback.error(msg)
 
         msg = _("Set directory mode of share '{share_name}' to '{create_mode}'?: ")
@@ -2011,13 +2045,28 @@ class Share(OTPmeObject):
 
         return self._cache(callback=callback)
 
-    def get_share_token_users(self):
-        """ All users that have a token assigned to the share.
+    def get_sign_key_tokens(self):
+        """ All tokens that reach the share, whatever they are there for.
 
-        Includes no mount tokens, just like get_share_tokens(), so a
-        users sign public key is handled like their share key.
+        More than get_share_tokens(): a root mount token and a master
+        password token mount the share too, and they need not be
+        assigned the normal way. With SOTP signing their users have to
+        sign like everybody else, so their sign public key has to be
+        here. A share key is another matter, they get none.
         """
-        share_tokens = self.get_share_tokens()
+        tokens = list(self.tokens)
+        tokens += list(self.no_mount_tokens)
+        tokens += list(self.root_mount_tokens)
+        tokens += list(self.master_password_tokens)
+        return tokens
+
+    def get_share_token_users(self):
+        """ All users that have a token on the share.
+
+        Of every kind, see get_sign_key_tokens(): these are the users
+        whose sign public key the share keeps.
+        """
+        share_tokens = self.get_sign_key_tokens()
         if not share_tokens:
             return []
         user_uuids = backend.search(object_type="token",
@@ -2059,6 +2108,26 @@ class Share(OTPmeObject):
         self.sign_public_keys[user.uuid] = user.sign_public_key
         return True
 
+    def add_token_sign_public_key(
+        self,
+        token_path: str,
+        callback: JobCallback=default_callback,
+        ):
+        """ Store the sign public key of the user a token belongs to.
+
+        For the commands that add a token and have no user at hand: a
+        root mount token and a master password token.
+        """
+        username = token_path.split("/")[0]
+        user = backend.get_object(object_type="user",
+                                name=username,
+                                realm=config.realm)
+        if not user:
+            msg = _("Unknown user: {username}")
+            msg = msg.format(username=username)
+            return callback.error(msg)
+        return self.add_sign_public_key(user, callback=callback)
+
     def del_sign_public_key(
         self,
         token_path: str,
@@ -2081,7 +2150,7 @@ class Share(OTPmeObject):
             return True
         if user.uuid not in self.sign_public_keys:
             return True
-        share_tokens = self.get_share_tokens()
+        share_tokens = self.get_sign_key_tokens()
         for token_uuid in user.get_tokens():
             if token_uuid not in share_tokens:
                 continue
@@ -2427,6 +2496,11 @@ class Share(OTPmeObject):
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
 
+        # The user has to sign the SOTP like everybody else.
+        if self.sotp_signing:
+            if not self.add_token_sign_public_key(token_path, callback=callback):
+                return callback.error()
+
         self.master_password_tokens.append(token_uuid)
 
         return self._write(callback=callback)
@@ -2458,7 +2532,6 @@ class Share(OTPmeObject):
                                 attribute="rel_path",
                                 value=token_path,
                                 realm=config.realm,
-                                site=config.site,
                                 return_type="uuid")
         if not result:
             msg = _("Unknown token: {token_path}")
@@ -2479,6 +2552,9 @@ class Share(OTPmeObject):
             return callback.abort()
 
         self.master_password_tokens.remove(token_uuid)
+
+        if self.sotp_signing:
+            self.del_sign_public_key(token_path, callback=callback)
 
         return self._write(callback=callback)
 
@@ -2510,13 +2586,10 @@ class Share(OTPmeObject):
         def post_method():
             share_nodes = self.get_nodes(include_pools=True,
                                         return_type="instance")
-            if not share_nodes:
-                share_nodes = backend.search(object_type="node",
-                                            attribute="uuid",
-                                            value="*",
-                                            realm=self.realm,
-                                            site=self.site,
-                                            return_type="instance")
+            # No enabled node, nothing to mount from. An unmount is
+            # sent anyway.
+            if not share_nodes and event_type == "share_mount":
+                return
             node_fqdns = []
             for node in share_nodes:
                 node_fqdns.append(node.fqdn)
@@ -2525,7 +2598,7 @@ class Share(OTPmeObject):
             if self.limit_by_hosts:
                 share_hosts = self.get_hosts(include_groups=True,
                                             include_roles=True,
-                                            return_type="name")
+                                            return_type="uuid")
             shares = {}
             share_id = self.share_id
             shares[share_id] = {}
@@ -2604,6 +2677,11 @@ class Share(OTPmeObject):
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
 
+        # The user has to sign the SOTP like everybody else.
+        if self.sotp_signing:
+            if not self.add_token_sign_public_key(token_path, callback=callback):
+                return callback.error()
+
         self.root_mount_tokens.append(token_uuid)
 
         # Update index.
@@ -2666,6 +2744,9 @@ class Share(OTPmeObject):
             return callback.abort()
 
         self.root_mount_tokens.remove(token_uuid)
+
+        if self.sotp_signing:
+            self.del_sign_public_key(token_path, callback=callback)
         # Update index.
         self.del_index('root_mount_token', token_uuid)
 
@@ -2796,16 +2877,16 @@ class Share(OTPmeObject):
                     msg = msg.format(restore_share=self.restore_share)
                     return callback.error(msg)
                 share = result[0]
-                share_key = share.get_share_key(username=token_user)
+                share_key = share.get_share_key(username=token_user, run_policies=False)
                 if not share_key:
                     msg = _("No share key available for user: {user}")
                     msg = msg.format(user=token_user)
                     return callback.error(msg)
             else:
-                existing_key = self.get_share_key(username=user.name)
+                existing_key = self.get_share_key(username=user.name, run_policies=False)
                 if not existing_key and not share_key:
                     auth_user = config.auth_user
-                    auth_user_share_key = self.get_share_key(username=auth_user.name)
+                    auth_user_share_key = self.get_share_key(username=auth_user.name, run_policies=False)
                     if not auth_user_share_key:
                         msg = _("You dont have a share key for share: {share_name}")
                         msg = msg.format(share_name=self.name)
@@ -2856,6 +2937,8 @@ class Share(OTPmeObject):
         self,
         token_path: str,
         keep_share_key: bool=None,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         force: bool=False,
         _caller: str="API",
         verbose_level: int=0,
@@ -2937,8 +3020,26 @@ class Share(OTPmeObject):
         if self.sotp_signing:
             self.del_sign_public_key(token_path, callback=callback)
 
-        return self._write(callback=callback)
+        result = self._write(callback=callback)
+        if not result:
+            return result
 
+        # The token may have mounted the share by hand. Nothing to take
+        # away if it still reaches the share as a normal token or
+        # through a role.
+        share_tokens = self.get_tokens(skip_disabled=False,
+                                      include_roles=True,
+                                      return_type="rel_path")
+        if token_path not in share_tokens:
+            self._notify_share_token("share_unmount", token_path,
+                                    persist_mount=persist_mount,
+                                    share_notifications=share_notifications,
+                                    callback=callback)
+        return result
+
+    # The parent class checks this ACL too, but only when it is called,
+    # and by then the share key and the sign key are written already.
+    @check_acls(['add:token'])
     @object_lock()
     @audit_log(ignore_args=['share_key'])
     @object_changelog("add token {token_path}")
@@ -3010,16 +3111,16 @@ class Share(OTPmeObject):
                     msg = msg.format(restore_share=self.restore_share)
                     return callback.error(msg)
                 share = result[0]
-                share_key = share.get_share_key(username=token_user)
+                share_key = share.get_share_key(username=token_user, run_policies=False)
                 if not share_key:
                     msg = _("No share key available for user: {user}")
                     msg = msg.format(user=token_user)
                     return callback.error(msg)
             else:
-                existing_key = self.get_share_key(username=user.name)
+                existing_key = self.get_share_key(username=user.name, run_policies=False)
                 if not existing_key and not share_key:
                     auth_user = config.auth_user
-                    auth_user_share_key = self.get_share_key(username=auth_user.name)
+                    auth_user_share_key = self.get_share_key(username=auth_user.name, run_policies=False)
                     if not auth_user_share_key:
                         msg = _("You dont have a share key for share: {share_name}")
                         msg = msg.format(share_name=self.name)
@@ -3075,13 +3176,9 @@ class Share(OTPmeObject):
         def post_method():
             share_nodes = self.get_nodes(include_pools=True,
                                           return_type="instance")
+            # No enabled node, nothing to mount from.
             if not share_nodes:
-                share_nodes = backend.search(object_type="node",
-                                            attribute="uuid",
-                                            value="*",
-                                            realm=self.realm,
-                                            site=self.site,
-                                            return_type="instance")
+                return
             node_fqdns = []
             for node in share_nodes:
                 node_fqdns.append(node.fqdn)
@@ -3090,7 +3187,7 @@ class Share(OTPmeObject):
             if self.limit_by_hosts:
                 share_hosts = self.get_hosts(include_groups=True,
                                             include_roles=True,
-                                            return_type="name")
+                                            return_type="uuid")
             shares = {}
             share_id = self.share_id
             shares[share_id] = {}
@@ -3223,13 +3320,6 @@ class Share(OTPmeObject):
                 return
             share_nodes = self.get_nodes(include_pools=True,
                                           return_type="instance")
-            if not share_nodes:
-                share_nodes = backend.search(object_type="node",
-                                            attribute="uuid",
-                                            value="*",
-                                            realm=self.realm,
-                                            site=self.site,
-                                            return_type="instance")
             node_fqdns = []
             for node in share_nodes:
                 node_fqdns.append(node.fqdn)
@@ -3238,7 +3328,7 @@ class Share(OTPmeObject):
             if self.limit_by_hosts:
                 share_hosts = self.get_hosts(include_groups=True,
                                             include_roles=True,
-                                            return_type="name")
+                                            return_type="uuid")
             shares = {}
             share_id = self.share_id
             shares[share_id] = {}
@@ -3323,13 +3413,9 @@ class Share(OTPmeObject):
             # Get share nodes.
             share_nodes = self.get_nodes(include_pools=True,
                                         return_type="instance")
+            # No enabled node, nothing to mount from.
             if not share_nodes:
-                share_nodes = backend.search(object_type="node",
-                                            attribute="uuid",
-                                            value="*",
-                                            realm=self.realm,
-                                            site=self.site,
-                                            return_type="instance")
+                return
             node_fqdns = []
             for node in share_nodes:
                 node_fqdns.append(node.fqdn)
@@ -3337,7 +3423,7 @@ class Share(OTPmeObject):
             if self.limit_by_hosts:
                 share_hosts = self.get_hosts(include_groups=True,
                                             include_roles=True,
-                                            return_type="name")
+                                            return_type="uuid")
             shares = {}
             share_id = self.share_id
             shares[share_id] = {}
@@ -3446,13 +3532,6 @@ class Share(OTPmeObject):
             # Get share nodes.
             share_nodes = self.get_nodes(include_pools=True,
                                         return_type="instance")
-            if not share_nodes:
-                share_nodes = backend.search(object_type="node",
-                                            attribute="uuid",
-                                            value="*",
-                                            realm=self.realm,
-                                            site=self.site,
-                                            return_type="instance")
             node_fqdns = []
             for node in share_nodes:
                 node_fqdns.append(node.fqdn)
@@ -3460,7 +3539,7 @@ class Share(OTPmeObject):
             if self.limit_by_hosts:
                 share_hosts = self.get_hosts(include_groups=True,
                                             include_roles=True,
-                                            return_type="name")
+                                            return_type="uuid")
             shares = {}
             share_id = self.share_id
             shares[share_id] = {}
@@ -3589,12 +3668,13 @@ class Share(OTPmeObject):
             msg = msg.format(username=username)
             return callback.error(msg)
 
+        # Only the hook of this command, which is what an auth on action
+        # policy is set on. A mount reads the key as well and cannot be
+        # asked anything: it passes run_policies=False (fs1). So do the
+        # commands in here that read a key on their way, they run the
+        # hook of their own.
         if run_policies:
-            config.ignore_policy_tags.append("interactive")
             try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
                 self.run_policies("get_share_key",
                                 callback=callback,
                                 _caller=_caller)
@@ -3603,7 +3683,6 @@ class Share(OTPmeObject):
                 msg = _("Error running policies: {error}")
                 msg = msg.format(error=e)
                 return callback.error(msg)
-            config.ignore_policy_tags.remove("interactive")
 
         share_key = self.share_keys[user_uuid]
 
@@ -3694,7 +3773,7 @@ class Share(OTPmeObject):
 
         if pool.uuid in self.pools:
             exception = AlreadyExists
-            msg = _("Node is already assigned to {object_type} '{object_name}'.")
+            msg = _("Pool is already assigned to {object_type} '{object_name}'.")
             msg = msg.format(object_type=self.type, object_name=self.name)
             return callback.error(msg, exception=exception)
 
@@ -3758,7 +3837,7 @@ class Share(OTPmeObject):
             return callback.error(msg)
 
         if pool.uuid not in self.pools:
-            msg = _("Node is not assigned to {object_type} '{object_name}'.")
+            msg = _("Pool is not assigned to {object_type} '{object_name}'.")
             msg = msg.format(object_type=self.type, object_name=self.name)
             return callback.error(msg)
 
@@ -3785,6 +3864,21 @@ class Share(OTPmeObject):
         self.del_index('pool', pool.uuid)
         return self._cache(callback=callback)
 
+    def _get_host_group(self, group_name: str):
+        """ Get a group given as name or as site/name.
+
+        A bare name is looked for in the site of the share, the way
+        get_host_uuid() does it for hosts.
+        """
+        if "/" in group_name:
+            search_site, group_name = group_name.split("/", 1)
+        else:
+            search_site = self.site
+        return backend.get_object(object_type="group",
+                                realm=self.realm,
+                                site=search_site,
+                                name=group_name)
+
     @check_acls(['add:group'])
     @object_lock()
     @backend.transaction
@@ -3804,10 +3898,7 @@ class Share(OTPmeObject):
         ):
         """ Add a group (hosts) to this share.  """
         if not group_uuid:
-            grp = backend.get_object(object_type="group",
-                                    realm=config.realm,
-                                    site=self.site,
-                                    name=group_name)
+            grp = self._get_host_group(group_name)
             if not grp:
                 msg = _("Group does not exist: {group_name}")
                 msg = msg.format(group_name=group_name)
@@ -3847,92 +3938,16 @@ class Share(OTPmeObject):
         if not result:
             return result
 
-        if not self.enabled:
-            return result
-
         if not self.limit_by_hosts:
             return result
 
-        # Get group.
-        group = backend.get_object(uuid=group_uuid)
-
-        # Get group hosts.
-        group_hosts = group.get_hosts(skip_disabled=True, return_type="name")
-
-        if not group_hosts:
-            return result
-
-        share_tokens = self.get_tokens(skip_disabled=False,
-                                        include_roles=True,
-                                        return_type="rel_path")
-        # Get share nodes.
-        share_nodes = self.get_nodes(include_pools=True,
-                                    return_type="instance")
-        if not share_nodes:
-            share_nodes = backend.search(object_type="node",
-                                        attribute="uuid",
-                                        value="*",
-                                        realm=self.realm,
-                                        site=self.site,
-                                        return_type="instance")
-        node_fqdns = []
-        for node in share_nodes:
-            node_fqdns.append(node.fqdn)
-
-        shares = {}
-        share_id = self.share_id
-        shares[share_id] = {}
-        shares[share_id]['name'] = self.name
-        shares[share_id]['site'] = self.site
-        shares[share_id]['nodes'] = node_fqdns
-        shares[share_id]['hosts'] = group_hosts
-        shares[share_id]['encrypted'] = self.encrypted
-        shares[share_id]['sotp_signing'] = self.sotp_signing
-        shares[share_id]['mount_timeout'] = self.mount_timeout
-
-        if persist_mount is None:
-            persist_mount = not bool(self.restore_share)
-
-        # Collect notifications.
-        user_shares = {}
-        already_processed = []
-        for token_path in share_tokens:
-            username = token_path.split("/")[0]
-            if username == ADMIN_USER:
-                continue
-            if token_path in already_processed:
-                continue
-            try:
-                x_shares = user_shares[username]
-            except KeyError:
-                x_shares = {}
-            try:
-                tokens = x_shares[share_id]['tokens']
-            except KeyError:
-                tokens = []
-            tokens.append(token_path)
-            share_data = stuff.copy_object(shares)
-            x_shares.update(share_data)
-            x_shares[share_id]['tokens'] = tokens
-            x_shares[share_id]['persist'] = persist_mount
-            user_shares[username] = x_shares
-            already_processed.append(token_path)
-
-        notifys = []
-        for username in user_shares:
-            shares = user_shares[username]
-            notifys.append((username, "share_add_host", shares))
-
-        def post_method():
-            for x in notifys:
-                notify(username=x[0], event_type=x[1], data=x[2])
-
-        if share_notifications is None:
-            share_notifications = self.get_share_notifications()
-
-        if share_notifications:
-            callback.post_methods.append(post_method)
-
+        # The event carries the host list the share has now, and each
+        # host on it mounts. The event built here before had no
+        # limit_hosts in it, which idled reads as "not limited": it went
+        # to every host of the users.
+        self._notify_share_metadata_change("share_add_host", callback,
+                                            persist_mount=persist_mount,
+                                            share_notifications=share_notifications)
         return result
 
     @check_acls(['remove:group'])
@@ -3952,10 +3967,7 @@ class Share(OTPmeObject):
         **kwargs,
         ):
         """ Remove a group (hosts) from this share. """
-        group = backend.get_object(object_type="group",
-                                realm=config.realm,
-                                site=self.site,
-                                name=group_name)
+        group = self._get_host_group(group_name)
         if not group:
             msg = _("Group does not exist: {group_name}")
             msg = msg.format(group_name=group_name)
@@ -3992,83 +4004,13 @@ class Share(OTPmeObject):
         if not self.limit_by_hosts:
             return result
 
-        # Get group hosts.
-        group_hosts = group.get_hosts(skip_disabled=True, return_type="uuid")
-
-        if not group_hosts:
-            return result
-
-        share_tokens = self.get_tokens(skip_disabled=False,
-                                        include_roles=True,
-                                        return_type="rel_path")
-        # Get share nodes.
-        share_nodes = self.get_nodes(include_pools=True,
-                                    return_type="instance")
-        if not share_nodes:
-            share_nodes = backend.search(object_type="node",
-                                        attribute="uuid",
-                                        value="*",
-                                        realm=self.realm,
-                                        site=self.site,
-                                        return_type="instance")
-        node_fqdns = []
-        for node in share_nodes:
-            node_fqdns.append(node.fqdn)
-
-        shares = {}
-        share_id = self.share_id
-        shares[share_id] = {}
-        shares[share_id]['name'] = self.name
-        shares[share_id]['site'] = self.site
-        shares[share_id]['nodes'] = node_fqdns
-        shares[share_id]['hosts'] = group_hosts
-        shares[share_id]['encrypted'] = self.encrypted
-        shares[share_id]['sotp_signing'] = self.sotp_signing
-        shares[share_id]['mount_timeout'] = self.mount_timeout
-
-        if persist_mount is None:
-            persist_mount = not bool(self.restore_share)
-
-        # Collect notifications.
-        user_shares = {}
-        already_processed = []
-        for token_path in share_tokens:
-            username = token_path.split("/")[0]
-            if username == ADMIN_USER:
-                continue
-            if token_path in already_processed:
-                continue
-            try:
-                x_shares = user_shares[username]
-            except KeyError:
-                x_shares = {}
-            try:
-                tokens = x_shares[share_id]['tokens']
-            except KeyError:
-                tokens = []
-            tokens.append(token_path)
-            share_data = stuff.copy_object(shares)
-            x_shares.update(share_data)
-            x_shares[share_id]['tokens'] = tokens
-            x_shares[share_id]['persist'] = persist_mount
-            user_shares[username] = x_shares
-            already_processed.append(token_path)
-
-        notifys = []
-        for username in user_shares:
-            shares = user_shares[username]
-            notifys.append((username, "share_remove_host", shares))
-
-        def post_method():
-            for x in notifys:
-                notify(username=x[0], event_type=x[1], data=x[2])
-
-        if share_notifications is None:
-            share_notifications = self.get_share_notifications()
-
-        if share_notifications:
-            callback.post_methods.append(post_method)
-
+        # The event carries the host list the share has now, and the
+        # hosts that are not on it unmount. The event built here before
+        # had no limit_hosts in it, which idled reads as "not limited":
+        # every host of the users unmounted, the allowed ones too.
+        self._notify_share_metadata_change("share_remove_host", callback,
+                                            persist_mount=persist_mount,
+                                            share_notifications=share_notifications)
         return result
 
     def remove_orphans(
@@ -4165,6 +4107,8 @@ class Share(OTPmeObject):
         **kwargs,
         ):
         """ Adds a host to this share. """
+        if not host_uuid and host_name:
+            host_uuid = self.get_host_uuid(host_name)
         # Try to add host via parent class.
         result = super().add_host(*args, host_name=host_name,
                                 host_uuid=host_uuid,
@@ -4175,15 +4119,8 @@ class Share(OTPmeObject):
         if not self.limit_by_hosts:
             return result
 
-        if host_uuid:
-            host = backend.get_object(uuid=host_uuid)
-        else:
-            host = backend.get_object(object_type="host",
-                                    realm=config.realm,
-                                    site=self.site,
-                                    name=host_name)
-
-        self._notify_share_metadata_change("share_add_host", callback, host=host.name,
+        self._notify_share_metadata_change("share_add_host", callback,
+                                            host_uuid=host_uuid,
                                             persist_mount=persist_mount,
                                             share_notifications=share_notifications)
         return result
@@ -4194,14 +4131,18 @@ class Share(OTPmeObject):
         self,
         *args,
         host_name: str=None,
+        host_uuid: str=None,
         persist_mount: bool=None,
         share_notifications: bool=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Adds a host to this group. """
-        # Try to add host via parent class.
+        """ Removes a host from this share. """
+        if not host_uuid and host_name:
+            host_uuid = self.get_host_uuid(host_name)
+        # Try to remove host via parent class.
         result = super().remove_host(*args, host_name=host_name,
+                                    host_uuid=host_uuid,
                                     callback=callback, **kwargs)
         if not result:
             return result
@@ -4209,12 +4150,8 @@ class Share(OTPmeObject):
         if not self.limit_by_hosts:
             return result
 
-        host = backend.get_object(object_type="host",
-                                realm=config.realm,
-                                site=self.site,
-                                name=host_name)
-
-        self._notify_share_metadata_change("share_remove_host", callback, host=host.name,
+        self._notify_share_metadata_change("share_remove_host", callback,
+                                            host_uuid=host_uuid,
                                             persist_mount=persist_mount,
                                             share_notifications=share_notifications)
         return result
@@ -4249,9 +4186,14 @@ class Share(OTPmeObject):
         """ Get nodes valid for this share. """
         # If no nodes or pools assigned to share return all nodes of shares site.
         if not self.nodes and not self.pools:
+            search_attr = {}
+            if skip_disabled:
+                search_attr['enabled'] = {}
+                search_attr['enabled']['value'] = True
             result = backend.search(object_type="node",
                                     attribute="uuid",
                                     value="*",
+                                    attributes=search_attr,
                                     realm=self.realm,
                                     site=self.site,
                                     return_type=return_type)
@@ -4426,7 +4368,7 @@ class Share(OTPmeObject):
     GRANTING_EVENTS = ("share_mount", "share_add_host")
 
     def _notify_share_metadata_change(self, event_type, callback,
-                                      host: str=None,
+                                      host_uuid: str=None,
                                       persist_mount: bool=None,
                                       share_notifications: bool=None):
         """ Send a share_mount / share_unmount event to every user
@@ -4434,7 +4376,10 @@ class Share(OTPmeObject):
         the share's current metadata. Caller picks the event type
         based on the direction of the change: ``share_unmount`` when
         the operation can revoke access (limit_hosts) and
-        ``share_mount`` when it can grant access (unlimit_hosts). """
+        ``share_mount`` when it can grant access (unlimit_hosts).
+
+        Hosts go into the event by UUID: a share may hold hosts of
+        other sites, and a name says nothing about the site. """
         if not self.enabled:
             if event_type in self.GRANTING_EVENTS:
                 return
@@ -4454,14 +4399,9 @@ class Share(OTPmeObject):
             return
         share_nodes = self.get_nodes(include_pools=True,
                                      return_type="instance")
-        if not share_nodes:
-            share_nodes = backend.search(object_type="node",
-                                        attribute="uuid",
-                                        value="*",
-                                        realm=self.realm,
-                                        site=self.site,
-                                        return_type="instance")
-        if not share_nodes:
+        # No enabled node, nothing to mount from. An unmount is sent
+        # anyway.
+        if not share_nodes and event_type in self.GRANTING_EVENTS:
             return
         node_fqdns = [node.fqdn for node in share_nodes]
 
@@ -4469,13 +4409,13 @@ class Share(OTPmeObject):
             persist_mount = not bool(self.restore_share)
 
         def post_method():
-            nonlocal host
+            nonlocal host_uuid
             share_hosts = self.get_hosts(include_groups=True,
                                         include_roles=True,
-                                        return_type="name")
+                                        return_type="uuid")
             if event_type == "share_remove_host":
-                if host and host in share_hosts:
-                    host = None
+                if host_uuid and host_uuid in share_hosts:
+                    host_uuid = None
 
             share_id = self.share_id
             share_name = self.name
@@ -4514,8 +4454,8 @@ class Share(OTPmeObject):
                     'tokens': tokens,
                     'persist': persist_mount,
                 }
-                if host:
-                    x_shares[share_id]['host'] = host
+                if host_uuid:
+                    x_shares[share_id]['host'] = host_uuid
                 user_shares[username] = x_shares
                 already_processed.append(token_path)
             for username in user_shares:
@@ -4747,9 +4687,15 @@ class Share(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Change share add script. """
+        """ Change share mount script. """
         if script_options:
             script_options = script_options.split(" ")
+
+        # An empty name takes the script away. A share that still runs
+        # its mount script would fail every mount after that.
+        if mount_script == "" and self.mount_script_enabled:
+            msg = _("Mount script is enabled. Disable it before removing the script.")
+            return callback.error(msg)
 
         msg = _("Change mount script of share '{share_name}' to '{script}'?: ")
         msg = msg.format(share_name=self.name, script=mount_script)
@@ -4776,12 +4722,19 @@ class Share(OTPmeObject):
                         **kwargs)
 
     def run_mount_script(self):
-        self.run_share_script(self.mount_script, self.root_dir)
+        self.run_share_script(self.mount_script, self.root_dir,
+                            options=self.mount_script_options)
 
-    def run_share_script(self, share_script, root_dir):
+    def run_share_script(self, share_script, root_dir, options=None):
         """ Run share script. """
+        # A copy: script.run() takes out of the list what it handles
+        # itself, and this one is the list of the object.
+        if options:
+            options = list(options)
+        else:
+            options = None
         share_script_parms = {
-                'options'       : None,
+                'options'       : options,
                 'share_name'    : self.name,
                 'share_root'    : root_dir
                 }
@@ -4790,9 +4743,11 @@ class Share(OTPmeObject):
             group = backend.get_object(uuid=self.force_group_uuid)
             if group:
                 share_script_parms['force_group'] = group.name
-        if self.create_mode != 0o000:
+        # The modes are kept as text, "0o000" is the one that forces
+        # nothing.
+        if self.create_mode != "0o000":
             share_script_parms['force_create_mode'] = str(self.create_mode).replace("o", "")
-        if self.directory_mode != 0o000:
+        if self.directory_mode != "0o000":
             share_script_parms['force_directory_mode'] = str(self.directory_mode).replace("o", "")
 
         share_script_oid = backend.get_oid(object_type="script", uuid=share_script)
@@ -4846,13 +4801,9 @@ class Share(OTPmeObject):
             # Get share nodes.
             share_nodes = self.get_nodes(include_pools=True,
                                         return_type="instance")
+            # No enabled node, nothing to mount from.
             if not share_nodes:
-                share_nodes = backend.search(object_type="node",
-                                            attribute="uuid",
-                                            value="*",
-                                            realm=self.realm,
-                                            site=self.site,
-                                            return_type="instance")
+                return
             node_fqdns = []
             for node in share_nodes:
                 node_fqdns.append(node.fqdn)
@@ -4860,7 +4811,7 @@ class Share(OTPmeObject):
             if self.limit_by_hosts:
                 share_hosts = self.get_hosts(include_groups=True,
                                             include_roles=True,
-                                            return_type="name")
+                                            return_type="uuid")
             shares = {}
             share_id = self.share_id
             shares[share_id] = {}
@@ -4944,13 +4895,6 @@ class Share(OTPmeObject):
             # Get share nodes.
             share_nodes = self.get_nodes(include_pools=True,
                                         return_type="instance")
-            if not share_nodes:
-                share_nodes = backend.search(object_type="node",
-                                            attribute="uuid",
-                                            value="*",
-                                            realm=self.realm,
-                                            site=self.site,
-                                            return_type="instance")
             node_fqdns = []
             for node in share_nodes:
                 node_fqdns.append(node.fqdn)
@@ -4958,7 +4902,7 @@ class Share(OTPmeObject):
             if self.limit_by_hosts:
                 share_hosts = self.get_hosts(include_groups=True,
                                             include_roles=True,
-                                            return_type="name")
+                                            return_type="uuid")
             shares = {}
             share_id = self.share_id
             shares[share_id] = {}
@@ -5019,23 +4963,23 @@ class Share(OTPmeObject):
         """
         share_tokens = self.get_tokens(return_type="rel_path",
                                     include_roles=True)
+        # A no mount token may have mounted the share by hand, see
+        # filter_mount_tokens().
+        if self.no_mount_tokens:
+            share_tokens += backend.search(object_type="token",
+                                        attribute="uuid",
+                                        values=self.no_mount_tokens,
+                                        return_type="rel_path")
         if not share_tokens:
             return {}
         share_nodes = self.get_nodes(include_pools=True,
                                     return_type="instance")
-        if not share_nodes:
-            share_nodes = backend.search(object_type="node",
-                                        attribute="uuid",
-                                        value="*",
-                                        realm=self.realm,
-                                        site=self.site,
-                                        return_type="instance")
         node_fqdns = [node.fqdn for node in share_nodes]
         share_hosts = []
         if self.limit_by_hosts:
             share_hosts = self.get_hosts(include_groups=True,
                                         include_roles=True,
-                                        return_type="name")
+                                        return_type="uuid")
         if persist_mount is None:
             persist_mount = not bool(self.restore_share)
         share_id = self.share_id
@@ -5292,7 +5236,7 @@ class Share(OTPmeObject):
         lines.append(f'ROLES="{",".join(role_list)}"')
         lines.append(f'TOKENS="{",".join(token_list)}"')
         lines.append(f'NODES="{",".join(node_list)}"')
-        lines.append(f'NODES="{",".join(host_list)}"')
+        lines.append(f'HOSTS="{",".join(host_list)}"')
         lines.append(f'POOLS="{",".join(pool_list)}"')
         lines.append(f'GROUPS="{",".join(group_list)}"')
 
@@ -5378,8 +5322,9 @@ class Share(OTPmeObject):
         else:
             lines.append('MOUNT_SCRIPT_OPTIONS=""')
 
-        if self.verify_acl("enable:mount_script") \
-        or self.verify_acl("enable:mount_script"):
+        if self.verify_acl("view:mount_script_enabled") \
+        or self.verify_acl("enable:mount_script") \
+        or self.verify_acl("disable:mount_script"):
             lines.append(f'MOUNT_SCRIPT_ENABLED="{self.mount_script_enabled}"')
         else:
             lines.append('MOUNT_SCRIPT_ENABLED=""')

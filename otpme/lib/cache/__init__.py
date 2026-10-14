@@ -18,14 +18,12 @@ from otpme.lib import config
 from otpme.lib import locking
 from otpme.lib import multiprocessing
 from otpme.lib.cache.lru import LRUCache
-from otpme.lib.pickle import PickleHandler
 from otpme.lib.cache.funccache import FuncCache
 
 from otpme.lib.exceptions import *
 
 ACL_CACHE = "acl"
 PROCESS_CACHE = "instance"
-MULTIPROCESSING_CACHE = "multiprocessing"
 
 ACL_CACHE_LOCK_TYPE = "cache.acl"
 LIST_CACHE_LOCK_TYPE = "cache.list"
@@ -51,7 +49,6 @@ def register():
     locking.register_lock_type(LIST_CACHE_LOCK_TYPE, module=__file__)
     # Register shared objects.
     multiprocessing.register_shared_dict("acl_cache")
-    multiprocessing.register_shared_dict("instance_cache", pickle=True)
     multiprocessing.register_shared_list("acl_cache_clear_queue")
     multiprocessing.register_shared_dict("function_cache_clear_trigger")
     # Register cache modules.
@@ -335,9 +332,13 @@ def init():
             decode_acl_cache,
             ]
 
-# Shared cache uses pickle and pickle is to slow!!!!!    
-def add_instance(instance, skip_shared_cache=True, invalidate=True):
-    """ Update instance caches. """
+def add_instance(instance, invalidate=True):
+    """ Update the instance cache of this process.
+
+    There is no cache of instances between processes. There was one,
+    pickled into the shared cache; it was too slow to be read and has
+    not been for a long time.
+    """
     from otpme.lib import config
     if not instance.oid:
         msg = _("Unable to add object without OID: {instance}")
@@ -376,13 +377,6 @@ def add_instance(instance, skip_shared_cache=True, invalidate=True):
     if not config.cache_enabled:
         return
 
-    # We will not update multiprocessing cache with an modified object.
-    if instance._modified:
-        skip_shared_cache = True
-    # Non-pickable objects cannot be cached between processes or on-disk.
-    if not instance.pickable:
-        skip_shared_cache = True
-
     # Check current cache object checksum.
     try:
         old_checksum = process_cache[read_oid]['CHECKSUM']
@@ -406,34 +400,6 @@ def add_instance(instance, skip_shared_cache=True, invalidate=True):
                             }
         process_cache[read_oid] = new_instance_cache
 
-    if skip_shared_cache:
-        return
-
-    # Update multiprocessing cache.
-    try:
-        old_checksum = multiprocessing.instance_cache[read_oid]['CHECKSUM']
-    except Exception:
-        old_checksum = None
-
-    # Check current instance object checksum.
-    if object_checksum != old_checksum:
-        # Add object to cache.
-        new_cache_entry = {
-                            'OID'                   : full_oid,
-                            'INSTANCE'              : instance,
-                            'CHECKSUM'              : object_checksum,
-                        }
-        try:
-            expire_time = instance.cache_expire_time
-        except AttributeError:
-            expire_time = None
-        if expire_time is None:
-            multiprocessing.instance_cache[read_oid] = new_cache_entry
-        else:
-            multiprocessing.instance_cache.add(key=read_oid,
-                                            value=new_cache_entry,
-                                            expire=expire_time)
-
 def get_instance(object_id, cache_type=None):
     """ Get instance from object cache. """
     from otpme.lib import config
@@ -454,36 +420,14 @@ def get_instance(object_id, cache_type=None):
         return
     logger = config.logger
 
-    check_process_cache = True
-    check_multiprocessing_cache = True
+    # Instances are cached in this process and nowhere else.
     if cache_type and cache_type != PROCESS_CACHE:
-        check_process_cache = False
-    if cache_type and cache_type != MULTIPROCESSING_CACHE:
-        check_multiprocessing_cache = False
-
-    # FIXME: multiprocessing cache is slow. We dont use it.   
-    check_multiprocessing_cache = False
+        return
 
     # Try to get instance cache entry.
-    cache_entry = None
-    if check_process_cache:
-        try:
-            cache_entry = process_cache[read_oid]
-            _cache_type = PROCESS_CACHE
-            cache_name = "memory"
-        except Exception:
-            cache_entry = None
-
-    # Try to get multiprocessing cache entry.
-    if not cache_entry and check_multiprocessing_cache:
-        try:
-            cache_entry = multiprocessing.instance_cache[read_oid]
-            _cache_type = MULTIPROCESSING_CACHE
-            cache_name = "multiprocessing"
-        except Exception:
-            cache_entry = None
-
-    if not cache_entry:
+    try:
+        cache_entry = process_cache[read_oid]
+    except Exception:
         return
 
     check_checksum = True
@@ -511,84 +455,24 @@ def get_instance(object_id, cache_type=None):
             object_outdated = True
 
     if object_outdated:
-        if _cache_type == PROCESS_CACHE:
-            try:
-                process_cache.pop(read_oid)
-            except Exception:
-                pass
-        if _cache_type == MULTIPROCESSING_CACHE:
-            try:
-                multiprocessing.instance_cache.pop(read_oid)
-            except Exception:
-                pass
-
+        try:
+            process_cache.pop(read_oid)
+        except Exception:
+            pass
         return None
 
     if config.debug_level("object_caching") > 0:
-        msg = _("Reading object from {cache_name} cache: {read_oid}")
-        msg = msg.format(cache_name=cache_name, read_oid=read_oid)
-        if cache_name == "memory":
-            log_msg = msg
-            logger.info(log_msg)
-        if cache_name == "multiprocessing":
-            log_msg = msg
-            logger.warning(log_msg)
+        log_msg = _("Reading object from memory cache: {read_oid}", log=True)[1]
+        log_msg = log_msg.format(read_oid=read_oid)
+        logger.info(log_msg)
 
     # Get instance from cache entry.
     instance = cache_entry['INSTANCE']
 
-    skip_shared_cache = False
-    if _cache_type == MULTIPROCESSING_CACHE:
-        # If the instance comes from the shared (multiprocessing) cache
-        # we can update it in the cache of this process but should not write
-        # it back/again in the multiprocessing cache.
-        skip_shared_cache = True
-
     if object_id.read_oid != instance.oid.read_oid:
         return None
 
-    # Update instance caches with object we got from other cache.
-    if _cache_type != PROCESS_CACHE:
-        add_instance(instance=instance,
-                    skip_shared_cache=skip_shared_cache)
     return instance
-
-def dump_instance_cache(object_id=None, search_regex=None):
-    """ Dump instance cache. """
-    object_ids = []
-    if object_id:
-        if not object_id in multiprocessing.instance_cache:
-            msg = _("Object ID not in cache: {object_id}")
-            msg = msg.format(object_id=object_id)
-            raise Exception(msg)
-        object_ids.append(object_id)
-    else:
-        if search_regex:
-            search_re = re.compile(fnmatch.translate(search_regex))
-        for o in multiprocessing.instance_cache:
-            add_object = True
-            if search_regex:
-                if not search_re.match(o):
-                    add_object = False
-            if add_object:
-                object_ids.append(o)
-
-    pickle_handler = PickleHandler("auto")
-
-    data = {}
-    for o in object_ids:
-        checksum = multiprocessing.instance_cache[o]['CHECKSUM']
-        instance = multiprocessing.instance_cache[o]['INSTANCE']
-        instance = pickle_handler.loads(instance)
-        object_config = instance.object_config
-        entry = {
-                    'CHECKSUM'      : checksum,
-                    'OBJECT_CONFIG' : object_config,
-                }
-        data[o] = entry
-
-    dump_data = pprint.pformat(data)
-    return dump_data
 
 def add_acl(object_uuid, token_uuid, acl, status):
     """ Add ACL status to cache. """
@@ -701,7 +585,7 @@ def add_modified_object(o):
     if not read_oid in modified_objects[proc_id]:
         modified_objects[proc_id].append(read_oid)
     modified_objects_cache[proc_id][read_oid] = o
-    add_instance(instance=o, skip_shared_cache=True)
+    add_instance(instance=o)
 
 def get_modified_object(object_id):
     """ Get cached (modified) object. """
@@ -806,12 +690,15 @@ def clear(object_id=None, object_type=None, cache_type=None, keep_func_caches=Fa
                 logger.debug(log_msg)
             x.invalidate()
 
+    # "all" is what backend.outdate_object() is called with after a
+    # write, a rename and a delete, and it means what it says. It used
+    # to be taken for the name of one cache, which no cache has, so
+    # exactly those calls cleared no instance at all.
     clear_cache_types = [
-                        MULTIPROCESSING_CACHE,
                         PROCESS_CACHE,
                         ACL_CACHE,
                         ]
-    if cache_type is not None:
+    if cache_type is not None and cache_type != "all":
         clear_cache_types = [cache_type]
 
     if object_id is None:
@@ -825,12 +712,6 @@ def clear(object_id=None, object_type=None, cache_type=None, keep_func_caches=Fa
     if object_id is not None:
         object_ids.append(object_id)
     else:
-        if MULTIPROCESSING_CACHE in clear_cache_types:
-            for x in dict(multiprocessing.instance_cache):
-                x_oid = oid.get(x)
-                if x_oid in object_ids:
-                    continue
-                object_ids.append(x_oid)
         if PROCESS_CACHE in clear_cache_types:
             for x in dict(process_cache):
                 x_oid = oid.get(x)
@@ -863,17 +744,6 @@ def clear(object_id=None, object_type=None, cache_type=None, keep_func_caches=Fa
                     clean_success = True
                 except KeyError:
                     pass
-        # Clear multiprocessing instance cache.
-        if MULTIPROCESSING_CACHE in clear_cache_types:
-            try:
-                multiprocessing.instance_cache.pop(x_oid.read_oid)
-                try:
-                    caches_cleared[MULTIPROCESSING_CACHE] += 1
-                except Exception:
-                    caches_cleared[MULTIPROCESSING_CACHE] = 1
-                clean_success = True
-            except KeyError:
-                pass
 
     if clean_success:
         if config.debug_level("cache_flushing") > 0:

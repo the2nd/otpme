@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-share show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [share]'),
-                    'cmd'   :   '--fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: --node-limit :max_nodes: --hosts-litmit :max_hosts: --group-limit :max_groups: --pool-limit :max_pools: --token-limit :max_tokens: --role-limit :max_roles: --policy-limit :max_policies: --limit :limit: [|object|]',
+                    'cmd'   :   '--fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: --node-limit :max_nodes: --host-limit :max_hosts: --group-limit :max_groups: --pool-limit :max_pools: --token-limit :max_tokens: --role-limit :max_roles: --policy-limit :max_policies: --limit :limit: [|object|]',
                     '_help' :   {
                                     'cmd'                           : _('Show share(s)'),
                                     '-a'                            : _('Show all shares.'),
@@ -55,8 +55,8 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-share add [--force-group <group>] [--force-directory-mode <mode>] [--force-create-mode <mode>] [--crypt] [--no-key-gen] [--block-size <block_size>] [--key-len <key_len>] [--home-share] [--home-share-uid] [--restore <restore_share>] [--restore-token <token>] share}'),
-                    'cmd'   :   '--force-group :force_group: --force-directory-mode :force_directory_mode: --force-create-mode :force_create_mode: --crypt :encrypted=True: --no-key-gen :no_key_gen=True: --block-size :block_size: --key-len :key_len: --home-share :home_share=True: --home-share-uid :home_share_uid=True: --restore :restore_share: --restore-token :restore_token: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-share add [--force-group <group>] [--force-directory-mode <mode>] [--force-create-mode <mode>] [--crypt] [--no-key-gen] [--block-size <block_size>] [--home-share] [--home-share-uid] [--restore <restore_share>] [--restore-token <token>] {share}'),
+                    'cmd'   :   '--force-group :force_group: --force-directory-mode :force_directory_mode: --force-create-mode :force_create_mode: --crypt :encrypted=True: --no-key-gen :no_key_gen=True: --block-size :block_size: --home-share :home_share=True: --home-share-uid :home_share_uid=True: --restore :restore_share: --restore-token :restore_token: <|object|>',
                     '_help' :   {
                                     'cmd'                           : _('Add new share.'),
                                     '--home-share'                  : _('Add home share (subdirs are user UUID named.).'),
@@ -66,7 +66,6 @@ cmd_help = {
                                     '--force-directory-mode <mode>' : _('Force directory mode.'),
                                     '--crypt'                       : _('Add encrypted share.'),
                                     '--no-key-gen'                  : _('Don\'t generate AES key.'),
-                                    '--key-len <key_len>'           : _('Generate AES key of length <key_len>.'),
                                     '--block-size <blocksize>'      : _('Encrypted share block size (default 4096).'),
                                     '--restore <restore_share>'     : _('Add restore share.'),
                                     '--restore-token <token>'       : _('Add token restore share.'),
@@ -142,10 +141,10 @@ cmd_help = {
                 },
 
     'force_group'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-share force_group {share} {group}'),
-                    'cmd'   :   '<|object|> <group_name>',
+                    '_cmd_usage_help' : _('Usage: otpme-share force_group {share} [group]'),
+                    'cmd'   :   '<|object|> [group_name]',
                     '_help' :   {
-                                    'cmd'                   : _('Files and directories will always be owned by group.'),
+                                    'cmd'                   : _('Files and directories will always be owned by group. Without a group the forced group is removed.'),
                                 },
                 },
 
@@ -209,8 +208,8 @@ cmd_help = {
 
 
      'mount_timeout'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-share mount_timeout {share} [mount_timeout]'),
-                    'cmd'   :   '<|object|> [mount_timeout]',
+                    '_cmd_usage_help' : _('Usage: otpme-share mount_timeout {share} {mount_timeout}'),
+                    'cmd'   :   '<|object|> <mount_timeout>',
                     '_help' :   {
                                     'cmd'                   : _('Set the timeout a mount drops its unused connection after (0 to disable).'),
                                 },
@@ -463,10 +462,10 @@ cmd_help = {
                 },
 
     'limit_hosts'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-host limit_hosts [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share}'),
+                    '_cmd_usage_help' : _('Usage: otpme-share limit_hosts [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share}'),
                     'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Limit share access to assigend host (groups).'),
+                                    'cmd'                   : _('Limit share access to assigned host (groups).'),
                                     '--share-notify'        : _('Send notification to all online hosts on revoked share permissions.'),
                                     '--no-share-notify'     : _('Dont send notification to all online hosts on revoked share permissions.'),
                                     '--persist-mount'       : _('Also remove persisted share mount on hosts.'),
@@ -475,7 +474,7 @@ cmd_help = {
                 },
 
     'unlimit_hosts'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-host unlimit_hosts [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share}'),
+                    '_cmd_usage_help' : _('Usage: otpme-share unlimit_hosts [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share}'),
                     'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Unlimit share access.'),
@@ -555,12 +554,16 @@ cmd_help = {
                 },
 
     'remove_no_mount_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-share remove_no_mount_token [--remove-share-key] [--keep-share-key] {share} {token}'),
-                    'cmd'   :   '--keep-share-key :keep_share_key=True: --remove-share-key :keep_share_key=False: <|object|> <token_path>',
+                    '_cmd_usage_help' : _('Usage: otpme-share remove_no_mount_token [--remove-share-key] [--keep-share-key] [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {token}'),
+                    'cmd'   :   '--keep-share-key :keep_share_key=True: --remove-share-key :keep_share_key=False: --share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <token_path>',
                     '_help' :   {
                                     'cmd'                   : _('Remove no mount token from share.'),
                                     '--keep-share-key'      : _('Keep share key.'),
                                     '--remove-share-key'    : _('Remove share key.'),
+                                    '--share-notify'        : _('Send notification to all online hosts on revoked share permissions.'),
+                                    '--no-share-notify'     : _('Dont send notification to all online hosts on revoked share permissions.'),
+                                    '--persist-mount'       : _('Also remove persisted share mount on hosts.'),
+                                    '--no-persist-mount'    : _('Keep persisted share mount on hosts (transient unmount only).'),
                                 },
                 },
 
@@ -651,10 +654,11 @@ cmd_help = {
                 },
 
     'list_groups'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-share list_groups {share}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-share list_groups [--return-type <return_type>] {share}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('List (host) groups assigend to this share.'),
+                                    'cmd'                   : _('List (host) groups assigned to this share.'),
+                                    '--return-type'         : _('Attribute to return.'),
                                 },
                 },
 
@@ -667,7 +671,7 @@ cmd_help = {
                                 },
                 },
     'list_nodes'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-share list_nodes {share}'),
+                    '_cmd_usage_help' : _('Usage: otpme-share list_nodes [--return-type <return_type>] {share}'),
                     'cmd'   :   '--return-type :return_type: [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List assigned nodes.'),
@@ -675,7 +679,7 @@ cmd_help = {
                                 },
                 },
     'list_hosts'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-share list_hosts {share}'),
+                    '_cmd_usage_help' : _('Usage: otpme-share list_hosts [--return-type <return_type>] {share}'),
                     'cmd'   :   '--return-type :return_type: [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List assigned hosts.'),
@@ -700,11 +704,10 @@ cmd_help = {
                                 },
                 },
     'list_roles'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-share list_roles -r {share}'),
-                    'cmd'   :   '-r :recursive=True: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-share list_roles {share}'),
+                    'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : _('List assigned roles.'),
-                                    '-r'                    : _('List roles recursive.'),
                                 },
                 },
     'list_policies'   : {

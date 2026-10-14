@@ -24,7 +24,6 @@ table_headers = [
                 "scope",
                 "unit",
                 "status",
-                "auto_member",
                 "roles",
                 "tokens",
                 "clients",
@@ -43,7 +42,6 @@ def register():
                         'name',
                         'rel_path',
                         'enabled',
-                        'auto_member',
                         'description',
                         'unit',
                         'scope_id',
@@ -96,10 +94,6 @@ def row_getter(realm, site, scope_order, scope_data, acls,
         except Exception:
             scope_id = None
         try:
-            auto_member = scope_data[scope_uuid]['auto_member'][0]
-        except Exception:
-            auto_member = False
-        try:
             enabled = scope_data[scope_uuid]['enabled'][0]
         except Exception:
             enabled = False
@@ -134,18 +128,6 @@ def row_getter(realm, site, scope_order, scope_data, acls,
             or check_acl("enable:object") \
             or check_acl("disable:object"):
                 if enabled:
-                    enabled_string = _("Enabled")
-                else:
-                    enabled_string = _("Disabled")
-                row.append(enabled_string)
-            else:
-                row.append("-")
-        # Auto member.
-        if "auto_member" in output_fields:
-            if check_acl("view:auto_member") \
-            or check_acl("enable:auto_member") \
-            or check_acl("disable:auto_member"):
-                if auto_member:
                     enabled_string = _("Enabled")
                 else:
                     enabled_string = _("Disabled")
@@ -311,7 +293,7 @@ def row_getter(realm, site, scope_order, scope_data, acls,
         # Policies.
         if "policies" in output_fields:
             if check_acl("view:policies") \
-            or check_acl("add:policy") \
+            or check_acl("assign:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="scope",
                                                     object_uuid=scope_uuid,

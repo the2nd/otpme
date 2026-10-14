@@ -343,6 +343,20 @@ class OTPmeClusterP1(OTPmeServer1):
             status = True
             message = _("Node online.")
             multiprocessing.online_nodes[self.peer.name] = True
+            # A node that runs code from before versions were counted
+            # sends none. No entry then, which reads as version 1 of
+            # everything.
+            try:
+                config_versions = command_args['config_versions']
+            except KeyError:
+                config_versions = None
+            if config_versions is None:
+                try:
+                    multiprocessing.node_config_versions.pop(self.peer.name)
+                except KeyError:
+                    pass
+            else:
+                multiprocessing.node_config_versions[self.peer.name] = config_versions
 
         elif command == "set_node_sync":
             status = True
@@ -409,6 +423,18 @@ class OTPmeClusterP1(OTPmeServer1):
                 for x_oid in result:
                     oc = backend.read_config(x_oid)
                     if not oc:
+                        # The index says it is there and the file it
+                        # names is not. Left where it is on purpose:
+                        # repairing it here would take away the one
+                        # trace such an entry leaves, and finding out
+                        # how it got there is worth more than the
+                        # repair ("otpme-tool index fix" does that).
+                        # Said out loud, because skipping it silently
+                        # is what let this answer leave the object out
+                        # while every cluster status called it missing.
+                        log_msg = _("Index entry without object file: {object_id}", log=True)[1]
+                        log_msg = log_msg.format(object_id=x_oid.full_oid)
+                        logger.warning(log_msg)
                         continue
                     oc.update_checksums(force=True)
                     object_checksums[x_oid.full_oid] = oc.checksum
@@ -426,6 +452,18 @@ class OTPmeClusterP1(OTPmeServer1):
                 for x_oid in result:
                     oc = backend.read_config(x_oid)
                     if not oc:
+                        # The index says it is there and the file it
+                        # names is not. Left where it is on purpose:
+                        # repairing it here would take away the one
+                        # trace such an entry leaves, and finding out
+                        # how it got there is worth more than the
+                        # repair ("otpme-tool index fix" does that).
+                        # Said out loud, because skipping it silently
+                        # is what let this answer leave the object out
+                        # while every cluster status called it missing.
+                        log_msg = _("Index entry without object file: {object_id}", log=True)[1]
+                        log_msg = log_msg.format(object_id=x_oid.full_oid)
+                        logger.warning(log_msg)
                         continue
                     oc.update_checksums(force=True)
                     data_checksums[x_oid.full_oid] = oc.checksum
@@ -443,6 +481,18 @@ class OTPmeClusterP1(OTPmeServer1):
                 for x_oid in result:
                     oc = backend.read_config(x_oid)
                     if not oc:
+                        # The index says it is there and the file it
+                        # names is not. Left where it is on purpose:
+                        # repairing it here would take away the one
+                        # trace such an entry leaves, and finding out
+                        # how it got there is worth more than the
+                        # repair ("otpme-tool index fix" does that).
+                        # Said out loud, because skipping it silently
+                        # is what let this answer leave the object out
+                        # while every cluster status called it missing.
+                        log_msg = _("Index entry without object file: {object_id}", log=True)[1]
+                        log_msg = log_msg.format(object_id=x_oid.full_oid)
+                        logger.warning(log_msg)
                         continue
                     oc.update_checksums(force=True)
                     session_checksums[x_oid.full_oid] = oc.checksum
@@ -557,6 +607,31 @@ class OTPmeClusterP1(OTPmeServer1):
                     else:
                         sync_object = True
                     if not sync_object:
+                        # "I have it and it has not changed" -- answered
+                        # out of the index, without ever looking at the
+                        # file. An index entry whose file is gone
+                        # carries the checksum of the copy the peer
+                        # still holds, so this told the peer to keep an
+                        # object that is not here any more. A node that
+                        # was disabled while the object was deleted then
+                        # kept it for good: the deletion it had missed
+                        # was never made up for, because this answer
+                        # said there was nothing to make up.
+                        #
+                        # So the file is asked for, with the path the
+                        # index itself carries: an index lookup and a
+                        # stat per unchanged object, once per join or
+                        # enable. The entry stays where it is -- what it
+                        # is doing there is worth finding out -- and
+                        # only the answer changes: an oid that is not in
+                        # it is one the asker deletes (sync() of the
+                        # cluster client).
+                        config_file = backend.index_get(x_oid)
+                        if not config_file or not os.path.exists(config_file):
+                            log_msg = _("Not telling peer we have an object we cannot read: {object_id}", log=True)[1]
+                            log_msg = log_msg.format(object_id=x_oid.full_oid)
+                            logger.warning(log_msg)
+                            continue
                         sync_objects[x_oid.full_oid] = None
                         continue
                     x_object_config = backend.read_config(x_oid)

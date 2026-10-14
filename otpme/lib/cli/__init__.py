@@ -157,12 +157,23 @@ def check_rapi_opts():
 
 def register_cli(name, table_headers, row_getter, write_acls=None, read_acls=None,
     id_attr=None, search_regex_getter=None, sort_by="full_oid",
-    search_attribute=None, return_attributes=None, max_len=None):
-    """ Register stuff for CLI output commands. """
+    search_attribute=None, return_attributes=None, max_len=None,
+    optional_fields=None):
+    """ Register stuff for CLI output commands.
+
+    <table_headers> are the columns the row getter builds, in the order
+    it builds them. <optional_fields> names those of them that are not
+    shown unless they are asked for, with "--fields +<name>" or by
+    naming them in "--fields". A column that costs a query per object
+    and is of interest now and then belongs there: the table stays
+    readable and the query is not paid by everybody.
+    """
     if write_acls is None:
         write_acls = []
     if read_acls is None:
         read_acls = []
+    if optional_fields is None:
+        optional_fields = []
     global object_register
     if name in object_register:
         msg = _("CLI already registered: {name}")
@@ -174,6 +185,7 @@ def register_cli(name, table_headers, row_getter, write_acls=None, read_acls=Non
     object_register[name]['read_acls'] = read_acls
     object_register[name]['row_getter'] = row_getter
     object_register[name]['table_headers'] = table_headers
+    object_register[name]['optional_fields'] = optional_fields
     if id_attr is not None:
         object_register[name]['id_attr'] = id_attr
     if search_regex_getter is not None:
@@ -1004,7 +1016,7 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
                 "all",
                 "edit",
                 "edit:description",
-                "add:policy",
+                "assign:policy",
                 "remove:policy",
                 "enable:object",
                 "disable:object",
@@ -1042,8 +1054,12 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
     # Add object related ACLs to check for.
     write_acls = list(set(write_acls + list(object_register[object_type]['write_acls'])))
     read_acls = list(set(read_acls + list(object_register[object_type]['read_acls'])))
-    # Get object related table columns/headers.
-    table_headers = list(object_register[object_type]['table_headers'])
+    # Get object related table columns/headers. All of them, in the
+    # order the row getter writes them, and the ones that are shown
+    # without being asked for.
+    all_fields = list(object_register[object_type]['table_headers'])
+    optional_fields = list(object_register[object_type]['optional_fields'])
+    table_headers = [x for x in all_fields if x not in optional_fields]
     # Get function to handle object row data.
     row_getter = object_register[object_type]['row_getter']
     # Get ID attribute (e.g. rel_path for tokens).
@@ -1095,35 +1111,56 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
             if normal_field_cmd:
                 return callback.error(field_syntax_err)
             field_name = f[1:]
-            if f.startswith("+"):
-                # FIXME: can we use extension.get_valid_attributes(object_type) to get all valid attributes????
-                x_output_fields.append(field_name)
-                table_headers.append(field_name)
-                additional_fields.append(field_name)
-            else:
-                try:
-                    x_output_fields.remove(field_name)
-                except Exception:
-                    msg = _("Unknown field: {field_name}")
-                    msg = msg.format(field_name=field_name)
-                    return callback.error(msg)
-                table_headers.remove(field_name)
             add_field_cmd = True
-            continue
+            if f.startswith("+"):
+                if field_name in x_output_fields:
+                    continue
+                x_output_fields.append(field_name)
+                if field_name not in all_fields:
+                    # Not a column of this object type, so nothing
+                    # builds a value for it: it is an attribute, and
+                    # the value is appended further down.
+                    # FIXME: can we use extension.get_valid_attributes(object_type) to get all valid attributes????
+                    additional_fields.append(field_name)
+                continue
+            if field_name in x_output_fields:
+                x_output_fields.remove(field_name)
+                continue
+            if field_name in all_fields:
+                # A column that is not shown anyway.
+                continue
+            msg = _("Unknown field: {field_name}")
+            msg = msg.format(field_name=field_name)
+            return callback.error(msg)
         if add_field_cmd:
             return callback.error(field_syntax_err)
-        if f not in table_headers:
+        if f not in all_fields:
             if not f.startswith("ldif:"):
                 msg = _("Unknown field: {field}")
                 msg = msg.format(field=f)
                 return callback.error(msg)
             # FIXME: can we use extension.get_valid_attributes(object_type) to get all valid attributes????
-            table_headers.append(f)
             additional_fields.append(f)
         normal_field_cmd = True
 
+    # The row getter writes the values in the order the columns were
+    # registered, so that is the order the headers have to be in. What
+    # is no column of this object type comes after them, which is where
+    # the value is appended further down. The reordering below turns
+    # this into the order the fields were asked for.
     if add_field_cmd:
-        output_fields = x_output_fields
+        wanted = x_output_fields
+    else:
+        wanted = output_fields
+    table_headers = [x for x in all_fields if x in wanted]
+    for x in wanted:
+        if x in all_fields:
+            continue
+        if x in table_headers:
+            continue
+        table_headers.append(x)
+    if add_field_cmd:
+        output_fields = list(table_headers)
 
     # Add additional fields.
     return_attributes += additional_fields
@@ -2060,7 +2097,7 @@ def list_objects(object_type, show_all=False, reverse=False,
     write_acls = [
                 "edit",
                 "edit:description",
-                "add:policy",
+                "assign:policy",
                 "remove:policy",
                 "enable:object",
                 "disable:object",
@@ -2131,8 +2168,10 @@ def list_objects(object_type, show_all=False, reverse=False,
             return_type = "rel_path"
             search_attribute="rel_path"
         if attribute:
+            # What is listed stays what it is without --attribute. It
+            # used to be the relative path for every type, and a realm
+            # or a site has none, so those listed "None".
             search_attribute = attribute
-            return_type = "rel_path"
             sort_by = attribute
 
     if object_type == "token":

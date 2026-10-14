@@ -252,7 +252,7 @@ def register_hooks():
 
 def register_token_type():
     """ Register token type. """
-    config.register_sub_object_type("token", "yubikey_hmac")
+    config.register_sub_object_type("token", "yubikey_hmac", version=1)
 
 def register_config_params():
     """ Register config params. """

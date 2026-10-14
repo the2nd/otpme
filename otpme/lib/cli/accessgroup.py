@@ -10,6 +10,7 @@ try:
 except Exception:
     pass
 
+from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.humanize import units
 from otpme.lib.cli import register_cli
@@ -23,6 +24,8 @@ table_headers = [
                 "accessgr.",
                 "status",
                 "childs",
+                "roles",
+                "tokens",
                 "maxfail",
                 "reset",
                 "sotp_signing",
@@ -34,8 +37,17 @@ table_headers = [
                 "timeout",
                 "utimeout)",
                 "policies",
-                #"inherit",
+                "inherit",
                 "description",
+                ]
+
+# Columns that cost a query per group and are not what one looks at a
+# list of access groups for. Shown with "otpme-accessgroup show --fields
+# +roles,+tokens".
+optional_fields = [
+                "roles",
+                "tokens",
+                "inherit",
                 ]
 
 REGISTER_BEFORE = []
@@ -73,6 +85,7 @@ def register():
     write_acls = set(write_acls)
     register_cli(name="accessgroup",
                 table_headers=table_headers,
+                optional_fields=optional_fields,
                 return_attributes=return_attributes,
                 row_getter=row_getter,
                 write_acls=write_acls,
@@ -80,7 +93,8 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, group_order, group_data, acls, table=None,
-    limit=None, max_policies=5, output_fields=None, acl_checker=None, **kwargs):
+    limit=None, max_policies=5, max_roles=5, max_tokens=5,
+    output_fields=None, acl_checker=None, **kwargs):
     """ Build table rows for accessgroups. """
     # Align table headers.
     if output_fields is None:
@@ -90,6 +104,8 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
             limit = 30
     if limit is not None:
         max_policies = limit
+        max_roles = limit
+        max_tokens = limit
     if table:
         table.align["maxfail"] = "c"
         table.align["reset"] = "c"
@@ -205,6 +221,79 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
                     row.append("")
             else:
                 row.append("-")
+        # Roles and tokens of this group. The ones that were added to it,
+        # not the ones that reach it through a parent group: those are a
+        # property of the parent, and the column of this group would say
+        # them over and over for every group below it.
+        if "roles" in output_fields:
+            if check_acl("view:roles") \
+            or check_acl("add:role") \
+            or check_acl("remove:role"):
+                return_attrs = ['name', 'site', 'enabled']
+                roles_count, \
+                roles_result = backend.search(object_type="role",
+                                        join_object_type="accessgroup",
+                                        join_search_attr="uuid",
+                                        join_search_val=ag_uuid,
+                                        join_attribute="role",
+                                        attribute="uuid",
+                                        value="*",
+                                        order_by="name",
+                                        max_results=max_roles,
+                                        return_query_count=True,
+                                        return_attributes=return_attrs)
+                group_roles = []
+                for x in roles_result:
+                    x_role_name = roles_result[x]['name']
+                    x_role_site = roles_result[x]['site']
+                    x_role_enabled = roles_result[x]['enabled'][0]
+                    role_string = x_role_name
+                    if x_role_site != config.site:
+                        role_string = f"{x_role_name} ({x_role_site})"
+                    if not x_role_enabled:
+                        role_string = f"{role_string} (D)"
+                    group_roles.append(role_string)
+                if roles_count > max_roles:
+                    msg = _("({roles_len} of {roles_count} roles total)")
+                    msg = msg.format(roles_len=len(group_roles),
+                                    roles_count=roles_count)
+                    group_roles.append(msg)
+                row.append("\n".join(group_roles))
+            else:
+                row.append("-")
+        if "tokens" in output_fields:
+            if check_acl("view:tokens") \
+            or check_acl("add:token") \
+            or check_acl("remove:token"):
+                return_attrs = ['rel_path', 'enabled']
+                tokens_count, \
+                tokens_result = backend.search(object_type="token",
+                                        join_object_type="accessgroup",
+                                        join_search_attr="uuid",
+                                        join_search_val=ag_uuid,
+                                        join_attribute="token",
+                                        attribute="uuid",
+                                        value="*",
+                                        order_by="rel_path",
+                                        max_results=max_tokens,
+                                        return_query_count=True,
+                                        return_attributes=return_attrs)
+                group_tokens = []
+                for x in tokens_result:
+                    x_token_rel_path = tokens_result[x]['rel_path']
+                    x_token_enabled = tokens_result[x]['enabled'][0]
+                    token_string = x_token_rel_path
+                    if not x_token_enabled:
+                        token_string = f"{token_string} (D)"
+                    group_tokens.append(token_string)
+                if tokens_count > max_tokens:
+                    msg = _("({tokens_len} of {tokens_count} tokens total)")
+                    msg = msg.format(tokens_len=len(group_tokens),
+                                    tokens_count=tokens_count)
+                    group_tokens.append(msg)
+                row.append("\n".join(group_tokens))
+            else:
+                row.append("-")
         # Max fail.
         if "maxfail" in output_fields:
             if check_acl("view:max_fail") \
@@ -266,9 +355,13 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
                 row.append(relogin_timeout)
             else:
                 row.append("-")
-        # Child sessions.
+        # Child sessions. The read ACL is the plural one, the way it is
+        # registered (read_value_acls in classes/accessgroup.py): asking
+        # for "view:child_session" asked for an ACL that does not exist,
+        # so whoever held view:child_sessions saw a "-" here and only
+        # the two write ACLs opened the column.
         if "Childs" in output_fields:
-            if check_acl("view:child_session") \
+            if check_acl("view:child_sessions") \
             or check_acl("add:child_session") \
             or check_acl("remove:child_session"):
                 child_sessions_result = backend.search(object_type="accessgroup",
@@ -322,7 +415,7 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
         # Policies.
         if "policies" in output_fields:
             if check_acl("view:policies") \
-            or check_acl("add:policy") \
+            or check_acl("assign:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="accessgroup",
                                                     object_uuid=ag_uuid,

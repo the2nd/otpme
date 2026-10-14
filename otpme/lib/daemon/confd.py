@@ -784,14 +784,33 @@ class ConfDaemon(OTPmeDaemon):
             if confd_job.runs_alone(x_type):
                 return
         os_name, os_version = os_handlers.get_os_info()
-        packages = {}
+        kernel = os_handlers.get_kernel()
+        handler = None
         try:
             handler = os_handlers.get_handler(logger=self.logger)
-            packages = handler.get_installed_packages()
         except Exception as e:
-            log_msg = _("Failed to get installed packages: {e}", log=True)[1]
+            log_msg = _("No handler for this system: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.debug(log_msg)
+        packages = {}
+        if handler is not None:
+            try:
+                packages = handler.get_installed_packages()
+            except Exception as e:
+                log_msg = _("Failed to get installed packages: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.debug(log_msg)
+        reboot_required = None
+        if handler is not None:
+            try:
+                # With the packages we just read: on this system the
+                # answer is partly worked out from them, and asking the
+                # package manager a second time would say the same.
+                reboot_required = handler.get_reboot_required(packages=packages)
+            except Exception as e:
+                log_msg = _("Failed to get reboot required: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.debug(log_msg)
         hardware = {}
         try:
             hardware = hardware_mod.get_hardware()
@@ -801,7 +820,8 @@ class ConfDaemon(OTPmeDaemon):
             self.logger.debug(log_msg)
         checksum = inventory.get_packages_checksum(packages)
         hardware_checksum = hardware_mod.get_hardware_checksum(hardware)
-        local_inventory = (os_name, os_version, checksum, hardware_checksum)
+        local_inventory = (os_name, os_version, kernel, reboot_required,
+                            checksum, hardware_checksum)
         now = time.time()
         if local_inventory == self.reported_inventory:
             if (now - self.last_inventory_check) < self.inventory_check_interval:
@@ -829,10 +849,23 @@ class ConfDaemon(OTPmeDaemon):
             if response.get('packages') is not None:
                 set_packages, del_packages = inventory.diff_packages(response['packages'],
                                                                     packages)
+            # What this host runs: its system, its kernel, and whether
+            # it has to be rebooted to run what is installed. One flag
+            # for all of them, they are three short strings and a yes
+            # or no, and a kernel that changed is a reboot into another
+            # system as far as a reader is concerned.
             send_os = False
             if response.get('os') != os_name:
                 send_os = True
             if response.get('os_version') != os_version:
+                send_os = True
+            if response.get('kernel') != kernel:
+                send_os = True
+            # Only where we have an answer: a host that cannot say
+            # would otherwise ask for a change every round and never
+            # get one, because nothing reported changes nothing.
+            if reboot_required is not None \
+            and response.get('reboot_required') != reboot_required:
                 send_os = True
             send_hardware = response.get('hardware_checksum') != hardware_checksum
             updates = self.split_inventory_update(set_packages, del_packages)
@@ -846,6 +879,8 @@ class ConfDaemon(OTPmeDaemon):
                 if send_os:
                     command_args['os'] = os_name
                     command_args['os_version'] = os_version
+                    command_args['kernel'] = kernel
+                    command_args['reboot_required'] = reboot_required
                     send_os = False
                 # Whole, with the first of the updates: it is a dozen
                 # values, and sending it again with every part of a

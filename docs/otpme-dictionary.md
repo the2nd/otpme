@@ -192,7 +192,7 @@ Output as CSV.
 CSV separator character.
 
 **--attribute *ATTR***  
-Display specific attribute in list command.
+Of **list**: match the regex against this attribute instead of the name.
 
 ## General Options
 

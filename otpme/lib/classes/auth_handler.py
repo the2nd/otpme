@@ -997,7 +997,7 @@ class AuthHandler(object):
         # If auth is already failed no need to check user status.
         if self.auth_failed:
             return
-        # Make sure authentication with users site is not disabled.
+        # The site of the user, asked below and in authenticate().
         self.user_site = backend.get_object(object_type="site",
                                         uuid=self.user.site_uuid)
         # Check user admin status.
@@ -1026,6 +1026,18 @@ class AuthHandler(object):
                 self.auth_failed = True
                 self.count_fails = False
                 self.auth_message = "AUTH_SITE_DISABLED"
+                return
+
+            # The preauth of a login to a daemon asks this too, but a
+            # verify request of authd (RADIUS, LDAP, the portal) comes
+            # here without one.
+            if not self.user_site.auth_enabled:
+                log_msg = _("Authentication with site is disabled: {site_realm}/{site_name}", log=True)[1]
+                log_msg = log_msg.format(site_realm=self.user_site.realm, site_name=self.user_site.name)
+                self.logger.warning(log_msg)
+                self.auth_failed = True
+                self.count_fails = False
+                self.auth_message = "AUTH_USER_SITE_DISABLED"
                 return
 
             user_unit = backend.get_object(object_type="unit",
@@ -2016,8 +2028,59 @@ class AuthHandler(object):
 
     def verify_jwt(self):
         """ Verify received JWT. """
-        # Get users site public key to verify the JWT.
-        site_jwt_key = self.user_site._cert_public_key
+        # The outer JWT is signed by the site that authenticated the user:
+        # the users site or a site the users site trusts. A trusted site
+        # gets the users tokens and may authenticate him itself, so its
+        # JWT is as good as one of the users site.
+        try:
+            outer_jwt_data = jwt.decode(jwt=self.redirect_response,
+                                        algorithm='RS256',
+                                        options={'verify_signature': False})
+            issuer_realm = outer_jwt_data['realm']
+            issuer_site_name = outer_jwt_data['site']
+        except Exception as e:
+            log_msg = _("JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            self.auth_failed = True
+            self.auth_message = "AUTH_INVALID_OUTER_JWT"
+            return
+
+        if issuer_realm == self.user_site.realm \
+        and issuer_site_name == self.user_site.name:
+            issuer_site = self.user_site
+        else:
+            result = backend.search(object_type="site",
+                                    attribute="name",
+                                    value=issuer_site_name,
+                                    realm=issuer_realm,
+                                    return_type="instance")
+            if not result:
+                log_msg = _("JWT data with unknown site: {realm}/{site}", log=True)[1]
+                log_msg = log_msg.format(realm=issuer_realm, site=issuer_site_name)
+                self.logger.warning(log_msg)
+                self.auth_failed = True
+                self.auth_message = "AUTH_OUTER_JWT_UNKNOWN_SITE"
+                self.count_fails = False
+                return
+            issuer_site = result[0]
+            if issuer_site.uuid not in self.user_site.trusted_sites:
+                log_msg = _("JWT signed by site not trusted by users site: {realm}/{site}", log=True)[1]
+                log_msg = log_msg.format(realm=issuer_realm, site=issuer_site_name)
+                self.logger.warning(log_msg)
+                self.auth_failed = True
+                self.auth_message = "AUTH_OUTER_JWT_UNTRUSTED_SITE"
+                return
+
+        # A user of our site logs in to us, he needs no JWT of ours.
+        if self.user.site_uuid == config.site_uuid \
+        and issuer_site.uuid == config.site_uuid:
+            log_msg = _("JWT auth for user from own site: {user}", log=True)[1]
+            log_msg = log_msg.format(user=self.user.name)
+            self.logger.warning(log_msg)
+            self.auth_failed = True
+            self.auth_message = "AUTH_JWT_FROM_OWN_SITE"
+            return
 
         # The JWT reason we need to check.
         if self.jwt_reason:
@@ -2027,11 +2090,10 @@ class AuthHandler(object):
             if self.realm_login:
                 required_reason = "REALM_LOGIN"
 
-        # Verify outer JWT. This JWT must be signed by the users site
-        # certificate to indicate an authenticated user.
+        # Verify outer JWT with the key of the site that signed it.
         try:
             outer_jwt_data = jwt.decode(jwt=self.redirect_response,
-                                key=site_jwt_key,
+                                key=issuer_site._cert_public_key,
                                 algorithm='RS256')
         except Exception as e:
             log_msg = _("JWT verification failed: {e}", log=True)[1]
@@ -2217,48 +2279,6 @@ class AuthHandler(object):
             self.auth_failed = True
             self.auth_message = "AUTH_JWT_INVALID_TOKEN_SITE"
             return
-
-        if self.auth_token.site == config.site:
-            # Get auth realm/site.
-            try:
-                auth_realm = outer_jwt_data['realm']
-            except Exception:
-                log_msg = _("JWT data is missing auth realm.", log=True)[1]
-                self.logger.warning(log_msg)
-                self.auth_failed = True
-                self.auth_message = "AUTH_OUTER_JWT_REALM_MISSING"
-                self.count_fails = False
-                return
-            try:
-                auth_site = outer_jwt_data['site']
-            except Exception:
-                log_msg = _("JWT data is missing auth site.", log=True)[1]
-                self.logger.warning(log_msg)
-                self.auth_failed = True
-                self.auth_message = "AUTH_OUTER_JWT_SITE_MISSING"
-                self.count_fails = False
-                return
-            result = backend.search(object_type="site",
-                                    attribute="name",
-                                    value=auth_site,
-                                    realm=auth_realm,
-                                    return_type="instance")
-            if not result:
-                log_msg = _("JWT data with unknown site: {realm}/{site}", log=True)[1]
-                log_msg = log_msg.format(realm=auth_realm, site=auth_site)
-                self.logger.warning(log_msg)
-                self.auth_failed = True
-                self.auth_message = "AUTH_OUTER_JWT_UNKNOWN_SITE"
-                self.count_fails = False
-                return
-
-            _auth_site = result[0]
-            _own_site = backend.get_object(uuid=config.site_uuid)
-
-            if _auth_site.uuid not in _own_site.trusted_sites:
-                self.auth_failed = True
-                self.auth_message = "AUTH_JWT_TOKEN_SITE_IS_OWN_SITE"
-                return
 
         # Verify auth token (group membership etc.)
         self.verify_auth_token()

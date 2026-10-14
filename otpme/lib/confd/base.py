@@ -93,6 +93,20 @@ class ConfJobHandler(object):
         msg = _("Listing packages is not supported on this system.")
         raise OTPmeException(msg)
 
+    def get_reboot_required(self, packages=None):
+        """ Whether this host has to be rebooted to run what is
+        installed on it.
+
+        None on a system that cannot say, which is what a system
+        without a handler of its own answers: a no would be read as
+        "nothing to do here", and that is not what we know.
+
+        <packages> is the package list of the host where the caller has
+        it already, so a handler that works it out from the packages
+        does not have to ask the package manager a second time.
+        """
+        return None
+
     def run(self, job_type, action, args, log_file, job_uuid=None):
         """ Run one job. Returns exit code and output.
 

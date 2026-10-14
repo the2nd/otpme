@@ -111,7 +111,7 @@ Runs on: nodes and hosts.
 **clusterd**  
 Cluster daemon. It manages the nodes of a site: quorum, the master node
 and failover. It also syncs the objects of the own site between the
-nodes.  
+nodes. See **otpme-cluster**(1).  
 Runs on: nodes.
 
 **joind**  
@@ -157,8 +157,9 @@ when the master changes.
 **confd**  
 Configuration daemon. It runs as root. It gets signed configuration jobs
 from the nodes, checks them and runs them. See **otpme-deploy**(1). It
-also reports the OS and the installed packages of the host to the nodes.
-See **otpme-inventory**(1).  
+also reports the system, the kernel, the packages and the hardware of
+the host to the nodes, and whether the host has to be rebooted. See
+**otpme-inventory**(1).  
 Runs on: nodes and hosts.
 
 ## External Integrations
@@ -766,8 +767,9 @@ confd does not run a job itself. It starts a service of its own for each
 job (**otpme-confd-job**). So a long job does not block confd, and a job
 that restarts OTPme keeps running and can report its result afterwards.
 
-confd also reports which system the host runs and which packages are
-installed. You can see and search this with **otpme-inventory**(1).
+confd also reports which system and which kernel the host runs, whether
+it has to be rebooted, and which packages are installed. You can see and
+search this with **otpme-inventory**(1).
 
 # CONFIG PARAMETERS
 
@@ -847,12 +849,11 @@ Object types: site, unit, token
 **auto_sign (bool, default: false)**  
 Offer to sign the object after each change.  
 On an object a token can be assigned to — a role, a group, an access
-group, a client, a host or a node — it says to sign the token for that
-assignment, which is what **add_token --sign** does by hand. A host can
-be told to let an SSH key in only with such a signature, see
-**otpme-role**(1).  
+group, a host or a node — it says to sign the token for that assignment,
+which is what **add_token --sign** does by hand. A host can be told to
+let an SSH key in only with such a signature, see **otpme-role**(1).  
 Object types: site, unit, user, token, script, role, group, accessgroup,
-client, host, node
+host, node
 
 **auto_revoke (bool, default: true)**  
 Revoke the signatures of an object when it is changed.  
@@ -2176,7 +2177,9 @@ that are already there.
 A name has to be the name of an existing **scope** object, and setting
 an unknown one is refused. A site starts with the scopes **openid**,
 **profile**, **email**, **address**, **phone**, **offline_access** and
-**groups**, of which the first three are in this list.  
+**groups**, of which the first three are in this list. What each of them
+hands out, and how a scope is granted at all, is in
+**otpme-scope**(1).  
 Example:
 
 **otpme-site config *berlin* oidc_default_scopes
@@ -2221,9 +2224,11 @@ Object types: site, unit, client
 **oidc_allow_plain_pkce (bool, default: false)**  
 Whether the old PKCE method **plain** is accepted in the authorize
 flow.  
-OAuth 2.1 §7.5.2 forbids **plain**, because whoever steals the
-authorization code has the verifier as well. The only reason to turn it
-on is an old client that has **plain** built in and cannot be changed.  
+With **plain** the challenge is the verifier, so whoever sees the
+authorization request has both and PKCE protects nothing. OAuth 2.1
+§4.1.1 leaves it to clients that cannot do **S256**; OTPme refuses it
+unless this says otherwise. The only reason to turn it on is an old
+client that has **plain** built in and cannot be changed.  
 The discovery document never offers **plain**, whatever this is set
 to.  
 Object types: site, unit, client
@@ -2247,6 +2252,17 @@ and higher on an internal tool, e.g. **8h**. A refresh token is not
 bound by this value but by the SSO session above it.  
 It takes time units, e.g. **5m**, **1h** or **8h**.  
 Object types: site, unit, client
+
+**oidc_retired_max_age (time, default: 2h)**  
+How long a signing key stays published after **otpme-site
+renew_oidc_key** has retired it. For that long an application can still
+check what the old key signed. After that the key is left out of */jwks*
+and of the discovery document, and the next renewal removes it.  
+Do not set it lower than the longest **oidc_access_token_ttl** in use.
+An ID Token lives that long, and an application checks it with the keys
+it is given.  
+It takes time units, e.g. **2h** or **1D**.  
+Object types: site
 
 **oidc_acr_scheme (str, default: numeric)**  
 Which Authentication Context Class Reference (*acr*) an ID Token
@@ -3184,14 +3200,15 @@ The settings of one user, e.g. which agent to talk to.
 
 **otpme**(1), **otpme-acls**(7), **otpme.conf**(5), **pam_otpme**(8),
 **otpme-accessgroup**(1), **otpme-backup**(1), **otpme-ca**(1),
-**otpme-client**(1), **otpme-deploy**(1), **otpme-device**(1),
-**otpme-dictionary**(1), **otpme-group**(1), **otpme-host**(1),
-**otpme-inventory**(1), **otpme-mount**(1), **otpme-node**(1),
-**otpme-policy**(1), **otpme-pool**(1), **otpme-realm**(1),
-**otpme-resolver**(1), **otpme-role**(1), **otpme-script**(1),
-**otpme-share**(1), **otpme-site**(1), **otpme-token**(1),
-**otpme-tool**(1), **otpme-trash**(1), **otpme-unit**(1),
-**otpme-user**(1), **otpme-vlan**(1)
+**otpme-client**(1), **otpme-cluster**(1), **otpme-deploy**(1),
+**otpme-device**(1), **otpme-dictionary**(1), **otpme-group**(1),
+**otpme-host**(1), **otpme-inventory**(1), **otpme-mount**(1),
+**otpme-node**(1), **otpme-policy**(1), **otpme-pool**(1),
+**otpme-realm**(1), **otpme-resolver**(1), **otpme-role**(1),
+**otpme-scope**(1), **otpme-script**(1), **otpme-share**(1),
+**otpme-site**(1), **otpme-token**(1), **otpme-tool**(1),
+**otpme-trash**(1), **otpme-unit**(1), **otpme-user**(1),
+**otpme-vlan**(1)
 
 # AUTHOR
 

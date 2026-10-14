@@ -291,6 +291,7 @@ REGISTER_AFTER = []
 def register():
     """ Registger resolver type. """
     register_hooks()
+    config.register_sub_object_type("resolver", RESOLVER_TYPE, version=1)
     register_commands("resolver",
                     commands,
                     sub_type="ldap",
@@ -326,7 +327,6 @@ class LdapResolver(Resolver):
                                             **kwargs)
         # Set resolver type.
         self.resolver_type = RESOLVER_TYPE
-        self.sub_type = RESOLVER_TYPE
 
         self._acls = get_acls()
         self._value_acls = get_value_acls()

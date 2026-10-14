@@ -49,7 +49,6 @@ def register():
                         'trusted_site',
                         'auth_enabled',
                         'sync_enabled',
-                        'acl_inheritance_enabled',
                         ]
     read_acls, write_acls = get_acls(split=True)
     read_value_acls, write_value_acls = get_value_acls(split=True)
@@ -124,10 +123,6 @@ def row_getter(realm, site, site_order, site_data, acls,
             description = site_data[site_uuid]['description'][0]
         except Exception:
             description = None
-        try:
-            acl_inheritance_enabled = site_data[site_uuid]['acl_inheritance_enabled'][0]
-        except Exception:
-            acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
@@ -156,7 +151,7 @@ def row_getter(realm, site, site_order, site_data, acls,
         # Auth enabled.
         if "auth" in output_fields:
             if check_acl("view:auth") \
-            or check_acl("disable:auth") \
+            or check_acl("enable:auth") \
             or check_acl("disable:auth"):
                 if auth_enabled:
                     row.append("Enabled")
@@ -167,7 +162,7 @@ def row_getter(realm, site, site_order, site_data, acls,
         # Sync enabled.
         if "sync" in output_fields:
             if check_acl("view:sync") \
-            or check_acl("disable:sync") \
+            or check_acl("enable:sync") \
             or check_acl("disable:sync"):
                 if sync_enabled:
                     row.append("Enabled")
@@ -177,14 +172,16 @@ def row_getter(realm, site, site_order, site_data, acls,
                 row.append("-")
         # Trusts.
         if "trusts" in output_fields:
-            _trusted_sites = []
             if check_acl("view:trusts") \
             or check_acl("add:trust") \
             or check_acl("delete:trust"):
+                _trusted_sites = []
                 for x in trusted_sites:
                     x_oid = backend.get_oid(x, instance=True)
                     _trusted_sites.append(x_oid.name)
-            row.append(",".join(_trusted_sites))
+                row.append(",".join(_trusted_sites))
+            else:
+                row.append("-")
         # Addresses.
         if "address" in output_fields:
             if check_acl("view:address") \
@@ -213,24 +210,12 @@ def row_getter(realm, site, site_order, site_data, acls,
         # Policies.
         if "policies" in output_fields:
             if check_acl("view:policies") \
-            or check_acl("add:policy") \
+            or check_acl("assign:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="site",
                                                     object_uuid=site_uuid,
                                                     max_policies=max_policies)
                 row.append(policies_string)
-            else:
-                row.append("-")
-        # Inherit.
-        if "inherit" in output_fields:
-            if check_acl("view:acl_inheritance") \
-            or check_acl("enable:acl_inheritance") \
-            or check_acl("disable:acl_inheritance"):
-                if acl_inheritance_enabled:
-                    acl_inheritance_string = "Enabled"
-                else:
-                    acl_inheritance_string = "Disabled"
-                row.append(acl_inheritance_string)
             else:
                 row.append("-")
         # Description.

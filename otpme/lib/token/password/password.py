@@ -293,7 +293,7 @@ def register_hooks():
 
 def register_token_type():
     """ Register token type. """
-    config.register_sub_object_type("token", "password")
+    config.register_sub_object_type("token", "password", version=1)
 
 def register_config_parameters():
     """ Registger config parameters. """

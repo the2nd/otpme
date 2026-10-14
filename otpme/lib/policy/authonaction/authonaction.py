@@ -263,7 +263,7 @@ def first_reauth_getter(self):
 
 def register_policy_type():
     """ Register policy type. """
-    config.register_sub_object_type("policy", POLICY_TYPE)
+    config.register_sub_object_type("policy", POLICY_TYPE, version=1)
     config.register_config_var("reauth_callback", object, None)
 
 def register_policy_object():
@@ -291,7 +291,6 @@ class AuthonactionPolicy(Policy):
                                                     **kwargs)
         # Set policy type.
         self.policy_type = POLICY_TYPE
-        self.sub_type = POLICY_TYPE
 
         self._acls = get_acls()
         self._value_acls = get_value_acls()

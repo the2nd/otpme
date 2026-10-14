@@ -1,169 +1,380 @@
-.TH OTPME-ACCESSGROUP 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.TH OTPME-ACCESSGROUP 1 "2026-10-10" "OTPme 0.3.0a281" "OTPme Manual"
 .SH NAME
-otpme-accessgroup \- manage OTPme access groups for resource authorization
+otpme-accessgroup \- say who may use a service, and how its sessions work
 .SH SYNOPSIS
 .B otpme-accessgroup
 .I command
 [\fIoptions\fR] [\fIaccessgroup\fR]
 .SH DESCRIPTION
-.B otpme-accessgroup
-manages access groups in the OTPme system. Access groups control which tokens and roles are authorized to access specific services. They provide centralized access control, session management, timeout configuration, and failure handling.
+An access group answers one question: who may use this service.
 .PP
-Access groups are assigned to clients (see
-.BR otpme\-client (1))
-to control who can authenticate. They support hierarchical structures with parent and child groups. For a conceptual overview, see
+Every client has one \(em a RADIUS client, an LDAP client, an OIDC client of the SSO portal (see
+.BR otpme\-client (1)).
+When a login arrives there, the access group of that client says whether the token is let in.
+What is in the group gets in: a token that was added to it, every token of a role that was added to it, and, for a switch port that is opened without anybody logging in, a host or a device.
+.PP
+It answers a second question as well, and that one is about the service and not about the people: whether a login creates a session and how long that session lives, how many sessions a user may have at the same time, and how many failed logins lock a user out of this service.
+So two groups with the same tokens still differ: a VPN that holds a session for a day and a management interface that asks again every time.
+.PP
+An access group lives in the \fBaccessgroups\fR unit of a site, and the nodes of that site are what answers logins with it.
+A host gets one single access group, the \fBREALM\fR group of its own site, because that is where it reads which login interfaces a token may use.
+.PP
+Every site is created with five groups of its own, see \fBTHE GROUPS A SITE BRINGS\fR.
+.PP
+For the bigger picture \(em what a client is, what a role is, how a login runs \(em see
 .BR otpme (7).
 .SH COMMANDS
 .SS Access Group Management
 .TP
 .B add \fIaccessgroup\fR
-Create a new access group.
+Create an access group.
+It is created in the \fBaccessgroups\fR unit of your site; a path puts it into another unit, and
+.B move
+takes it there afterwards.
+.br
+A name is lower case.
+Upper case is for the groups a site brings with it, and a name that is one of theirs is taken as that group.
+.br
+Needs the ACL \fBadd:accessgroup\fR on the unit it is created in, not on the group \(em there is none yet.
 .TP
-.B del \fIaccessgroup\fR
+.B del \fR[\fB\-\-no\-trash\fR] \fIaccessgroup\fR
 Delete an access group.
+It goes to the trash, from where
+.BR otpme\-trash (1)
+can bring it back; \fB\-\-no\-trash\fR deletes it right away.
+.br
+What points at the group is named in the question first: the groups it hangs under, its own child groups and child sessions, the clients that use it and the tokens in it.
+Then the parent groups let it go and the clients that used it are left without one \(em a client without an access group lets nobody in.
+.br
+Needs the ACL \fBdelete:object\fR on the group, or \fBdelete:accessgroup\fR on the unit it sits in.
+.br
+A group a site brings with it cannot be deleted.
 .TP
-.B show \fR[\fIaccessgroup\fR]
-Display access group information.
+.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIaccessgroup\fR]
+Without a group: a table of all of them, with their child groups, the failed logins they allow, whether they sign the SOTP, their sessions and timeouts, their child sessions and their policies.
+.RS
 .TP
-.B list \fR[\fIregex\fR]
-List access groups, optionally filtered by regex pattern.
+.B \-a
+Also the groups you may only look at, not just the ones you may change.
+.TP
+.B \-z \fIN\fR
+How many groups to print.
+.TP
+.B \-\-fields \fIF1,F2\fR
+Print these columns and no others, in the order they are named.
+The names are the ones in the header of the table.
+.br
+A name with a \fB+\fR in front is added to the columns that are shown anyway, and one with a \fB\-\fR is left out of them.
+The two cannot be mixed with a plain list.
+.br
+Three columns are not in the table unless they are asked for:
+.BR roles ,
+.B tokens
+and
+.BR inherit .
+The first two are what is assigned to the group itself \(em a token that only reaches it through a parent group is in the column of that parent, and a disabled one is marked \fB(D)\fR.
+They cost a query per group, which is why a list of groups does not pay for them:
+.RS
+.PP
+.nf
+\&otpme-accessgroup show \-\-fields +roles,+tokens
+.fi
+.RE
+.TP
+.B \-\-limit \fIN\fR, \fB\-\-policy\-limit \fIN\fR
+How many items to print per group, and the same for the policies alone.
+.TP
+.B \-\-sort\-by \fIfield\fR, \fB\-\-reverse\fR
+Which column to sort by, and the other way round.
+.TP
+.B \-\-raw\fR, \fB\-\-csv\fR, \fB\-\-csv\-sep\fR \fIsep\fR
+For reading with something other than your eyes: \fB\-\-raw\fR leaves the header and the borders out, \fB\-\-csv\fR prints one row per line with \fB;\fR between the columns, and \fB\-\-csv\-sep\fR uses another separator.
+.RE
+.IP
+A column you may not see says \fB\-\fR.
+Which ACL opens which column is the \fBview:\fR ACL of that value, and the \fBedit:\fR, \fBenable:\fR or \fBremove:\fR ACL of it does as well \(em whoever may set a thing may read it.
+.br
+With a group named, this prints the object itself instead of a table row: one value per line, from its sessions and timeouts to its checksums.
+A reference to an object that is gone is printed as the bare UUID, which is how
+.B remove_orphans
+has something to find.
+.TP
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
+List the group names, and with a regex only those that match it.
+You get the groups you may change; \fB\-a\fR adds those you may only look at.
+.br
+\fB\-\-attribute\fR matches the regex against that attribute instead of the name: \fBlist \-\-attribute max_fail 3\fR lists the groups that allow three failed logins.
+A value that is not text has to be spelled out \(em \fB*\fR matches none of it.
 .TP
 .B enable \fIaccessgroup\fR
 Enable a disabled access group.
 .TP
 .B disable \fIaccessgroup\fR
 Disable an access group without deleting it.
+Nobody is let in through a disabled group, and it is left out where groups are walked: a disabled parent passes nothing on, and a disabled child is not reached.
+.br
+A user that was given
+.B otpme\-user enable_disabled_login
+gets in all the same, which is what keeps an administrator from locking themselves out (see \fBotpme\-user\fR(1)).
 .TP
 .B rename \fIaccessgroup\fR \fInew_name\fR
 Rename an access group.
+.br
+The clients that name it follow the rename, because a client holds the group and not its name.
+A group a site brings with it cannot be renamed.
 .TP
 .B move \fR[\fB\-\-keep\-acls\fR] \fIaccessgroup\fR \fIunit\fR
-Move access group to a different unit.
+Move the group into another unit.
+Its ACLs move with it: the default ACLs of the old unit are taken away and those of the new one are applied.
+\fB\-\-keep\-acls\fR leaves the ACLs of the group as they are.
 .TP
 .B touch \fIaccessgroup\fR
-Re-index the access group to fix potential index problems.
+Re-index the object to fix potential index problems.
 .SS Token and Role Assignment
+A token is named by its path, \fIuser\fB/\fItoken\fR.
+A role is named by its name, which is looked for in the site of the access group, or as \fIsite\fB/\fIrole\fR to take one from another site of the realm.
 .TP
-.B add_token \fR[\fB\-\-skip\-portal\-token\fR] \fIaccessgroup\fR \fItoken_path\fR
-Add a token to the access group. Tokens in the group are authorized to access resources using this group. With SOTP signing enabled the sign public key of the tokens user is stored in the access group.
+.B add_token \fR[\fB\-\-skip\-portal\-token\fR] \fIaccessgroup\fR \fItoken_path\fR \fR[\fItoken_options\fR]
+Let this token use the service.
 .br
-If the token is the SSO token of a site's portal (its name is that site's \fBdefault_sso_token_name\fR), the tokens the portal manages for the user (security keys, passkeys, tiqr phones and authenticator apps added on its settings page) are added as well, after a confirmation. \fB\-\-skip\-portal\-token\fR adds only the given token.
+With SOTP signing enabled the sign public key of the token's user is copied into the access group, see \fBSOTP SIGNING\fR.
+.br
+If the token is the SSO token of a site's portal (its name is that site's \fBdefault_sso_token_name\fR), the tokens the portal manages for the user \(em security keys, passkeys, tiqr phones and authenticator apps added on its settings page \(em are added as well, after a confirmation.
+\fB\-\-skip\-portal\-token\fR adds only the given token.
+.br
+\fItoken_options\fR are SSH \fBauthorized_keys\fR options for the key of this token, written as they stand in such a line: comma separated, and a value may be quoted, as in \fBcommand="/usr/bin/x",no\-pty\fR.
+Only the options the token type allows are kept, the rest is dropped when the file is written, with a warning in the log; \fBotpme\-host\fR(1) lists them.
+.br
+One group is asked for them: the \fBREALM\fR group of a site, when a host of that site writes its \fBauthorized_keys\fR and its logins are not limited (see \fBlimit_logins\fR in \fBotpme\-host\fR(1)), because that is where such a host takes the tokens of that group.
+On any other access group they are kept with the assignment and nothing reads them.
+They are not in \fBshow_config\fR either, only in \fBexport\fR.
+.br
+Needs the ACL \fBadd:token\fR.
 .TP
 .B remove_token \fR[\fB\-\-skip\-portal\-token\fR] \fIaccessgroup\fR \fItoken_path\fR
-Remove a token from the access group. The users sign public key is removed with their last token. If the token is the SSO token of a site's portal, the tokens the portal manages for the user are removed as well, after a confirmation. \fB\-\-skip\-portal\-token\fR removes only the given token.
+Take the token away from the group.
+A UUID is taken as well, which is how a reference to a token that is gone is cleared out.
+.br
+The sign public key of the user goes with their last token in this group, and not before: a user with another token in it keeps it, and OTPme says so.
+.br
+If the token is the SSO token of a portal, the tokens the portal manages for the user are removed as well, after a confirmation; \fB\-\-skip\-portal\-token\fR removes only the given token.
+.br
+Needs the ACL \fBremove:token\fR.
 .TP
 .B list_tokens \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIaccessgroup\fR
-List tokens assigned to the access group.
-Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-token\-types\fR to limit the listing to the given token types.
+List the tokens assigned to the group, by their path.
+Disabled tokens are listed too.
+.br
+\fB\-\-return\-type\fR selects what to print instead (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-token\-types\fR lists only tokens of the given types.
+.br
+The tokens of the roles are not in this list, see
+.BR list_roles .
+.br
+Needs the ACL \fBview:tokens\fR.
 .TP
 .B add_role \fIaccessgroup\fR \fIrole\fR
-Add a role to the access group. All tokens with this role are authorized. Not supported by access groups with SOTP signing enabled.
+Add a role to the group.
+Every token of the role, and of the roles inside it, may then use the service.
+.br
+This is the way to give a whole group of people a new service: the role is already filled, so the service is one command.
+.br
+A group with forced SOTP signing takes no role, see \fBSOTP SIGNING\fR.
+.br
+Needs the ACL \fBadd:role\fR.
 .TP
 .B remove_role \fIaccessgroup\fR \fIrole\fR
-Remove a role from the access group.
+Remove a role from the group.
+A UUID is taken as well, which is how a reference to a role that is gone is cleared out.
+.br
+Needs the ACL \fBremove:role\fR.
 .TP
 .B list_roles \fIaccessgroup\fR
-List roles assigned to the access group.
-.SS Host Assignment
+List the names of the roles assigned to the group.
+.br
+Needs the ACL \fBview:roles\fR.
+.SS Host and Device Assignment
+A host or a device in an access group is for a switch port that is opened without anybody logging in: the switch asks with the MAC address, and the access group of the client the switch is says whether that machine is let in (MAC Authentication Bypass).
+A host is a machine of the realm, a device is one that is not \(em a printer, a camera \(em see
+.BR otpme\-host (1)
+and
+.BR otpme\-device (1).
+.PP
+Hosts and devices are not passed down to child groups.
+Tokens and roles are, see \fBCHILD GROUPS\fR.
+.PP
+A site can have every new host or device put into a group by itself, with
+.B hosts_accessgroup
+and
+.BR devices_accessgroup .
+Setting those needs \fBadd:host\fR on the named group, because what follows are hosts added to it without anybody being asked again (see \fBotpme\fR(7)).
 .TP
 .B add_host \fIaccessgroup\fR \fIhost\fR
-Add a host to the access group. This is useful for MAC Authentication Bypass (MAB) port authentication, where hosts are granted network access based on their access group membership.
+Add a host to the group.
+The host is looked for in the site of the group, or written as \fIsite\fB/\fIhost\fR to take one from another site of the realm.
+Needs the ACL \fBadd:host\fR.
 .TP
 .B remove_host \fIaccessgroup\fR \fIhost\fR
-Remove a host from the access group.
+Remove the host again.
+Needs the ACL \fBremove:host\fR.
 .TP
 .B list_hosts \fIaccessgroup\fR
-List hosts assigned to the access group.
-.SS Device Assignment
+List the hosts in the group.
+Needs the ACL \fBview:hosts\fR.
 .TP
 .B add_device \fIaccessgroup\fR \fIdevice\fR
-Add a device to the access group. This is used for MAC Authentication Bypass (MAB) port authentication of network devices such as printers.
+Add a device to the group.
+Needs the ACL \fBadd:device\fR.
 .TP
 .B remove_device \fIaccessgroup\fR \fIdevice\fR
-Remove a device from the access group.
+Remove the device again.
+A UUID is taken as well.
+Needs the ACL \fBremove:device\fR.
 .TP
 .B list_devices \fIaccessgroup\fR
-List devices assigned to the access group.
-.SS VLANs
-An access group decides whether a token, host or device gets access at all.
-Which network it is put into is decided separately, by a VLAN (see
-.BR otpme-vlan (1)).
-Both are answered in the same RADIUS reply, but nothing ties them together:
-membership in an access group grants no VLAN, and a VLAN grants no access.
-.PP
-An access group is not assigned a VLAN and cannot be a member of one. To
-give the objects of an access group a VLAN, put them, or a role they are in,
-into the VLAN:
-.PP
-.RS
-.B otpme-vlan add_role \fIvlan\fR \fIrole\fR
-.RE
-.SS Session Management
+List the devices in the group.
+Needs the ACL \fBview:devices\fR.
+.SS Sessions
+What a session is and what it costs is under \fBSESSIONS\fR below.
+A time is written with a unit: \fB30m\fR, \fB8h\fR, \fB1D\fR, \fB1W\fR, \fB1M\fR.
 .TP
 .B enable_sessions \fIaccessgroup\fR
-Enable session management for this access group.
+Let a login to this group create a session.
+.br
+Off by default, and the \fBMGMT\fR group cannot have it on.
+.br
+Needs the ACL \fBenable:sessions\fR.
 .TP
 .B disable_sessions \fIaccessgroup\fR
-Disable session management.
-.TP
-.B enable_timeout_pass_on \fIaccessgroup\fR
-Pass timeout values to child sessions.
-.TP
-.B disable_timeout_pass_on \fIaccessgroup\fR
-Do not pass timeout values to child sessions.
-.SS SOTP Signing
-With SOTP signing enabled a client has to sign the SOTP it authenticates with using the users sign private key. The access group stores a copy of the sign public key of every user that has a token assigned, and the node verifies the signature against that copy. This keeps a user of another site from authenticating with an SOTP alone: whoever controls the nodes of that site can produce a valid SOTP and can change the users public key there, but cannot touch the copy inside the access group. Only daemons that can handle a signed SOTP enforce this, currently
-.BR otpme-mgmtd (1).
-.PP
-Signing is required from a user only if the access group holds their sign public key. A user without a key authenticates as before, which is what makes it possible to enable signing while the users are still getting their keys. Forced signing drops that exception: every user has to sign, so a user without a key can no longer authenticate. Access groups with forced SOTP signing do not support roles, because a role would bring in tokens whose users sign public keys are missing.
-.TP
-.B enable_sotp_signing \fIaccessgroup\fR
-Require clients to sign the SOTP they authenticate with. The keys of the users that have one are copied into the access group, users without a key are named and do not sign.
-.TP
-.B disable_sotp_signing \fIaccessgroup\fR
-Do no longer require clients to sign their SOTP. The sign public keys stored in the access group are removed with it, and forced signing is switched off.
-.TP
-.B enable_force_sotp_signing \fIaccessgroup\fR
-Require every user to sign, not just those whose key the access group holds. Only possible with SOTP signing enabled, no role assigned to the access group and a stored key for every user with a token assigned. Note that a token which is only valid through a parent access group has no key stored and can no longer authenticate.
-.TP
-.B disable_force_sotp_signing \fIaccessgroup\fR
-Only require the users whose sign public key the access group holds to sign. SOTP signing stays enabled and the stored keys are kept.
-.TP
-.B update_sign_public_keys \fIaccessgroup\fR \fR[\fIusername\fR]
-Take over the current sign public keys of the users that have a token assigned, for all of them or only for \fIusername\fR. A user who generates a new key pair loses access until this is run, which is on purpose: updating the copy automatically would hand the users site the control over it that the copy is meant to take away. Keys of users without a token in the access group are removed.
-.SS Timeout Configuration
+Make every request authenticate by itself again.
+.br
+The \fBREALM\fR group cannot have it off.
+.br
+Needs the ACL \fBdisable:sessions\fR.
 .TP
 .B timeout \fIaccessgroup\fR \fR[\fItime\fR]
-Set session timeout (e.g., 30m, 2h, 1D, 1W). Default: 1800s (30 minutes).
+How long a session of this group lives, counted from the login.
+Default \fB1800\fR seconds.
+.br
+.B 0
+means it does not run out by itself.
+It cannot be set below the unused timeout.
+.br
+Needs the ACL \fBedit:session_timeout\fR.
 .TP
 .B unused_timeout \fIaccessgroup\fR \fR[\fItime\fR]
-Set timeout for unused sessions. Default: 300s (5 minutes).
-.TP
-.B relogin_timeout \fIaccessgroup\fR \fR[\fItime\fR]
-Set minimum time before allowing re-login. Default: 0 (immediate).
+How long a session lives that nobody uses.
+Default \fB300\fR seconds.
+.br
+It cannot be set above the session timeout, and a value above it is read as the session timeout.
+.br
+Needs the ACL \fBedit:unused_session_timeout\fR.
 .TP
 .B max_sessions \fIaccessgroup\fR \fR[\fIcount\fR]
-Set maximum concurrent sessions (0 = unlimited). Default: 0.
-.SS Failure Handling
+How many sessions one token of one user may have in this group at the same time.
+Default \fB0\fR, which is as many as they like.
+.br
+What happens when the number is reached is under \fBSESSIONS\fR.
+.br
+Needs the ACL \fBedit:max_sessions\fR.
+.TP
+.B relogin_timeout \fIaccessgroup\fR \fR[\fItime\fR]
+How long a session is safe from being thrown out to make room for a new one.
+Default \fB0\fR, which is not at all.
+.br
+It does nothing on its own \(em it is read when
+.B max_sessions
+is reached, see \fBSESSIONS\fR.
+.br
+Needs the ACL \fBedit:relogin_timeout\fR.
+.TP
+.B enable_timeout_pass_on \fIaccessgroup\fR
+Give the child sessions of this group its own timeouts instead of theirs.
+.br
+Needs the ACL \fBenable:timeout_pass_on\fR.
+.TP
+.B disable_timeout_pass_on \fIaccessgroup\fR
+Let every child session keep the timeouts of its own group.
+.br
+Needs the ACL \fBdisable:timeout_pass_on\fR.
+.TP
+.B add_child_session \fIaccessgroup\fR \fIaccessgroup\fR
+Create a session for that group as well whenever a session is created here.
+.br
+Needs the ACL \fBadd:child_session\fR.
+.TP
+.B remove_child_session \fIaccessgroup\fR \fIaccessgroup\fR
+Stop creating one.
+Sessions that exist are not touched.
+.br
+Needs the ACL \fBremove:child_session\fR.
+.SS Failed Logins
 .TP
 .B max_fail \fIaccessgroup\fR \fR[\fIcount\fR]
-Set maximum failed login attempts before locking. Default: 5.
+How many failed logins lock a user out of this group.
+Default \fB5\fR.
+.br
+.B 0
+does not lock anybody out, and nothing is counted at all.
+.br
+Needs the ACL \fBedit:max_fail\fR.
 .TP
 .B max_fail_reset \fIaccessgroup\fR \fR[\fItime\fR]
-Set time after which failed login counter resets (e.g., 5m, 1h). Default: 0 (no reset).
-.SS Hierarchical Groups
+After how long without another failed login the lock is lifted and the counter thrown away.
+Default \fB0\fR, which never.
+.br
+Needs the ACL \fBedit:max_fail_reset\fR.
+.SS Child Groups
 .TP
 .B add_child_group \fIaccessgroup\fR \fIchild_group\fR
-Add a child access group. Tokens assigned to a parent group are also accepted when authenticating to the child group.
+Put a group under this one.
+The tokens and roles of this group may then use the child group as well, see \fBCHILD GROUPS\fR.
+.br
+A group has one parent at most, and a group cannot be its own child.
+.br
+Needs the ACL \fBadd:child_group\fR on this group, and \fBadd:token\fR or \fBadd:role\fR on the child: whoever may hand access to the child this way has to be allowed to hand it over directly.
 .TP
 .B remove_child_group \fIaccessgroup\fR \fIchild_group\fR
-Remove a child access group.
+Take the group out from under this one.
+.br
+Needs the ACL \fBremove:child_group\fR.
+.SS SOTP Signing
+What this is for is under \fBSOTP SIGNING\fR below.
 .TP
-.B add_child_session \fIaccessgroup\fR \fIsession_group\fR
-Add a child session group. When a session is created at this access group, child sessions are automatically created for all child session groups.
+.B enable_sotp_signing \fIaccessgroup\fR
+Require clients to sign the SOTP they authenticate with.
+.br
+The keys of the users that have one are copied into the access group; the users without one are named and do not sign.
+.br
+Needs the ACL \fBenable:sotp_signing\fR.
 .TP
-.B remove_child_session \fIaccessgroup\fR \fIsession_group\fR
-Remove a child session group.
+.B disable_sotp_signing \fIaccessgroup\fR
+Do no longer require it.
+The copied keys are removed with it, and forced signing is switched off.
+.br
+Needs the ACL \fBdisable:sotp_signing\fR.
+.TP
+.B enable_force_sotp_signing \fIaccessgroup\fR
+Require every user to sign, not only those whose key the group holds.
+.br
+Only with signing enabled, no role in the group, and a key for every user that has a token in it \(em otherwise those users are named and nothing is changed.
+.br
+A token that only gets in through a parent group has no key here, so it can no longer authenticate.
+.br
+Needs the ACL \fBenable:force_sotp_signing\fR.
+.TP
+.B disable_force_sotp_signing \fIaccessgroup\fR
+Require it only from the users whose key the group holds.
+Signing stays on and the keys are kept.
+.br
+Needs the ACL \fBdisable:force_sotp_signing\fR.
+.TP
+.B update_sign_public_keys \fIaccessgroup\fR \fR[\fIusername\fR]
+Take over the keys the users have now, all of them or only \fIusername\fR.
+.br
+Keys without a token in the group are removed with it.
+A user without a key is named; asked for one user, that is an error.
+.br
+Needs SOTP signing to be enabled, and the ACL \fBedit:sign_public_keys\fR.
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
@@ -176,7 +387,7 @@ What was done and by whom stays as it is.
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIaccessgroup\fR
-Show the changelog of the accessgroup.
+Show the changelog of the access group.
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fIaccessgroup\fR \fIentry_id\fR \fIcomment\fR
@@ -225,56 +436,119 @@ Use \fB\-\-policy\-types\fR to list only policies of the given types; these are 
 .br
 Needs the ACL \fBview:policies\fR.
 .SS ACL Management
+An ACL says what somebody may do with this access group.
+The somebody is a role or a token, never a user.
+.PP
+What the three forms \fBacl\fR, \fB+acl\fR and \fB++acl\fR mean, and which ACLs exist, is under \fBACLs\fR in
+.BR otpme (7).
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
-.B add_acl \fIaccessgroup\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
-Add an access control entry.
+.B add_acl \fIaccessgroup\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
+Give a role or a token one or more ACLs on this group.
+.br
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR, and \fIowner\fR the path of that role or token.
+An ACL may carry a value, for example \fBview:tokens\fR, and several are separated by commas.
+.br
+Needs the ACL \fBadd:acl\fR.
 .TP
-.B del_acl \fIaccessgroup\fR \fIacl\fR
-Remove an access control entry.
+.B del_acl \fIaccessgroup\fR \fIacl\fR[,\fIacl\fR]
+Take those ACLs away again.
+.br
+Here an \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fBrole:berlin/sw\-admins:view\fR.
+.br
+Needs the ACL \fBdelete:acl\fR.
 .TP
 .B list_acls \fIaccessgroup\fR
-Display all ACLs for the access group.
+Show the ACLs that lie on this group, i.e. who may do what with it.
+Needs the ACL \fBview:acl\fR.
 .TP
 .B enable_acl_inheritance \fIaccessgroup\fR
-Enable ACL inheritance from parent objects.
+Let the group inherit the default ACLs of the unit above it.
+It does not by default.
+.RS
+.PP
+Only default ACLs are inherited.
+An ordinary ACL on the unit never is.
+.PP
+Moving the group into another unit then takes away the default ACLs of the old unit and applies those of the new one.
+While inheritance is off, a move leaves the ACLs of the group as they are.
+.PP
+Needs the ACL \fBenable:acl_inheritance\fR.
+.RE
 .TP
 .B disable_acl_inheritance \fIaccessgroup\fR
-Disable ACL inheritance.
-.SS Configuration and Attributes
+Stop inheriting them.
+Only the ACLs on the group itself count from then on.
+Needs the ACL \fBdisable:acl_inheritance\fR.
+.SS Configuration
+A config parameter is looked for on the access group, then on the units above it, then on the site.
+The first value found is the one that applies, and the realm holds none.
+A site can turn that around for a parameter it names in
+.B force_site_config_parameters\fR,
+and then its own value wins (see \fBotpme\fR(7)).
+.PP
+Which parameters an access group takes is in
+.B CONFIG PARAMETERS
+below.
 .TP
 .B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIaccessgroup\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
+Set a parameter on the group.
+.RS
 .TP
-.B show_config \fIaccessgroup\fR [\fIparameter\fR]
-Show all configuration parameters.
+.B \-d
+Remove the parameter from the group, or with a value only that one value from a list.
+It is not set back to a default: what applies afterwards is whatever the unit or the site says.
+.TP
+.B \-a
+Append the value to a parameter that holds a list, instead of replacing what is there.
+.RE
+.IP
+The ACL is per parameter, \fBset:config:\fIparameter\fR.
+.TP
+.B show_config \fIaccessgroup\fR \fR[\fIparameter\fR]
+The config parameters set on the group itself, or only the one named.
+.br
+Nothing is shown for a parameter that the group gets from a unit or from the site, and nothing for one whose ACL \fBview:config:\fIparameter\fR you do not hold.
+The settings of the group \(em its sessions, its timeouts, its tokens and roles \(em are not config parameters: \fBshow\fR and \fBexport\fR are where those are.
 .TP
 .B get_config \fIaccessgroup\fR \fIparameter\fR
-Show the value of a single configuration parameter.
+What the parameter comes to for this group, once the group, its units and its site have been looked at.
+So this answers what applies, where \fBshow_config\fR answers what was set here.
+.br
+Needs the ACL \fBview:config:\fIparameter\fR, the same one that opens it in \fBshow_config\fR.
 .TP
 .B description \fIaccessgroup\fR \fR[\fIdescription\fR]
-Set access group description.
+Set the description.
+Without one OTPme asks and offers the current text for editing.
 .TP
 .B info \fR[\fB\-\-language\fR \fILANG\fR] \fIaccessgroup\fR \fR[\fIinfo\fR]
-Set free-form info text. If \fIinfo\fR is omitted, the current info text is
-opened in the editor specified by the \fBEDITOR\fR environment variable.
+Set free-form info text.
+If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
 .br
 Without
 .B \-\-language
-the text is the administrator's own note about the object, which no user is ever shown. A text written with a language is one for the users of that language.
+the text is the administrator's own note about the object, which no user is ever shown.
+A text written for a language is one for the users of that language.
 .br
-For the \fBSSO\fR accessgroup such a text is the recovery mail: first line the subject, then an empty line, then the body, with \fB{user_name}\fR, \fB{minutes}\fR (how long the link is valid) and \fB{reset_url}\fR filled in. Any other placeholder is refused. Which one is sent follows the user's language, see \fBotpme\fR(7).
+For the \fBSSO\fR group such a text is the recovery mail: first line the subject, then an empty line, then the body, with \fB{user_name}\fR, \fB{minutes}\fR (how long the link is valid) and \fB{reset_url}\fR filled in.
+Any other placeholder is refused, here and not when somebody needs that mail.
+Which text is sent follows the language of the user, see \fBotpme\fR(7).
 .TP
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIaccessgroup\fR
-Dump the info text to stdout.
+Write one of those texts to stdout, for reading it with something other than the editor.
+.br
+\fB\-\-language\fR picks which one; without it you get the note of the administrator.
+A language the group has no text for gives nothing and is not an error.
 .TP
 .B add_extension \fIaccessgroup\fR \fIextension\fR
-Add an extension to the access group.
+Add an LDAP extension to the group, which is what gives it LDAP object classes and attributes.
 .TP
 .B remove_extension \fIaccessgroup\fR \fIextension\fR
-Remove an extension.
+Remove the extension again, with the attributes that came with it.
 .TP
 .B add_attribute \fIaccessgroup\fR \fIattribute\fR=\fIvalue\fR
-Add an LDAP attribute.
+Add an LDAP attribute to the group.
 .TP
 .B del_attribute \fIaccessgroup\fR \fIattribute\fR=\fIvalue\fR
 Remove an LDAP attribute.
@@ -284,144 +558,339 @@ Add an LDAP object class.
 .TP
 .B del_object_class \fIaccessgroup\fR \fIclass\fR
 Remove an LDAP object class.
-.SS Import/Export
+.SS Export and Cleanup
+Both write to stdout.
+There is no import on this page: reading an export back in is
+.B otpme\-tool import\fR,
+see
+.BR otpme\-tool (1).
+.PP
+.B remove_orphans
+asks before it changes anything; the global option \fB\-f\fR skips the question.
 .TP
-.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIaccessgroup\fR
-Export access group configuration.
+.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIaccessgroup\fR
+Write the whole object of the group to stdout, as JSON.
+.br
+Without \fB\-\-password\fR it is written as it is, in clear.
+With one, a key is derived from that password and the object is encrypted with it; the salt goes into the output, so the password is all you need to read it back.
+.br
+What a group holds are references by UUID \(em its tokens, its roles, its hosts, its devices, its child groups \(em so an export says something only in the realm it came from.
+It carries the sign public keys it holds as well.
+.br
+Needs the ACL \fBexport\fR.
 .TP
 .B remove_orphans \fIaccessgroup\fR
-Remove orphaned object references.
-.SH OPTIONS
-.SS Display Options
-.TP
-.B \-a
-Show all access groups (across all units).
-.TP
-.B \-z \fISIZE\fR
-Limit output size.
-.TP
-.B \-\-fields \fIFIELD1,FIELD2\fR
-Display only specified fields.
-.TP
-.B \-\-policy\-limit \fIN\fR
-Limit number of policies shown.
-.TP
-.B \-\-limit \fIN\fR
-Limit number of items shown per object.
-.TP
-.B \-\-sort\-by \fIFIELD\fR
-Sort output by field.
-.TP
-.B \-\-reverse
-Reverse sort order.
-.TP
-.B \-\-raw
-Output without headers/borders.
-.TP
-.B \-\-csv
-Output as CSV.
-.TP
-.B \-\-csv\-sep \fISEP\fR
-CSV separator character.
-.TP
-.B \-\-attribute \fIATTR\fR
-Display specific attribute in list command.
-.SS General Options
-.TP
-.B \-\-keep\-acls
-Preserve ACLs when moving access group.
-.TP
-.B \-\-password \fIPASS\fR
-Password for encrypting exports.
+Remove what the group still points at although it is gone.
+.br
+On an access group that is its ACLs, its policies, the tokens, roles, hosts and devices in it, and its child groups.
+A token that is gone takes the options stored with it.
+.br
+It shows everything it found and asks once for all of it.
+It asks nothing and changes nothing when it finds nothing.
+.br
+Needs the ACL \fBremove:orphans\fR.
+.SH SESSIONS
+Without sessions every request authenticates by itself.
+That is what you want for a management interface, and it is what makes an OTP an OTP: it is used once.
 .PP
-Global options are available for all commands. See
-.BR otpme (1)
-for details.
+With sessions the first login creates one, and for as long as it lives the same password or OTP is accepted again.
+That is for the services that ask over and over with what they were given once \(em an IMAP server that opens a connection per folder, a VPN that reauthenticates.
+The price is that an OTP is no longer used only once: it works as long as the session lives.
+.PP
+Two timeouts end a session:
+.B timeout
+counts from the login, and
+.B unused_timeout
+counts from the last time it was used.
+The second cannot be larger than the first.
+.PP
+.B max_sessions
+is counted per user and token, in this group.
+When a new login would go past it, the oldest sessions are thrown out to make room \(em but only those that are older than
+.BR relogin_timeout .
+Where that does not free enough, the login fails.
+So the two together say what happens to somebody who logs in again and again: with
+.B relogin_timeout
+at \fB0\fR the oldest session is always the one that goes, and with a value set the sessions of the last few minutes are safe and the login is refused instead.
+.PP
+A
+.B child session
+is created along with the session of this group, for every group named with
+.BR add_child_session ,
+and for the child sessions of those groups in turn.
+It is created with the password hash of the login that created it, so the other service takes the same password.
+That is what it is for, and it matters most with a one time password: a mail client that logs in at
+.B imap
+with an OTP gets a session for
+.B smtp
+along with it, and sends its mail with that same OTP.
+.PP
+A child session is created whether or not the token would be let into that group by itself, and whether or not that group has sessions enabled.
+So name the groups that belong to this one.
+.PP
+With
+.B timeout_pass_on
+the child sessions get the timeouts of the group the login happened at, instead of their own.
+Without it each of them lives by the timeouts of its own group.
+.PP
+The sessions that exist are listed and deleted with
+.BR otpme\-session ,
+and what an agent holds on one machine with
+.B otpme\-tool show_sessions
+(see \fBotpme\-tool\fR(1)).
+.SH FAILED LOGINS
+Failed logins are counted per user and per access group, and what is counted is the wrong password: a client that asks again and again with the same wrong one counts once.
+.PP
+When the count reaches
+.BR max_fail ,
+the user is locked out of this group \(em and only out of this one.
+The other services go on working, which is the point of counting per group.
+.PP
+.B max_fail \fR0
+counts nothing and locks nobody out.
+.PP
+A lock is lifted in two ways:
+.B max_fail_reset
+seconds without another failed login lift it and throw the counters away, and
+.B otpme\-user unblock \fIuser\fR \fR[\fIaccessgroup\fR]
+lifts it now, for one group or for all of them (see \fBotpme\-user\fR(1)).
+With
+.B max_fail_reset
+at \fB0\fR only the second one does.
+.PP
+A user whose
+.B failed_pass_history
+is smaller than the \fBmax_fail\fR of a group keeps as many as that group needs, and says so in the log: a counter that is thrown away too early would be a lock that never comes.
+.SH CHILD GROUPS
+A group under another group is a group its tokens and roles reach as well.
+.PP
+A child group is not a child session: a child group says who gets in, a child session says what a login creates (see \fBSESSIONS\fR).
+The two are set separately, and the groups a site brings have child groups only \(em
+.B MGMT
+and
+.B LDAP
+under
+.BR REALM ,
+and no child sessions anywhere.
+.PP
+So the way in is inherited downwards: a token in the parent gets into the child, and into the children of the child.
+That is why
+.B add_child_group
+asks for \fBadd:token\fR or \fBadd:role\fR on the child \(em it hands out the same access those two hand out, and must not be cheaper.
+.PP
+Hosts and devices are not inherited.
+A host in a parent group does not get the child group.
+.PP
+A group has one parent at most.
+A disabled group passes nothing on and is not reached.
+.PP
+The
+.B SSO
+group is the exception, and it is one on purpose.
+The groups of the applications hang under it, and the portal reads them to decide which applications it shows.
+So for a login to one of those groups the parents are not walked, and a token that is only in \fBSSO\fR is turned away: it may log in to the portal, and the applications are each their own decision.
+See \fBotpme\fR(7).
+.SH SOTP SIGNING
+With SOTP signing enabled a client has to sign the SOTP it authenticates with, using the sign private key of its user.
+The access group keeps a copy of the sign public key of every user that has a token in it, and the node verifies the signature against that copy.
+.PP
+What that buys: a user of another site cannot be let in with an SOTP alone.
+Whoever controls the nodes of that site can produce a valid SOTP and can change the public key of the user there, but cannot touch the copy inside this access group.
+.PP
+Only daemons that can handle a signed SOTP ask for it, which today means \fBmgmtd\fR \(em the daemon these commands talk to.
+A file share has a signing flag of its own, see
+.BR otpme\-share (1).
+.PP
+Signing is required from a user only if the group holds their key.
+A user without one authenticates as before, which is what makes it possible to switch signing on while the users are still getting their keys.
+.B enable_force_sotp_signing
+drops that exception: every user has to sign, so a user without a key cannot authenticate at all.
+A group with forced signing takes no roles, because a role would bring in tokens whose users have no key here.
+.PP
+A user who generates a new key pair loses access until
+.B update_sign_public_keys
+takes the new key over.
+That is on purpose: updating the copy by itself would hand the site of the user the very control the copy takes away from it.
+.SH THE GROUPS A SITE BRINGS
+Every site is created with five access groups of its own.
+They cannot be renamed or deleted, and their names are upper case.
+.TP
+.B REALM
+The group a login to the realm goes through.
+It is also the one group a host reads, for the login interfaces of its tokens.
+.br
+It has sessions, with a timeout of \fB1M\fR and an unused timeout of \fB3W\fR, at most \fB3\fR sessions per token and a relogin timeout of \fB1s\fR.
+Sessions cannot be switched off for it.
+.br
+.B MGMT
+and
+.B LDAP
+are its child groups, so a token that may log in to the realm can use the management interface and LDAP as well.
+.TP
+.B MGMT
+The group for these commands, i.e. for \fBmgmtd\fR.
+.br
+It has no sessions and cannot have any: every management command authenticates by itself.
+.TP
+.B LDAP
+The group of the LDAP service, \fBldapd\fR.
+.br
+It has sessions (\fB1D\fR, unused \fB1D\fR), at most \fB3\fR per token, relogin timeout \fB1m\fR.
+.TP
+.B SSO
+The group of the SSO portal.
+.br
+It has sessions (\fB1M\fR, unused \fB1M\fR), at most \fB3\fR per token, relogin timeout \fB1m\fR, and it passes its timeouts on to its child sessions.
+.br
+The groups of the applications hang under it, see \fBCHILD GROUPS\fR.
+Its info text is the recovery mail, see
+.B info
+above.
+.TP
+.B JOIN
+The group a machine joins the realm through, i.e. for \fBjoind\fR.
+.br
+It has no sessions.
+.SH VLANS
+An access group decides whether a token, host or device gets access at all.
+Which network it is put into is decided separately, by a VLAN (see
+.BR otpme\-vlan (1)).
+Both are answered in the same RADIUS reply, but nothing ties them together: membership in an access group grants no VLAN, and a VLAN grants no access.
+.PP
+An access group is not assigned a VLAN and cannot be a member of one.
+To give the objects of an access group a VLAN, put them, or a role they are in, into the VLAN:
+.PP
+.RS
+.B otpme\-vlan add_role \fIvlan\fR \fIrole\fR
+.RE
+.SH OPTIONS
+Every option belongs to one command and is described with that command above.
+.PP
+Global options work with every command, see
+.BR otpme (1).
 .SH CONFIG PARAMETERS
-Configuration parameters can be set with the \fBconfig\fR command and displayed with \fBshow_config\fR.
-For a complete description of all available parameters and their applicable object types, see
+An access group takes these:
+.TP
+.B auto_sign \fR(bool)
+Sign the assignment when a token is added to this group.
+There is no \fB\-\-sign\fR on
+.B add_token
+here, so this parameter, or the one of the token you are signed in with, is what decides.
+.br
+Default: false
+.TP
+.B changelog \fR(bool)
+Whether the commands on this group are written to its changelog.
+.br
+Default: true
+.TP
+.B allow_changelog_clearing \fR(bool)
+Whether the changelog of this group may be cleared, see
+.B clear_changelog
+above.
+.br
+Default: true
+.PP
+What each of them does, and how a parameter is resolved, is in
 .BR otpme (7).
 .SH EXAMPLES
-.SS Creating and Configuring Access Groups
+The examples use the site \fBberlin\fR of the realm \fBexample.org\fR.
+.SS A service for a group of people
 .TP
 .B otpme-accessgroup add vpn
-Create access group for VPN access
+Create the group for the VPN.
 .TP
-.B otpme-accessgroup add wlan_building1
-Create access group for building 1 WLAN
+.B otpme-accessgroup description vpn \(dqWho may use the VPN\(dq
+Say what it is for.
 .TP
-.B otpme-accessgroup description vpn "VPN Access Group"
-Set description
-.SS Adding Tokens and Roles
+.B otpme-accessgroup add_role vpn employees
+Everybody in that role may use the VPN.
+One command per service from then on, because the role is already filled.
 .TP
 .B otpme-accessgroup add_token vpn alice/totp
-Allow alice's TOTP token to access VPN
-.TP
-.B otpme-accessgroup add_token \-i ssh vpn bob/ssh_key
-Allow bob's SSH key only for SSH interface
-.TP
-.B otpme-accessgroup add_role vpn VPN_USER
-Allow all tokens with VPN_USER role
-.TP
-.B otpme-accessgroup list_tokens vpn
-Show all authorized tokens
-.SS Configuring Sessions
-.TP
-.B otpme-accessgroup enable_sessions vpn
-Enable session management
-.TP
-.B otpme-accessgroup timeout vpn 8h
-Set 8-hour session timeout
-.TP
-.B otpme-accessgroup unused_timeout vpn 30m
-Set 30-minute unused timeout
-.TP
-.B otpme-accessgroup max_sessions vpn 3
-Allow maximum 3 concurrent sessions
-.TP
-.B otpme-accessgroup relogin_timeout vpn 5m
-Require 5-minute wait before re-login
-.SS Configuring Failure Handling
-.TP
-.B otpme-accessgroup max_fail vpn 3
-Lock after 3 failed attempts
-.TP
-.B otpme-accessgroup max_fail_reset vpn 10m
-Reset failure counter after 10 minutes
-.SS Hierarchical Configuration
-.TP
-.B otpme-accessgroup add wlan
-Create parent WLAN group
-.TP
-.B otpme-accessgroup add wlan_building1
-Create child group for building 1
-.TP
-.B otpme-accessgroup add_child_group wlan wlan_building1
-Link child to parent
-.TP
-.B otpme-accessgroup enable_timeout_pass_on wlan
-Pass timeout settings to children
-.SS Assigning to a Client
+One token on top of that, for somebody the role does not cover.
 .TP
 .B otpme-client access_group vpn_gateway vpn
-Assign access group to VPN gateway client
-.SH FILES
+Hand the group to the client the VPN gateway is \(em without this the group lets nobody in anywhere.
 .TP
-.I /var/lib/otpme/
-OTPme data directory
+.B otpme-accessgroup list_tokens vpn
+The tokens that were added by hand. The tokens of the roles are not in it.
+.SS Sessions for a service that asks again and again
+.TP
+.B otpme-accessgroup enable_sessions imap
+Let a login create a session.
+.TP
+.B otpme-accessgroup timeout imap 8h
+It lives eight hours.
+.TP
+.B otpme-accessgroup unused_timeout imap 30m
+Half an hour of nobody using it ends it earlier.
+.TP
+.B otpme-accessgroup max_sessions imap 3
+Three at a time per token.
+.TP
+.B otpme-accessgroup relogin_timeout imap 5m
+A session of the last five minutes is not thrown out to make room; the fourth login is refused instead.
+.SS Locking out after failed logins
+.TP
+.B otpme-accessgroup max_fail vpn 3
+Three wrong passwords lock the user out of the VPN, and out of nothing else.
+.TP
+.B otpme-accessgroup max_fail_reset vpn 10m
+Ten quiet minutes lift the lock.
+.TP
+.B otpme-accessgroup max_fail mgmt_readonly 0
+Count nothing here.
+.SS Services that belong together
+.TP
+.B otpme-accessgroup add_child_group wlan wlan_guests
+Whoever may use \fBwlan\fR may use \fBwlan_guests\fR too.
+.TP
+.B otpme-accessgroup add_child_session imap smtp
+A session for \fBimap\fR brings one for \fBsmtp\fR.
+.TP
+.B otpme-accessgroup enable_timeout_pass_on imap
+And those sessions live by the timeouts of \fBimap\fR.
+.SS A port without a login
+.TP
+.B otpme-accessgroup add_host printer_net client1
+Let that machine onto the port by its MAC address.
+.TP
+.B otpme-accessgroup add_device printer_net printer1
+The same for a machine that is not a host of the realm.
+.SS Making a service ask for a signed SOTP
+.TP
+.B otpme-accessgroup enable_sotp_signing mgmt
+The users that have a sign key sign from now on; the others are named and go on as before.
+.TP
+.B otpme-accessgroup update_sign_public_keys mgmt alice
+alice made a new key pair: take it over, or she stays out.
+.TP
+.B otpme-accessgroup enable_force_sotp_signing mgmt
+Now everybody signs, and a user without a key cannot authenticate any more.
+.SS Who may change the group
+.TP
+.B otpme-accessgroup add_acl vpn role it\-support add:token,remove:token,view:tokens
+The role may hand out and take away the VPN, and see who has it, and nothing else about the group.
 .SH SEE ALSO
+.BR otpme (1),
 .BR otpme (7),
 .BR otpme\-acls (7),
-.BR otpme-client (1),
-.BR otpme-host (1),
-.BR otpme-token (1),
-.BR otpme-role (1),
-.BR otpme-vlan (1),
-.BR otpme-policy (1)
-
+.BR otpme\-client (1),
+.BR otpme\-scope (1),
+.BR otpme\-role (1),
+.BR otpme\-token (1),
+.BR otpme\-user (1),
+.BR otpme\-host (1),
+.BR otpme\-device (1),
+.BR otpme\-vlan (1),
+.BR otpme\-share (1),
+.BR otpme\-policy (1),
+.BR otpme\-tool (1),
+.BR otpme\-trash (1)
 .SH AUTHOR
 the2nd <the2nd@otpme.org>
 .SH NOTE
 This manual page was created with AI assistance.
 .SH COPYRIGHT
-Copyright \(co 2014-2025 the2nd. License: GPLv3
+Copyright \(co 2014-2026 the2nd. License: GPLv3

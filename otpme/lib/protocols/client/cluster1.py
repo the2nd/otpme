@@ -590,9 +590,14 @@ class OTPmeClusterP1(OTPmeClient1):
         return response
 
     def set_node_online(self):
-        """ Mark node as online. """
+        """ Mark node as online.
+
+        And say which object config versions our code writes. Said
+        here because this is sent once for every connection to a peer,
+        and an update of the code means a restart, and so a new one.
+        """
         command = "set_node_online"
-        command_args = {}
+        command_args = {'config_versions':config.get_config_versions()}
         status, \
         status_code, \
         response, \

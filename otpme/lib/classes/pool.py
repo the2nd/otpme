@@ -552,6 +552,7 @@ def register_backend():
         return backend.rebuild_object_index("pool", objects, after)
     # Register object to config.
     config.register_object_type(object_type="pool",
+                            version=1,
                             tree_object=True,
                             uniq_name=True,
                             add_after=["node"],

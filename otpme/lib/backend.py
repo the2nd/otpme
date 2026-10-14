@@ -418,8 +418,9 @@ def outdate_object(object_id: oid.OTPmeOid, cache_type: Union[str,None]=None):
     object_type = object_id.object_type
     object_uuid = get_uuid(object_id)
 
-    # Clear OID from cache. Cache type None just clears
-    # the checksum cache.
+    # Clear OID from cache. No cache type and "all" both clear the
+    # instance of this object in this process; a cache type clears
+    # only that cache (see cache.clear()).
     cache.clear(object_id, cache_type=cache_type)
     # Clear ACL decode cache.
     decode_acl_cache.invalidate()
@@ -1273,13 +1274,18 @@ def get_instance_from_oid(
         # are written to the config as UUIDs, so who this object is and
         # where it sits costs four assignments instead of reading and
         # decrypting the whole thing. With them the instance answers
-        # get_sync_config() and get_parent_object() as any other would.
+        # get_sync_config() and get_parent_uuid() as any other would.
         identity_attributes = {
                             'UUID'  : "uuid",
                             'REALM' : "realm_uuid",
                             'SITE'  : "site_uuid",
                             'UNIT'  : "unit_uuid",
                             }
+        # The parent of a token is its owner. Without this it is the
+        # user found by the name in the path of the token, which is
+        # not unique beyond a site.
+        if object_type == "token":
+            identity_attributes['OWNER'] = "owner_uuid"
         for config_attribute in identity_attributes:
             try:
                 value = object_config[config_attribute]

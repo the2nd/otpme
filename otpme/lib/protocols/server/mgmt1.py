@@ -2718,6 +2718,11 @@ class OTPmeMgmtP1(OTPmeServer1):
                 return self.build_response(False, response)
         share_nodes = share.get_nodes(include_pools=True,
                                     return_type="instance")
+        # A share with no enabled node is not given out, the same as
+        # in _cmd_get_shares.
+        if not share_nodes:
+            response = _("Share has no enabled node: {name}").format(name=share_name)
+            return self.build_response(False, response)
         node_fqdns = [node.fqdn for node in share_nodes]
         share_id = share.share_id
         shares = {

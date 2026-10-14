@@ -63,13 +63,13 @@ LDAP_SYNTAXES = {
         '1.3.6.1.4.1.1466.115.121.1.15'     : 'Directory String',
         # RFC 2252.
         '1.3.6.1.4.1.1466.115.121.1.19'     : 'DSA Quality Syntax',
-        # RFC 2252.
+        # RFC 4517.
         '1.3.6.1.4.1.1466.115.121.1.21'     : 'Enhanced Guide',
         '1.3.6.1.4.1.1466.115.121.1.22'     : 'Facsimile Telephone Number',
-        # RFC 2252.
+        # RFC 4517.
         '1.3.6.1.4.1.1466.115.121.1.23'     : 'Fax',
         '1.3.6.1.4.1.1466.115.121.1.24'     : 'Generalized Time',
-        # RFC 2252.
+        # RFC 4517.
         '1.3.6.1.4.1.1466.115.121.1.25'     : 'Guide',
         '1.3.6.1.4.1.1466.115.121.1.26'     : 'IA5 String',
         '1.3.6.1.4.1.1466.115.121.1.27'     : 'Integer',
@@ -88,7 +88,7 @@ LDAP_SYNTAXES = {
         '1.3.6.1.4.1.1466.115.121.1.45'     : 'SubtreeSpecification',
         '1.3.6.1.4.1.1466.115.121.1.49'     : 'Supported Algorithm',
         '1.3.6.1.4.1.1466.115.121.1.50'     : 'Telephone Number',
-        # RFC 2252.
+        # RFC 4517.
         '1.3.6.1.4.1.1466.115.121.1.51'     : 'Teletex Terminal Identifier',
         '1.3.6.1.4.1.1466.115.121.1.52'     : 'Telex Number',
         # RFC 4517. No attribute type uses it, but it is the syntax of

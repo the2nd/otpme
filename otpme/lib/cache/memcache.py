@@ -348,8 +348,8 @@ class MemcacheClient(object):
         """
         return set(self.get_multi_raw(keys))
 
-    def set(self, key, value, **kwargs):
-        key = self.sanitize_key(key)
+    def encode_value(self, value):
+        """ A value the way set() and replace() store it. """
         # Pickle data.
         if self.pickle:
             value = self.pickle_handler.dumps(value)
@@ -358,6 +358,25 @@ class MemcacheClient(object):
         # Compress value.
         if self.compression:
             value = stuff.compress(value, self.compression)
+        return value
+
+    def replace(self, key, value, **kwargs):
+        """ Write a value, but only over one that is there.
+
+        Says whether it was written. False also where memcached could
+        not be asked: the caller then goes the way of a new key, which
+        is the safe one.
+        """
+        key = self.sanitize_key(key)
+        value = self.encode_value(value)
+        try:
+            return bool(self.run("replace", key, value, **kwargs))
+        except (pylibmc.Error, pylibmc.ConnectionError):
+            return False
+
+    def set(self, key, value, **kwargs):
+        key = self.sanitize_key(key)
+        value = self.encode_value(value)
         #cas = self.self.pool.gets(key)
         #if cas is not None:
         #    self.pool.cas(key, value, cas, **kwargs)
@@ -730,12 +749,25 @@ class MemcacheDict(SharedDict):
             _lock = locking.acquire_lock(lock_type=self.lock_type, lock_id=key)
         try:
             _key = self.get_key_id(key)
-            self.client.set(key=_key,
-                            value=value,
-                            time=expire,
-                            min_compress_len=512000,
-                            compress_level=1)
-            self.add_dict_key(key)
+            # A key that is there is in the list of keys already, so
+            # only a new one is appended to it. Appending every time made
+            # the list grow by the same few keys with every write -- the
+            # clear triggers of the function caches are written two dozen
+            # times per object -- and memcached copies the whole item on
+            # every append: a list of some MB made each of those writes
+            # a copy of some MB.
+            stored = self.client.replace(key=_key,
+                                        value=value,
+                                        time=expire,
+                                        min_compress_len=512000,
+                                        compress_level=1)
+            if not stored:
+                self.client.set(key=_key,
+                                value=value,
+                                time=expire,
+                                min_compress_len=512000,
+                                compress_level=1)
+                self.add_dict_key(key)
             # Save key expire time.
             if self.refresh_keys:
                 if expire > 0:

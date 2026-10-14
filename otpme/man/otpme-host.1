@@ -72,7 +72,8 @@ For reading with something other than your eyes: \fB\-\-raw\fR leaves the header
 List the host names, and with a regex only those that match it.
 You get the hosts you may change; \fB\-a\fR adds those you may only look at.
 .br
-\fB\-\-attribute\fR prints that attribute of each host next to its name.
+\fB\-\-attribute\fR matches the regex against that attribute instead of the name: \fBlist \-\-attribute enabled True\fR lists the hosts that are enabled.
+A value that is not text has to be spelled out \(em \fB*\fR matches none of it.
 .TP
 .B enable \fIhost\fR
 Enable a disabled host.
@@ -432,7 +433,14 @@ and by
 to whoever holds the ACL \fBview:jotp\fR or \fBview:lotp\fR.
 .SS Certificates and Keys
 A host gets a certificate and a key pair of its own when it joins.
-The certificate is how a daemon knows which host it is talking to, and the public key is how anything that has to tell this host from another one checks what the host says \(em a remote shell starts with the host vouching for its SSH host key, and this is what the other end holds that against (see \fBotpme-shell\fR(1)).
+The certificate is for TLS, and it is how a daemon knows which host is at the other end of a connection.
+.PP
+The key pair is how a host proves that it is that host.
+\fBsyncd\fR and \fBbackupd\fR ask for it before they answer anything: both ends sign a challenge of the other, and each checks the answer against the public key on the host object in the tree.
+A challenge older than five seconds is refused.
+The private half never leaves the machine, it stays in \fBhostkey.pem\fR; the public half is what the commands below show and set.
+.PP
+The same key is the SSH host key of a remote shell \(em the host vouches for it, and the other end holds that against the public key here (see \fBotpme-shell\fR(1)).
 .PP
 The certificate is renewed on the machine itself, with
 .BR "otpme-tool renew_cert" .
@@ -470,7 +478,9 @@ which answers from the file \fBhostd\fR keeps:
 .B AuthorizedKeysCommandUser root
 .RE
 .PP
-The keys are synced before the answer, but at most every 30 seconds: sshd asks this for every attempt, and one sync per attempt would be one sync per port scan.
+The keys are synced before the answer, or the first login of a token that was just added would be refused.
+Not more often than every 30 seconds, though: sshd runs the command on every login attempt, and anybody who reaches port 22 can make one.
+A sync per attempt would let whoever knocks at the door decide how often this host syncs.
 .SS Configuration Jobs and Inventory
 A host can be told to install a package, write a file or restart a service.
 The jobs are made with

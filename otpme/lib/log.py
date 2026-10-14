@@ -40,6 +40,28 @@ def atfork():
     global fd
     fd = None
 
+class OTPmeFileHandler(logging.handlers.WatchedFileHandler):
+    """ A WatchedFileHandler for a process that drops privileges.
+
+    The handler stats the logfile by path before every line, to see if
+    it was rotated away. A process that changed to a user who may not
+    search the log directory (fsd does, for the user of a mount) gets a
+    PermissionError from that, which is no FileNotFoundError and so
+    came out of logger.warning() itself: the first log line killed the
+    thread that wrote it. That took the share access check of a mount
+    with it, at the line that says access is denied, and only where
+    the daemon logs to a file.
+
+    Such a process keeps the stream it has. After a rotation it goes on
+    writing to the old file, which is what it can do.
+    """
+    def reopenIfNeeded(self):
+        try:
+            super().reopenIfNeeded()
+        except PermissionError:
+            if self.stream is None:
+                raise
+
 # We need this to add variables to logging format.
 class ContextFilter(logging.Filter):
     """ Add log banner and filter log messages. """
@@ -271,7 +293,7 @@ def get_logger(log_name, level, syslog=False, syslog_address="/dev/log",
         if not log_format:
             log_format = log_format_date
         # Create handler for logfile.
-        file_handler = logging.handlers.WatchedFileHandler(logfile,)
+        file_handler = OTPmeFileHandler(logfile,)
         # Set log format for handler.
         file_handler.setFormatter(log_format)
         # Enable logging to logfile.

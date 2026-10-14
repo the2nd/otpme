@@ -9,14 +9,17 @@ hosts
 
 # DESCRIPTION
 
-**otpme-inventory** shows which system a host runs, which packages are
-installed on it, and what it is made of. You can also search for hosts
-that have a package, run a system version, or have certain hardware.
+**otpme-inventory** shows which system a host runs, which kernel it is
+running, whether it has to be rebooted, which packages are installed on
+it, and what it is made of. You can also search for hosts that have a
+package, run a system version or a kernel, wait for a reboot, or have
+certain hardware.
 
 Use it to find the hosts a job has to run on, for example all hosts with
 an old version of a package. See **otpme-deploy**(1). Use it to find a
 machine by its serial number, or to see how much memory and disk a host
-has.
+has. Use it to find the hosts that still have to be rebooted, see **WHEN
+A HOST HAS TO BE REBOOTED**.
 
 The **confd** daemon on each host (and node) reports this data to the
 nodes of its site. It checks the host every 60 seconds and only sends
@@ -24,12 +27,12 @@ what changed. It does not take stock while a job is running on the host.
 A package manager at work is no good moment for it, the next round does
 it.
 
-The OS, the OS version, the packages and the hardware are stored in a
-separate inventory object for each host, not on the host object. All
-four are what the host reported about itself, and an inventory has to
-stand on its own. Host objects are synced to all hosts, and the package
-lists of all hosts should not be, so the inventory stays on the nodes of
-the host's site.
+The OS, the OS version, the kernel, the reboot, the packages and the
+hardware are stored in a separate inventory object for each host, not on
+the host object. All of it is what the host reported about itself, and
+an inventory has to stand on its own. Host objects are synced to all
+hosts, and the package lists of all hosts should not be, so the
+inventory stays on the nodes of the host's site.
 
 Changing the inventory does not change the last modified time of the
 host.
@@ -41,15 +44,18 @@ are left out of search results. See **PERMISSIONS** below.
 Shown are the hosts whose inventory this site keeps: its own, and those
 of other sites that report here, see **A CENTRAL INVENTORY**.
 
-The hardware is read on any Linux host. Package lists need a package
-manager the host knows, which today means Debian and Ubuntu. A host
-without one still reports its system and its hardware.
+The hardware is read on any Linux host, and the system and the kernel on
+any host at all. Package lists need a package manager the host knows,
+which today means Debian and Ubuntu, and so does the answer whether the
+host has to be rebooted. A host without one still reports its system,
+its kernel and its hardware.
 
 # COMMANDS
 
 **show *host***  
-Show the OS, the OS version, the number of packages, the vendor, the
-model, the serial number and the time of the last update.
+Show the OS, the OS version, the running kernel, whether the host has to
+be rebooted, the number of packages, the vendor, the model, the serial
+number and the time of the last update.
 
 **packages \[**--filter** *pattern*\] *host***  
 List the packages of a host, one per line with name and version.
@@ -59,20 +65,22 @@ Show what a host is made of: CPU, memory, disks, serial number and so
 on. Sizes are shown in human form, for example **9.7G**. Says so if the
 host has not reported its hardware yet.
 
-**search \[**--host** *host*\] \[**--os-version** *version*\] \[**--hardware** *expression*\] \[*package*\]**  
-Find hosts by package, by OS version, or by hardware. *package* is a
-package name, or a name and a version in the form *name***=***version*.
-Both can contain wildcards (**\***). Every option you give has to match,
-so they narrow the result down. You have to give at least one of them.
+**search \[**--host** *host*\] \[**--os-version** *version*\] \[**--kernel** *kernel*\] \[**--reboot-required**\] \[**--hardware** *expression*\] \[*package*\]**  
+Find hosts by package, by OS version, by kernel, by a waiting reboot, or
+by hardware. *package* is a package name, or a name and a version in the
+form *name***=***version*. Both can contain wildcards (**\***). Every
+option you give has to match, so they narrow the result down. You have
+to give at least one of them.
 
 Each line says a host and what made it match. With a *package* that is
 the package and its version, one line per package. With **--hardware**
-it is the value that matched. A host has several disks, and then only
-the disks that match are shown, with their name. So a search for
-**'disk_size\>=100G'** shows **sdb=150.0G** and not all disks of the
-host. Behind the size comes what says which disk it is, the vendor, the
-model and the serial, where the host knows them: **sdb=150.0G(SEAGATE
-ST1000NM0055 ZA12345)**.
+it is the value that matched. With **--reboot-required** it is the host
+name alone, because the answer is the same for every host that is
+listed. A host has several disks, and then only the disks that match are
+shown, with their name. So a search for **'disk_size\>=100G'** shows
+**sdb=150.0G** and not all disks of the host. Behind the size comes what
+says which disk it is, the vendor, the model and the serial, where the
+host knows them: **sdb=150.0G(SEAGATE ST1000NM0055 ZA12345)**.
 
 # OPTIONS
 
@@ -87,6 +95,15 @@ listing all of them.
 **--os-version *version***  
 Only hosts with this OS version, for example **debian-12**. Wildcards
 are allowed, for example **'debian-\*'**.
+
+**--kernel *kernel***  
+Only hosts running this kernel, for example **6.1.0-37-amd64**.
+Wildcards are allowed, for example **'6.1.0-3\*'**.
+
+**--reboot-required**  
+Only hosts that have to be rebooted to run what is installed on them.
+Takes no value. Hosts that answered no, and hosts that cannot say, are
+left out. See **WHEN A HOST HAS TO BE REBOOTED**.
 
 **--hardware *expression***  
 Only hosts whose hardware matches. The expression is a field, an
@@ -182,12 +199,74 @@ is about keeps saying. See **PERMISSIONS**.
 A host that reported to its own site before keeps that inventory there.
 It is not moved and not deleted, and it stops being updated.
 
-# OS AND OS VERSION
+# OS, OS VERSION AND KERNEL
 
 **os** is **Linux**, **Windows** or **MacOS**. **os_version** is the ID
 and the version from */etc/os-release*, for example **debian-13** or
 **ubuntu-24.04**. A system without a version number uses its code name,
 for example **debian-trixie**.
+
+**kernel** is the kernel the host is running, the way **uname -r** says
+it, for example **6.1.0-37-amd64**.
+
+Running, not installed. A host that took a kernel update and was not
+rebooted has the new kernel installed and the old one running, and its
+package list cannot tell you that: the package is there either way. So
+this is the one value an inventory cannot work out from the rest of
+itself.
+
+The kernel packages of a host say which kernels are installed, and
+**show** says which one is running. A host where the two do not match is
+waiting for a reboot:
+
+>     $ otpme-inventory search --host server1 'linux-image-6*'
+>     server1 linux-image-6.1.0-38-amd64=6.1.146-1
+>     $ otpme-inventory show server1
+>     host: server1
+>     os: Linux
+>     os_version: debian-12
+>     kernel: 6.1.0-37-amd64
+>     ...
+
+You do not have to compare them yourself. The host does it and says so,
+see **WHEN A HOST HAS TO BE REBOOTED**.
+
+# WHEN A HOST HAS TO BE REBOOTED
+
+**reboot_required** is **yes** when the host has to be rebooted to run
+what is installed on it, **no** when it does not, and **-** when the
+host cannot say.
+
+The host works this out itself, because what says it differs from system
+to system. On Debian and Ubuntu two things are asked:
+
+> -   */var/run/reboot-required*, the file a package writes when it
+>     needs a reboot. Not only the kernel does that, libc and systemd
+>     ask for one too. The file is written by **update-notifier-common**
+>     or by **needrestart**. Ubuntu has one of them, Debian usually has
+>     neither, and then the file never shows up however much the host
+>     needs a reboot.
+>
+> -   The kernel, compared. The newest kernel that is installed against
+>     the one that is running, and for a kernel that was updated in
+>     place — same **uname -r**, new package version — the version of
+>     the package against the version the running kernel was built from.
+>     This needs nothing installed, and the kernel is the reason for a
+>     reboot in nearly every case.
+
+So a plain Debian host says **yes** for a kernel and **no** for
+everything else. Install **needrestart** there if a reboot that libc or
+systemd asks for should show up as well.
+
+**-** means the host said nothing. Either there is no handler for its
+system, and then it reports its kernel and its hardware but no packages
+and no reboot, or its running kernel has no package to compare against —
+a kernel built by hand — and nothing on it writes the file.
+
+A host that says **yes** goes on saying it until it is rebooted. Reboot
+it with **otpme-deploy**(1):
+
+>     otpme-deploy add --host server1 --expiry 1h host_mgmt reboot
 
 # PACKAGE NAMES
 
@@ -289,6 +368,8 @@ is:
 >     host: client1
 >     os: Linux
 >     os_version: debian-13
+>     kernel: 6.12.43-amd64
+>     reboot_required: no
 >     packages: 686
 >     vendor: Dell Inc.
 >     model: PowerEdge R640
@@ -348,6 +429,47 @@ Show all hosts that run Debian 12.
 
 **otpme-inventory search --os-version 'debian-\*'**  
 Show all Debian hosts, whatever the version.
+
+## Find hosts by kernel
+
+**otpme-inventory search --kernel 6.1.0-37-amd64**  
+Show all hosts running this kernel.
+
+**otpme-inventory search --kernel '6.1.0-3\*'**  
+Show all hosts running a 6.1.0-3 kernel.
+
+The line says the kernel, so this is also how you see which kernels are
+running at all:
+
+>     $ otpme-inventory search --kernel '*'
+>     client1 6.12.43-amd64
+>     dev1 6.1.0-37-amd64
+>     server1 6.1.0-37-amd64
+>     server2 6.1.0-38-amd64
+
+A host that has not reported since the kernel was added shows nothing
+here. It is left out, the same as a host that never reported at all.
+
+## Find hosts that have to be rebooted
+
+**otpme-inventory search --reboot-required**  
+Show all hosts that have to be rebooted to run what is installed on
+them.
+
+The host name alone, because every host listed is one that has to be
+rebooted:
+
+>     $ otpme-inventory search --reboot-required
+>     dev1
+>     server1
+>     server2
+
+Which kernel each of them runs is one question further:
+
+>     $ otpme-inventory search --reboot-required --kernel '*'
+>     dev1 6.1.0-37-amd64
+>     server1 6.1.0-37-amd64
+>     server2 6.1.0-38-amd64
 
 ## Find hosts by hardware
 
@@ -421,6 +543,12 @@ The Debian 13 hosts that have a disk larger than 1 TB.
 
 **otpme-inventory search --os-version debian-12 --hardware virtual=no openssl**  
 The physical Debian 12 machines that have openssl.
+
+**otpme-inventory search --os-version debian-12 --kernel '6.1.0-37\*'**  
+The Debian 12 hosts that still run this kernel.
+
+**otpme-inventory search --reboot-required --os-version debian-12**  
+The Debian 12 hosts that have to be rebooted.
 
 # SEE ALSO
 

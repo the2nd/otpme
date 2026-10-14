@@ -366,6 +366,7 @@ def register_backend():
                                     full_index_update=True)
     # Register object to config.
     config.register_object_type(object_type="host_inventory",
+                            version=1,
                             tree_object=False,
                             uniq_name=False,
                             add_after=["conf_result"],
@@ -389,6 +390,19 @@ def register_backend():
     config.register_index_attribute('os', sync=[],
                                     object_types=inventory_types)
     config.register_index_attribute('os_version', sync=[],
+                                    object_types=inventory_types)
+    # The kernel the host is running, which is not what its packages
+    # say: a host that took a kernel update and was not rebooted has
+    # the new one installed and the old one running. Searchable,
+    # because that is the whole question -- which hosts still run an
+    # old kernel.
+    config.register_index_attribute('kernel', sync=[],
+                                    object_types=inventory_types)
+    # Whether the host has to be rebooted to run what is installed on
+    # it. The host works that out, because what says so differs per
+    # system (see confd/debian.py); here it is a yes or a no, and no
+    # value at all where the host cannot say.
+    config.register_index_attribute('reboot_required', sync=[],
                                     object_types=inventory_types)
     # The hardware, one attribute per field, and every field a host
     # reports: what "otpme-inventory hardware" shows is what
@@ -516,7 +530,19 @@ class HostInventory(OTPmeDataObject):
         """ The name and version of the system (e.g. debian-13). """
         return self._get_index_value("os_version")
 
-    def update_os(self, os_name=None, os_version=None):
+    @property
+    def kernel(self):
+        """ The kernel the host is running (e.g. 6.1.0-37-amd64). """
+        return self._get_index_value("kernel")
+
+    @property
+    def reboot_required(self):
+        """ Whether the host has to be rebooted to run what is
+        installed on it. None where it has not said. """
+        return self._get_index_value("reboot_required")
+
+    def update_os(self, os_name=None, os_version=None, kernel=None,
+        reboot_required=None):
         """ Take what the host reported about its system.
 
         Answers whether anything changed, so the caller only writes
@@ -528,6 +554,13 @@ class HostInventory(OTPmeDataObject):
             changed = True
         if os_version is not None and os_version != self.os_version:
             self.update_index("os_version", os_version)
+            changed = True
+        if kernel is not None and kernel != self.kernel:
+            self.update_index("kernel", kernel)
+            changed = True
+        if reboot_required is not None \
+        and reboot_required != self.reboot_required:
+            self.update_index("reboot_required", reboot_required)
             changed = True
         if changed:
             self.touch_inventory()

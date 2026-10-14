@@ -8,6 +8,7 @@ everywhere and lives in base.py.
 """
 import os
 import re
+import platform
 import subprocess
 
 try:
@@ -29,6 +30,25 @@ from otpme.lib.exceptions import *
 
 APT_SOURCES_DIR = "/etc/apt/sources.list.d"
 APT_KEYRING_DIR = "/etc/apt/keyrings"
+# The file a package writes when it needs the host to be rebooted: the
+# kernel, but libc and systemd as well. Written by
+# update-notifier-common or by needrestart, and a host that has neither
+# never gets it, see get_reboot_required().
+REBOOT_REQUIRED_FILE = "/var/run/reboot-required"
+# What writes that file. Here to tell "nothing asked for a reboot" from
+# "nothing on this host would have asked".
+NOTIFY_REBOOT_REQUIRED = "/usr/share/update-notifier/notify-reboot-required"
+# The packages that are a kernel: "linux-image-" and a version behind
+# it. Not the meta package (linux-image-amd64), which only depends on
+# the newest kernel -- it carries that kernel's version without being
+# one, so it would compare as a kernel that is installed and never
+# running.
+KERNEL_PACKAGE_RE = r'^linux-image-[0-9]'
+# The version the running kernel was built from, the way uname -v says
+# it: "#1 SMP PREEMPT_DYNAMIC Debian 6.1.140-1 (2025-05-22)". That is
+# the version of the package the running kernel came out of, which is
+# the only way to see a kernel that was updated in place.
+RUNNING_KERNEL_VERSION_RE = r'(?:Debian|Ubuntu) ([0-9][^\s]*)'
 # A repository line as it goes into sources.list.d, without the key: we
 # put that in ourselves, see add_repo.
 REPO_LINE_RE = r'^deb(-src)? [a-zA-Z0-9:/._~+-]+( [a-zA-Z0-9._-]+)+$'
@@ -95,6 +115,114 @@ class DebianHandler(ConfJobHandler):
                 continue
             packages[name] = version
         return packages
+
+    def get_reboot_required(self, packages=None):
+        """ Whether this host has to be rebooted to run what is
+        installed on it.
+
+        Two things are asked, because neither of them sees everything.
+
+        /var/run/reboot-required is what a package writes when it needs
+        a reboot, and that is not only the kernel: libc and systemd ask
+        for one as well. But the file is written by
+        update-notifier-common or by needrestart, and a host that has
+        neither never gets it, however much it needs a reboot.
+
+        So the kernel is compared as well, which needs nothing
+        installed and is the reason for a reboot in nearly every case.
+
+        None where neither can say: the running kernel has no package
+        to compare it against, and there is nothing here that would
+        have written the file. A no would then be an answer we do not
+        have.
+        """
+        if os.path.exists(REBOOT_REQUIRED_FILE):
+            return True
+        kernel_says = self.get_kernel_reboot_required(packages=packages)
+        if kernel_says:
+            return True
+        if kernel_says is None and not os.path.exists(NOTIFY_REBOOT_REQUIRED):
+            return None
+        return False
+
+    def get_kernel_reboot_required(self, packages=None):
+        """ Whether a kernel newer than the running one is installed.
+
+        Two ways to be behind, and both are asked:
+
+        A kernel was installed beside the running one. 6.1.0-37-amd64
+        and 6.1.0-38-amd64 are two packages, so the newest kernel that
+        is installed is compared against the running one.
+
+        The running kernel was updated in place. The package of
+        6.1.0-37-amd64 going from 6.1.140-1 to 6.1.146-1 keeps its name
+        and keeps what uname -r says, so the only thing that differs is
+        the version: the one the package has now against the one the
+        running kernel was built from (uname -v).
+
+        None where the running kernel has no package, which is a kernel
+        that was built by hand: there is nothing to compare it against.
+        """
+        running = platform.release()
+        if not running:
+            return None
+        if packages is None:
+            try:
+                packages = self.get_installed_packages()
+            except Exception:
+                return None
+        kernels = {}
+        for name, version in packages.items():
+            # A package name carries the architecture of a multi-arch
+            # package. A kernel is not one, but the name is read the
+            # same way here as everywhere else.
+            name = name.split(":", 1)[0]
+            if not re.match(KERNEL_PACKAGE_RE, name):
+                continue
+            kernels[name] = version
+        running_version = kernels.get(f"linux-image-{running}")
+        if running_version is None:
+            return None
+        newest = running_version
+        for x_version in kernels.values():
+            if self.version_is_newer(x_version, newest):
+                newest = x_version
+        if newest != running_version:
+            return True
+        built_from = self.get_running_kernel_version()
+        if built_from is None:
+            return False
+        return self.version_is_newer(running_version, built_from)
+
+    def get_running_kernel_version(self):
+        """ The version of the package the running kernel came out of,
+        or None where uname -v does not say.
+
+        Debian writes it there, Ubuntu does not -- and Ubuntu has the
+        file that says a reboot is needed, so nothing is lost.
+        """
+        match = re.search(RUNNING_KERNEL_VERSION_RE, platform.version())
+        if not match:
+            return None
+        return match.group(1)
+
+    def version_is_newer(self, version, other):
+        """ Whether <version> is newer than <other>.
+
+        Asked of dpkg, because comparing Debian versions is its own
+        trade: an epoch counts before everything else, and a "~" sorts
+        before the version it hangs on, so 6.1.0~rc1 is older than
+        6.1.0 while being the longer string.
+        """
+        command = ["dpkg", "--compare-versions", version, "gt", other]
+        try:
+            proc = subprocess.run(command,
+                                check=False,
+                                capture_output=True,
+                                text=True)
+        except OSError:
+            return False
+        return proc.returncode == 0
 
     def run_sw_mgmt(self, action, args, log_file):
         """ Install, remove or upgrade packages, or clean up after them.

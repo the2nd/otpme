@@ -253,13 +253,13 @@ def row_getter(realm, site, share_order, share_data, acls,
                 row.append("-")
         # Create mode.
         if "fmode" in output_fields:
-            if check_acl("view:create_mode"):
+            if check_acl("view:force_create_mode"):
                 row.append(create_mode)
             else:
                 row.append("-")
         # Directory mode.
         if "dmode" in output_fields:
-            if check_acl("view:directory_mode"):
+            if check_acl("view:force_directory_mode"):
                 row.append(directory_mode)
             else:
                 row.append("-")
@@ -542,7 +542,7 @@ def row_getter(realm, site, share_order, share_data, acls,
         # Policies.
         if "policies" in output_fields:
             if check_acl("view:policies") \
-            or check_acl("add:policy") \
+            or check_acl("assign:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="share",
                                                     object_uuid=share_uuid,

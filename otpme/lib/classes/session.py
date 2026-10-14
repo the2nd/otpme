@@ -171,6 +171,7 @@ def register_backend():
         return config_paths
     # Register object to config.
     config.register_object_type(object_type="session",
+                            version=1,
                             tree_object=False,
                             uniq_name=False,
                             object_cache=1024,
@@ -333,7 +334,6 @@ class Session(OTPmeLockObject):
         self.child_sessions = []
         self.offline_data_key = None
         self._modified = False
-        self.pickable = True
         self.origin = None
         self.last_modified = None
         # Unix timestamp of the last fresh end-user authentication

@@ -147,7 +147,7 @@ def row_getter(realm, site, policy_order, policy_data, acls,
         # Policies.
         if "policies" in output_fields:
             if check_acl("view:policies") \
-            or check_acl("add:policy") \
+            or check_acl("assign:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="policy",
                                                     object_uuid=policy_uuid,

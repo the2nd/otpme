@@ -1709,6 +1709,7 @@ def register_backend():
         return backend.rebuild_object_index("user", objects, after)
     # Register object to config.
     config.register_object_type(object_type="user",
+                            version=1,
                             tree_object=True,
                             uniq_name=True,
                             add_after=["group"],
@@ -6602,20 +6603,16 @@ class User(OTPmeObject):
         for share, token_paths in tokens_per_share.items():
             share_nodes = share.get_nodes(include_pools=True,
                                           return_type="instance")
-            if not share_nodes:
-                share_nodes = backend.search(object_type="node",
-                                            attribute="uuid",
-                                            value="*",
-                                            realm=share.realm,
-                                            site=share.site,
-                                            return_type="instance")
-            if not share_nodes:
+            # No enabled node, nothing to mount from. An unmount is
+            # sent anyway; skip_no_mount is set for a mount only.
+            if not share_nodes and skip_no_mount:
                 continue
             node_fqdns = [node.fqdn for node in share_nodes]
             share_hosts = []
             if share.limit_by_hosts:
                 share_hosts = share.get_hosts(include_groups=True,
-                                              return_type="name")
+                                              include_roles=True,
+                                              return_type="uuid")
             share_id = share.share_id
             shares_data[share_id] = {
                 'name': share.name,

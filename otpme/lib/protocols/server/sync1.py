@@ -448,16 +448,26 @@ class OTPmeSyncP1(OTPmeServer1):
                         sync_config[attribute] = "USE_LOCAL"
         # Get UUID of parent object this object depends on.
         if o.type in config.tree_object_types:
+            # Only the UUID goes out, and it is part of the object; the
+            # index says whether the parent is there. Loading the parent
+            # for it loaded the owner of every token, and took half of
+            # the time a sync of a site spent in here.
+            parent_oid = None
             try:
-                parent_object = o.get_parent_object()
+                parent_type, parent_uuid = o.get_parent_uuid()
+                if parent_uuid:
+                    parent_oid = backend.get_oid(uuid=parent_uuid,
+                                                object_type=parent_type)
             except Exception:
+                parent_oid = None
+            if not parent_oid:
                 status = False
                 response, log_msg = _("Unable to get parent object of: {o}", log=True)
                 response = response.format(o=o)
                 log_msg = log_msg.format(o=o)
                 self.logger.warning(log_msg)
                 return status, response
-            sync_config['SYNC_PARENT_OBJECT_UUID'] = parent_object.uuid
+            sync_config['SYNC_PARENT_OBJECT_UUID'] = parent_uuid
 
         object_checksum = get_handout_checksum(sync_config)
         response = {'checksum':object_checksum,'object_config':sync_config}
@@ -880,15 +890,21 @@ class OTPmeSyncP1(OTPmeServer1):
         hardware = {}
         os_name = None
         os_version = None
+        kernel = None
+        reboot_required = None
         if inventory:
             packages = inventory.packages
             hardware = inventory.hardware
             os_name = inventory.os
             os_version = inventory.os_version
+            kernel = inventory.kernel
+            reboot_required = inventory.reboot_required
         checksum = get_packages_checksum(packages)
         response = {
                     'os'                : os_name,
                     'os_version'        : os_version,
+                    'kernel'            : kernel,
+                    'reboot_required'   : reboot_required,
                     'packages_checksum' : checksum,
                     'packages'          : None,
                     'hardware_checksum' : get_hardware_checksum(hardware),
@@ -898,7 +914,8 @@ class OTPmeSyncP1(OTPmeServer1):
         return True, response
 
     def update_host_inventory(self, os_name, os_version,
-        set_packages, del_packages, hardware=None):
+        set_packages, del_packages, hardware=None, kernel=None,
+        reboot_required=None):
         """ Take what the asking host reports about itself.
 
         All of it goes to the inventory of the host and none of it to
@@ -914,6 +931,8 @@ class OTPmeSyncP1(OTPmeServer1):
         try:
             check_inventory(os_name=os_name,
                             os_version=os_version,
+                            kernel=kernel,
+                            reboot_required=reboot_required,
                             set_packages=set_packages,
                             del_packages=del_packages)
             # What is not a field of an inventory is dropped here, so a
@@ -927,7 +946,8 @@ class OTPmeSyncP1(OTPmeServer1):
             return False, "SYNC_INVALID_INVENTORY"
         nothing_to_do = not set_packages and not del_packages
         if nothing_to_do and hardware is None:
-            if os_name is None and os_version is None:
+            if os_name is None and os_version is None and kernel is None \
+            and reboot_required is None:
                 return True, {'status':True}
         if not backend.get_object(uuid=self.peer.uuid):
             return False, "SYNC_UNKNOWN_HOST"
@@ -939,7 +959,9 @@ class OTPmeSyncP1(OTPmeServer1):
                                     site=config.site,
                                     host_uuid=self.peer.uuid)
         os_changed = inventory.update_os(os_name=os_name,
-                                        os_version=os_version)
+                                        os_version=os_version,
+                                        kernel=kernel,
+                                        reboot_required=reboot_required)
         if nothing_to_do and hardware is None and not os_changed:
             return True, {'status':True}
         packages_count = len(inventory.packages) + len(set_packages)
@@ -1387,6 +1409,8 @@ class OTPmeSyncP1(OTPmeServer1):
             status, response = self.update_host_inventory(
                                     os_name=command_args.get('os'),
                                     os_version=command_args.get('os_version'),
+                                    kernel=command_args.get('kernel'),
+                                    reboot_required=command_args.get('reboot_required'),
                                     set_packages=command_args.get('set_packages'),
                                     del_packages=command_args.get('del_packages'),
                                     hardware=command_args.get('hardware'))

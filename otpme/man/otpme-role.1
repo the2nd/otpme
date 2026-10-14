@@ -86,7 +86,8 @@ List the role names, and with a regex only those that match it.
 You get the roles you may change; \fB\-a\fR adds those you may only look at.
 .br
 .B \-\-attribute
-prints that attribute of each role next to its name.
+matches the regex against that attribute instead of the name: \fBlist \-\-attribute enabled True\fR lists the roles that are enabled.
+A value that is not text has to be spelled out \(em \fB*\fR matches none of it.
 .TP
 .B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIrole\fR
 Enable a disabled role.
@@ -356,6 +357,7 @@ See
 .TP
 .B add_host \fIrole\fR \fIhost\fR
 Put a host into the role.
+The host is looked for in the site of the role, or written as \fIsite\fB/\fIhost\fR to take one from another site of the realm.
 .TP
 .B remove_host \fIrole\fR \fIhost\fR
 Take it out again.

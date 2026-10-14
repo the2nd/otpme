@@ -628,6 +628,7 @@ def register_backend():
         return backend.rebuild_object_index("resolver", objects, after)
     # Register object to config.
     config.register_object_type(object_type="resolver",
+                            version=1,
                             tree_object=True,
                             uniq_name=True,
                             add_after=["unit", "script"],
@@ -2154,11 +2155,12 @@ class Resolver(OTPmeObject):
             if not self.verify_acl("delete:object"):
                 del_acl = f"delete:{self.type}"
                 if not parent_object.verify_acl(del_acl):
-                    if not self.sub_type:
+                    sub_type = self.get_sub_type()
+                    if not sub_type:
                         msg = _("Permission denied: {name}")
                         msg = msg.format(name=self.name)
                         return callback.error(msg, exception=PermissionDenied)
-                    sub_type_acl = f"delete:{self.type}:{self.sub_type}"
+                    sub_type_acl = f"delete:{self.type}:{sub_type}"
                     if not parent_object.verify_acl(sub_type_acl,
                                     need_exact_acl=True):
                         msg = _("Permission denied: {name}")

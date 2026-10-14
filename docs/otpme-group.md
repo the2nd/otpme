@@ -100,7 +100,9 @@ List users that have this group as their default group. Use
 ## Host Management
 
 **add_host \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *group* *host***  
-Add a host to the group.
+Add a host to the group. The host is looked for in the site of the
+group, or written as *site***/***host* to take one from another site of
+the realm.
 
 **--share-notify**  
 Send notification to all online hosts on new share permissions.
@@ -316,7 +318,7 @@ Output as CSV.
 CSV separator character.
 
 **--attribute *ATTR***  
-Display specific attribute in list command.
+Of **list**: match the regex against this attribute instead of the name.
 
 ## Token Options
 

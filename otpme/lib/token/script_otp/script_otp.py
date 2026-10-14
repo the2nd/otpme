@@ -104,7 +104,7 @@ def register():
 def register_token_type():
     """ Register token type. """
     token_type = __name__.split(".")[-1]
-    config.register_sub_object_type("token", token_type)
+    config.register_sub_object_type("token", token_type, version=1)
 
 @match_class_typing
 class ScriptToken(Token):

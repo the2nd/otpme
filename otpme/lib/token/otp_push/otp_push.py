@@ -219,7 +219,7 @@ def register_hooks():
 
 def register_token_type():
     """ Register token type. """
-    config.register_sub_object_type("token", "otp_push")
+    config.register_sub_object_type("token", "otp_push", version=1)
 
 def register_config_params():
     """ Register config params. """

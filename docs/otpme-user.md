@@ -817,7 +817,8 @@ Write the table as CSV.
 The character between two CSV fields.
 
 **--attribute *ATTR***  
-Of **list**: show this attribute instead of the name.
+Of **list**: match the regex against this attribute instead of the name,
+as in **list --attribute enabled True**.
 
 ## Other Options
 

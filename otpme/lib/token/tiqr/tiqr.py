@@ -188,7 +188,7 @@ def register():
 
 def register_token_type():
     """ Register token type. """
-    config.register_sub_object_type("token", "tiqr")
+    config.register_sub_object_type("token", "tiqr", version=1)
 
 # Per-process cache for the site's tiqr HMAC secret. Every tiqr request
 # needs it, and it only changes when an admin rotates it. Reset to None

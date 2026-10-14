@@ -8003,8 +8003,13 @@ class OTPmeSsoP1(OTPmeServer1):
           (``token_endpoint_auth_method``: client_secret_basic,
           client_secret_post, none, ...)
           https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication
-        Spec: OAuth 2.1 §4.4 "Client Authentication" (public clients
-          MUST use PKCE; ``none`` requires code_challenge)
+        Spec: OAuth 2.1 §2.4 "Client Authentication" (a client that
+          cannot keep a secret is a public client and does not
+          authenticate)
+          https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
+        Spec: OAuth 2.1 §7.5.2 "Countermeasures" (code_challenge is
+          required of a public client, which is what makes ``none``
+          safe here)
           https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
         """
         import secrets as _secrets
@@ -8595,13 +8600,13 @@ class OTPmeSsoP1(OTPmeServer1):
         Spec: RFC 6749 §6 "Refreshing an Access Token"
           (grant_type=refresh_token; refresh_token, scope parameters)
           https://datatracker.ietf.org/doc/html/rfc6749#section-6
-        Spec: OAuth 2.1 §6.1 "Refresh Token Protection"
-          (rotate-and-invalidate-chain on replay; revoke the entire
-          chain when a burned RT is presented)
+        Spec: RFC 9700 §4.14.2 "Recommendations"
+          (RT rotation; detection of replay; revoke the active RT when
+          a burned one is presented)
+          https://datatracker.ietf.org/doc/html/rfc9700#section-4.14.2
+        Spec: OAuth 2.1 §4.3.3 "Refresh Token Recommendations"
+          (the AS MAY revoke the old RT when it issues a new one)
           https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
-        Spec: OAuth 2.0 Security Best Current Practice §4.13
-          (RT rotation; detection of replay; chain invalidation)
-          https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics
         Spec: OIDC Core 1.0 §12 "Using Refresh Tokens"
           (ID Token may be re-issued during refresh; iat refreshed)
           https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokens
@@ -8663,10 +8668,8 @@ class OTPmeSsoP1(OTPmeServer1):
             # Active index missed -- check the burn index. A hit there
             # means this RT was already rotated out, so the legitimate
             # RP can't be presenting it: it's a replay (token theft).
-            # OAuth 2.1 §6.1 says invalidate the whole token chain:
-            #   https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
-            # (mirrored in OAuth Security BCP §4.13:
-            #   https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics)
+            # RFC 9700 §4.14.2 says revoke what is still active:
+            #   https://datatracker.ietf.org/doc/html/rfc9700#section-4.14.2
             burned = backend.search(object_type="session",
                                     attribute="burned_refresh_token_hash",
                                     value=rt_hash,
@@ -9049,8 +9052,8 @@ class OTPmeSsoP1(OTPmeServer1):
         Spec: RFC 7009 §2.2 "Revocation Response"
           (200 + empty body uniformly to prevent token probing)
           https://datatracker.ietf.org/doc/html/rfc7009#section-2.2
-        Spec: RFC 7009 §2.1, 2nd ¶ (revoking a refresh token SHOULD
-          also invalidate access tokens issued under it)
+        Spec: RFC 7009 §2.1, last ¶ (revoking a refresh token SHOULD
+          also invalidate the access tokens of the same grant)
         """
         from otpme.lib.session.oidc_session import hash_token
 
@@ -9184,8 +9187,11 @@ class OTPmeSsoP1(OTPmeServer1):
           (id_token_hint, client_id, post_logout_redirect_uri, state)
           https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RPLogout
         Spec: OIDC RP-Initiated Logout 1.0 §3 "Redirection to RP
-          After Logout" (state echo, validation against
-          post_logout_redirect_uris)
+          After Logout" (state echo)
+          https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RedirectionAfterLogout
+        Spec: OIDC RP-Initiated Logout 1.0 §4 "Validation and Error
+          Handling" (post_logout_redirect_uri is checked against the
+          registered ones)
           https://openid.net/specs/openid-connect-rpinitiated-1_0.html#ValidationAndErrorHandling
         Spec: OIDC Back-Channel Logout 1.0 (cascade to other RPs in
           the SSO session when ``oidc_logout_scope=sso``)
@@ -9437,7 +9443,8 @@ class OTPmeSsoP1(OTPmeServer1):
           https://datatracker.ietf.org/doc/html/rfc6749#section-3.1.2
         Spec: RFC 7636 §4.3 "Client Sends the Code Challenge..."
           https://datatracker.ietf.org/doc/html/rfc7636#section-4.3
-        Spec: OAuth 2.1 §7.5.2 (PKCE required; ``plain`` forbidden by
+        Spec: OAuth 2.1 §7.5.2 "Countermeasures" (code_challenge and
+          code_verifier are required; ``plain`` is refused here by
           default, opt-in only via oidc_allow_plain_pkce)
           https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
         """
@@ -9643,11 +9650,12 @@ class OTPmeSsoP1(OTPmeServer1):
                 return _err('invalid_request',
                             f"code_challenge_method '{code_challenge_method}' not supported",
                             can_redirect=True)
-            # OAuth 2.1 §7.5.2 forbids 'plain':
+            # With 'plain' the challenge is the verifier, so a stolen
+            # authorization request carries both. OAuth 2.1 §4.1.1
+            # keeps it for clients that cannot do S256; we refuse it
+            # unless the client (or its site/unit) explicitly opted in
+            # via oidc_allow_plain_pkce -- never the default.
             #   https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
-            # Allowed only when the client (or its site/unit)
-            # explicitly opted in via oidc_allow_plain_pkce -- never
-            # the default.
             if code_challenge_method == "plain":
                 try:
                     allow_plain = client.get_config_parameter(
@@ -9854,13 +9862,13 @@ class OTPmeSsoP1(OTPmeServer1):
         Spec: RFC 8414 "OAuth 2.0 Authorization Server Metadata"
           (sibling spec; same metadata, OAuth-only)
           https://datatracker.ietf.org/doc/html/rfc8414
-        Spec: OIDC Back-Channel Logout 1.0 §4 "Logout Discovery"
-          (backchannel_logout_supported,
+        Spec: OIDC Back-Channel Logout 1.0 §2.1 "Indicating OP Support
+          for Back-Channel Logout" (backchannel_logout_supported,
           backchannel_logout_session_supported)
           https://openid.net/specs/openid-connect-backchannel-1_0.html#BCSupport
-        Spec: OIDC Front-Channel Logout 1.0 §3 "Discovery Document"
-          (frontchannel_logout_supported)
-          https://openid.net/specs/openid-connect-frontchannel-1_0.html#FCSupport
+        Spec: OIDC Front-Channel Logout 1.0 §3 "OpenID Provider Logout
+          Functionality" (frontchannel_logout_supported)
+          https://openid.net/specs/openid-connect-frontchannel-1_0.html#OPLogout
         Spec: RFC 7636 §4.3 (advertise S256 in
           code_challenge_methods_supported; OAuth 2.1 omits "plain")
           https://datatracker.ietf.org/doc/html/rfc7636#section-4.3
@@ -9874,10 +9882,11 @@ class OTPmeSsoP1(OTPmeServer1):
 
         issuer = f"https://{site.sso_fqdn}/oidc"
 
-        # Algorithms = whatever currently lives on the site (active
-        # + retired). Falls back to RS256 if oidc_keys is empty.
+        # Algorithms = those of the keys /jwks hands out (active +
+        # retired ones not past oidc_retired_max_age). Falls back to
+        # RS256 if there are none.
         algs = set()
-        oidc_keys = site.get_oidc_keys()
+        oidc_keys = site.get_published_oidc_keys()
         for jwk in oidc_keys.values():
             alg = jwk.get("alg")
             if alg:
@@ -9926,7 +9935,9 @@ class OTPmeSsoP1(OTPmeServer1):
                 "authorization_code",
                 "refresh_token",
             ],
-            # OAuth 2.1 §7.5.2: only S256 in discovery.
+            # Only S256 is advertised. OAuth 2.1 §4.1.1 asks every
+            # client that can do S256 to use it, and a client reads
+            # this list to find out what it may fall back to.
             #   https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
             # ``plain`` is still accepted on the wire when an
             # individual client has ``oidc_allow_plain_pkce=True``
@@ -9969,8 +9980,9 @@ class OTPmeSsoP1(OTPmeServer1):
         """ /jwks endpoint -- public keys only.
 
         Returns active + retired keys (so RPs can verify tokens
-        signed before the most recent rotation). Revoked keys are
-        removed from oidc_keys entirely and never appear here.
+        signed before the most recent rotation). A retired key is
+        left out once it is older than oidc_retired_max_age. Revoked
+        keys are removed from oidc_keys entirely and never appear here.
 
         Spec: RFC 7517 §5 "JWK Set Format"
           ({"keys": [<JWK>, ...]})
@@ -9998,7 +10010,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 'error_description': 'site has not OIDC keys',
             })
 
-        keys = list(site.get_oidc_keys().values())
+        keys = list(site.get_published_oidc_keys().values())
 
         return self.build_response(True, render_jwks(keys))
 
@@ -10138,10 +10150,10 @@ class OTPmeSsoP1(OTPmeServer1):
         Spec: RFC 7519 §4.1.3 "aud" (may be a single string or an
           array of strings)
           https://datatracker.ietf.org/doc/html/rfc7519#section-4.1.3
-        Spec: RFC 8725 §3 "Don't Mix Up Algorithms"
+        Spec: RFC 8725 §3.1 "Perform Algorithm Verification"
           (keyset-based verification pins to the alg encoded in
           the JWK; ``none`` is never accepted)
-          https://datatracker.ietf.org/doc/html/rfc8725#section-3
+          https://datatracker.ietf.org/doc/html/rfc8725#section-3.1
         """
         import time as _time
         from joserfc import jwt as joserfc_jwt

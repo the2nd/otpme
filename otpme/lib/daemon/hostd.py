@@ -270,10 +270,25 @@ class HostDaemon(OTPmeDaemon):
                         self.logger.warning(log_msg)
                         return
                     if not status:
-                        # "keepalive" and the like: ask again.
+                        # The long poll ran out, which is idled saying
+                        # "still here, nothing for you": ask again.
+                        if response == "keepalive":
+                            continue
                         if response in ("shutdown",):
                             break
-                        continue
+                        # Everything else is a refusal, and a refusal
+                        # is answered as fast as the network carries it
+                        # while a keepalive takes seconds. Asking again
+                        # right away would make this loop go round at
+                        # the speed of the wire and put the site under
+                        # load for as long as the refusal stands. So the
+                        # poll ends here and the backoff below says when
+                        # to ask again.
+                        failures += 1
+                        log_msg = _("Our site will not tell us news: {response}", log=True)[1]
+                        log_msg = log_msg.format(response=response)
+                        self.logger.warning(log_msg)
+                        break
                     self.handle_news(response)
             except Exception as e:
                 failures += 1

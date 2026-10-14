@@ -676,7 +676,30 @@ class OTPmeAgent(UnixDaemon):
                     break
 
                 if not status:
-                    continue
+                    # The long poll ran out, which is idled saying
+                    # "still here, nothing for you": ask again.
+                    if response == "keepalive":
+                        continue
+                    if response in ("shutdown",):
+                        break
+                    # Everything else is a refusal, and a refusal is
+                    # answered at once while a keepalive takes seconds.
+                    # Asking again right away would make this loop go
+                    # round at the speed of the wire for as long as the
+                    # refusal stands, so we start over with a new
+                    # connection in a moment, the way a lost one does
+                    # above.
+                    log_msg = _("Idled will not tell us anything: {response}", log=True)[1]
+                    log_msg = log_msg.format(response=response)
+                    self.logger.warning(log_msg)
+                    try:
+                        idled_conn.close()
+                    except Exception:
+                        pass
+                    if self.shutdown:
+                        break
+                    time.sleep(1)
+                    break
 
                 try:
                     event_type = response['event_type']

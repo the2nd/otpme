@@ -2087,13 +2087,6 @@ class OTPmeServer1(object):
             msg = "Missing auth type in request."
             raise OTPmeException(msg) from err
 
-        # Allow JWT auth only for users from other sites.
-        if auth_type == "jwt" and self.user.site == config.site:
-            log_msg = _("JWT auth for user from own site: {user}", log=True)[1]
-            log_msg = log_msg.format(user=self.user.name)
-            self.logger.warning(log_msg)
-            raise OTPmeException("AUTH_FAILED")
-
         # Try to get password from command args (e.g. password auth fallback if
         # no SSH public key has matched).
         try:

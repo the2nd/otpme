@@ -781,6 +781,7 @@ def register_backend():
     class_getter = lambda: Realm
     # Register object to config.
     config.register_object_type(object_type="realm",
+                            version=1,
                             tree_object=True,
                             add_before=["site"],
                             sync_before=["site"],
@@ -940,8 +941,12 @@ class Realm(OTPmeObject):
         else:
             self.own = False
 
-    def verify_acl(self, action: str, **kwargs):
-        """ Verify ACLs required to allow <action>. """
+    def verify_acl(self, acl: str, **kwargs):
+        """ Verify ACLs required to allow <acl>.
+
+        The parameter is named as in OTPmeObject.verify_acl(), because
+        callers pass it by keyword.
+        """
         # A realm is managed on its master site: the realms/sites sync
         # overwrites our copy with the data we get from there and keeps
         # only the settings below (see otpme/lib/daemon/hostd.py). So on
@@ -951,12 +956,12 @@ class Realm(OTPmeObject):
             if not self.own or self.master != config.site_uuid:
                 # Removing the realm (e.g. a realm we do not trust
                 # anymore) is not a change the sync could overwrite.
-                if action != "delete:object" and action not in sync_safe_acls:
-                    acl_type = action.split(":")[0]
+                if acl != "delete:object" and acl not in sync_safe_acls:
+                    acl_type = acl.split(":")[0]
                     if acl_type in write_acl_types:
                         return False
         # Finally try to verify ACL via parent class method.
-        return self._verify_acl(action, **kwargs)
+        return self._verify_acl(acl, **kwargs)
 
     def add_policy(
         self,
@@ -1309,6 +1314,7 @@ class Realm(OTPmeObject):
         site_key_len: Union[int,None]=None,
         site_valid: Union[int,None]=None,
         node_key_len: Union[int,None]=None,
+        node_valid: Union[int,None]=None,
         id_ranges: Union[str,None]=None,
         no_dicts: bool=False,
         no_index_indices: bool=False,
@@ -1358,18 +1364,25 @@ class Realm(OTPmeObject):
             config.ignore_policy_tags.append("interactive")
 
         if not site_address:
-            # Try to get site address from DNS.
-            result = net.query_dns(site_fqdn)
+            # Try to get site address from DNS. A name that does not
+            # resolve is answered with an exception, not an empty list.
+            try:
+                result = net.query_dns(site_fqdn)
+            except Exception as e:
+                msg = _("Unable to resolve {site_fqdn}: {error}")
+                msg = msg.format(site_fqdn=site_fqdn, error=e)
+                return callback.error(msg)
             if len(result) > 1:
                 msg = _("Found round-robin DNS. Please give floating IP.")
                 return callback.error(msg)
-            site_address = result[0]
+            if result:
+                site_address = result[0]
 
         # We always need a site address as floaging cluster IP.
         if not site_address:
             msg = _("Unable to resolve: {site_fqdn}")
             msg = msg.format(site_fqdn=site_fqdn)
-            raise OTPmeException(msg)
+            return callback.error(msg)
 
         if site_address != "127.0.0.1":
             # Make sure we got a valid site address.
@@ -1539,6 +1552,7 @@ class Realm(OTPmeObject):
         if not master_site.create_master_node(node_name=node_name,
                                             public_key=host_public_key,
                                             cert_req=cert_req,
+                                            cert_valid=node_valid,
                                             uuid=config.uuid,
                                             gen_jotp=False,
                                             callback=callback,

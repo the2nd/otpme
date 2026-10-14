@@ -648,6 +648,10 @@ class OTPmeConfig(object):
         self.register_config_var("object_types", list, [])
         # All sub object types (e.g. token types).
         self.register_config_var("sub_object_types", dict, {})
+        # The version of the object config this code writes, by object
+        # type and by (object type, sub type).
+        self.register_config_var("object_versions", dict, {})
+        self.register_config_var("sub_object_versions", dict, {})
         # Object is a backend object.
         self.register_config_var("backend_object_types", list, [])
         # Objects that can be uniquely identified by their name.
@@ -1945,8 +1949,15 @@ class OTPmeConfig(object):
     def register_object_type(self, object_type, tree_object=None,
         backend_object=True, uniq_name=False, object_cache=False,
         cache_region=None, add_before=None, add_after=None,
-        sync_before=None, sync_after=None, backup_attributes=None):
-        """ Register object type. """
+        sync_before=None, sync_after=None, backup_attributes=None,
+        version=1):
+        """ Register object type.
+
+        <version> is the version of the object config this code writes
+        for the type: of the fields every object of the type has. What
+        only a sub type has is counted on its own, see
+        register_sub_object_type().
+        """
         if add_before is None:
             add_before = []
         if add_after is None:
@@ -1965,6 +1976,7 @@ class OTPmeConfig(object):
             raise AlreadyRegistered(msg)
         object_list.append(object_type)
         self.object_types = self.tree_object_types + self.flat_object_types
+        self.object_versions[object_type] = version
         if backup_attributes:
             self.backup_attributes[object_type] = backup_attributes
         if backend_object:
@@ -1996,8 +2008,41 @@ class OTPmeConfig(object):
         self._object_sync_order[object_type]['before'] = sync_before
         self._object_sync_order[object_type]['after'] = sync_after
 
-    def register_sub_object_type(self, object_type, stype):
-        """ Register sub object type (e.g. token type). """
+    def get_object_version(self, object_type):
+        """ The config version this code writes for an object type.
+
+        1 for a type nobody registered: that is what a config was
+        before versions were counted, and every object is loaded
+        through here.
+        """
+        return self.object_versions.get(object_type, 1)
+
+    def get_sub_object_version(self, object_type, stype):
+        """ The config version this code writes for a sub type. """
+        return self.sub_object_versions.get((object_type, stype), 1)
+
+    def get_config_versions(self):
+        """ Every config version this code writes, in one dict.
+
+        By object type ("token") and by sub type ("token:hotp"), which
+        is how a site says what it stores (Site.config_versions) and a
+        node what its code can read (Node.config_versions).
+        """
+        config_versions = {}
+        for object_type in self.object_types:
+            config_versions[object_type] = self.get_object_version(object_type)
+            for stype in self.get_sub_object_types(object_type):
+                key = f"{object_type}:{stype}"
+                config_versions[key] = self.get_sub_object_version(object_type,
+                                                                    stype)
+        return config_versions
+
+    def register_sub_object_type(self, object_type, stype, version=1):
+        """ Register sub object type (e.g. token type).
+
+        <version> is the version of the object config this code writes
+        for the fields only this sub type has.
+        """
         try:
             sub_types = self.sub_object_types[object_type]
         except Exception:
@@ -2008,6 +2053,7 @@ class OTPmeConfig(object):
             raise AlreadyRegistered(msg)
         sub_types.append(stype)
         self.sub_object_types[object_type] = sub_types
+        self.sub_object_versions[(object_type, stype)] = version
 
     def register_ldap_object(self, object_type,
         default_scope="one", scopes=None):

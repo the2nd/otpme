@@ -290,7 +290,7 @@ def register_hooks():
 
 def register_token_type():
     """ Register token type. """
-    config.register_sub_object_type("token", "hotp")
+    config.register_sub_object_type("token", "hotp", version=1)
 
 def register_config_params():
     """ Register config params. """

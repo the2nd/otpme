@@ -150,7 +150,7 @@ def register():
 
 def register_token_type():
     """ Register token type. """
-    config.register_sub_object_type("token", "passkey")
+    config.register_sub_object_type("token", "passkey", version=1)
 
 
 @match_class_typing
@@ -327,6 +327,12 @@ class PasskeyToken(Token):
             msg = _("Failed to complete registration: {error}")
             msg = msg.format(error=e)
             return callback.error(msg)
+        # The counter of the credential that was here counted its
+        # assertions and nothing else. A new credential starts its own
+        # count, normally far below where the old one got to, so every
+        # assertion of it would read as one that was already used. See
+        # Fido2Token.deploy().
+        self._del_token_counter()
         self.credential_data = encode(auth_data.credential_data, "hex")
         # Bind the token to the RP the credential was registered for. Taken
         # from the server object so it always matches what get_fido2_server()
@@ -375,8 +381,8 @@ class PasskeyToken(Token):
                                                 credentials,
                                                 auth_response)
         except Exception as e:
-            log_msg = _("Token verififcation failed: {e}", log=True)[1]
-            log_msg = log_msg.format(e=e)
+            log_msg = _("Token verification failed: {path}: {e}", log=True)[1]
+            log_msg = log_msg.format(path=self.rel_path, e=e)
             logger.warning(log_msg)
             return False
         parsed = AuthenticationResponse.from_dict(auth_response)
@@ -385,7 +391,7 @@ class PasskeyToken(Token):
         if counter == 0 and last_counter <= 0:
             pass
         elif counter <= last_counter:
-            log_msg = _("Token verififcation failed: Already used token counter", log=True)[1]
+            log_msg = _("Token verification failed: Already used token counter", log=True)[1]
             logger.warning(log_msg)
             return False
         else:

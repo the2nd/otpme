@@ -204,8 +204,8 @@ def row_getter(realm, site, user_order, user_data, acls,
                 row.append("-")
         # Policies.
         if "policies" in output_fields:
-            if check_acl("view_public:policy") \
-            or check_acl("add:policy") \
+            if check_acl("view_public:policies") \
+            or check_acl("assign:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="user",
                                                     object_uuid=user_uuid,

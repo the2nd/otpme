@@ -10,7 +10,6 @@ from fido2.webauthn import RegistrationResponse
 from fido2.webauthn import AttestedCredentialData
 from fido2.webauthn import AuthenticationResponse
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import padding
 
 from typing import Union
 
@@ -220,13 +219,11 @@ def verify_attestation_cert(registration_data, site=None):
         msg = _("Failed to load fido2 CA cert: {subject}")
         msg = msg.format(subject=subject)
         raise OTPmeException(msg) from e
-    # Verify signature.
-    ca_cert_public_key = ca_cert.public_key()
+    # Verify signature. Left to the library, which knows how each key
+    # type signs: doing it by hand with PKCS1v15 only fits an RSA CA,
+    # and an EC or Ed25519 one failed with a TypeError.
     try:
-        ca_cert_public_key.verify(attestation_cert.signature,
-                            attestation_cert.tbs_certificate_bytes,
-                            padding.PKCS1v15(),
-                            attestation_cert.signature_hash_algorithm)
+        attestation_cert.verify_directly_issued_by(ca_cert)
     except Exception as e:
         msg = _("Failed to verify signature: {error}")
         msg = msg.format(error=e)
@@ -251,7 +248,7 @@ def register_hooks():
 
 def register_token_type():
     """ Register token type. """
-    config.register_sub_object_type("token", "fido2")
+    config.register_sub_object_type("token", "fido2", version=1)
 
 def register_config_parameters():
     """ Registger config parameters. """
@@ -535,6 +532,16 @@ class Fido2Token(Token):
             # certificate only ever exists in the registration data,
             # which we do not keep either.
             self.attestation_cert = attestation_cert
+        # The counter of the credential that was here counted its
+        # assertions and nothing else. The new one starts its own count,
+        # normally far below where the old one got to, so every
+        # assertion of it would read as one that was already used
+        # ("Already used token counter: 4 vs. 164"). Deployed again
+        # means counted again.
+        #
+        # Here and not only on "deploy -r": a re-deploy without it keeps
+        # the token object and still binds a new credential.
+        self._del_token_counter()
         # Set credential data.
         self.credential_data = encode(auth_data.credential_data, "hex")
         # Bind the token to the RP the credential was registered for. This is
@@ -605,7 +612,7 @@ class Fido2Token(Token):
                                                 credentials,
                                                 auth_response)
         except Exception as e:
-            msg = _("Token verififcation failed: {path}: {e}")
+            msg = _("Token verification failed: {path}: {e}")
             msg = msg.format(path=self.rel_path, e=e)
             return callback.error(msg)
         # Check fido2 counter.
@@ -621,7 +628,7 @@ class Fido2Token(Token):
         if counter == 0 and last_counter <= 0:
             pass
         elif counter <= last_counter:
-            msg = _("Token verififcation failed: Already used token counter: {counter} vs. {last_counter}")
+            msg = _("Token verification failed: Already used token counter: {counter} vs. {last_counter}")
             msg = msg.format(counter=counter, last_counter=last_counter)
             return callback.error(msg)
         else:
@@ -654,7 +661,7 @@ class Fido2Token(Token):
                                                 credentials,
                                                 auth_response)
         except Exception as e:
-            log_msg = _("Token verififcation failed: {path}: {e}", log=True)[1]
+            log_msg = _("Token verification failed: {path}: {e}", log=True)[1]
             log_msg = log_msg.format(path=self.rel_path, e=e)
             logger.warning(log_msg)
             return False
@@ -669,7 +676,7 @@ class Fido2Token(Token):
         if counter == 0 and last_counter <= 0:
             pass
         elif counter <= last_counter:
-            log_msg = _("Token verififcation failed: Already used token counter: {counter} vs. {last_counter}", log=True)[1]
+            log_msg = _("Token verification failed: Already used token counter: {counter} vs. {last_counter}", log=True)[1]
             log_msg = log_msg.format(counter=counter, last_counter=last_counter)
             logger.warning(log_msg)
             return False

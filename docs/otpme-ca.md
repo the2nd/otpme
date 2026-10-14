@@ -265,7 +265,7 @@ available parameters and their applicable object types, see
 **otpme-ca add myca**  
 Create a new CA with default settings
 
-**otpme-ca add --key-len 4096 --valid 3650 --country DE --organization Example Corp myca**  
+**otpme-ca add --key-len 4096 --valid 3650 --country DE --organization "Example Corp" myca**  
 Create CA with specific key length, validity, and X.509 fields
 
 ## Certificate and CRL Operations

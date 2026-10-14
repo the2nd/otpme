@@ -51,6 +51,7 @@ def register_oid():
 
 def register_config():
     config.register_object_type(object_type="cert",
+                            version=1,
                             backend_object=False,
                             object_cache=1024,
                             cache_region="data_object",
@@ -68,7 +69,6 @@ class OTPmeCert(SSLCert):
         self.type = "cert"
         self.realm = realm
         self.site = site
-        self.pickable = False
         self._modified = False
         self._object_lock = None
         # Call parent class init.
