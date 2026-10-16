@@ -33,6 +33,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import locking
 from otpme.lib import nsscache
+from otpme.lib import maintenance
 from otpme.lib import filetools
 from otpme.lib import connections
 from otpme.lib import sign_key_cache
@@ -100,6 +101,8 @@ def register():
     # set_node_online()). "otpme-site upgrade" reads it to know
     # whether every node can read what it is about to store.
     multiprocessing.register_shared_dict("node_config_versions")
+    # And the OTPme version it runs, for the same.
+    multiprocessing.register_shared_dict("node_otpme_versions")
     multiprocessing.register_shared_dict("member_nodes")
     multiprocessing.register_shared_list("pause_writes")
     multiprocessing.register_shared_dict("master_failover_blockers")
@@ -1619,10 +1622,13 @@ class ClusterDaemon(OTPmeDaemon):
         node.acquire_lock(lock_caller="clusterd")
         try:
             # We are the node to enable. So there is no need to start our
-            # services via clusterd connection.
-            node.enable(force=True, offline=True,
-                        verify_acls=False, no_audit_log=True)
-            node._write(cluster=False)
+            # services via clusterd connection. Each node says this of
+            # itself, and the cluster has to go on in maintenance as
+            # well: not a change somebody made to the tree.
+            with maintenance.override():
+                node.enable(force=True, offline=True,
+                            verify_acls=False, no_audit_log=True)
+                node._write(cluster=False)
         finally:
             node.release_lock(lock_caller="clusterd")
         cache.clear()
@@ -1637,10 +1643,12 @@ class ClusterDaemon(OTPmeDaemon):
         node.acquire_lock(lock_caller="clusterd")
         try:
             # We are the node to disable. So there is no need to shutdown
-            # our services via clusterd connection.
-            node.disable(force=True, offline=True,
-                        verify_acls=False, no_audit_log=True)
-            node._write(cluster=False)
+            # our services via clusterd connection. In maintenance as
+            # well, see enable_node().
+            with maintenance.override():
+                node.disable(force=True, offline=True,
+                            verify_acls=False, no_audit_log=True)
+                node._write(cluster=False)
         finally:
             node.release_lock(lock_caller="clusterd")
         cache.clear()
@@ -1776,6 +1784,10 @@ class ClusterDaemon(OTPmeDaemon):
         # runs.
         try:
             multiprocessing.node_config_versions.pop(node_name)
+        except KeyError:
+            pass
+        try:
+            multiprocessing.node_otpme_versions.pop(node_name)
         except KeyError:
             pass
         try:
@@ -3418,6 +3430,10 @@ class ClusterDaemon(OTPmeDaemon):
     def check_nsscache_sync(self):
         """ Check if nsscache sync is needed. """
         if nsscache.status():
+            return
+        # Not while our site is in maintenance, see hostd. The data
+        # revision is still ahead after it, and that starts it then.
+        if maintenance.is_active():
             return
         data_revision = config.get_data_revision()
         synced_data_revision = nsscache.get_last_synced_revision()

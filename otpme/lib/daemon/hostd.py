@@ -28,6 +28,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import locking
 from otpme.lib import filetools
+from otpme.lib import maintenance
 from otpme.lib import protocols
 from otpme.lib import connections
 from otpme.lib import multiprocessing
@@ -106,6 +107,9 @@ class HostDaemon(OTPmeDaemon):
     def __init__(self, *args, **kwargs):
         self.resolver_run_child = None
         self.auto_disabled_run_child = None
+        # Whether the jobs that write objects of the tree wait for our
+        # site to leave maintenance, see maintenance_paused().
+        self._maintenance_paused = False
         self.remove_outdated_tokens_child = None
         self.clear_outdated_cache_objects_child = None
         self.news_child = None
@@ -777,11 +781,15 @@ class HostDaemon(OTPmeDaemon):
             this_host = backend.get_object(uuid=config.uuid)
             sync_params = this_host.get_sync_parameters(config.realm, site.name, sync_conn.peer.uuid)
 
-            # Get sites from master node.
+            # Get sites from master node. With what our code reads: the
+            # peer takes the objects down to it where it stores a newer
+            # version.
+            command_args = dict(sync_params)
+            command_args['config_versions'] = config.get_config_versions()
             status, \
             status_code, \
             response, \
-            binary_data = sync_conn.send("get_sites", command_args=sync_params)
+            binary_data = sync_conn.send("get_sites", command_args=command_args)
 
             if status_code != status_codes.OK:
                 log_msg = _("Error receiving sites list: {site}: {response}", log=True)[1]
@@ -1530,6 +1538,13 @@ class HostDaemon(OTPmeDaemon):
         #        self.logger.info(log_msg)
         #        start_nsscache_sync = False
 
+        # On a node the sync writes the members of roles and groups,
+        # and it drops what tells it which ones before that. It waits
+        # for our site to leave maintenance; the data revision it did
+        # not catch up with starts it again then (see clusterd).
+        if start_nsscache_sync and self.maintenance_paused():
+            start_nsscache_sync = False
+
         if start_nsscache_sync:
             # Acquire sync lock.
             sync_lock = self.acquire_sync_lock("sync_nsscache")
@@ -1687,8 +1702,28 @@ class HostDaemon(OTPmeDaemon):
             return True
         return False
 
+    def maintenance_paused(self):
+        """ Whether the jobs that write objects of the tree wait now.
+
+        They do while our site is in maintenance (see maintenance.py),
+        and run again on their next turn after it. Said in the log
+        when it changes, not on every turn.
+        """
+        paused = maintenance.is_active()
+        if paused != self._maintenance_paused:
+            self._maintenance_paused = paused
+            if paused:
+                log_msg = _("Site is in maintenance, pausing jobs that write objects.", log=True)[1]
+            else:
+                log_msg = _("Site is out of maintenance, resuming jobs that write objects.", log=True)[1]
+            self.logger.info(log_msg)
+        return paused
+
     def process_tree_jobs(self, realm, site):
         if not config.master_node:
+            return
+        # A job writes objects of the tree. It stays until it can.
+        if self.maintenance_paused():
             return
         jobs = backend.search(object_type="job",
                             attribute="uuid",
@@ -1731,6 +1766,8 @@ class HostDaemon(OTPmeDaemon):
             return
         if config.master_failover:
             return
+        if self.maintenance_paused():
+            return
         result = backend.search(object_type="ca",
                                 attribute="uuid",
                                 value="*",
@@ -1762,6 +1799,10 @@ class HostDaemon(OTPmeDaemon):
         if not config.cluster_status:
             return
         if config.master_failover:
+            return
+        # It would only mark the objects that are due, see
+        # OTPmeObject.check_auto_disable().
+        if self.maintenance_paused():
             return
         if self.auto_disabled_run_child:
             if self.auto_disabled_run_child.is_alive():
@@ -1875,6 +1916,8 @@ class HostDaemon(OTPmeDaemon):
     def run_resolvers(self):
         """ Run resolvers as child process. """
         if not config.master_node:
+            return
+        if self.maintenance_paused():
             return
         if self.resolver_run_child:
             if self.resolver_run_child.is_alive():

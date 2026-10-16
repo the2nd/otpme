@@ -399,6 +399,9 @@ class OTPmeConfig(object):
         self.register_config_var("realm_join", bool, False)
         # Indicates if we should write objects to the backend.
         self.register_config_var("no_backend_writes", bool, False)
+        # Write objects while our site is in maintenance (see
+        # maintenance.override()).
+        self.register_config_var("maintenance_override", bool, False)
         # Indicates caching is enabled.
         self.register_config_var("cache_enabled", bool, False)
         # Indicates if locking is enabled.

@@ -618,6 +618,7 @@ def flush(commit=True, callback=default_callback, quiet=True):
     """ Clear all method caches. """
     from otpme.lib import oid
     from otpme.lib import config
+    from otpme.lib import backend
     global modified_objects
     global modified_objects_cache
 
@@ -646,7 +647,23 @@ def flush(commit=True, callback=default_callback, quiet=True):
             log_msg = _("Writing modified object: {o}", log=True)[1]
             log_msg = log_msg.format(o=o)
             logger.debug(log_msg)
-            o._write(callback=callback)
+            # Without a transaction each object is written on its own,
+            # and one that fails must not keep the others from being
+            # written. Within one, the transaction has to be aborted as
+            # a whole, so it is told.
+            try:
+                write_status = o._write(callback=callback)
+            except MaintenanceMode as e:
+                if backend.get_transaction():
+                    raise
+                write_status = False
+                log_msg = _("Not writing modified object: {o}: {error}", log=True)[1]
+                log_msg = log_msg.format(o=o, error=e)
+                logger.warning(log_msg)
+            if write_status is False:
+                # What is in memory was not stored. Nobody is to read
+                # it or write it later as if it were.
+                clear(object_id=o.oid, cache_type=PROCESS_CACHE, keep_modified=False)
         else:
             log_msg = _("Discarding changes of modified object: {o}", log=True)[1]
             log_msg = log_msg.format(o=o)

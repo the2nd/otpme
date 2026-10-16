@@ -241,6 +241,12 @@ class ObjectDeleted(OTPmeException):
 class ObjectLocked(OTPmeException):
     pass
 
+class MaintenanceMode(OTPmeException):
+    pass
+
+class ConfigDowngradeFailed(OTPmeException):
+    pass
+
 class LockWaitAbort(OTPmeException):
     pass
 

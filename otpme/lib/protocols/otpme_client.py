@@ -3718,14 +3718,16 @@ class OTPmeClient1(OTPmeClientBase):
         #        self.logger.debug(log_msg)
 
         # Check token/smartcard options for a supported smartcard type.
-        if self.use_smartcard == "auto":
-            sc_types = []
-            pass_required = False
+        sc_types = []
+        pass_required = False
+        smartcard_client_handlers = []
+        # On JWT auth the site that signed the JWT checked the smartcard,
+        # the redirected connection did so with our use_smartcard.
+        if self.jwt_auth:
             self.use_smartcard = False
-            smartcard_client_handlers = []
+        if self.use_smartcard == "auto" or self.use_smartcard is True:
             for rel_path in self.smartcard_options:
                 sc_type = self.smartcard_options[rel_path]['token_type']
-                pass_required = self.smartcard_options[rel_path]['pass_required']
                 log_msg = _("Got smartcard token from server: {rel_path} ({sc_type})", log=True)[1]
                 log_msg = log_msg.format(rel_path=rel_path, sc_type=sc_type)
                 self.logger.debug(log_msg)
@@ -3739,10 +3741,17 @@ class OTPmeClient1(OTPmeClientBase):
                                                                 message_method=self.message_method,
                                                                 error_message_method=self.error_message_method)
                 smartcard_client_handlers.append(smartcard_client_handler)
-                self.use_smartcard = "auto"
                 sc_types.append(sc_type)
+                # Any of the tokens we may try wants the password, not
+                # just the last one the server listed.
+                if self.smartcard_options[rel_path]['pass_required']:
+                    pass_required = True
 
-            if not self.use_smartcard:
+            if not smartcard_client_handlers:
+                if self.use_smartcard is True:
+                    self.cleanup()
+                    raise AuthFailed(_("Smartcard required but the server offers no smartcard token."))
+                self.use_smartcard = False
                 if config.debug_level(DEBUG_SLOT) > 0:
                     log_msg = _("Not trying to detect smartcard because no related auth type was offered by peer.", log=True)[1]
                     self.logger.debug(log_msg)

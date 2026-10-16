@@ -164,6 +164,14 @@ cmd_help = {
                                 },
                 },
 
+     'maintenance'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-site maintenance {site} [on|off|status]'),
+                    'cmd'   :   '<|object|> [state]',
+                    '_help' :   {
+                                    'cmd'                   : _('Switch maintenance of a site on or off, or show why it is on (default: status). In maintenance no object of the tree is written.'),
+                                },
+                },
+
      'add_extension'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site add_extension {site} {extension}'),
                     'cmd'   :   '<|object|> <extension>',

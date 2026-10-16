@@ -26,6 +26,7 @@ from otpme.lib import jwt
 from otpme.lib import sotp
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib import maintenance
 from otpme.lib import connections
 from otpme.lib import multiprocessing
 from otpme.lib.audit import emit_audit
@@ -105,6 +106,62 @@ PROFILE_MAX_PHOTO_SIZE = 512 * 1024
 # What may be uploaded to be resized to user_photo_dimensions: a photo
 # straight from a phone camera.
 PROFILE_MAX_PHOTO_UPLOAD_SIZE = 8 * 1024 * 1024
+
+# The commands that write objects of the tree, refused while our site is
+# in maintenance (see maintenance.py). A flow is refused where it begins,
+# so nobody starts what cannot be finished.
+MAINTENANCE_COMMANDS = (
+    # Login token deploy, forced or asked for.
+    "deploy_begin",
+    "deploy_verify",
+    "fido2_register_begin",
+    "fido2_register_complete",
+    # Settings.
+    "change_password",
+    "change_pin",
+    "change_language",
+    "add_device_token",
+    "del_device_token",
+    "enable_device_token",
+    "disable_device_token",
+    "sso_create_device_token",
+    "sso_delete_device_token",
+    "fido2_add_begin",
+    "fido2_add_complete",
+    "del_fido2_token",
+    "enable_fido2_token",
+    "disable_fido2_token",
+    "passkey_register_begin",
+    "passkey_register_complete",
+    "del_passkey",
+    "enable_passkey",
+    "disable_passkey",
+    "tiqr_enroll_begin",
+    "tiqr_enroll_finish",
+    "del_tiqr_token",
+    "enable_tiqr_token",
+    "disable_tiqr_token",
+    "totp_enroll_begin",
+    "totp_enroll_verify",
+    "del_totp_token",
+    "enable_totp_token",
+    "disable_totp_token",
+    "change_totp_pin",
+    "promote_token",
+    "set_admin_access_state",
+    "set_recovery_mail",
+    "revoke_oidc_consent",
+    "oidc_set_consent_for_client",
+    # Profile.
+    "set_profile_attribute",
+    "set_profile_photo",
+    # Recovery of the login token ("can't sign in").
+    "request_sso_token_recovery",
+    "recovery_deploy_begin",
+    "recovery_deploy_verify",
+    "recovery_fido2_register_begin",
+    "recovery_fido2_register_complete",
+    )
 
 # Byte length of the raw SSO-token recovery secret. 32 bytes = 256 bits
 # after hex-encoding gives a 64-char URL parameter -- fits well into a
@@ -935,6 +992,15 @@ class OTPmeSsoP1(OTPmeServer1):
         # On the portal and before the redirect below: the SSO session
         # lives here, and the home site could not answer it.
         #
+        # A deploy is refused while our site is in maintenance (see
+        # MAINTENANCE_COMMANDS). Said first, so the page offers nothing
+        # and sends nobody through /reauth.
+        if maintenance.is_active():
+            return self.build_response(True, {
+                            'token_types'       : [],
+                            'maintenance'       : True,
+                            'status'            : True,
+                        })
         # A re-deploy that is not allowed goes first, or the page would
         # send the user through /reauth for nothing.
         if self._redeploy_refused(user):
@@ -2746,11 +2812,14 @@ class OTPmeSsoP1(OTPmeServer1):
             return None
         try:
             token_oid = oid.get(object_id=token_full_oid, resolve=True)
-            backend.write_config(object_id=token_oid,
-                                object_config=token_oc,
-                                full_index_update=True,
-                                full_data_update=True,
-                                cluster=True)
+            # A copy of what the home site has, not a change of ours:
+            # written in maintenance as well, see maintenance.py.
+            with maintenance.override():
+                backend.write_config(object_id=token_oid,
+                                    object_config=token_oc,
+                                    full_index_update=True,
+                                    full_data_update=True,
+                                    cluster=True)
         except Exception as e:
             log_msg = _("{flow}: failed to mirror remote token object: {e}", log=True)[1]
             log_msg = log_msg.format(flow=flow, e=e)
@@ -6981,6 +7050,12 @@ class OTPmeSsoP1(OTPmeServer1):
                 'message': 'client_uuid missing', 'status': False,
             })
         scopes = command_args.get('scopes') or []
+        # Not set while our site is in maintenance, see
+        # oidc_authorize_validate().
+        if maintenance.is_active():
+            return self.build_response(False, {
+                'message': 'MAINTENANCE', 'status': False,
+            })
         user.set_oidc_consent(client_uuid, scopes)
         try:
             user._write(callback=self.get_callback())
@@ -7416,6 +7491,12 @@ class OTPmeSsoP1(OTPmeServer1):
         reveal = {}
         role = None
         token_name = None
+        # The token is added to a role of ours below, which is not
+        # written while our site is in maintenance. Refused before the
+        # home site creates a token for nothing.
+        if maintenance.is_active():
+            response = {'message':'Site is in maintenance.', 'status':False}
+            return self.build_response(False, response)
         if user.site != config.site:
             # Token creation must happen on the user's home site (authoritative
             # write). We are the originator: validate role_uuid against the
@@ -9775,6 +9856,13 @@ class OTPmeSsoP1(OTPmeServer1):
                         log_msg = log_msg.format(user=user.name,
                                                   cid=client_id, err=msg)
                         self.logger.warning(log_msg)
+                elif maintenance.is_active():
+                    # Nothing is written while our site is in
+                    # maintenance, and set on the instance it would be
+                    # read as if it were. Asked again next time.
+                    log_msg = _("Site is in maintenance, OIDC consent not stored for user '{user}' / client '{cid}'.", log=True)[1]
+                    log_msg = log_msg.format(user=user.name, cid=client_id)
+                    self.logger.info(log_msg)
                 else:
                     user.set_oidc_consent(client.uuid, requested_scopes)
                     try:
@@ -10358,6 +10446,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             "oidc_jwks",
                             "oidc_avatar",
                             "sso_logo",
+                            "get_site_status",
                             "oidc_prompt_none_no_session",
                             "oidc_authorize_validate",
                             "list_oidc_consents",
@@ -10397,6 +10486,28 @@ class OTPmeSsoP1(OTPmeServer1):
                 message = str(e)
                 status = status_codes.CLUSTER_NOT_READY
                 return self.build_response(status, message)
+
+        # Nothing of the tree is written while our site is in
+        # maintenance (see maintenance.py). Said here once for every
+        # command that would, with a code the portal shows as a
+        # message, and before a flow starts that could not end.
+        # Reading goes on, and so does what is not in the tree, as
+        # sessions. A recovery request is told so as well: it is the
+        # same for every account, so it gives none away.
+        if command in MAINTENANCE_COMMANDS and maintenance.is_active():
+            log_msg = _("Site is in maintenance, refusing command {command}.", log=True)[1]
+            log_msg = log_msg.format(command=command)
+            self.logger.info(log_msg)
+            return self.build_response(False, {
+                'message': 'MAINTENANCE', 'status': False,
+            })
+
+        # Whether this site is in maintenance, for the portal to show
+        # on every page, the login page among them. Public, as the logo.
+        if command == "get_site_status":
+            return self.build_response(True, {
+                'maintenance': maintenance.is_active(),
+            })
 
         if command in tiqr_device_commands:
             log_msg = _("Processing tiqr device command {command}.", log=True)[1]

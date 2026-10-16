@@ -32,6 +32,7 @@ from otpme.lib import config
 from otpme.lib import backend
 #from otpme.lib import locking
 from otpme.lib import filetools
+from otpme.lib import maintenance
 from otpme.lib import connections
 from otpme.lib import multiprocessing
 from otpme.lib.protocols import status_codes
@@ -261,9 +262,12 @@ class OTPmeClusterP1(OTPmeServer1):
                 try:
                     # We are the node to disable. So there is no need to
                     # shutdown our services via clusterd connection.
-                    node.disable(force=True, offline=True,
-                                verify_acls=False, no_audit_log=True)
-                    node._write(cluster=False)
+                    # Each node says this of itself, in maintenance as
+                    # well (see clusterd.disable_node()).
+                    with maintenance.override():
+                        node.disable(force=True, offline=True,
+                                    verify_acls=False, no_audit_log=True)
+                        node._write(cluster=False)
                 finally:
                     node.release_lock(lock_caller="clusterd")
                 message = "Node disabled"
@@ -317,7 +321,11 @@ class OTPmeClusterP1(OTPmeServer1):
                 if own_site.required_votes != required_votes:
                     message = _("Required votes set.")
                     own_site.required_votes = required_votes
-                    own_site._write(cluster=True, wait_for_cluster_writes=False)
+                    # What the cluster needs to work, not a change
+                    # somebody made to the tree: written in maintenance
+                    # as well (see maintenance.py).
+                    with maintenance.override():
+                        own_site._write(cluster=True, wait_for_cluster_writes=False)
                 else:
                     message = _("Required votes already set to {votes}.")
                     message = message.format(votes=required_votes)
@@ -357,6 +365,18 @@ class OTPmeClusterP1(OTPmeServer1):
                     pass
             else:
                 multiprocessing.node_config_versions[self.peer.name] = config_versions
+            # The same for the OTPme version it runs.
+            try:
+                otpme_version = command_args['otpme_version']
+            except KeyError:
+                otpme_version = None
+            if otpme_version is None:
+                try:
+                    multiprocessing.node_otpme_versions.pop(self.peer.name)
+                except KeyError:
+                    pass
+            else:
+                multiprocessing.node_otpme_versions[self.peer.name] = otpme_version
 
         elif command == "set_node_sync":
             status = True

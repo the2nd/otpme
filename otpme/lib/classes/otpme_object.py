@@ -33,6 +33,7 @@ from otpme.lib import config
 from otpme.lib import locking
 from otpme.lib import backend
 from otpme.lib import otpme_acl
+from otpme.lib import maintenance
 from otpme.lib.humanize import units
 from otpme.lib.audit import audit_log
 from otpme.lib import multiprocessing
@@ -1983,7 +1984,7 @@ class OTPmeBaseObject(OTPmeLockObject):
                                 index=", ".join(sorted(index_attributes)) or "-")
         logger.debug(log_msg)
 
-    def get_sync_config(self, peer, object_config=None):
+    def get_sync_config(self, peer, object_config=None, peer_versions=None):
         """
         Get object config with fields selected by sync peer type (e.g.
         host or node)
@@ -1995,6 +1996,12 @@ class OTPmeBaseObject(OTPmeLockObject):
         object of a site, and loading each of them to find out what kind
         of thing it is costs more than everything else it does -- see
         backend.get_instance_from_oid(load=False).
+
+        <peer_versions> are the object config versions the code of the
+        peer reads, as config.get_config_versions() of that code says.
+        A peer that does not say them runs code from before they were
+        counted and reads version 1 of everything. None takes the config
+        as it is stored. See downgrade_sync_config().
         """
         if object_config is None:
             object_config = backend.read_config(self.oid)
@@ -2003,6 +2010,11 @@ class OTPmeBaseObject(OTPmeLockObject):
         if peer.type != "node":
             if peer.type not in self.sync_fields:
                 raise PermissionDenied("Permission denied.")
+
+        # Before the fields are reduced: a step down may need a field
+        # the view of the peer leaves out.
+        if peer_versions is not None:
+            self.downgrade_sync_config(sync_config, peer_versions)
 
         audience = self.get_sync_audience(peer)
 
@@ -2029,6 +2041,32 @@ class OTPmeBaseObject(OTPmeLockObject):
             sync_config['SYNC_CHECKSUM'] = audience_checksum
 
         return sync_config
+
+    def downgrade_sync_config(self, sync_config, peer_versions):
+        """ Take a config that goes out to a peer down to what its code reads.
+
+        A host updates its code when it likes, and a node of another
+        site with its own site. Handed a config of a version its code
+        does not know, it could not load the object.
+
+        The checksum stays the one of the stored version. A peer does
+        not work it out itself for an object of another site (see
+        ObjectConfig.is_authoritative()), it keeps what comes and
+        compares that with the sync list. So it fetches the object again
+        when it changes here, and not on every sync because it got
+        something else than what is stored. A peer that updates its code
+        fetches everything once, see the client of the sync.
+
+        Raises ConfigDowngradeFailed where a step down is missing.
+        """
+        sub_type = self.get_config_sub_type(sync_config)
+        version = peer_versions.get(self.type, 1)
+        sub_version = 1
+        if sub_type is not None:
+            sub_version = peer_versions.get(f"{self.type}:{sub_type}", 1)
+        return self.downgrade_object_config(sync_config,
+                                            version=version,
+                                            sub_version=sub_version)
 
     @property
     def _cert(self):
@@ -2246,7 +2284,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         if self.upgrade_object_config(object_config):
             # What is stored is behind this code. Whether it is to be
             # stored anew is for the site to say: as long as the site
-            # writes the old version, the upgrade is a matter of this
+            # is at the old version, the upgrade is a matter of this
             # process alone, and the object did not change by it.
             sub_type = self.get_config_sub_type(object_config)
             write_versions = self.get_write_versions(sub_type, object_config)
@@ -2260,6 +2298,26 @@ class OTPmeBaseObject(OTPmeLockObject):
         self.object_config = object_config
 
         return True
+
+    def check_maintenance(self):
+        """ Refuse a change to this object while the site is in maintenance.
+
+        See backend.check_maintenance(), which refuses it as well; asked
+        here before the change goes any further. An offline object, as
+        an offline token, is written to the client and not to the tree.
+
+        What was changed in memory is not stored, so the instance
+        leaves the process cache: nobody is to read it as if it were.
+        """
+        if self.offline:
+            return
+        try:
+            backend.check_maintenance(self.oid, cluster=True)
+        except MaintenanceMode:
+            cache.clear(object_id=self.oid,
+                        cache_type=cache.PROCESS_CACHE,
+                        keep_modified=False)
+            raise
 
     def get_sub_type(self):
         """ The sub type of this object, None if its type has none.
@@ -2343,12 +2401,12 @@ class OTPmeBaseObject(OTPmeLockObject):
         return site.config_versions or {}
 
     def get_write_versions(self, sub_type, object_config=None):
-        """ The versions this object is stored with, as (type, sub type).
+        """ The versions the site of this object is at, as (type, sub type).
 
-        Those of its site, see Site.config_versions: all nodes of a
-        site store the same version whatever code they run, until
-        "otpme-site upgrade" raises it. Never above what this code
-        writes.
+        See Site.config_versions: "otpme-site upgrade" raises them
+        after the code of its nodes. Never above what this code
+        writes. _load() asks it whether a config it brought up is to
+        be stored anew.
 
         The site is not asked while this code is at version 1: there
         is nothing below it to store.
@@ -2367,21 +2425,6 @@ class OTPmeBaseObject(OTPmeLockObject):
             sub_version = site_versions.get(f"{self.type}:{sub_type}", 1)
         return (min(version, code_version),
                 min(sub_version, code_sub_version))
-
-    def raise_object_config(self, forget=False):
-        """ Bring the config in memory back up after it was written.
-
-        _write() takes it down to what the site stores. <forget> says
-        that the write went through: what is in memory then differs
-        from what is stored by the upgrade alone, and that is not a
-        change to the object.
-        """
-        modified_attributes = list(self.object_config.modified_attributes)
-        deleted_attributes = list(self.object_config.deleted_attributes)
-        self.upgrade_object_config(self.object_config)
-        if forget:
-            self.object_config.forget_changes_since(modified_attributes,
-                                                    deleted_attributes)
 
     def get_config_sub_type(self, object_config):
         """ The sub type a config says it is of, None if it has none.
@@ -2509,7 +2552,7 @@ class OTPmeBaseObject(OTPmeLockObject):
                     msg = msg.format(object_type=self.type,
                                     field=field,
                                     version=x_version)
-                    raise OTPmeException(msg)
+                    raise ConfigDowngradeFailed(msg)
                 method(object_config)
                 object_config[field] = x_version
                 downgraded = True
@@ -2973,6 +3016,10 @@ class OTPmeBaseObject(OTPmeLockObject):
         if no_transaction is None:
             no_transaction = self.no_transaction
 
+        # Before anything is touched, see backend.check_maintenance().
+        if cluster:
+            self.check_maintenance()
+
         if update_last_modified:
             # Update last modified timestamp.
             self.update_last_modified(update_last_modified_by=update_last_modified_by)
@@ -2998,8 +3045,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         # What is in memory is of the versions of this code: a config
         # that was loaded has been brought up to them (see
         # upgrade_object_config()), and an object that is new was
-        # built by this code. Said here, so the config says it before
-        # it is taken down to what the site stores.
+        # built by this code. That is what is stored.
         self.version = config.get_object_version(self.type)
         sub_type = self.get_sub_type()
         if sub_type is not None:
@@ -3018,84 +3064,83 @@ class OTPmeBaseObject(OTPmeLockObject):
         if not self.object_config.modified:
             return
 
-        # Take the config down to the versions the site stores. After
-        # the check above: this is not what makes an object worth
-        # writing. Before the checksums: they are of what is stored,
-        # and every node has to arrive at the same ones whatever code
-        # it runs. The config is brought up again below, however this
-        # ends.
-        write_version, \
-        write_sub_version = self.get_write_versions(self.get_sub_type())
-        downgraded = self.downgrade_object_config(self.object_config,
-                                            version=write_version,
-                                            sub_version=write_sub_version)
-        written = False
-        try:
-            # Hash the views of this object. After the check above, not
-            # before it: writing the checksums marks the config modified,
-            # and an object nothing changed about would then be written
-            # every time somebody asked it to.
-            #
-            # A full index update takes the checksums out of the config
-            # itself (see backends/file/file.py); an incremental one only
-            # applies what the journal says, so they have to be said there.
-            sync_checksum_journal = self.update_sync_checksums()
-            if not full_index_update:
-                index_journal += sync_checksum_journal
+        # A config that was brought up on load is stored in an older
+        # version. It cannot be written in increments: they say what
+        # changed in memory, and they would be applied to the stored
+        # file (see filetools). The same goes for the journals of the
+        # index, the ACLs and the LDIF. So all of it is written whole.
+        # That is what "otpme-site upgrade" does, and nobody else
+        # writes such an object.
+        full_data_update = False
+        if self.config_upgraded:
+            full_data_update = True
+            full_index_update = True
+            full_acl_update = True
+            full_ldif_update = True
+            use_index_journal = False
+            use_acl_journal = False
+            use_ldif_journal = False
+            index_journal = []
+            acl_journal = []
+            ldif_journal = []
 
-            log_msg = _("Writing object: {oid}", log=True)[1]
-            log_msg = log_msg.format(oid=self.oid)
-            logger.debug(log_msg)
+        # Hash the views of this object. After the check above, not
+        # before it: writing the checksums marks the config modified,
+        # and an object nothing changed about would then be written
+        # every time somebody asked it to.
+        #
+        # A full index update takes the checksums out of the config
+        # itself (see backends/file/file.py); an incremental one only
+        # applies what the journal says, so they have to be said there.
+        sync_checksum_journal = self.update_sync_checksums()
+        if not full_index_update:
+            index_journal += sync_checksum_journal
 
-            # Check for replacement method when being offline (e.g. offline tokens).
-            write_method = backend.write_config
-            if self.offline:
-                try:
-                    write_method = config.offline_methods['write_config'][self.oid.read_oid]
-                except Exception:
-                    pass
-            elif not backend.is_available():
-                raise BackendUnavailable("Backend not available.")
+        log_msg = _("Writing object: {oid}", log=True)[1]
+        log_msg = log_msg.format(oid=self.oid)
+        logger.debug(log_msg)
 
-            # Try to write object config to backend.
+        # Check for replacement method when being offline (e.g. offline tokens).
+        write_method = backend.write_config
+        if self.offline:
             try:
-                write_method(object_id=self.oid,
-                            instance=self,
-                            cluster=cluster,
-                            wait_for_cluster_writes=wait_for_cluster_writes,
-                            no_transaction=no_transaction,
-                            full_index_update=full_index_update,
-                            use_index_journal=use_index_journal,
-                            full_ldif_update=full_ldif_update,
-                            use_ldif_journal=use_ldif_journal,
-                            full_acl_update=full_acl_update,
-                            use_acl_journal=use_acl_journal,
-                            index_journal=index_journal,
-                            ldif_journal=ldif_journal,
-                            acl_journal=acl_journal)
-            except Exception as e:
-                config.raise_exception()
-                msg, log_msg = _("Error writing config for {obj_type} '{oid}': {error}", log=True)
-                msg = msg.format(obj_type=self.type, oid=self.oid, error=e)
-                log_msg = log_msg.format(obj_type=self.type, oid=self.oid, error=e)
-                if config.daemon_mode:
-                    # When running in daemon mode we never want to raise an exception
-                    # but log the error and return the status via callback on write
-                    # failure.
-                    logger.critical(log_msg)
-                    return callback.error(msg, raise_exception=False)
-                else:
-                    return callback.error(msg)
-            written = True
-        finally:
-            if downgraded:
-                # A write that went through leaves nothing counted as
-                # changed. If something is, the lists name fields of
-                # the stored version, and they are kept as they are.
-                forget = written and not self.object_config.modified
-                self.raise_object_config(forget=forget)
-            if written:
-                self.config_upgraded = False
+                write_method = config.offline_methods['write_config'][self.oid.read_oid]
+            except Exception:
+                pass
+        elif not backend.is_available():
+            raise BackendUnavailable("Backend not available.")
+
+        # Try to write object config to backend.
+        try:
+            write_method(object_id=self.oid,
+                        instance=self,
+                        cluster=cluster,
+                        wait_for_cluster_writes=wait_for_cluster_writes,
+                        no_transaction=no_transaction,
+                        full_data_update=full_data_update,
+                        full_index_update=full_index_update,
+                        use_index_journal=use_index_journal,
+                        full_ldif_update=full_ldif_update,
+                        use_ldif_journal=use_ldif_journal,
+                        full_acl_update=full_acl_update,
+                        use_acl_journal=use_acl_journal,
+                        index_journal=index_journal,
+                        ldif_journal=ldif_journal,
+                        acl_journal=acl_journal)
+        except Exception as e:
+            config.raise_exception()
+            msg, log_msg = _("Error writing config for {obj_type} '{oid}': {error}", log=True)
+            msg = msg.format(obj_type=self.type, oid=self.oid, error=e)
+            log_msg = log_msg.format(obj_type=self.type, oid=self.oid, error=e)
+            if config.daemon_mode:
+                # When running in daemon mode we never want to raise an exception
+                # but log the error and return the status via callback on write
+                # failure.
+                logger.critical(log_msg)
+                return callback.error(msg, raise_exception=False)
+            else:
+                return callback.error(msg)
+        self.config_upgraded = False
 
         # Clear journals only after a successful write so that a
         # transient write failure does not permanently discard the
@@ -3245,6 +3290,8 @@ class OTPmeBaseObject(OTPmeLockObject):
                             no_transaction=self.no_transaction)
         except UnknownObject:
             pass
+        except MaintenanceMode:
+            raise
         except Exception as e:
             config.raise_exception()
             msg = _("Error removing {obj_type} '{rel_path}': {error}")
@@ -3676,6 +3723,10 @@ class OTPmeObject(OTPmeBaseObject):
         if self.template_object:
             return False
         self.check_auto_disable()
+        # Due to be disabled by its own site, see check_auto_disable().
+        # An instance cached before this attribute existed has none.
+        if getattr(self, "_auto_disable_pending", False):
+            return False
         return self._enabled
 
     @enabled.setter
@@ -4330,6 +4381,9 @@ class OTPmeObject(OTPmeBaseObject):
 
     def _cache(self, callback: JobCallback=default_callback):
         """ Mark object changes to be written on next write. """
+        # Most commands that change an object end here. Refused now,
+        # a change is not kept to be written later.
+        self.check_maintenance()
         # Mark object as modified.
         self._modified = True
         self._cached = True
@@ -4666,9 +4720,8 @@ class OTPmeObject(OTPmeBaseObject):
     def update_version_index(self):
         """ Put the versions this object is stored with into the index.
 
-        The ones its site stores (see get_write_versions()), which is
-        what "otpme-site upgrade" asks the index for. Not the ones of
-        this code: those are what the object is in memory.
+        Those of this code, see _write(). "otpme-site upgrade" asks the
+        index for the objects that are stored below them.
 
         Only when they are not there as they are: a write is not to
         add two index lines to its journal every time.
@@ -4683,11 +4736,10 @@ class OTPmeObject(OTPmeBaseObject):
         As {index attribute: version}; empty if the index is right.
         """
         sub_type = self.get_sub_type()
-        write_version, \
-        write_sub_version = self.get_write_versions(sub_type)
-        versions = {'version': write_version}
+        versions = {'version': config.get_object_version(self.type)}
         if sub_type is not None:
-            versions['sub_version'] = write_sub_version
+            versions['sub_version'] = config.get_sub_object_version(self.type,
+                                                                    sub_type)
         stale = {}
         for key, value in versions.items():
             if self.get_index(key) == [value]:
@@ -9844,6 +9896,22 @@ class OTPmeObject(OTPmeBaseObject):
         disable_time = self.get_auto_disable_time()
         now = time.time()
         if now >= disable_time:
+            # An object of another site is disabled by its own site, and
+            # we get that from there. Written here it would be a change
+            # of ours to an object we do not own. Until it arrives it
+            # counts as disabled here, in this instance only (see the
+            # enabled property). Its last use, which the "unused" variant
+            # goes by, includes the logins on its site and on ours, see
+            # the last used sync of hostd.
+            object_site = self.get_site()
+            if object_site is not None and object_site != config.site:
+                self._auto_disable_pending = True
+                return True
+            # Nor while our site is in maintenance: nothing is written
+            # then. It is disabled when the site is out of it.
+            if maintenance.is_active():
+                self._auto_disable_pending = True
+                return True
             callback = JobCallback(name="auto_disable", client="auto_disable")
             try:
                 # We are called from the enabled property. So we must not
@@ -11896,6 +11964,9 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Cannot delete object with expired lock: {obj}")
             msg = msg.format(obj=self)
             return callback.error(msg)
+
+        # Before the trash: it would keep an object that stays.
+        self.check_maintenance()
 
         if add_to_trash:
             self.add_to_trash(deleted_by=deleted_by, callback=callback)

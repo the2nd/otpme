@@ -672,11 +672,11 @@ class BaseTransaction(object):
         if not config.wait_for_cluster_writes:
             wait_for_write = False
         event_data = cluster_sync_object(action="rename",
-                                            object_uuid=object_uuid,
-                                            old_object_id=old_object_id,
-                                            object_type=object_type,
-                                            new_object_id=new_object_id,
-                                            wait_for_write=wait_for_write)
+                                        object_uuid=object_uuid,
+                                        old_object_id=old_object_id,
+                                        object_type=object_type,
+                                        new_object_id=new_object_id,
+                                        wait_for_write=wait_for_write)
         return event_data
 
     def handle_cluster_journal(self):
@@ -897,9 +897,13 @@ class BaseTransaction(object):
         """ Read transaction from disk. """
         if self._remove_incomplete_transaction(ignore_status=True):
             raise NotFound()
-        # Read transaction name.
+        # Read transaction name. A status file that is gone by now is a
+        # transaction its process removed while we looked at it: done,
+        # not broken.
         try:
             status_data = filetools.read_file(self.status_file)
+        except FileNotFoundError:
+            raise NotFound() from None
         except Exception as e:
             msg = _("Error reading transaction status: {status_file}: {error}")
             msg = msg.format(status_file=self.status_file, error=e)
@@ -1105,6 +1109,10 @@ class BaseTransaction(object):
             logger.debug(log_msg)
         try:
             shutil.rmtree(self.spool_dir)
+        except FileNotFoundError:
+            # Removed by somebody else in the meantime, which is what
+            # we were about to do.
+            pass
         except Exception as e:
             log_msg = _("Failed to remove transaction: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)

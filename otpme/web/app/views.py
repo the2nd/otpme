@@ -147,6 +147,10 @@ def check_forwarded_for():
 def _ssod_error_message(response, default):
     """ Extract a user-friendly error message from an ssod response. """
     if isinstance(response, dict):
+        # ssod refuses what would write while the site is in
+        # maintenance, see _site_maintenance().
+        if response.get('message') == 'MAINTENANCE':
+            return _maintenance_message()
         return response.get('message') or response.get('error') or default
     if response:
         return str(response)
@@ -1787,6 +1791,14 @@ def deploy():
         flask_session.pop('sso_deploy_optional', None)
         flash(gettext("Re-deploying your login token is not allowed."))
         return redirect(url_for('settings', _external=True, _scheme='https'))
+    # Refused while the site is in maintenance. A forced deploy stays
+    # where it is: without the token there is nothing to go on to.
+    if isinstance(response, dict) and response.get('maintenance'):
+        return render_template("deploy.html",
+                               title=gettext('Token Enrollment'),
+                               deploy_token_types=[],
+                               deploy_maintenance=True,
+                               deploy_optional=bool(flask_session.get('sso_deploy_optional')))
     if isinstance(response, dict) and response.get('step_up_required'):
         return redirect(url_for('reauth',
                                 next=url_for('deploy'),
@@ -1997,6 +2009,43 @@ def _show_recover_link():
         log_msg = log_msg.format(error=e)
         logger.warning(log_msg)
     return False
+
+# What ssod said last about maintenance, and when. Every page asks, so
+# the answer is kept for a while in each worker.
+SITE_MAINTENANCE_CACHE_TIME = 30
+_site_maintenance_cache = {'time': 0, 'maintenance': False}
+
+def _site_maintenance():
+    """ Whether our site is in maintenance, as ssod on the master node says.
+
+    Nothing is written then, and the portal shows it on every page and
+    offers nothing that would. Asked of ssod and not worked out here:
+    it depends on the code that runs on the master node, and this may
+    be an SSO host. Not in maintenance if ssod cannot be asked: ssod
+    refuses what it has to anyway.
+    """
+    now = time.time()
+    if now - _site_maintenance_cache['time'] < SITE_MAINTENANCE_CACHE_TIME:
+        return _site_maintenance_cache['maintenance']
+    in_maintenance = False
+    try:
+        response, error = _send_ssod_command_unauth(
+                command="get_site_status",
+                extra_args={'username': ''},
+                mgmt=True)
+        if not error and isinstance(response, dict):
+            in_maintenance = bool(response.get('maintenance'))
+    except Exception as e:
+        log_msg = _("Failed to get site status: {e}", log=True)[1]
+        log_msg = log_msg.format(e=e)
+        logger.warning(log_msg)
+    _site_maintenance_cache['time'] = now
+    _site_maintenance_cache['maintenance'] = in_maintenance
+    return in_maintenance
+
+def _maintenance_message():
+    """ What a user is told when something is refused for maintenance. """
+    return gettext("This site is in maintenance. Nothing can be changed right now. Please try again later.")
 
 
 def _show_login_button(parameter):
@@ -2569,8 +2618,11 @@ def recover():
     """ Username form for the SSO-token recovery flow. """
     if not _show_recover_link():
         return redirect(url_for('login', _external=True, _scheme='https'))
+    # ssod refuses the recovery while the site is in maintenance. Said
+    # before anybody fills anything in.
     return render_template('recover.html',
-                           title=gettext('Recover Your Account'))
+                           title=gettext('Recover Your Account'),
+                           recover_maintenance=_site_maintenance())
 
 
 @app.route('/recover', methods=['POST'])
@@ -2620,6 +2672,13 @@ def recover_complete():
     if not raw_token or not username:
         return render_template('recover_invalid.html',
                                title=gettext('Recovery link invalid'))
+    # The link came from a mail sent before the site went into
+    # maintenance. The deploy behind it would be refused.
+    if _site_maintenance():
+        return render_template('recover.html',
+                               title=gettext('Recover Your Account'),
+                               recover_maintenance=True,
+                               recover_maintenance_link=True)
     response, error = _send_ssod_command_unauth(
             command="get_sso_token_recovery_info",
             extra_args={'username':       username,

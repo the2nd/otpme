@@ -17,6 +17,7 @@ try:
 except Exception:
     pass
 
+import otpme
 from otpme.lib import oid
 from otpme.lib import cli
 from otpme.lib import net
@@ -25,6 +26,7 @@ from otpme.lib import cache
 from otpme.lib import trash
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib import maintenance
 from otpme.lib import worker_pool
 from otpme.lib import multiprocessing
 from otpme.lib.audit import audit_log
@@ -144,6 +146,7 @@ read_value_acls = {
                                 "sso_csrf_secret",
                                 "cluster_key",
                                 "fido2_ca_cert",
+                                "maintenance",
                                 ],
             "dump"      : [
                                 "sso_logo",
@@ -178,6 +181,7 @@ write_value_acls = {
                                 "oidc",
                                 "syslog",
                                 "audit_log",
+                                "maintenance",
                                 ],
                     "disable"   : [
                                 "auth",
@@ -185,6 +189,7 @@ write_value_acls = {
                                 "oidc",
                                 "syslog",
                                 "audit_log",
+                                "maintenance",
                                 ],
                     "set"       : [
                                 "config",
@@ -1049,6 +1054,15 @@ commands = {
                     },
                 },
             },
+    'maintenance'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'set_maintenance',
+                    'oargs'             : ['state'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     }
 
 def get_site_admin_blacklist():
@@ -1177,6 +1191,10 @@ def register_config():
     config.register_index_attribute("auth_enabled", sync=site_sync,
                                     object_types=site_types)
     config.register_index_attribute("sync_enabled", sync=site_sync,
+                                    object_types=site_types)
+    # The OTPme version the site was brought up to, for the table of
+    # "otpme-site show" (see maintenance.py).
+    config.register_index_attribute("otpme_version", sync=site_sync,
                                     object_types=site_types)
     config.register_index_attribute("auth_fqdn", sync=site_sync,
                                     object_types=site_types)
@@ -3451,9 +3469,14 @@ class Site(OTPmeObject):
         # by object type ("token") and by sub type ("token:hotp"). A
         # type that is not named is written with version 1. Nodes may
         # run newer code than this; they bring a config up when they
-        # load it and take it down again when they write it (see
-        # OTPmeBaseObject.get_write_versions()).
+        # load it, and "otpme-site upgrade" stores the objects in the
+        # versions of the code and raises these (see
+        # upgrade_object_configs()).
         self.config_versions = {}
+        # The OTPme version the site was last brought up to, and who
+        # switched maintenance on (see maintenance.py).
+        self.otpme_version = None
+        self.maintenance = None
         # The workers of a running "otpme-site upgrade", and how many
         # the command asked for. See write_objects_to_upgrade().
         self._config_upgrade_pool = None
@@ -3667,6 +3690,18 @@ class Site(OTPmeObject):
             'CONFIG_VERSIONS'           : {
                                             'var_name'  : 'config_versions',
                                             'type'      : dict,
+                                            'required'  : False,
+                                        },
+
+            'OTPME_VERSION'             : {
+                                            'var_name'  : 'otpme_version',
+                                            'type'      : str,
+                                            'required'  : False,
+                                        },
+
+            'MAINTENANCE'               : {
+                                            'var_name'  : 'maintenance',
+                                            'type'      : str,
                                             'required'  : False,
                                         },
 
@@ -4931,6 +4966,145 @@ class Site(OTPmeObject):
         self.update_index("sync_enabled", self.sync_enabled)
         return self._write(callback=callback)
 
+    def set_maintenance(
+        self,
+        state: Union[str,None]=None,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Switch maintenance of the site on or off, or say why it is on.
+
+        The switch is written with maintenance.override(): the site is
+        an object of the tree as well, and could not be switched off
+        again otherwise.
+        """
+        if state is None or state == "status":
+            return self.show_maintenance(callback=callback, _caller=_caller)
+        if state not in ("on", "off"):
+            msg = _("Unknown maintenance state: {state}")
+            msg = msg.format(state=state)
+            return callback.error(msg)
+        if self.uuid != config.site_uuid:
+            msg = _("Maintenance of a site is switched on one of its nodes: {name}")
+            msg = msg.format(name=self.name)
+            return callback.error(msg)
+        with maintenance.override():
+            if state == "on":
+                return self.enable_maintenance(force=force,
+                                            run_policies=run_policies,
+                                            callback=callback,
+                                            _caller=_caller)
+            return self.disable_maintenance(force=force,
+                                        run_policies=run_policies,
+                                        callback=callback,
+                                        _caller=_caller)
+
+    @check_acls(['view:maintenance'])
+    def show_maintenance(
+        self,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Say whether the site is in maintenance on this node, and why. """
+        reasons = maintenance.get_reasons(self)
+        if not reasons:
+            msg = _("Site '{name}' is not in maintenance.")
+            msg = msg.format(name=self.name)
+            return callback.ok(msg)
+        msg = _("Site '{name}' is in maintenance:")
+        msg = msg.format(name=self.name)
+        callback.send(msg)
+        for reason in reasons:
+            callback.send(reason)
+        return callback.ok()
+
+    @check_acls(['enable:maintenance'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    @object_changelog("enable maintenance")
+    def enable_maintenance(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Switch maintenance on: no object of the tree is written. """
+        if self.maintenance == maintenance.MANUAL:
+            msg = _("Maintenance of site '{name}' is already switched on.")
+            msg = msg.format(name=self.name)
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        msg = _("Switch maintenance of site '{name}' on?: ")
+        msg = msg.format(name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        # By hand wins over an upgrade: the upgrade leaves it on.
+        self.maintenance = maintenance.MANUAL
+        return self._write(callback=callback)
+
+    @check_acls(['disable:maintenance'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    @object_changelog("disable maintenance")
+    def disable_maintenance(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Switch maintenance off, whoever switched it on.
+
+        The site stays in maintenance while its code and its objects
+        are of other versions. That is said, not refused: it is what
+        "otpme-site upgrade" is for.
+        """
+        if not self.maintenance:
+            msg = _("Maintenance of site '{name}' is not switched on.")
+            msg = msg.format(name=self.name)
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        msg = _("Switch maintenance of site '{name}' off?: ")
+        msg = msg.format(name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        self.maintenance = None
+        reasons = maintenance.get_reasons(self)
+        if reasons:
+            msg = _("Site '{name}' stays in maintenance:")
+            msg = msg.format(name=self.name)
+            callback.send(msg)
+            for reason in reasons:
+                callback.send(reason)
+        return self._write(callback=callback)
+
     @check_acls(['enable:oidc'])
     @object_lock()
     @backend.transaction
@@ -5863,20 +6037,25 @@ class Site(OTPmeObject):
 
         <procs> is how many workers write the objects, where there
         are enough of them to start any (see worker_pool).
-        """
-        result = self.upgrade_config_params(run_policies=run_policies,
-                                            callback=callback,
-                                            _caller=_caller)
-        if result is False:
-            return result
-        self._config_upgrade_procs = procs
-        try:
-            return self.upgrade_object_configs(all_objects=all_objects,
-                                                callback=callback)
-        finally:
-            self.stop_config_upgrade_pool()
 
-    def get_config_upgrade_blockers(self, config_versions):
+        It writes while the site is in maintenance, which is what it
+        ends (see maintenance.py). Its workers are forked within and
+        write as well.
+        """
+        with maintenance.override():
+            result = self.upgrade_config_params(run_policies=run_policies,
+                                                callback=callback,
+                                                _caller=_caller)
+            if result is False:
+                return result
+            self._config_upgrade_procs = procs
+            try:
+                return self.upgrade_object_configs(all_objects=all_objects,
+                                                    callback=callback)
+            finally:
+                self.stop_config_upgrade_pool()
+
+    def get_config_upgrade_blockers(self, config_versions, check_release=False):
         """ The nodes of this site that cannot read the given versions.
 
         As {node name: [what it is behind in]}. What a node can read
@@ -5888,6 +6067,11 @@ class Site(OTPmeObject):
 
         A disabled node is left out: it serves nothing, and it is
         brought up to date before it is enabled again.
+
+        <check_release> also names every node that runs another major
+        or minor OTPme version than this one (node_otpme_versions), as
+        "OTPme <version>". A node that said none runs code from before
+        it was said, or is not there.
         """
         node_names = backend.search(object_type="node",
                                     attributes={
@@ -5899,18 +6083,30 @@ class Site(OTPmeObject):
                                     return_type="name")
         online_nodes = multiprocessing.get_dict("online_nodes")
         node_config_versions = multiprocessing.get_dict("node_config_versions")
+        node_otpme_versions = multiprocessing.get_dict("node_otpme_versions")
         blockers = {}
         for node_name in node_names:
             # Ours are the versions we are asked about.
             if node_name == config.host_data['name']:
                 continue
             node_versions = {}
+            node_otpme_version = None
             if node_name in online_nodes:
                 try:
                     node_versions = node_config_versions[node_name]
                 except KeyError:
                     pass
+                try:
+                    node_otpme_version = node_otpme_versions[node_name]
+                except KeyError:
+                    pass
             behind = []
+            if check_release:
+                node_release = None
+                if node_otpme_version:
+                    node_release = maintenance.get_release(node_otpme_version)
+                if node_release != maintenance.get_release():
+                    behind.append(f"OTPme {node_otpme_version or '?'}")
             for key in sorted(config_versions):
                 if node_versions.get(key, 1) < config_versions[key]:
                     behind.append(key)
@@ -5981,21 +6177,17 @@ class Site(OTPmeObject):
         ):
         """ Store the object configs of this site in the versions of the code.
 
-        A site stores every object type in the version it says in
-        config_versions, however new the code on its nodes is, so that
-        nodes can be updated one after the other. This raises those
-        versions to the ones of the code, one step at a time, and
-        after each step writes every object that is still stored below
-        it: loading an object brings its config up, writing it stores
-        that.
+        The site says in config_versions which versions its objects
+        are stored in. This raises those to the ones of the code and
+        writes every object that is still stored below them: loading
+        an object brings its config up, writing it stores that.
 
         Not before every enabled node of the site runs code that reads
         the new versions. A node that does not could no longer load an
         object afterwards.
 
-        It can be run again after it was cut short: the versions that
-        were reached are on the site, and the index says which objects
-        are still behind.
+        It can be run again after it was cut short: the index says
+        which objects are still behind.
 
         Objects that are not in the tree, as sessions and used OTPs,
         are not written here. There are too many, and they do not
@@ -6015,10 +6207,17 @@ class Site(OTPmeObject):
         for key in code_versions:
             if code_versions[key] > site_versions.get(key, 1):
                 raised_versions[key] = code_versions[key]
-        blockers = self.get_config_upgrade_blockers(raised_versions)
+        # The release is checked only when it changes: then the site
+        # leaves maintenance on this node, and a node that runs another
+        # one would be in it from then on.
+        check_release = False
+        if maintenance.get_release(self.otpme_version or "") != maintenance.get_release():
+            check_release = True
+        blockers = self.get_config_upgrade_blockers(raised_versions,
+                                                check_release=check_release)
         if blockers:
             for node_name in sorted(blockers):
-                msg = _("Node is offline or runs older code: {node_name}: {behind}")
+                msg = _("Node is offline or runs other code: {node_name}: {behind}")
                 msg = msg.format(node_name=node_name,
                                 behind=", ".join(blockers[node_name]))
                 callback.send(msg)
@@ -6026,11 +6225,27 @@ class Site(OTPmeObject):
             msg = msg.format(name=self.name)
             return callback.error(msg)
 
+        # Nobody else writes while the objects are brought up. Left on
+        # if this fails, until a run goes through. One switched on by
+        # hand stays as it is.
+        if not self.maintenance:
+            self.maintenance = maintenance.UPGRADE
+            if self._write(callback=callback) is False:
+                return callback.error()
+
         # A site that never ran this has objects without a version in
         # the index.
         if not self.config_versions:
             all_objects = True
             self.config_versions = {}
+        # A type the code no longer has would keep the site in
+        # maintenance.
+        gone_keys = [x for x in self.config_versions if x not in code_versions]
+        if gone_keys:
+            for key in gone_keys:
+                self.config_versions.pop(key)
+            if self._write(callback=callback) is False:
+                return callback.error()
 
         realm = backend.get_object(object_type="realm", uuid=self.realm_uuid)
         realm_master = False
@@ -6045,54 +6260,66 @@ class Site(OTPmeObject):
             sub_type = None
             if ":" in key:
                 sub_type = key.split(":")[1]
-            # The realm is of no site; it follows its master site.
-            if object_type == "realm" and not realm_master:
-                continue
             code_version = code_versions[key]
             try:
                 site_version = self.config_versions[key]
             except KeyError:
                 site_version = None
-            # A type the site does not name is stored in version 1.
-            # The version the site is at is looked at again only when
-            # all objects are: that is what gets those into the index
-            # that are not in it.
-            if site_version is None:
-                first_version = 1
-            elif all_objects:
-                first_version = site_version
-            else:
-                first_version = site_version + 1
-            for x_version in range(first_version, code_version + 1):
-                if site_version != x_version:
-                    # Said and stored before any object is written:
-                    # the write of an object asks the site which
-                    # version to store.
-                    site_version = x_version
-                    self.config_versions[key] = x_version
-                    if self._write(callback=callback) is False:
-                        return callback.error()
-                    upgraded = True
-                if object_type not in config.tree_object_types:
-                    continue
-                object_uuids = self.get_objects_to_upgrade(object_type,
-                                                        sub_type,
-                                                        x_version,
-                                                        all_objects=all_objects)
-                if not object_uuids:
-                    continue
-                written, failed = self.write_objects_to_upgrade(object_uuids,
-                                                            x_version,
-                                                            callback=callback)
-                if written:
-                    summary.append((key, x_version, written))
-                    upgraded = True
-                if failed:
-                    # The next step builds on this one.
-                    self.send_config_upgrade_summary(summary, callback)
-                    msg = _("Failed to upgrade {count} objects of site '{name}': {key}")
-                    msg = msg.format(count=failed, name=self.name, key=key)
-                    return callback.error(msg)
+            # An object is written in the version of the code, so it
+            # is raised to it in one step. Said and stored before any
+            # object is written: loading an object asks the site
+            # whether what it brought up is to be stored (see
+            # OTPmeBaseObject._load()).
+            if site_version != code_version:
+                self.config_versions[key] = code_version
+                if self._write(callback=callback) is False:
+                    return callback.error()
+                upgraded = True
+            if object_type not in config.tree_object_types:
+                continue
+            # The realm is of no site; it follows its master site. The
+            # version is said all the same, or the site would stay in
+            # maintenance.
+            if object_type == "realm" and not realm_master:
+                continue
+            # Asked every time, not only when the site was behind: the
+            # objects a run that was cut short left are still below.
+            object_uuids = self.get_objects_to_upgrade(object_type,
+                                                    sub_type,
+                                                    code_version,
+                                                    all_objects=all_objects)
+            if not object_uuids:
+                continue
+            written, failed = self.write_objects_to_upgrade(object_uuids,
+                                                        code_version,
+                                                        callback=callback)
+            if written:
+                summary.append((key, code_version, written))
+                upgraded = True
+            if failed:
+                self.send_config_upgrade_summary(summary, callback)
+                msg = _("Failed to upgrade {count} objects of site '{name}': {key}")
+                msg = msg.format(count=failed, name=self.name, key=key)
+                return callback.error(msg)
+
+        # Done: the site is at this code now, and maintenance ends
+        # unless it was switched on by hand.
+        if self.otpme_version != otpme.__version__ \
+        or self.get_index("otpme_version") != [otpme.__version__] \
+        or self.maintenance == maintenance.UPGRADE:
+            self.otpme_version = otpme.__version__
+            self.update_index("otpme_version", self.otpme_version)
+            if self.maintenance == maintenance.UPGRADE:
+                self.maintenance = None
+            if self._write(callback=callback) is False:
+                return callback.error()
+        reasons = maintenance.get_reasons(self)
+        if reasons:
+            msg = _("Site '{name}' stays in maintenance:")
+            msg = msg.format(name=self.name)
+            callback.send(msg)
+            for reason in reasons:
+                callback.send(reason)
 
         if not upgraded:
             msg = _("Object configs of site '{name}' are up to date.")
@@ -6356,6 +6583,11 @@ class Site(OTPmeObject):
         else:
             config.site_init = True
 
+        # A new site is at the code that adds it, and not in
+        # maintenance (see maintenance.py).
+        self.otpme_version = otpme.__version__
+        self.config_versions = config.get_config_versions()
+
         # Start site add.
         add_result = self._add(**kwargs)
         if not add_result:
@@ -6374,6 +6606,7 @@ class Site(OTPmeObject):
         self.update_index("sso_fqdn", self.sso_fqdn)
         self.update_index("auth_enabled", self.auth_enabled)
         self.update_index("sync_enabled", self.sync_enabled)
+        self.update_index("otpme_version", self.otpme_version)
         callback.send(_("Site added successful."))
         return self._write(callback=callback)
 
@@ -7855,6 +8088,9 @@ class Site(OTPmeObject):
                 sync_enabled = False
 
         lines.append(f'SYNC_ENABLED="{sync_enabled}"')
+
+        # Shown to whoever sees the site, as in the table of "show".
+        lines.append(f'OTPME_VERSION="{self.otpme_version or ""}"')
 
         trusted_sites = []
         if self.verify_acl("view:trusts") \

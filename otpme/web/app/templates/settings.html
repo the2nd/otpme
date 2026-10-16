@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set maintenance_banner = True %}
 {% block content %}
 <div id="page-data"
      data-url-change-password="{{ url_for('change_password', _external=True, _scheme='https') }}"
@@ -181,7 +182,9 @@
     <p>{{ gettext("Loading your settings...") }}</p>
   </div>
 </div>
-<div class="portal-wrapper">
+{# In maintenance everything here is shown and nothing can be pressed,
+   but the sessions: they are not stored in the tree (maintenance.js). #}
+<div class="portal-wrapper{% if site_maintenance %} maintenance-locked{% endif %}">
     <h2>{{ gettext("Settings") }}</h2>
 
     <!-- Password Change -->
@@ -489,7 +492,7 @@
          when the server reports allowed=true (sso_allow_session_mgmt).
          Only the sessions of this site are listed -- a session lives on
          the site its login happened on. -->
-    <div class="settings-card is-hidden" id="sessionCard">
+    <div class="settings-card is-hidden" id="sessionCard" data-maintenance-free>
         <h3>{{ gettext("Active Sessions") }}</h3>
         <p class="settings-desc">
             {{ gettext("Where your account is currently logged in on this site. Ending a session also ends what it opened (applications you signed in to with it).") }}
@@ -522,4 +525,5 @@
      class="is-hidden"></div>
 
 <script src="{{ url_for('static', filename='settings.js') }}"></script>
+<script src="{{ url_for('static', filename='maintenance.js') }}"></script>
 {% endblock %}

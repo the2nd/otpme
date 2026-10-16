@@ -911,6 +911,7 @@ class Scope(OTPmeObject):
         extra_ref_lists = [
                 ('tokens', 'token', ['token_options']),
                 ('roles', 'role', None),
+                ('groups', 'group', None),
                 ('clients', 'client', None),
                 ]
         return super().remove_orphans(force=force,

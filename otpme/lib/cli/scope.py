@@ -289,7 +289,11 @@ def row_getter(realm, site, scope_order, scope_data, acls,
                 row.append("-")
         # Scope ID.
         if "scope_id" in output_fields:
-            row.append(scope_id)
+            if check_acl("view:scope_id") \
+            or check_acl("edit:scope_id"):
+                row.append(scope_id)
+            else:
+                row.append("-")
         # Policies.
         if "policies" in output_fields:
             if check_acl("view:policies") \

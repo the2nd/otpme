@@ -1600,3 +1600,37 @@ msgstr ""
 
 #~ msgid "Scan this code with the tiqr app. Waiting for your phone..."
 #~ msgstr "Escanea este código con la app tiqr. Esperando tu teléfono..."
+
+#: views.py templates/base.html
+msgid ""
+"This site is in maintenance. Nothing can be changed right now. Please try "
+"again later."
+msgstr ""
+"Este sitio está en mantenimiento. Ahora mismo no se puede cambiar nada. "
+"Vuelva a intentarlo más tarde."
+
+#: templates/deploy.html
+msgid ""
+"Your login token cannot be set up while the site is in maintenance. Please "
+"try again later."
+msgstr ""
+"Su token de inicio de sesión no se puede configurar mientras el sitio está "
+"en mantenimiento. Vuelva a intentarlo más tarde."
+
+#: templates/login.html
+msgid "Account recovery is not possible while the site is in maintenance."
+msgstr ""
+"No es posible recuperar la cuenta mientras el sitio está en mantenimiento."
+
+#: templates/recover.html
+msgid ""
+"Your account cannot be recovered while the site is in maintenance. Please "
+"try again later."
+msgstr ""
+"Su cuenta no se puede recuperar mientras el sitio está en mantenimiento. "
+"Vuelva a intentarlo más tarde."
+
+#: templates/recover.html
+msgid ""
+"If the link from your mail has expired by then, please request a new one."
+msgstr "Si para entonces el enlace de su correo ha caducado, solicite uno nuevo."

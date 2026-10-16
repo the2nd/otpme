@@ -15,6 +15,7 @@ except Exception:
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
+from otpme.lib import maintenance
 from otpme.lib.humanize import units
 from otpme.lib import multiprocessing
 from otpme.lib.audit import audit_log
@@ -362,6 +363,17 @@ class AutodisablePolicy(Policy):
                                                 policy_add_time=policy_add_time)
         now = time.time()
         if now >= disable_time:
+            # An object of another site is disabled by its own site, and
+            # counts as disabled here until that arrives, see
+            # OTPmeObject.check_auto_disable().
+            object_site = hook_object.get_site()
+            if object_site is not None and object_site != config.site:
+                hook_object._auto_disable_pending = True
+                return True
+            # The same while our site is in maintenance.
+            if maintenance.is_active():
+                hook_object._auto_disable_pending = True
+                return True
             if hook_object.enabled:
                 callback = JobCallback(name="auto_disable", client="auto_disable_policy")
                 try:

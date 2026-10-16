@@ -244,7 +244,9 @@ class OTPmeJob(object):
                     job_error = self.exit_info['last_error']
                 except Exception:
                     pass
-        except OTPmeJobException as e:
+        # Maintenance is no error of the job: what it says goes to the
+        # client as it is, and in debug mode as well.
+        except (OTPmeJobException, MaintenanceMode) as e:
             job_error = str(e)
             log_msg = job_error
             self.logger.warning(log_msg)
@@ -264,6 +266,16 @@ class OTPmeJob(object):
             # it still makes sense to have callback.objects because we this
             # way we only flush caches if this job has changed any object.
             objects_written = self.callback.write_modified_objects()
+            # None of them written: the job did not do what it was
+            # asked to, and it is not to look as if it did.
+            if objects_written is False:
+                job_status = False
+                try:
+                    job_error = self.exit_info['last_error']
+                except Exception:
+                    job_error = None
+                job_response = job_error
+        if job_status:
             # Clear caches after saving objects. This will also write any
             # other changed (cached) objects.
             if objects_written:

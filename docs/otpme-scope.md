@@ -97,9 +97,12 @@ row: its scope ID and its roles, tokens, clients and groups, each line a
 value. A reference to an object that is gone is printed as the bare
 UUID, which is how **remove_orphans** has something to find.
 
-**list \[**-a**\] \[*regex*\]**  
+**list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
 List the scope names, and with a regex only those that match it. You get
-the scopes you may change; **-a** adds those you may only look at.
+the scopes you may change; **-a** adds those you may only look at.  
+**--attribute** matches the regex against that attribute instead of the
+name: **list --attribute scope_id email** lists the scope an application
+asks for as **email**.
 
 **enable *scope***  
 Enable a disabled scope.  
@@ -393,17 +396,13 @@ Needs the ACL **export**.
 
 **remove_orphans *scope***  
 Remove references to objects that are gone.  
-A token, a role or a client that is deleted leaves its UUID behind in
-every scope that held it. Nothing is handed out to it any more — the
-UUID resolves to nothing — but it stays in the object and **show**
+A token, a role, a group or a client that is deleted leaves its UUID
+behind in every scope that held it. Nothing is handed out to it any more
+— the UUID resolves to nothing — but it stays in the object and **show**
 prints it as a bare UUID. This clears those out, together with orphan
 ACLs, policies and signatures.  
 It asks once for everything it found; the global option **-f** skips the
 question.  
-A group that is gone is not cleaned up here: the group list is not one
-of the lists this command walks, and **remove_group** wants a name. Such
-a reference stays, and it does no harm — a group that does not resolve
-is left out of the claim.  
 Needs the ACL **remove:orphans**.
 
 # HOW A SCOPE IS GRANTED

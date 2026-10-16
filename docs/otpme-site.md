@@ -76,13 +76,15 @@ Asks first; the global option **-f** skips the question.
 Needs the ACL **delete:object**.
 
 **show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*site*\]**  
-Without a site: a table of all of them, with their status, whether
-authentication and synchronization with them are on, the sites they
-trust, their address, their three FQDNs, their policies and their
-description.  
+Without a site: a table of all of them, with their status, their
+version, whether authentication and synchronization with them are on,
+the sites they trust, their address, their three FQDNs, their policies
+and their description.  
 The status is **Master** for the master site of the realm, **Sub** for a
 sub site and **Slave** for every other one; a **(D)** behind it says the
-site is disabled.
+site is disabled.  
+The version is the OTPme version the site was last brought up to with
+**upgrade**. It is empty for a site that was not brought up to one yet.
 
 **-a**  
 Also the sites you may only look at, not just the ones you may change.
@@ -205,16 +207,20 @@ OTPme version brings is not on an older site until this is run. A
 parameter that is already set is not changed.
 
 It stores the objects of the site in the format of the new version. A
-new version may store an object in another way. Until this is run the
-site keeps the old format, so the nodes can be updated one after the
-other and still work together. The command then writes every object that
-is still in the old format. The first run on a site writes every object
-once, and can take a while.
+new version may store an object in another way. The command writes every
+object that is still in the old format. The first run on a site writes
+every object once, and can take a while.
 
-The objects are not changed while a node of the site is offline or runs
-an older version; the command says which node. A disabled node does not
-count. The command can be run again after it was cut short; it goes on
-where it stopped.
+The site is in maintenance until this is done, see **Maintenance**
+below. While the command runs it switches maintenance on, so nothing
+else is changed in between. When it is done, the site is at the version
+of its nodes and maintenance ends. Maintenance that was switched on with
+**maintenance on** stays on.
+
+The command does not start while a node of the site is offline or runs
+another version; it says which node. A disabled node does not count. If
+the command fails or is cut short, the site stays in maintenance. Run it
+again; it goes on where it stopped.
 
 **--all**  
 Look at every object, and not only at those that are known to be in the
@@ -225,7 +231,8 @@ Write the objects with *NUM* processes. Without it a quarter of the CPU
 cores is used, so the node can still answer logins. Fewer than 500
 objects of a kind are written without extra processes.
 
-Run it on a node of the site.  
+Run it on a node or host of the site; the master node of the site
+carries it out.  
 Needs the ACL **set:config**, for all parameters and not just one.
 
 **show_config *site* \[*parameter*\]**  
@@ -256,6 +263,70 @@ Needs the ACL **edit:info**.
 **dump_info \[**--language** *LANG*\] *site***  
 Print the info text, of that language or the administrator's own.  
 Needs the ACL **view:info**.
+
+## Maintenance
+
+A site is in maintenance while nothing in it may be changed. That is the
+case
+
+-   when its nodes run another OTPme version than the one the site was
+    last brought up to. Only the first two numbers count: 0.3.1 and
+    0.3.4 are the same version here, 0.4.0 is not.
+
+-   when its nodes store objects in another format than the site does,
+
+-   when it was switched on with **maintenance on**, or by **upgrade**
+    while that runs or after it failed.
+
+So an update of OTPme puts the site into maintenance by itself, and
+**upgrade** ends it. Nothing is written to start it: each node compares
+the code it runs with the site. The master node is the one that counts,
+because it writes the objects.
+
+While the site is in maintenance:
+
+-   No object of the site is added, changed, renamed or deleted. A
+    command that would do it fails and says so.
+
+-   Logins go on. Sessions and the other data of a login are written as
+    usual.
+
+-   The SSO portal shows a notice. Settings and the profile can be
+    looked at, but not changed. A login token cannot be set up, and an
+    account cannot be recovered.
+
+-   An object that is due to be disabled automatically counts as
+    disabled. It is written as disabled when maintenance ends.
+
+-   The jobs that write objects wait: the CRL update, auto-disable,
+    resolvers, tree jobs, the nsscache sync on the nodes, and backups.
+    They run again when maintenance ends.
+
+-   No host or node can join.
+
+-   What the other nodes and sites send is still taken in.
+
+**maintenance *site* \[**on**\|**off**\|**status**\]**  
+Switch maintenance on or off, or say why the site is in maintenance.
+
+**status**  
+Say whether the site is in maintenance on its master node, and why. This
+is the default.  
+Needs the ACL **view:maintenance**.
+
+**on**  
+Switch maintenance on, for example for work on the site.  
+Needs the ACL **enable:maintenance**.
+
+**off**  
+Switch maintenance off, whoever switched it on. If the site stays in
+maintenance for another reason, the command says so.  
+Needs the ACL **disable:maintenance**.
+
+**on** and **off** ask first; the global option **-f** skips the
+question.  
+Run the command on a node or host of the site; the master node of the
+site carries it out.
 
 ## Trust Relationships
 
@@ -1019,6 +1090,19 @@ node itself, see **otpme-tool**(1).
 
 **otpme-site show**  
 All sites, and whether the new one is enabled by now.
+
+## An update of OTPme
+
+Update OTPme on all nodes of the site first. Then, on a node or host of
+the site:
+
+**otpme-site maintenance berlin**  
+The site is in maintenance, and this says why: the nodes run another
+version than the site.
+
+**otpme-site upgrade berlin**  
+Store the objects in the format of the new version. When this is done,
+maintenance ends.
 
 ## Logins that do not depend on the other site
 

@@ -38,7 +38,9 @@
 
     <!-- Step 1: Choose token type and start -->
     <div id="step-start">
-      {% if deploy_token_types|length == 0 %}
+      {% if deploy_maintenance %}
+      <p class="deploy-hint">{{ gettext("Your login token cannot be set up while the site is in maintenance. Please try again later.") }}</p>
+      {% elif deploy_token_types|length == 0 %}
       <p class="deploy-hint">{{ gettext("Token enrollment is currently disabled. Please contact your administrator.") }}</p>
       {% elif deploy_token_types|length > 1 %}
       <p class="deploy-hint mb-14">{{ gettext("Choose your preferred authentication method:") }}</p>

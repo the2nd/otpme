@@ -146,12 +146,17 @@ Tuning parameters:
 .B MYSQL_QUERY_CACHE_SIZE\fR,
 .B MYSQL_EXPIRE_LOGS_DAYS\fR,
 .B MYSQL_MAX_BINLOG_SIZE\fR,
+.B MYSQL_BINLOG_FORMAT\fR,
 .B MYSQL_CHARACTER_SET_SERVER\fR,
 .B MYSQL_COLLATION_SERVER\fR,
 .B MYSQL_MYISAM_RECOVER_OPTIONS\fR.
 .PP
+.B MYSQL_BINLOG_FORMAT
+must be "ROW" or "MIXED".
+The index reads with READ COMMITTED, and MySQL refuses every write with "STATEMENT".
+.PP
 Custom config can be saved to
-.IR /etc/otpme/mysql.conf .
+.IR /etc/otpme/mysql.cnf .
 .SH CACHE
 .TP
 .B CACHE
@@ -666,7 +671,7 @@ Custom Redis configuration.
 .I /etc/otpme/postgresql.conf
 Custom PostgreSQL configuration.
 .TP
-.I /etc/otpme/mysql.conf
+.I /etc/otpme/mysql.cnf
 Custom MySQL configuration.
 .SH SEE ALSO
 .BR otpme (1),

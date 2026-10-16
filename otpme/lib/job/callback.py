@@ -179,19 +179,77 @@ class JobCallback(object):
         self.job.objects_written.value = True
 
     def write_modified_objects(self):
-        """ Write objects modified by this callback. """
+        """ Write objects modified by this callback.
+
+        All of them or none, in one transaction: they were changed
+        together, by one job, and one of them missing would leave the
+        others pointing at something that is not there. Within a
+        transaction of the caller they go into that one, and a failure
+        is raised for it to abort.
+
+        An object counts as written only when the transaction is
+        committed. Its changes used to be reset whatever _write()
+        returned, so a write that failed was forgotten without a word.
+
+        Returns the OIDs of the objects written, False if none of them
+        were written because one failed.
+        """
         from otpme.lib import cache
-        objects_written = []
+        from otpme.lib import backend
+        objects = []
         for object_id in self.modified_objects:
             o = cache.get_modified_object(object_id)
             if not config.no_backend_writes:
                 cache.remove_modified_object(object_id)
             if not o or not o._modified:
                 continue
-            log_msg = _("Writing modified object (Job): {}", log=True)[1]
-            log_msg = log_msg.format(o)
-            self.logger.debug(log_msg)
-            o._write(callback=self)
+            objects.append(o)
+        if not objects:
+            return []
+
+        start_transaction = backend.get_transaction() is None
+        if start_transaction:
+            backend.begin_transaction(name="write_modified_objects",
+                                    callback=self)
+        try:
+            for o in objects:
+                log_msg = _("Writing modified object (Job): {}", log=True)[1]
+                log_msg = log_msg.format(o)
+                self.logger.debug(log_msg)
+                if o._write(callback=self) is False:
+                    msg = _("Failed to write object: {oid}")
+                    msg = msg.format(oid=o.oid)
+                    raise OTPmeException(msg)
+        except Exception as e:
+            if not start_transaction:
+                raise
+            backend.abort_transaction()
+            error = e
+        else:
+            error = None
+            if start_transaction:
+                if backend.end_transaction() is False:
+                    error = _("Failed to commit the transaction.")
+
+        if error is not None:
+            msg, log_msg = _("Modified objects not written: {error}", log=True)
+            msg = msg.format(error=error)
+            log_msg = log_msg.format(error=error)
+            self.logger.critical(log_msg)
+            # What is in memory was not stored. Nobody is to read it
+            # or write it later as if it were.
+            for o in objects:
+                cache.clear(object_id=o.oid,
+                            cache_type=cache.PROCESS_CACHE,
+                            keep_modified=False)
+            # A callback that is not enabled raises whatever it is
+            # told, and the caller gets False either way.
+            if self.enabled:
+                self.error(msg, raise_exception=False)
+            return False
+
+        objects_written = []
+        for o in objects:
             # Reset modified stuff before adding object to cache.
             o.reset_modified()
             # Add object to cache.

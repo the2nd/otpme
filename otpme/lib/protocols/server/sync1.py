@@ -40,6 +40,9 @@ from otpme.lib.audit import emit_audit
 from otpme.lib.exceptions import *
 
 LOCK_TYPE = "sync.server"
+# The object types used on other sites than their own, whose last used
+# times their site gets from us (see get_peer_last_used_times()).
+PEER_LAST_USED_TYPES = ["user", "token", "host", "device"]
 REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']
 PROTOCOL_VERSION = "OTPme-sync-1.0"
@@ -126,6 +129,9 @@ class OTPmeSyncP1(OTPmeServer1):
         self.peer_sync_params = {}
         # Sync list of peer.
         self.sync_list = None
+        # The object config versions the code of the peer reads, as it
+        # says them with the command. See get_peer_sync_config().
+        self.peer_config_versions = {}
         # Call parent class init.
         OTPmeServer1.__init__(self, **kwargs)
 
@@ -135,6 +141,25 @@ class OTPmeSyncP1(OTPmeServer1):
         self.pid = os.getpid()
         # Do atfork stuff.
         multiprocessing.atfork(quiet=True)
+
+    def get_peer_sync_config(self, o, object_config=None):
+        """ The config of an object as it goes out to our peer.
+
+        Taken down to the versions the code of the peer reads, which it
+        said with the command (see the dispatch below). None where there
+        is no way down: that object is left out for this peer, and said
+        in the log, and the rest of the sync goes on. A peer is better
+        without one object than handed one it cannot load.
+        """
+        try:
+            return o.get_sync_config(peer=self.peer,
+                                    object_config=object_config,
+                                    peer_versions=self.peer_config_versions)
+        except ConfigDowngradeFailed as e:
+            log_msg = _("Not sending object to peer, its code is too old for it: {oid}: {peer}: {error}", log=True)[1]
+            log_msg = log_msg.format(oid=o.oid, peer=self.peer.name, error=e)
+            self.logger.warning(log_msg)
+            return None
 
     def get_site_objects(self, realm, site):
         """ Get site object and all its objects needed to start a sync. """
@@ -173,13 +198,17 @@ class OTPmeSyncP1(OTPmeServer1):
             # Get sites realm object config.
             site_realm = backend.get_object(object_type="realm",
                                             uuid=site.realm_uuid)
-            object_config = site_realm.get_sync_config(peer=self.peer)
-            encoded_config = json.encode(object_config, encoding="hex")
-            sync_checksum = get_handout_checksum(object_config)
-            site_objects.append([site_realm.oid.full_oid, encoded_config, sync_checksum])
+            object_config = self.get_peer_sync_config(site_realm)
+            if object_config is not None:
+                encoded_config = json.encode(object_config, encoding="hex")
+                sync_checksum = get_handout_checksum(object_config)
+                site_objects.append([site_realm.oid.full_oid, encoded_config, sync_checksum])
 
-        # Get sites object config.
-        object_config = site.get_sync_config(peer=self.peer)
+        # Get sites object config. Without it there is nothing to start
+        # a sync of the site with.
+        object_config = self.get_peer_sync_config(site)
+        if object_config is None:
+            return
         encoded_config = json.encode(object_config, encoding="hex")
         sync_checksum = get_handout_checksum(object_config)
         site_objects.append([site.oid.full_oid, encoded_config, sync_checksum])
@@ -192,7 +221,9 @@ class OTPmeSyncP1(OTPmeServer1):
                                         site=site.name,
                                         return_type="instance")
         for node in all_site_nodes:
-            object_config = node.get_sync_config(peer=self.peer)
+            object_config = self.get_peer_sync_config(node)
+            if object_config is None:
+                continue
             node_config = json.encode(object_config, encoding="hex")
             # Taken here: the loop below builds other configs over it.
             node_checksum = get_handout_checksum(object_config)
@@ -200,11 +231,13 @@ class OTPmeSyncP1(OTPmeServer1):
             unit_uuid = node.unit_uuid
             while unit_uuid:
                 unit = backend.get_object(object_type="unit", uuid=unit_uuid)
-                object_config = unit.get_sync_config(peer=self.peer)
+                unit_uuid = unit.unit_uuid
+                object_config = self.get_peer_sync_config(unit)
+                if object_config is None:
+                    continue
                 encoded_config = json.encode(object_config, encoding="hex")
                 sync_checksum = get_handout_checksum(object_config)
                 site_objects.append([unit.oid.full_oid, encoded_config, sync_checksum])
-                unit_uuid = unit.unit_uuid
             # Add master node config.
             site_objects.append([node.oid.full_oid, node_config, node_checksum])
 
@@ -216,7 +249,9 @@ class OTPmeSyncP1(OTPmeServer1):
                                         site=site.name,
                                         return_type="instance")
         for ca in all_site_cas:
-            object_config = ca.get_sync_config(peer=self.peer)
+            object_config = self.get_peer_sync_config(ca)
+            if object_config is None:
+                continue
             node_config = json.encode(object_config, encoding="hex")
             # Taken here: the loop below builds other configs over it.
             ca_checksum = get_handout_checksum(object_config)
@@ -224,11 +259,13 @@ class OTPmeSyncP1(OTPmeServer1):
             unit_uuid = ca.unit_uuid
             while unit_uuid:
                 unit = backend.get_object(object_type="unit", uuid=unit_uuid)
-                object_config = unit.get_sync_config(peer=self.peer)
+                unit_uuid = unit.unit_uuid
+                object_config = self.get_peer_sync_config(unit)
+                if object_config is None:
+                    continue
                 encoded_config = json.encode(object_config, encoding="hex")
                 sync_checksum = get_handout_checksum(object_config)
                 site_objects.append([unit.oid.full_oid, encoded_config, sync_checksum])
-                unit_uuid = unit.unit_uuid
             # Add master ca config.
             site_objects.append([ca.oid.full_oid, node_config, ca_checksum])
 
@@ -359,11 +396,55 @@ class OTPmeSyncP1(OTPmeServer1):
             self.logger.debug(log_msg)
         return response
 
-    def get_last_used_times(self, object_types):
-        """ Handle get last used command. """
-        # Get sync list.
+    def get_last_used_times(self, object_types, realm=None, site=None):
+        """ The last used times of the objects of a site, ours by default. """
         try:
-            response = backend.get_last_used_times(object_types=object_types)
+            response = backend.get_last_used_times(object_types=object_types,
+                                                realm=realm,
+                                                site=site)
+            status = True
+        except Exception as e:
+            log_msg = _("Failed to get last used data from backend: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            response = _("Failed to get last used data from backend.")
+            status = False
+        return status, response
+
+    def get_peer_last_used_times(self):
+        """ The last used times we have of the objects of the peer's site.
+
+        A user of another site logs in here, and his site does not see
+        it: the time goes to the nodes of this site only. His site asks
+        for them with this, so that a user who is used here does not
+        count as unused there.
+
+        Only a node of another site of our realm, and only the objects
+        of its own site. What it gets is about its objects, and only of
+        the types that are used on other sites than their own.
+        """
+        # The peer is told no more than that; the log says why.
+        reason = None
+        if self.peer.type != "node":
+            reason = _("not a node", log=True)[1]
+        elif self.peer.realm != config.realm:
+            reason = _("of another realm", log=True)[1]
+        elif self.peer.site == config.site:
+            reason = _("of our own site, which gets them with the sync of its site", log=True)[1]
+        if reason is not None:
+            response = _("Permission denied.")
+            log_msg = _("Permission denied for last used times: {peer_type} {realm}/{site}/{name}: {reason}", log=True)[1]
+            log_msg = log_msg.format(peer_type=self.peer.type,
+                                    realm=self.peer.realm,
+                                    site=self.peer.site,
+                                    name=self.peer.name,
+                                    reason=reason)
+            self.logger.warning(log_msg)
+            return False, response
+        try:
+            response = backend.get_last_used_times(object_types=PEER_LAST_USED_TYPES,
+                                                realm=self.peer.realm,
+                                                site=self.peer.site)
             status = True
         except Exception as e:
             log_msg = _("Failed to get last used data from backend: {e}", log=True)[1]
@@ -426,10 +507,18 @@ class OTPmeSyncP1(OTPmeServer1):
             log_msg = log_msg.format(object_id=object_id)
             self.logger.warning(log_msg)
             return status, response
-        # Get sync object config.
+        # Get sync object config, as the code of the peer reads it.
         try:
             sync_config = o.get_sync_config(peer=self.peer,
-                                            object_config=object_config)
+                                            object_config=object_config,
+                                            peer_versions=self.peer_config_versions)
+        except ConfigDowngradeFailed as e:
+            response, log_msg = _("Not sending object to peer, its code is too old for it: {oid}: {peer}: {error}", log=True)
+            response = response.format(oid=o.oid, peer=self.peer.name, error=e)
+            log_msg = log_msg.format(oid=o.oid, peer=self.peer.name, error=e)
+            self.logger.warning(log_msg)
+            status = False
+            return status, response
         except Exception as e:
             response = _("Failed to get object sync config: {o_oid}: {e}")
             response = response.format(o_oid=o.oid, e=e)
@@ -1319,6 +1408,7 @@ class OTPmeSyncP1(OTPmeServer1):
                         "get_object",
                         "get_sync_list",
                         "get_last_used",
+                        "get_peer_last_used",
                         "get_sync_list_checksum",
                         "add_sync_list_checksum",
                         "get_ssh_authorized_keys",
@@ -1349,6 +1439,11 @@ class OTPmeSyncP1(OTPmeServer1):
         # Set proctitle to contain peer name.
         new_proctitle = f"{self.proctitle} ({command})"
         setproctitle.setproctitle(new_proctitle)
+
+        # What the code of the peer reads, said with get_sites and
+        # get_object. A peer that says nothing runs code from before the
+        # versions were counted, and reads version 1 of everything.
+        self.peer_config_versions = command_args.get('config_versions') or {}
 
         # Check for quorum.
         if config.host_data['type'] == "node":
@@ -1414,6 +1509,12 @@ class OTPmeSyncP1(OTPmeServer1):
                                     set_packages=command_args.get('set_packages'),
                                     del_packages=command_args.get('del_packages'),
                                     hardware=command_args.get('hardware'))
+            return self.build_response(status, response)
+
+        # Before the sync parameters as well: the peer asks about objects
+        # of its own site, which are no part of what it syncs from us.
+        if command == "get_peer_last_used":
+            status, response = self.get_peer_last_used_times()
             return self.build_response(status, response)
 
         # Get sync realm/site.
@@ -1583,11 +1684,21 @@ class OTPmeSyncP1(OTPmeServer1):
 
         if command == "get_last_used":
             if self.peer.type != "node":
-                response, log_msg = _("Permission denied.", log=True)
+                response = _("Permission denied.")
+                log_msg = _("Permission denied for last used times: {peer_type} {realm}/{site}/{name}: {reason}", log=True)[1]
+                log_msg = log_msg.format(peer_type=self.peer.type,
+                                        realm=self.peer.realm,
+                                        site=self.peer.site,
+                                        name=self.peer.name,
+                                        reason=_("not a node", log=True)[1])
                 status = False
                 self.logger.warning(log_msg)
                 return self.build_response(status, response)
-            status, response = self.get_last_used_times(sync_object_types)
+            # Of the site asked about: a node of our site asks its master
+            # about the other sites as well, and gets them from it.
+            status, response = self.get_last_used_times(sync_object_types,
+                                                        realm=sync_realm,
+                                                        site=sync_site)
             return self.build_response(status, response)
 
         if command == "get_conf_jobs":

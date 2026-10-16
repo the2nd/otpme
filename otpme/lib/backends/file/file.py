@@ -74,6 +74,8 @@ from otpme.lib.exceptions import *
 
 OBJECTS_DIR = os.path.join(config.data_dir, "tree")
 USED_DIR = os.path.join(config.data_dir, "data", "used")
+# Objects per statement in set_last_used_times().
+LAST_USED_UPDATE_CHUNK = 500
 
 object_dirs = {}
 data_dirs = {
@@ -526,14 +528,13 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
                                 index_journal=index_journal,
                                 full_index_update=full_index_update,
                                 use_index_journal=use_index_journal,
+                                full_data_update=full_data_update,
                                 cluster=cluster)
         # Get write transaction.
         write_transaction = FileTransaction(transaction_name,
                                             no_disk_writes=True,
                                             no_index_writes=no_index_writes,
                                             commit_files=commit_files)
-        write_transaction.begin()
-
     else:
         # For tree-objects we have to make sure the parent directory (e.g. the
         # object's unit) does exist.
@@ -549,130 +550,156 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
         write_transaction = FileTransaction(transaction_name,
                                         no_index_writes=no_index_writes,
                                         commit_files=commit_files)
-        write_transaction.begin()
-
         # Transaction to handle index actions.
         index_handler = write_transaction
         cluster_handler = write_transaction
-        # Check if objects config dir path has changed and we have to move it,
-        if uuid:
-            old_oid, \
-            old_config_file, \
-            new_config_file = get_config_file_move(uuid, new_oid=object_id)
-            move_dirs = False
-            if old_config_file and old_config_file != new_config_file:
-                # We need to do a full index update if OID changed...
-                full_index_update = True
-                # Remove old OID from index.
-                index_handler.index_del(object_id=old_oid,
+    write_transaction.begin()
+
+    # From here on the lock is given back however this ends, and what is
+    # not written to disk yet is not left behind: held by a process that
+    # runs on, a transaction was replayed only when that process ended,
+    # over whatever had been written since.
+    try:
+        if not _transaction:
+            # Check if objects config dir path has changed and we have to move it,
+            if uuid:
+                old_oid, \
+                old_config_file, \
+                new_config_file = get_config_file_move(uuid, new_oid=object_id)
+                move_dirs = False
+                if old_config_file and old_config_file != new_config_file:
+                    # We need to do a full index update if OID changed...
+                    full_index_update = True
+                    # Remove old OID from index.
+                    index_handler.index_del(object_id=old_oid,
+                                        no_transaction=no_transaction)
+                    # Check if we have to move the config dir.
+                    old_config_dir = os.path.dirname(old_config_file)
+                    new_config_dir = os.path.dirname(new_config_file)
+                    if os.path.exists(old_config_dir):
+                        if not os.path.exists(new_config_dir):
+                            move_dirs = True
+                if move_dirs:
+                    # Child objects needs to be re-added to the index.
+                    child_objects = get_moved_child_objects(old_config_dir,
+                                                            new_config_dir)
+                    # Move directory.
+                    write_transaction.move(old_config_dir, new_config_dir)
+                    # Set new paths.
+                    config_dir = new_config_dir
+                    config_file = new_config_file
+
+            # Create config dir if needed.
+            write_transaction.create_dir(config_dir)
+            # Try to write config file.
+            write_transaction.write_object_file(object_id,
+                                            config_file, object_config,
+                                            full_data_update=full_data_update)
+
+            # Update nsscache.
+            if object_type in NSSCACHE_OBJECT_TYPES:
+                # Get object template status.
+                try:
+                    template = object_config['TEMPLATE']
+                except Exception:
+                    template = False
+                if not template:
+                    write_transaction.update_nsscache(object_id, "update")
+
+        # Add object to index.
+        index_handler.index_add(object_id,
+                    object_paths=object_paths,
+                    object_config=object_config,
+                    acl_journal=acl_journal,
+                    full_acl_update=full_acl_update,
+                    use_acl_journal=use_acl_journal,
+                    ldif_journal=ldif_journal,
+                    full_ldif_update=full_ldif_update,
+                    use_ldif_journal=use_ldif_journal,
+                    index_journal=index_journal,
+                    full_index_update=full_index_update,
+                    use_index_journal=use_index_journal,
+                    checksum=checksum,
+                    sync_checksum=sync_checksum,
+                    no_transaction=no_transaction)
+
+        # If we got child objects to modify we have to check if there is a active
+        # transaction (active or currently committing).
+        if child_objects:
+            x_transaction = None
+            if not no_transaction:
+                x_transaction = get_transaction(active=None)
+        # Modify child objects in index _after_ parent object is updated.
+        for x_uuid in child_objects:
+            x_old_oid = child_objects[x_uuid]['old_oid']
+            # If there is a transaction try to get object from it.
+            x_object_config = None
+            if x_transaction:
+                x_object_config = x_transaction.get_object(x_old_oid)
+            if not x_object_config:
+                x_object_config = read(x_old_oid, use_index=False)
+            x_new_oid = child_objects[x_uuid]['new_oid']
+            index_handler.index_del(object_id=x_old_oid,
                                     no_transaction=no_transaction)
-                # Check if we have to move the config dir.
-                old_config_dir = os.path.dirname(old_config_file)
-                new_config_dir = os.path.dirname(new_config_file)
-                if os.path.exists(old_config_dir):
-                    if not os.path.exists(new_config_dir):
-                        move_dirs = True
-            if move_dirs:
-                # Child objects needs to be re-added to the index.
-                child_objects = get_moved_child_objects(old_config_dir,
-                                                        new_config_dir)
-                # Move directory.
-                write_transaction.move(old_config_dir, new_config_dir)
-                # Set new paths.
-                config_dir = new_config_dir
-                config_file = new_config_file
-
-        # Create config dir if needed.
-        write_transaction.create_dir(config_dir)
-        # Try to write config file.
-        write_transaction.write_object_file(object_id,
-                                        config_file, object_config,
-                                        full_data_update=full_data_update)
-
-        # Update nsscache.
-        if object_type in NSSCACHE_OBJECT_TYPES:
-            # Get object template status.
-            try:
-                template = object_config['TEMPLATE']
-            except Exception:
-                template = False
-            if not template:
-                write_transaction.update_nsscache(object_id, "update")
-
-    # Add object to index.
-    index_handler.index_add(object_id,
-                object_paths=object_paths,
-                object_config=object_config,
-                acl_journal=acl_journal,
-                full_acl_update=full_acl_update,
-                use_acl_journal=use_acl_journal,
-                ldif_journal=ldif_journal,
-                full_ldif_update=full_ldif_update,
-                use_ldif_journal=use_ldif_journal,
-                index_journal=index_journal,
-                full_index_update=full_index_update,
-                use_index_journal=use_index_journal,
-                checksum=checksum,
-                sync_checksum=sync_checksum,
-                no_transaction=no_transaction)
-
-    # If we got child objects to modify we have to check if there is a active
-    # transaction (active or currently committing).
-    if child_objects:
-        x_transaction = None
-        if not no_transaction:
-            x_transaction = get_transaction(active=None)
-    # Modify child objects in index _after_ parent object is updated.
-    for x_uuid in child_objects:
-        x_old_oid = child_objects[x_uuid]['old_oid']
-        # If there is a transaction try to get object from it.
-        x_object_config = None
-        if x_transaction:
-            x_object_config = x_transaction.get_object(x_old_oid)
-        if not x_object_config:
-            x_object_config = read(x_old_oid, use_index=False)
-        x_new_oid = child_objects[x_uuid]['new_oid']
-        index_handler.index_del(object_id=x_old_oid,
-                                no_transaction=no_transaction)
-        index_handler.index_add(object_id=x_new_oid,
-                            object_config=x_object_config,
-                            full_index_update=True,
-                            no_transaction=no_transaction)
-        # Make sure object is also outdated in all caches because
-        # changing the OID does not result in changed checksum.
-        outdate_object(x_old_oid, cache_type="all")
-        if not x_transaction:
-            continue
-        x_object = x_transaction.get_object(x_old_oid)
-        if not x_object:
-            continue
-        # Update child object in transaction.
-        x_transaction.dismiss_object(object_id=x_old_oid)
-        x_transaction.add_object(object_id=x_new_oid,
+            index_handler.index_add(object_id=x_new_oid,
                                 object_config=x_object_config,
                                 full_index_update=True,
-                                cluster=cluster)
+                                no_transaction=no_transaction)
+            # Make sure object is also outdated in all caches because
+            # changing the OID does not result in changed checksum.
+            outdate_object(x_old_oid, cache_type="all")
+            if not x_transaction:
+                continue
+            x_object = x_transaction.get_object(x_old_oid)
+            if not x_object:
+                continue
+            # Update child object in transaction.
+            x_transaction.dismiss_object(object_id=x_old_oid)
+            x_transaction.add_object(object_id=x_new_oid,
+                                    object_config=x_object_config,
+                                    full_index_update=True,
+                                    cluster=cluster)
 
-    if cluster:
-        cluster_handler.cluster_write(object_uuid=uuid,
-                                    object_id=object_id,
-                                    acl_journal=acl_journal,
-                                    index_journal=index_journal,
-                                    full_acl_update=full_acl_update,
-                                    full_index_update=full_index_update,
-                                    wait_for_write=wait_for_cluster_writes)
+        if cluster:
+            cluster_handler.cluster_write(object_uuid=uuid,
+                                        object_id=object_id,
+                                        acl_journal=acl_journal,
+                                        index_journal=index_journal,
+                                        full_acl_update=full_acl_update,
+                                        full_index_update=full_index_update,
+                                        wait_for_write=wait_for_cluster_writes)
 
-    # Commit and remove write transaction.
-    if transaction_replay:
-        write_transaction.replay()
+        # Commit write transaction.
+        if transaction_replay:
+            write_transaction.replay()
+        else:
+            write_transaction.commit()
+    except Exception:
+        # Not written to disk yet: there is nothing in it to replay, its
+        # status alone says it is there. Part of an object transaction,
+        # before its commit or within it: its journal still has this
+        # write -- the commit files go only with a commit that went
+        # through -- and its replay writes the object again. Kept,
+        # either would be replayed later, over what was written in
+        # between.
+        #
+        # Written, and on its own: the only record of what is left to
+        # do, it stays for replay_transactions().
+        if write_transaction.status != "written" \
+        or _transaction \
+        or commit_files:
+            write_transaction.remove()
+        raise
     else:
-        write_transaction.commit()
-    # With an running object transaction the file transaction
-    # gets deleted by it.
-    object_transaction = get_transaction(active=None)
-    if not object_transaction:
+        # Removed here, within its lock, also while an object
+        # transaction runs. Its journal, cluster journal and commit
+        # files are gone with the commit, so nothing is left for the
+        # object transaction to do with it. Left behind, it lay there
+        # with no lock until that ended, and the replay of another
+        # process took it up and removed it at the same time as we did.
         write_transaction.remove()
-    write_transaction.release_lock()
+    finally:
+        write_transaction.release_lock()
 
     return True
 
@@ -737,129 +764,137 @@ def rename(object_id, new_object_id, no_lock=False,
                                             no_disk_writes=True,
                                             no_index_writes=no_index_writes,
                                             commit_files=commit_files)
-        rename_transaction.begin()
-        _transaction.rename_object(object_id, new_object_id, cluster=cluster)
     else:
         # Get rename transaction.
         rename_transaction = FileTransaction(transaction_name,
                                             no_index_writes=no_index_writes,
                                             commit_files=commit_files)
-        rename_transaction.begin()
         # Transaction to handle index actions.
         index_handler = rename_transaction
         cluster_handler = rename_transaction
-        # Check if objects config dir path has changed and we have to move it,
-        old_oid, \
-        old_config_file, \
-        new_config_file = get_config_file_move(object_uuid,
-                                            new_oid=new_object_id,
-                                            old_oid=object_id)
-        old_config_dir = os.path.dirname(old_config_file)
-        new_config_dir = os.path.dirname(new_config_file)
-        if os.path.exists(new_config_dir):
-            msg = _("Directory already exists: {new_config_dir}")
-            msg = msg.format(new_config_dir=new_config_dir)
-            rename_transaction.release_lock()
-            raise OTPmeException(msg)
-        if os.path.exists(new_config_file):
-            msg = _("File already exists: {new_config_file}")
-            msg = msg.format(new_config_file=new_config_file)
-            rename_transaction.release_lock()
-            raise OTPmeException(msg)
+    rename_transaction.begin()
 
-        # Get child objects to be updated in the index.
-        child_objects = get_moved_child_objects(old_config_dir,
-                                                new_config_dir)
-        # Try to rename config dir.
-        rename_transaction.move(old_config_dir, new_config_dir)
+    # The lock is given back however this ends, and what is not written
+    # to disk yet is not left behind, see write().
+    try:
+        if _transaction:
+            _transaction.rename_object(object_id, new_object_id, cluster=cluster)
+        else:
+            # Check if objects config dir path has changed and we have to move it,
+            old_oid, \
+            old_config_file, \
+            new_config_file = get_config_file_move(object_uuid,
+                                                new_oid=new_object_id,
+                                                old_oid=object_id)
+            old_config_dir = os.path.dirname(old_config_file)
+            new_config_dir = os.path.dirname(new_config_file)
+            if os.path.exists(new_config_dir):
+                msg = _("Directory already exists: {new_config_dir}")
+                msg = msg.format(new_config_dir=new_config_dir)
+                raise OTPmeException(msg)
+            if os.path.exists(new_config_file):
+                msg = _("File already exists: {new_config_file}")
+                msg = msg.format(new_config_file=new_config_file)
+                raise OTPmeException(msg)
 
-        # Rename config file if needed (probably never needed e.g. object.json).
-        old_filename = os.path.basename(old_config_file)
-        new_filename = os.path.basename(new_config_file)
-        if old_filename != new_filename:
-            old_filepath = os.path.join(new_config_dir, old_filename)
-            new_filepath = os.path.join(new_config_dir, new_filename)
-            rename_transaction.move(old_filepath, new_filepath)
+            # Get child objects to be updated in the index.
+            child_objects = get_moved_child_objects(old_config_dir,
+                                                    new_config_dir)
+            # Try to rename config dir.
+            rename_transaction.move(old_config_dir, new_config_dir)
 
-    # Cluster rename action.
-    if object_uuid:
-        # Update index.
-        if not no_index_writes:
-            index_handler.index_del(object_id=object_id,
-                                    no_transaction=no_transaction)
-            index_handler.index_add(new_object_id,
-                                object_config=object_config,
-                                no_transaction=no_transaction,
-                                full_index_update=True)
+            # Rename config file if needed (probably never needed e.g. object.json).
+            old_filename = os.path.basename(old_config_file)
+            new_filename = os.path.basename(new_config_file)
+            if old_filename != new_filename:
+                old_filepath = os.path.join(new_config_dir, old_filename)
+                new_filepath = os.path.join(new_config_dir, new_filename)
+                rename_transaction.move(old_filepath, new_filepath)
 
-    # If we got child objects to modify we have to check if there is a active
-    # transaction (active or currently committing).
-    if child_objects:
-        x_transaction = None
-        if not no_transaction:
-            x_transaction = get_transaction(active=None)
-    # Modify child objects in index _after_ parent object is updated.
-    for x_uuid in child_objects:
-        # Get old OID.
-        x_old_oid = child_objects[x_uuid]['old_oid']
-        # Get new OID.
-        x_new_oid = child_objects[x_uuid]['new_oid']
-        if not no_index_writes:
-            # If there is a transaction try to get object from it.
-            x_object_config = None
-            if x_transaction:
-                x_object_config = x_transaction.get_object(x_old_oid)
-            # Fallback to backend if object not in transaction.
-            if not x_object_config:
-                x_object_config = read(x_old_oid, use_index=False)
-            # Remove old OID from index.
-            index_handler.index_del(object_id=x_old_oid,
-                                    no_transaction=no_transaction)
-            index_handler.index_add(object_id=x_new_oid,
-                                    object_config=x_object_config,
+        # Cluster rename action.
+        if object_uuid:
+            # Update index.
+            if not no_index_writes:
+                index_handler.index_del(object_id=object_id,
+                                        no_transaction=no_transaction)
+                index_handler.index_add(new_object_id,
+                                    object_config=object_config,
                                     no_transaction=no_transaction,
                                     full_index_update=True)
-        # Make sure object is also outdated in all caches because
-        # changing the OID does not result in changed checksum.
-        outdate_object(x_old_oid, cache_type="all")
-        if not x_transaction:
-            continue
-        x_object = x_transaction.get_object(x_old_oid)
-        if not x_object:
-            continue
-        # Update child object in transaction.
-        x_transaction.dismiss_object(object_id=x_old_oid)
-        x_transaction.add_object(object_id=x_new_oid,
-                                object_config=x_object_config,
-                                full_index_update=True,
-                                use_index=True)
-    # Update nsscache.
-    if object_type in NSSCACHE_OBJECT_TYPES:
-        # Get object template status.
-        try:
-            template = object_config['TEMPLATE']
-        except Exception:
-            template = False
-        if not template:
-            rename_transaction.update_nsscache(object_id, "remove")
-            rename_transaction.update_nsscache(new_object_id, "update")
 
-    if cluster:
-        cluster_handler.cluster_rename(object_uuid,
-                                        object_id,
-                                        new_object_id)
+        # If we got child objects to modify we have to check if there is a active
+        # transaction (active or currently committing).
+        if child_objects:
+            x_transaction = None
+            if not no_transaction:
+                x_transaction = get_transaction(active=None)
+        # Modify child objects in index _after_ parent object is updated.
+        for x_uuid in child_objects:
+            # Get old OID.
+            x_old_oid = child_objects[x_uuid]['old_oid']
+            # Get new OID.
+            x_new_oid = child_objects[x_uuid]['new_oid']
+            if not no_index_writes:
+                # If there is a transaction try to get object from it.
+                x_object_config = None
+                if x_transaction:
+                    x_object_config = x_transaction.get_object(x_old_oid)
+                # Fallback to backend if object not in transaction.
+                if not x_object_config:
+                    x_object_config = read(x_old_oid, use_index=False)
+                # Remove old OID from index.
+                index_handler.index_del(object_id=x_old_oid,
+                                        no_transaction=no_transaction)
+                index_handler.index_add(object_id=x_new_oid,
+                                        object_config=x_object_config,
+                                        no_transaction=no_transaction,
+                                        full_index_update=True)
+            # Make sure object is also outdated in all caches because
+            # changing the OID does not result in changed checksum.
+            outdate_object(x_old_oid, cache_type="all")
+            if not x_transaction:
+                continue
+            x_object = x_transaction.get_object(x_old_oid)
+            if not x_object:
+                continue
+            # Update child object in transaction.
+            x_transaction.dismiss_object(object_id=x_old_oid)
+            x_transaction.add_object(object_id=x_new_oid,
+                                    object_config=x_object_config,
+                                    full_index_update=True,
+                                    use_index=True)
+        # Update nsscache.
+        if object_type in NSSCACHE_OBJECT_TYPES:
+            # Get object template status.
+            try:
+                template = object_config['TEMPLATE']
+            except Exception:
+                template = False
+            if not template:
+                rename_transaction.update_nsscache(object_id, "remove")
+                rename_transaction.update_nsscache(new_object_id, "update")
 
-    # Commit and delete transaction.
-    if transaction_replay:
-        rename_transaction.replay()
+        if cluster:
+            cluster_handler.cluster_rename(object_uuid,
+                                            object_id,
+                                            new_object_id)
+
+        # Commit rename transaction.
+        if transaction_replay:
+            rename_transaction.replay()
+        else:
+            rename_transaction.commit()
+    except Exception:
+        # See write().
+        if rename_transaction.status != "written" \
+        or _transaction \
+        or commit_files:
+            rename_transaction.remove()
+        raise
     else:
-        rename_transaction.commit()
-    # With an running object transaction the file transaction
-    # gets deleted by it.
-    object_transaction = get_transaction(active=None)
-    if not object_transaction:
         rename_transaction.remove()
-    rename_transaction.release_lock()
+    finally:
+        rename_transaction.release_lock()
 
     return True
 
@@ -927,71 +962,79 @@ def delete(object_id, no_lock=False, commit_files=None, object_uuid=None,
                                         no_disk_writes=True,
                                         no_index_writes=no_index_writes,
                                         commit_files=commit_files)
-        del_transaction.begin()
     else:
         # Get delete transaction.
         del_transaction = FileTransaction(transaction_name,
                                         no_index_writes=no_index_writes,
                                         commit_files=commit_files)
-        del_transaction.begin()
         # Transaction to handle index actions.
         index_handler = del_transaction
         cluster_handler = del_transaction
+    del_transaction.begin()
 
-        try:
-            remove_files = config_paths['remove_on_delete']
-        except Exception:
-            remove_files = []
-        try:
-            remove_dirs = config_paths['rmdir_on_delete']
-        except Exception:
-            remove_dirs = []
-        try:
-            rmtree_dirs = config_paths['rmtree_on_delete']
-        except Exception:
-            rmtree_dirs = []
-
-        for i in remove_files:
-            del_transaction.remove_file(i)
-
-        for i in remove_dirs:
-            del_transaction.remove_dir(i, recursive=True, remove_non_empty=False)
-
-        for i in rmtree_dirs:
-            del_transaction.remove_dir(i, recursive=True, remove_non_empty=True)
-
-    # Remove object from index.
-    index_handler.index_del(object_id=object_id,
-                        no_transaction=no_transaction)
-
-    # Update nsscache.
-    if update_nsscache:
-        if object_type in NSSCACHE_OBJECT_TYPES:
-            # Get object template status.
+    # The lock is given back however this ends, and what is not written
+    # to disk yet is not left behind, see write().
+    try:
+        if not _transaction:
             try:
-                template = object_config['TEMPLATE']
+                remove_files = config_paths['remove_on_delete']
             except Exception:
-                template = False
-            if not template:
-                del_transaction.update_nsscache(object_id, "remove")
+                remove_files = []
+            try:
+                remove_dirs = config_paths['rmdir_on_delete']
+            except Exception:
+                remove_dirs = []
+            try:
+                rmtree_dirs = config_paths['rmtree_on_delete']
+            except Exception:
+                rmtree_dirs = []
 
-    if cluster:
-        if object_uuid:
-            cluster_handler.cluster_delete(object_uuid,
-                                        object_id,
-                                        wait_for_write=wait_for_cluster_writes)
+            for i in remove_files:
+                del_transaction.remove_file(i)
 
-    # Commit and delete transaction.
-    if transaction_replay:
-        del_transaction.replay()
+            for i in remove_dirs:
+                del_transaction.remove_dir(i, recursive=True, remove_non_empty=False)
+
+            for i in rmtree_dirs:
+                del_transaction.remove_dir(i, recursive=True, remove_non_empty=True)
+
+        # Remove object from index.
+        index_handler.index_del(object_id=object_id,
+                            no_transaction=no_transaction)
+
+        # Update nsscache.
+        if update_nsscache:
+            if object_type in NSSCACHE_OBJECT_TYPES:
+                # Get object template status.
+                try:
+                    template = object_config['TEMPLATE']
+                except Exception:
+                    template = False
+                if not template:
+                    del_transaction.update_nsscache(object_id, "remove")
+
+        if cluster:
+            if object_uuid:
+                cluster_handler.cluster_delete(object_uuid,
+                                            object_id,
+                                            wait_for_write=wait_for_cluster_writes)
+
+        # Commit delete transaction.
+        if transaction_replay:
+            del_transaction.replay()
+        else:
+            del_transaction.commit()
+    except Exception:
+        # See write().
+        if del_transaction.status != "written" \
+        or _transaction \
+        or commit_files:
+            del_transaction.remove()
+        raise
     else:
-        del_transaction.commit()
-    # With an running object transaction the file transaction
-    # gets deleted by it.
-    object_transaction = get_transaction(active=None)
-    if not object_transaction:
         del_transaction.remove()
-    del_transaction.release_lock()
+    finally:
+        del_transaction.release_lock()
 
     return True
 
@@ -3439,6 +3482,16 @@ def get_last_used(uuid, object_type=None, session=None, **kwargs):
 
 @handle_transaction
 def set_last_used_times(object_type, updates, session=None, **kwargs):
+    """ Set the last used times of many objects of one type.
+
+    A time only ever moves forward: the times come from the other nodes
+    of the site and from other sites, each of which saw logins the
+    others did not, and the latest of them is the last use. A time
+    older than the one we have is left out, in the statement itself,
+    so that no login in between is overwritten.
+    """
+    from sqlalchemy import or_
+    from sqlalchemy import and_
     from sqlalchemy import case
     from sqlalchemy import update
     try:
@@ -3450,16 +3503,24 @@ def set_last_used_times(object_type, updates, session=None, **kwargs):
         msg = msg.format(object_type=object_type)
         raise SearchException(msg) from err
 
-    when_conditions = [
-        (IndexObject.uuid == uuid, last_used)
-        for uuid, last_used in updates.items()
-    ]
-
-    stmt = update(IndexObject)
-    stmt = stmt.where(IndexObject.uuid.in_(updates.keys()))
-    stmt = stmt.values(last_used=case(*when_conditions))
-
-    session.execute(stmt)
+    # In parts: the database tries the branches of the CASE one after
+    # the other for every row, and there is no index on the UUID, so a
+    # statement for all of them grows with the square of their number.
+    # 14000 users in one went on for minutes.
+    items = list(updates.items())
+    for start in range(0, len(items), LAST_USED_UPDATE_CHUNK):
+        chunk = items[start:start+LAST_USED_UPDATE_CHUNK]
+        when_conditions = [
+            (and_(IndexObject.uuid == uuid,
+                or_(IndexObject.last_used.is_(None),
+                    IndexObject.last_used < last_used)), last_used)
+            for uuid, last_used in chunk
+        ]
+        stmt = update(IndexObject)
+        stmt = stmt.where(IndexObject.uuid.in_([x[0] for x in chunk]))
+        stmt = stmt.values(last_used=case(*when_conditions,
+                                        else_=IndexObject.last_used))
+        session.execute(stmt)
     session.commit()
 
 @handle_transaction
@@ -3526,11 +3587,16 @@ def set_last_used(object_id, uuid, timestamp, cluster=True,
 #                        object_data=timestamp,
 #                        wait_for_write=False)
 
-def get_last_used_times(object_types):
+def get_last_used_times(object_types, realm=None, site=None):
+    """ The last used times of the objects of a site, our own by default. """
+    if realm is None:
+        realm = config.realm
+    if site is None:
+        site = config.site
     last_used_data = {}
     for object_type in object_types:
-        result = index_search(realm=config.realm,
-                            site=config.site,
+        result = index_search(realm=realm,
+                            site=site,
                             attribute="uuid",
                             value="*",
                             object_type=object_type,

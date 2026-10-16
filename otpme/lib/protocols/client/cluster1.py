@@ -10,6 +10,7 @@ try:
 except Exception:
     pass
 
+import otpme
 from otpme.lib import oid
 from otpme.lib import trash
 from otpme.lib import config
@@ -592,12 +593,16 @@ class OTPmeClusterP1(OTPmeClient1):
     def set_node_online(self):
         """ Mark node as online.
 
-        And say which object config versions our code writes. Said
-        here because this is sent once for every connection to a peer,
-        and an update of the code means a restart, and so a new one.
+        And say which object config versions our code writes, and
+        which OTPme version it is. Said here because this is sent once
+        for every connection to a peer, and an update of the code means
+        a restart, and so a new one.
         """
         command = "set_node_online"
-        command_args = {'config_versions':config.get_config_versions()}
+        command_args = {
+                    'config_versions'   : config.get_config_versions(),
+                    'otpme_version'     : otpme.__version__,
+                    }
         status, \
         status_code, \
         response, \

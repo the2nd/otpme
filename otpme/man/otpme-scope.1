@@ -96,9 +96,11 @@ A reference to an object that is gone is printed as the bare UUID, which is how
 .B remove_orphans
 has something to find.
 .TP
-.B list \fR[\fB\-a\fR] \fR[\fIregex\fR]
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
 List the scope names, and with a regex only those that match it.
 You get the scopes you may change; \fB\-a\fR adds those you may only look at.
+.br
+\fB\-\-attribute\fR matches the regex against that attribute instead of the name: \fBlist \-\-attribute scope_id email\fR lists the scope an application asks for as \fBemail\fR.
 .TP
 .B enable \fIscope\fR
 Enable a disabled scope.
@@ -403,16 +405,11 @@ Needs the ACL \fBexport\fR.
 .B remove_orphans \fIscope\fR
 Remove references to objects that are gone.
 .br
-A token, a role or a client that is deleted leaves its UUID behind in every scope that held it.
+A token, a role, a group or a client that is deleted leaves its UUID behind in every scope that held it.
 Nothing is handed out to it any more \(em the UUID resolves to nothing \(em but it stays in the object and \fBshow\fR prints it as a bare UUID.
 This clears those out, together with orphan ACLs, policies and signatures.
 .br
 It asks once for everything it found; the global option \fB\-f\fR skips the question.
-.br
-A group that is gone is not cleaned up here: the group list is not one of the lists this command walks, and
-.B remove_group
-wants a name.
-Such a reference stays, and it does no harm \(em a group that does not resolve is left out of the claim.
 .br
 Needs the ACL \fBremove:orphans\fR.
 .SH HOW A SCOPE IS GRANTED

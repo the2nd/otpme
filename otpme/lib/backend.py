@@ -22,6 +22,7 @@ from otpme.lib import cache
 from otpme.lib import config
 from otpme.lib import locking
 from otpme.lib import otpme_acl
+from otpme.lib import maintenance
 from otpme.lib import multiprocessing
 from otpme.lib.cache import ldif_cache
 #from otpme.lib.locking import oid_lock
@@ -269,6 +270,26 @@ def read_config(
 
     return object_config
 
+def check_maintenance(object_id, cluster):
+    """ Refuse a change to an object of the tree while the site is in maintenance.
+
+    Only a change that starts here: that is what <cluster> says, it
+    hands the change on to the other nodes. What the cluster and the
+    sync bring in is written with cluster=False, and a replication
+    that hands on with cluster=True says so with
+    maintenance.override(). Raised, not returned: a caller that
+    ignores the result would commit the rest of its transaction.
+    """
+    if not cluster:
+        return
+    if object_id.object_type not in config.tree_object_types:
+        return
+    if not maintenance.is_active():
+        return
+    msg = _("Site is in maintenance, objects are not written (see: otpme-site maintenance {site}): {oid}")
+    msg = msg.format(site=config.site, oid=object_id)
+    raise MaintenanceMode(msg)
+
 @match_typing
 @handle_daemon_shutdown()
 #@oid_lock(args_oid_pos=[0], write=True)
@@ -314,6 +335,8 @@ def write_config(
     if full_ldif_update and ldif_journal:
         msg = _("You can use only one of <full_ldif_update> or <ldif_journal>.")
         raise OTPmeException(msg)
+
+    check_maintenance(object_id, cluster)
 
     # Replay any leftover transaction.
     replay_transactions()
@@ -368,6 +391,7 @@ def rename_object(
     cluster: bool=False
     ):
     """ Rename object. """
+    check_maintenance(object_id, cluster)
     # Replay any leftover transaction.
     replay_transactions()
     # Rename object in backend.
@@ -391,6 +415,7 @@ def delete_object(
     update_nsscache: bool=True,
     ):
     """ Delete object. """
+    check_maintenance(object_id, cluster)
     # Replay any leftover transaction.
     replay_transactions()
     # Get objects UUID before deleting from backend.

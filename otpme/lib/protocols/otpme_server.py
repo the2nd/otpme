@@ -2355,9 +2355,6 @@ class OTPmeServer1(object):
 
         # If we got a password try to auth user.
         if auth_type == "clear-text" or auth_type == "jwt":
-            jwt_auth = False
-            if auth_type == "jwt":
-                jwt_auth = True
             # Verify JWT or clear-text request.
             try:
                 auth_response = self.user.authenticate(auth_mode=auth_mode,
@@ -2377,7 +2374,6 @@ class OTPmeServer1(object):
                                         host=login_host,
                                         host_ip=login_host_ip,
                                         redirect_challenge=self.redirect_challenge,
-                                        jwt_auth=jwt_auth,
                                         jwt_challenge=jwt_challenge,
                                         redirect_response=redirect_response,
                                         rsp_ecdh_client_pub=rsp_ecdh_client_pub,

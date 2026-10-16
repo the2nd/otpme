@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set maintenance_banner = True %}
 {% block content %}
 {# attribute_labels in single quotes: tojson escapes what would end a
    single-quoted attribute, not a double quote. #}
@@ -31,7 +32,9 @@
      data-label-confirm-resize-photo="{{ gettext('The photo is {photo_dimensions}, photos here are {dimensions}. Resize it?') }}"
      data-label-photo-wrong-dimensions="{{ gettext('The photo must be {dimensions}.') }}"
      class="is-hidden"></div>
-<div class="portal-wrapper">
+{# In maintenance everything here is shown and nothing can be pressed
+   (maintenance.js). #}
+<div class="portal-wrapper{% if site_maintenance %} maintenance-locked{% endif %}">
     <h2>{{ gettext("Profile") }}</h2>
 
     <div class="settings-card" id="profilePhotoCard">
@@ -63,4 +66,5 @@
 </div>
 
 <script src="{{ url_for('static', filename='profile.js') }}"></script>
+<script src="{{ url_for('static', filename='maintenance.js') }}"></script>
 {% endblock %}

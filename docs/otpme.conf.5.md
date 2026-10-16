@@ -139,10 +139,14 @@ Tuning parameters: **MYSQL_MAX_CONNECTIONS,** **MYSQL_KEY_BUFFER_SIZE,**
 **MYSQL_THREAD_STACK,** **MYSQL_MAX_ALLOWED_PACKET,**
 **MYSQL_THREAD_CACHE_SIZE,** **MYSQL_QUERY_CACHE_LIMIT,**
 **MYSQL_QUERY_CACHE_SIZE,** **MYSQL_EXPIRE_LOGS_DAYS,**
-**MYSQL_MAX_BINLOG_SIZE,** **MYSQL_CHARACTER_SET_SERVER,**
-**MYSQL_COLLATION_SERVER,** **MYSQL_MYISAM_RECOVER_OPTIONS.**
+**MYSQL_MAX_BINLOG_SIZE,** **MYSQL_BINLOG_FORMAT,**
+**MYSQL_CHARACTER_SET_SERVER,** **MYSQL_COLLATION_SERVER,**
+**MYSQL_MYISAM_RECOVER_OPTIONS.**
 
-Custom config can be saved to */etc/otpme/mysql.conf*.
+**MYSQL_BINLOG_FORMAT** must be "ROW" or "MIXED". The index reads with
+READ COMMITTED, and MySQL refuses every write with "STATEMENT".
+
+Custom config can be saved to */etc/otpme/mysql.cnf*.
 
 # CACHE
 
@@ -710,7 +714,7 @@ Custom Redis configuration.
 */etc/otpme/postgresql.conf*  
 Custom PostgreSQL configuration.
 
-*/etc/otpme/mysql.conf*  
+*/etc/otpme/mysql.cnf*  
 Custom MySQL configuration.
 
 # SEE ALSO

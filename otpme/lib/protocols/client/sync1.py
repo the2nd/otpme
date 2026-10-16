@@ -14,11 +14,14 @@ except Exception:
     pass
 
 from otpme.lib import oid
+from otpme.lib import json
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import locking
+from otpme.lib import filetools
 from otpme.lib import nsscache
+from otpme.lib import maintenance
 from otpme.lib import host_key_pins
 from otpme.lib import sign_key_cache
 from otpme.lib import multiprocessing
@@ -38,6 +41,41 @@ PROTOCOL_VERSION = "OTPme-sync-1.0"
 def register():
     config.register_otpme_protocol("syncd", PROTOCOL_VERSION)
     locking.register_lock_type(LOCK_TYPE, module=__file__)
+
+def get_config_versions_file(realm, site):
+    """ Where the versions our code read at the last sync of a site are. """
+    return os.path.join(config.sync_dir, "config_versions", realm, f"{site}.json")
+
+def get_noted_config_versions(realm, site):
+    """ The object config versions our code read at the last full sync of
+    a site, empty if none was noted. Empty reads as version 1 of
+    everything, which is what code from before they were counted read. """
+    versions_file = get_config_versions_file(realm, site)
+    if not os.path.exists(versions_file):
+        return {}
+    try:
+        return json.decode(filetools.read_file(versions_file))
+    except Exception:
+        return {}
+
+def note_config_versions(realm, site, config_versions):
+    """ Write down the versions our code read at a sync of a site. """
+    versions_file = get_config_versions_file(realm, site)
+    versions_dir = os.path.dirname(versions_file)
+    if not os.path.exists(versions_dir):
+        filetools.create_dir(path=versions_dir,
+                            user=config.user,
+                            group=config.group,
+                            mode=0o770)
+    filetools.create_file(path=versions_file,
+                        content=json.encode(config_versions))
+
+def code_reads_more(noted_versions, config_versions):
+    """ Whether our code reads a higher version of anything than noted. """
+    for key, version in config_versions.items():
+        if version > noted_versions.get(key, 1):
+            return True
+    return False
 
 def get_own_realm_site():
     own_host = backend.get_object(uuid=config.uuid)
@@ -308,7 +346,11 @@ class OTPmeSyncP1(OTPmeClient1):
                                 site=site,
                                 sync_type="last_used",
                                 object_count=object_count)
-        local_last_used = backend.get_last_used_times(sync_object_types)
+        # Ours of the objects of that site, which is not ours when we
+        # sync with another one.
+        local_last_used = backend.get_last_used_times(sync_object_types,
+                                                    realm=realm,
+                                                    site=site)
         # Process last used timestamps from peer.
         for x_type in remote_last_used:
             if x_type not in sync_object_types:
@@ -328,8 +370,15 @@ class OTPmeSyncP1(OTPmeClient1):
                 try:
                     local_last_used_time = local_last_used[x_type][x_uuid]
                 except Exception:
-                    local_last_used_time = 0.0
-                if str(local_last_used_time) == str(timestamp):
+                    local_last_used_time = 0
+                # Only a later use is news, see set_last_used_times().
+                try:
+                    if float(timestamp) <= float(local_last_used_time):
+                        continue
+                except (TypeError, ValueError):
+                    log_msg = _("Remote last used data has invalid timestamp: {x_uuid}", log=True)[1]
+                    log_msg = log_msg.format(x_uuid=x_uuid)
+                    self.logger.warning(log_msg)
                     continue
                 # Update progress.
                 self.update_sync_progress(realm=realm,
@@ -364,10 +413,113 @@ class OTPmeSyncP1(OTPmeClient1):
                 backend.set_last_used_times(x_type, updates)
         return True
 
+    def sync_own_last_used(self, realm, site):
+        """ Take the last used times another site has of our objects.
+
+        A user of ours who logs in there is used there, and only the
+        nodes of that site get the time. Without it he would count as
+        unused here, and an "unused" auto-disable would disable a user
+        who is used every day. Every node asks for itself, as it syncs
+        the other sites itself.
+
+        A peer that does not know the command yet answers with an
+        error, which is raised; the caller logs it.
+        """
+        lock_id = f"sync_own_last_used:{realm}/{site}"
+        sync_lock = locking.acquire_lock(lock_type=LOCK_TYPE, lock_id=lock_id)
+        try:
+            return self._sync_own_last_used()
+        finally:
+            sync_lock.release_lock()
+
+    def _sync_own_last_used(self):
+        log_msg = _("Syncing last used times of our objects...", log=True)[1]
+        self.logger.info(log_msg)
+        status, \
+        status_code, \
+        remote_last_used, \
+        binary_data = self.connection.send("get_peer_last_used", {})
+        if status_code == status_codes.PERMISSION_DENIED:
+            msg = _("Permission denied.")
+            raise PermissionDenied(msg)
+        if status_code == status_codes.SYNC_DISABLED:
+            msg = _("Peer site disabled synchronization with us.")
+            raise SyncDisabled(msg)
+        if not status:
+            msg = _("Failed to receive last used timestamps from peer: {response}")
+            msg = msg.format(response=remote_last_used)
+            raise OTPmeException(msg)
+        if not isinstance(remote_last_used, dict):
+            msg = _("Invalid last used data from peer.")
+            raise OTPmeException(msg)
+        object_types = list(remote_last_used)
+        local_last_used = backend.get_last_used_times(object_types)
+        for x_type in object_types:
+            if x_type not in config.object_types:
+                log_msg = _("Got unknown object type from peer: {x_type}", log=True)[1]
+                log_msg = log_msg.format(x_type=x_type)
+                self.logger.warning(log_msg)
+                continue
+            local_times = local_last_used.get(x_type, {})
+            updates = {}
+            for x_uuid, timestamp in remote_last_used[x_type].items():
+                local_time = local_times.get(x_uuid)
+                # Only a later use is news, see set_last_used_times(),
+                # and never used there is none at all. The peer has a
+                # time of 0 for each of our objects nobody used there,
+                # and taking them for the ones never used here asked the
+                # index for every one of them and wrote thousands of
+                # zeros.
+                try:
+                    if float(timestamp) <= 0:
+                        continue
+                    if local_time is not None \
+                    and float(timestamp) <= float(local_time):
+                        continue
+                except (TypeError, ValueError):
+                    log_msg = _("Remote last used data has invalid timestamp: {x_uuid}", log=True)[1]
+                    log_msg = log_msg.format(x_uuid=x_uuid)
+                    self.logger.warning(log_msg)
+                    continue
+                # An object we have a time of is one of ours (the times
+                # above are of our site). One that was never used here
+                # has none, so it has to be asked.
+                if local_time is None:
+                    x_attrs = backend.search(object_type=x_type,
+                                            attribute="uuid",
+                                            value=x_uuid,
+                                            return_attributes=['realm', 'site'])
+                    if not x_attrs:
+                        continue
+                    if x_attrs[x_uuid]['realm'] != config.realm:
+                        continue
+                    if x_attrs[x_uuid]['site'] != config.site:
+                        continue
+                updates[x_uuid] = timestamp
+            if updates:
+                backend.set_last_used_times(x_type, updates)
+        return True
+
     def sync_objects(self, realm, site, resync=False, max_tries=5,
         skip_object_deletion=True, sync_last_used=False,
         sync_older_objects=False, ignore_changed_objects=False,
         remove_orphan_objects=False):
+        # The peer takes what it stores in a higher version down to what
+        # our code reads, and keeps the checksum of what it stores (see
+        # OTPmeObject.downgrade_sync_config()). So we fetch an object again
+        # when it changes there, and not when our code reads more than it
+        # did: what we hold stays what we were handed. Where a step down
+        # left something out, it would be missing until the object
+        # changed. After an update of our code everything is fetched
+        # once, for each site.
+        config_versions = config.get_config_versions()
+        if self.connection and not resync:
+            noted_versions = get_noted_config_versions(realm, site)
+            if code_reads_more(noted_versions, config_versions):
+                log_msg = _("Our code reads newer object config versions than at the last sync, fetching everything again: {realm}/{site}", log=True)[1]
+                log_msg = log_msg.format(realm=realm, site=site)
+                self.logger.info(log_msg)
+                resync = True
         # Acquire sync lock.
         lock_id = f"sync_objects:{realm}/{site}"
         sync_lock = locking.acquire_lock(lock_type=LOCK_TYPE, lock_id=lock_id)
@@ -380,6 +532,15 @@ class OTPmeSyncP1(OTPmeClient1):
                                 ignore_changed_objects=ignore_changed_objects)
         finally:
             sync_lock.release_lock()
+        # Noted only after a sync that went through: one cut short is
+        # done again in full the next time.
+        if self.connection and result is True:
+            try:
+                note_config_versions(realm, site, config_versions)
+            except Exception as e:
+                log_msg = _("Failed to note object config versions of sync: {realm}/{site}: {error}", log=True)[1]
+                log_msg = log_msg.format(realm=realm, site=site, error=e)
+                self.logger.warning(log_msg)
         # Write down the key of every host we hold a copy of, not only
         # of the ones this round brought: a sync fetches what changed,
         # so a host that was already in step never reaches the worker,
@@ -393,12 +554,36 @@ class OTPmeSyncP1(OTPmeClient1):
                                 site=site,
                                 status=result,
                                 sync_type="objects")
-        # Sync object last used timestamps.
+        # Sync object last used timestamps. Of another site as well: the
+        # logins on it are what its objects were last used by, and an
+        # object that is to be disabled when unused must not count as
+        # unused here because it was used there.
         if sync_last_used:
             if result is not False:
-                if realm == config.realm \
-                and site == config.site:
+                try:
                     self.sync_last_used(realm, site)
+                except Exception as e:
+                    log_msg = _("Failed to sync last used times: {realm}/{site}: {error}", log=True)[1]
+                    log_msg = log_msg.format(realm=realm, site=site, error=e)
+                    self.logger.warning(log_msg)
+                # And the other way: the times that site has of ours.
+                # A site of our realm only, see get_peer_last_used_times(),
+                # and only from a node of it. A node that is not master
+                # syncs the other sites from the master of our site; the
+                # master takes them from that site, and we get them with
+                # the sync of our own site.
+                peer = self.connection.peer
+                if realm == config.realm \
+                and site != config.site \
+                and peer is not None \
+                and peer.realm == realm \
+                and peer.site == site:
+                    try:
+                        self.sync_own_last_used(realm, site)
+                    except Exception as e:
+                        log_msg = _("Failed to sync last used times of our objects: {realm}/{site}: {error}", log=True)[1]
+                        log_msg = log_msg.format(realm=realm, site=site, error=e)
+                        self.logger.warning(log_msg)
         return result
 
     def note_host_keys(self):
@@ -810,6 +995,9 @@ class OTPmeSyncP1(OTPmeClient1):
                     command_args['site'] = site
                     command_args['object_id'] = object_id
                     command_args['object_checksums'] = object_checksums
+                    # What our code reads: the peer takes the object
+                    # down to it where it stores a newer version.
+                    command_args['config_versions'] = config.get_config_versions()
                     command_args.update(sync_params)
 
                     status, \
@@ -1705,13 +1893,16 @@ class OTPmeSyncP1(OTPmeClient1):
                     if config.master_node:
                         cluster = True
         try:
-            backend.write_config(object_id,
-                            instance=new_object,
-                            full_data_update=True,
-                            full_index_update=True,
-                            full_ldif_update=True,
-                            full_acl_update=True,
-                            cluster=cluster)
+            # What the peer has, handed on to our nodes: not a change
+            # of ours, so written in maintenance as well.
+            with maintenance.override():
+                backend.write_config(object_id,
+                                instance=new_object,
+                                full_data_update=True,
+                                full_index_update=True,
+                                full_ldif_update=True,
+                                full_acl_update=True,
+                                cluster=cluster)
             self.synced_objects.append(object_id.read_oid)
         except Exception as e:
             self.failed_objects.append(object_id)
@@ -1853,7 +2044,9 @@ class OTPmeSyncP1(OTPmeClient1):
                             if config.master_node:
                                 cluster = True
                 try:
-                    backend.delete_object(object_id, cluster=cluster)
+                    # The peer has it no more, see _process_one_object().
+                    with maintenance.override():
+                        backend.delete_object(object_id, cluster=cluster)
                 except Exception as e:
                     log_msg = _("Failed to delete object: {object_id}: {e}", log=True)[1]
                     log_msg = log_msg.format(object_id=object_id, e=e)
@@ -1948,7 +2141,9 @@ class OTPmeSyncP1(OTPmeClient1):
                             if config.master_node:
                                 cluster = True
                 try:
-                    backend.delete_object(object_id, cluster=cluster)
+                    # Gone on the peer, see _process_one_object().
+                    with maintenance.override():
+                        backend.delete_object(object_id, cluster=cluster)
                 except Exception as e:
                     log_msg = _("Failed to delete orphan object: {object_id}: {e}", log=True)[1]
                     log_msg = log_msg.format(object_id=object_id, e=e)

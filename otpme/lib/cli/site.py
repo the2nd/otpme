@@ -22,6 +22,7 @@ from otpme.lib.exceptions import *
 table_headers = [
                 "site",
                 "status",
+                "version",
                 "auth",
                 "sync",
                 "trusts",
@@ -49,6 +50,7 @@ def register():
                         'trusted_site',
                         'auth_enabled',
                         'sync_enabled',
+                        'otpme_version',
                         ]
     read_acls, write_acls = get_acls(split=True)
     read_value_acls, write_value_acls = get_value_acls(split=True)
@@ -123,6 +125,12 @@ def row_getter(realm, site, site_order, site_data, acls,
             description = site_data[site_uuid]['description'][0]
         except Exception:
             description = None
+        # None for a site that was not brought up to a version by
+        # "otpme-site upgrade" yet.
+        try:
+            otpme_version = site_data[site_uuid]['otpme_version'][0]
+        except Exception:
+            otpme_version = None
 
         # Get object ACLs.
         try:
@@ -148,6 +156,10 @@ def row_getter(realm, site, site_order, site_data, acls,
             if not enabled:
                 site_type = f"{site_type} (D)"
             row.append(site_type)
+        # The OTPme version the site was brought up to. Shown to whoever
+        # sees the site, as its status is.
+        if "version" in output_fields:
+            row.append(otpme_version or "")
         # Auth enabled.
         if "auth" in output_fields:
             if check_acl("view:auth") \

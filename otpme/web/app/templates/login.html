@@ -130,6 +130,9 @@
    "default token", and the person has lost a phone, a key or a
    password -- naming any one of them would be wrong for the others. #}
 {{ gettext("Can't sign in?") }}</a>
+      {% if site_maintenance %}
+      <p class="login-recover-hint">{{ gettext("Account recovery is not possible while the site is in maintenance.") }}</p>
+      {% endif %}
     </div>
     {% endif %}
     <div class="status-msg" id="fido2Status"></div>

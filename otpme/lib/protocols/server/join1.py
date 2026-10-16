@@ -60,6 +60,9 @@ class OTPmeJoinP1(OTPmeServer1):
         self.verify_host = False
         # The site object of the current request.
         self.request_site = None
+        # The object config versions the code of the host reads, as the
+        # join request says them.
+        self.peer_config_versions = {}
         # Join requests require master node.
         self.require_master_node = True
         # JOTP/LOTP to use for decryption.
@@ -406,7 +409,16 @@ class OTPmeJoinP1(OTPmeServer1):
                 log_msg = log_msg.format(uuid=uuid, object_type=object_type)
                 self.logger.warning(log_msg)
                 continue
-            object_config = o.get_sync_config(peer=host)
+            # As the code of the host reads it. Where there is no way
+            # down the object is left out, as the sync does.
+            try:
+                object_config = o.get_sync_config(peer=host,
+                                    peer_versions=self.peer_config_versions)
+            except ConfigDowngradeFailed as e:
+                log_msg = _("Not sending object to peer, its code is too old for it: {oid}: {peer}: {error}", log=True)[1]
+                log_msg = log_msg.format(oid=o.oid, peer=host.name, error=e)
+                self.logger.warning(log_msg)
+                continue
             object_id = o.oid.full_oid
             sync_object_configs[object_id] = object_config
 
@@ -1151,6 +1163,14 @@ class OTPmeJoinP1(OTPmeServer1):
             finish = _request['finish']
         except Exception:
             finish = False
+
+        # What the code of the host reads. One that does not say it
+        # runs code from before the versions were counted, and reads
+        # version 1 of everything. See OTPmeObject.get_sync_config().
+        try:
+            self.peer_config_versions = _request['config_versions'] or {}
+        except Exception:
+            self.peer_config_versions = {}
 
         # We need at least JOTP/LOTP or an authenticated user.
         if not jotp and not lotp and not self.authenticated:

@@ -116,6 +116,16 @@ def _inject_admin_access_state():
     except Exception:
         return {'admin_access_enabled': False}
 
+# Whether our site is in maintenance, for the banner in base.html and
+# the pages that offer nothing then (see views._site_maintenance()).
+@app.context_processor
+def _inject_site_maintenance():
+    try:
+        from otpme.web.app.views import _site_maintenance
+        return {'site_maintenance': _site_maintenance()}
+    except Exception:
+        return {'site_maintenance': False}
+
 lm = LoginManager()
 lm.init_app(app)
 # Plain GET navigation to a @login_required route (e.g. /settings)

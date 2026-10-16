@@ -20,6 +20,7 @@ from otpme.lib import log
 from otpme.lib import config
 from otpme.lib import script
 from otpme.lib import backend
+from otpme.lib import maintenance
 from otpme.lib import connections
 from otpme.lib.mail import send_mail
 from otpme.lib.humanize import units
@@ -99,6 +100,9 @@ class BackupDaemon(OTPmeDaemon):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.backup_childs = {}
+        # Whether backups wait for our site to leave maintenance, see
+        # process_backups().
+        self._maintenance_paused = False
 
     def signal_handler(self, _signal, frame):
         """ Exit on signal. """
@@ -477,6 +481,20 @@ class BackupDaemon(OTPmeDaemon):
 
     def process_backups(self):
         """ Check if we have to run a backup. """
+        # A backup ends by storing its time on the object, which is not
+        # written while our site is in maintenance. It would be due again
+        # right away and run over and over. Running backups end as they
+        # are; the next ones start after it.
+        if maintenance.is_active():
+            if not self._maintenance_paused:
+                log_msg = _("Site is in maintenance, not starting backups.", log=True)[1]
+                self.logger.info(log_msg)
+                self._maintenance_paused = True
+            return
+        if self._maintenance_paused:
+            log_msg = _("Site is out of maintenance, starting backups again.", log=True)[1]
+            self.logger.info(log_msg)
+            self._maintenance_paused = False
         backup_objects = backend.search(object_types=["node", "share"],
                                         attribute="name",
                                         value="*",
@@ -660,8 +678,15 @@ class BackupDaemon(OTPmeDaemon):
                 failed = failed.format(backup_object=backup_object, e=e)
             break
         o.last_backup = backup_start_time
-        o._write(update_last_modified=False,
-                update_last_modified_by=False)
+        try:
+            o._write(update_last_modified=False,
+                    update_last_modified_by=False)
+        except MaintenanceMode as e:
+            # The backup was made all the same, and is reported. The
+            # next one runs earlier than it would have, that is all.
+            log_msg = _("Cannot store time of last backup: {backup_object}: {e}", log=True)[1]
+            log_msg = log_msg.format(backup_object=backup_object, e=e)
+            self.logger.warning(log_msg)
         if failed:
             subject = subject.format(status="failed", backup_object=backup_object)
             self.send_backup_report(backup_object=o,

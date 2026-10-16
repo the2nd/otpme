@@ -41,6 +41,15 @@
       {% endif %}
     </nav>
 
+    {# Only on the pages that set maintenance_banner, where something
+       could be changed: settings and profile. On the login and portal
+       pages it said more than it meant. #}
+    {% if site_maintenance and maintenance_banner %}
+    <div class="maintenance-banner" role="status">
+      {{ gettext("This site is in maintenance. Nothing can be changed right now. Please try again later.") }}
+    </div>
+    {% endif %}
+
     {% with messages = get_flashed_messages() %}
       {% if messages %}
         <ul class="flash-messages">

@@ -72,9 +72,13 @@ Asks first; the global option \fB\-f\fR skips the question.
 Needs the ACL \fBdelete:object\fR.
 .TP
 .B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIsite\fR]
-Without a site: a table of all of them, with their status, whether authentication and synchronization with them are on, the sites they trust, their address, their three FQDNs, their policies and their description.
+Without a site: a table of all of them, with their status, their version, whether authentication and synchronization with them are on, the sites they trust, their address, their three FQDNs, their policies and their description.
 .br
 The status is \fBMaster\fR for the master site of the realm, \fBSub\fR for a sub site and \fBSlave\fR for every other one; a \fB(D)\fR behind it says the site is disabled.
+.br
+The version is the OTPme version the site was last brought up to with
+.BR upgrade .
+It is empty for a site that was not brought up to one yet.
 .RS
 .TP
 .B \-a
@@ -208,13 +212,22 @@ A parameter that is already set is not changed.
 .PP
 It stores the objects of the site in the format of the new version.
 A new version may store an object in another way.
-Until this is run the site keeps the old format, so the nodes can be updated one after the other and still work together.
-The command then writes every object that is still in the old format.
+The command writes every object that is still in the old format.
 The first run on a site writes every object once, and can take a while.
 .PP
-The objects are not changed while a node of the site is offline or runs an older version; the command says which node.
+The site is in maintenance until this is done, see
+.B Maintenance
+below.
+While the command runs it switches maintenance on, so nothing else is changed in between.
+When it is done, the site is at the version of its nodes and maintenance ends.
+Maintenance that was switched on with
+.B maintenance on
+stays on.
+.PP
+The command does not start while a node of the site is offline or runs another version; it says which node.
 A disabled node does not count.
-The command can be run again after it was cut short; it goes on where it stopped.
+If the command fails or is cut short, the site stays in maintenance.
+Run it again; it goes on where it stopped.
 .TP
 .B \-\-all
 Look at every object, and not only at those that are known to be in the old format.
@@ -226,7 +239,7 @@ Without it a quarter of the CPU cores is used, so the node can still answer logi
 Fewer than 500 objects of a kind are written without extra processes.
 .RE
 .IP
-Run it on a node of the site.
+Run it on a node or host of the site; the master node of the site carries it out.
 .br
 Needs the ACL \fBset:config\fR, for all parameters and not just one.
 .TP
@@ -262,6 +275,77 @@ Needs the ACL \fBedit:info\fR.
 Print the info text, of that language or the administrator's own.
 .br
 Needs the ACL \fBview:info\fR.
+.SS Maintenance
+A site is in maintenance while nothing in it may be changed.
+That is the case
+.IP \(bu 2
+when its nodes run another OTPme version than the one the site was last brought up to.
+Only the first two numbers count: 0.3.1 and 0.3.4 are the same version here, 0.4.0 is not.
+.IP \(bu 2
+when its nodes store objects in another format than the site does,
+.IP \(bu 2
+when it was switched on with
+.BR "maintenance on" ,
+or by
+.B upgrade
+while that runs or after it failed.
+.PP
+So an update of OTPme puts the site into maintenance by itself, and
+.B upgrade
+ends it.
+Nothing is written to start it: each node compares the code it runs with the site.
+The master node is the one that counts, because it writes the objects.
+.PP
+While the site is in maintenance:
+.IP \(bu 2
+No object of the site is added, changed, renamed or deleted.
+A command that would do it fails and says so.
+.IP \(bu 2
+Logins go on.
+Sessions and the other data of a login are written as usual.
+.IP \(bu 2
+The SSO portal shows a notice.
+Settings and the profile can be looked at, but not changed.
+A login token cannot be set up, and an account cannot be recovered.
+.IP \(bu 2
+An object that is due to be disabled automatically counts as disabled.
+It is written as disabled when maintenance ends.
+.IP \(bu 2
+The jobs that write objects wait: the CRL update, auto-disable, resolvers, tree jobs, the nsscache sync on the nodes, and backups.
+They run again when maintenance ends.
+.IP \(bu 2
+No host or node can join.
+.IP \(bu 2
+What the other nodes and sites send is still taken in.
+.TP
+.B maintenance \fIsite\fR \fR[\fBon\fR|\fBoff\fR|\fBstatus\fR]
+Switch maintenance on or off, or say why the site is in maintenance.
+.RS
+.TP
+.B status
+Say whether the site is in maintenance on its master node, and why.
+This is the default.
+.br
+Needs the ACL \fBview:maintenance\fR.
+.TP
+.B on
+Switch maintenance on, for example for work on the site.
+.br
+Needs the ACL \fBenable:maintenance\fR.
+.TP
+.B off
+Switch maintenance off, whoever switched it on.
+If the site stays in maintenance for another reason, the command says so.
+.br
+Needs the ACL \fBdisable:maintenance\fR.
+.RE
+.IP
+.B on
+and
+.B off
+ask first; the global option \fB\-f\fR skips the question.
+.br
+Run the command on a node or host of the site; the master node of the site carries it out.
 .SS Trust Relationships
 A site that trusts another one hands it its token secrets.
 The users and tokens of a site are known in every site of the realm, but their secrets stay at home.
@@ -1019,6 +1103,16 @@ The site is disabled until that node has joined, which is done on the node itsel
 .TP
 .B otpme-site show
 All sites, and whether the new one is enabled by now.
+.SS An update of OTPme
+Update OTPme on all nodes of the site first.
+Then, on a node or host of the site:
+.TP
+.B otpme-site maintenance berlin
+The site is in maintenance, and this says why: the nodes run another version than the site.
+.TP
+.B otpme-site upgrade berlin
+Store the objects in the format of the new version.
+When this is done, maintenance ends.
 .SS Logins that do not depend on the other site
 On \fBberlin\fR:
 .TP

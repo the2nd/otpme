@@ -139,6 +139,31 @@ a.navbar-user:hover {
   font-size: 14px;
 }
 
+/* ---- Site in maintenance ---- */
+.maintenance-banner {
+  max-width: 640px;
+  margin: 16px auto;
+  padding: 10px 16px;
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffc107;
+  border-radius: 8px;
+  font-size: 14px;
+  text-align: center;
+}
+/* Settings and profile while the site is in maintenance: shown, greyed
+   out, nothing to press (see maintenance.js). What is marked
+   data-maintenance-free stays as it is. */
+.maintenance-locked > .settings-card:not([data-maintenance-free]) {
+  opacity: 0.55;
+}
+.maintenance-locked > .settings-card:not([data-maintenance-free]) button,
+.maintenance-locked > .settings-card:not([data-maintenance-free]) input,
+.maintenance-locked > .settings-card:not([data-maintenance-free]) select,
+.maintenance-locked > .settings-card:not([data-maintenance-free]) textarea {
+  cursor: not-allowed;
+}
+
 /* ---- Login page ---- */
 .login-wrapper {
   display: flex;
@@ -654,6 +679,10 @@ body.is-loading { overflow: hidden; }
 }
 .login-recover-link a:hover {
   text-decoration: underline;
+}
+.login-recover-hint {
+  margin: 6px 0 0;
+  color: #856404;
 }
 .recovery-mail-display {
   display: flex;

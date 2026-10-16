@@ -40,10 +40,11 @@ cmd_help = {
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-scope list [--attribute attribute] [-a] [regex]'),
-                    'cmd'   :   '-a :show_all=True: [search_regex]',
+                    'cmd'   :   '--attribute :attribute: -a :show_all=True: [search_regex]',
                     '_help' :   {
                                     'cmd'                       : _('List scopes'),
                                     '-a'                        : _('List all scopes.'),
+                                    '--attribute <attribute>'   : _('Output given attribute.'),
                                 },
                 },
 

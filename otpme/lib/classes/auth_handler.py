@@ -2539,10 +2539,15 @@ class AuthHandler(object):
         log_msg = log_msg.format(user_name=self.user.name, access_group=self.access_group, fail_count=fail_count)
         self.logger.info(log_msg)
         try:
+            # A login that went through after failed ones is no change
+            # somebody made to the user, so no changelog entry. It would
+            # not be stored either: the user is not written here, only
+            # its failed logins are removed.
             self.user.unblock(self.access_group,
                             force=True,
                             verify_acls=False,
-                            run_policies=False)
+                            run_policies=False,
+                            changelog=False)
         except Exception as e:
             log_msg = _("Error resetting login fail count: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
@@ -2598,7 +2603,7 @@ class AuthHandler(object):
         client_ip=None, access_group=None, user_token=None, src_token=None,
         count_fails=None, host_type=None, host=None, host_ip=None, replace_sessions=None,
         allowed_token_types=None, require_pass_types=None, redirect_challenge=None,
-        jwt_auth=False, authorize_host=True, share=None, allow_sotp_reuse=False,
+        authorize_host=True, share=None, allow_sotp_reuse=False,
         redirect_response=None, gen_jwt=None, jwt_challenge=None, sotp_ag_auth=None,
         rsp_ecdh_client_pub=None, verify_host=True, check_sotp=None, require_sotp_auth=False,
         client_offline_enc_type=None, jwt_reason=None, verify_jwt_ag=True,
@@ -2719,7 +2724,10 @@ class AuthHandler(object):
         self.redirect_challenge = redirect_challenge
         self.redirect_response = redirect_response
         self.jwt = None
-        self.jwt_auth = jwt_auth
+        # The auth type alone says whether this is a JWT auth: a second
+        # flag could say otherwise and skip the user tokens without the
+        # JWT being verified.
+        self.jwt_auth = self.auth_type == "jwt"
         self.jwt_reason = jwt_reason
         self.jwt_challenge = jwt_challenge
         self.request_cacheable = False

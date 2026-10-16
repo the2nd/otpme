@@ -13,6 +13,18 @@
 <div class="login-wrapper">
   <div class="login-card">
     <h1>{{ gettext("Recover Your Account") }}</h1>
+    {% if recover_maintenance %}
+    {# Nothing is written while the site is in maintenance, and ssod
+       refuses the recovery. Said here, before anybody fills anything
+       in, and from the link in the mail as well. #}
+    <p class="deploy-hint">{{ gettext("Your account cannot be recovered while the site is in maintenance. Please try again later.") }}</p>
+    {% if recover_maintenance_link %}
+    <p class="deploy-hint">{{ gettext("If the link from your mail has expired by then, please request a new one.") }}</p>
+    {% endif %}
+    <div class="login-buttons">
+      <a href="{{ url_for('login', _external=True, _scheme='https') }}" class="btn btn-primary">{{ gettext("Back to Sign In") }}</a>
+    </div>
+    {% else %}
     <p class="deploy-desc">{{ gettext("Enter your username. If a recovery e-mail address is set on the account, a re-deploy link will be sent to it.") }}</p>
 
     <div id="recover-form-block">
@@ -36,6 +48,7 @@
 
     <div class="status-msg" id="recoverStatus"></div>
     <div class="error-msg" id="recoverError"></div>
+    {% endif %}
 
     <div class="logo-container">
       {# The site's own logo when it has one, else the OTPme one. #}
@@ -44,5 +57,7 @@
   </div>
 </div>
 
+{% if not recover_maintenance %}
 <script src="{{ url_for('static', filename='recover.js') }}"></script>
+{% endif %}
 {% endblock %}

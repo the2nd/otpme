@@ -531,6 +531,8 @@ class JoinHandler(object):
         join_request['host_type'] = self.host_type
         join_request['host_name'] = self.host_name
         join_request['host_fqdn'] = self.host_fqdn
+        # What our code reads: the objects we get are taken down to it.
+        join_request['config_versions'] = config.get_config_versions()
 
         # Build join command.
         command_args = {}
@@ -577,6 +579,8 @@ class JoinHandler(object):
         join_request['host_cert_req'] = host_cert_req
         # Add host auth key (public).
         join_request['host_public_key'] = self._my_host.public_key
+        # What our code reads, see send_join_request().
+        join_request['config_versions'] = config.get_config_versions()
 
         # Build join command.
         command_args = {}

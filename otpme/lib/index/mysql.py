@@ -46,6 +46,9 @@ QUERY_CACHE_LIMIT = "10M"
 QUERY_CACHE_SIZE = "160M"
 EXPIRE_LOGS_DAYS = 10
 MAX_BINLOG_SIZE = "100M"
+# READ COMMITTED (see get_db_engine()) refuses every write with a
+# statement based binlog.
+BINLOG_FORMAT = "ROW"
 CHARACTER_SET_SERVER = "utf8mb4"
 COLLATION_SERVER = "utf8mb4_general_ci"
 MYISAM_RECOVER_OPTIONS = "BACKUP"
@@ -86,6 +89,8 @@ def register_config_vars():
                                 config_file_parameter="MYSQL_EXPIRE_LOGS_DAYS")
     config.register_config_var("mysql_max_binlog_size", str, MAX_BINLOG_SIZE,
                                 config_file_parameter="MYSQL_MAX_BINLOG_SIZE")
+    config.register_config_var("mysql_binlog_format", str, BINLOG_FORMAT,
+                                config_file_parameter="MYSQL_BINLOG_FORMAT")
     config.register_config_var("mysql_character_set_server", str, CHARACTER_SET_SERVER,
                                 config_file_parameter="MYSQL_CHARACTER_SET_SERVER")
     config.register_config_var("mysql_collation_server", str, COLLATION_SERVER,
@@ -114,6 +119,7 @@ def get_default_config():
     query_cache_size = f"query_cache_size = {config.mysql_query_cache_size}"
     expire_logs_days = f"expire_logs_days = {config.mysql_expire_logs_days}"
     max_binlog_size = f"max_binlog_size = {config.mysql_max_binlog_size}"
+    binlog_format = f"binlog_format = {config.mysql_binlog_format}"
     character_set_server_ = f"character-set-server = {config.mysql_character_set_server}"
     collation_server = f"collation-server = {config.mysql_collation_server}"
 
@@ -135,6 +141,7 @@ def get_default_config():
     default_config.append(query_cache_size)
     default_config.append(expire_logs_days)
     default_config.append(max_binlog_size)
+    default_config.append(binlog_format)
     default_config.append(character_set_server_)
     default_config.append(collation_server)
     default_config = "\n".join(default_config)
@@ -635,7 +642,10 @@ def get_db_engine():
                             pool_recycle=3600,
                             pool_size=32,
                             max_overflow=16,
-                            isolation_level="READ UNCOMMITTED",
+                            # As the postgres index: a search sees what
+                            # is committed, never what another
+                            # transaction may still roll back.
+                            isolation_level="READ COMMITTED",
                             connect_args={'connect_timeout': 10},
                             poolclass=QueuePool,
                             echo=False)

@@ -20,6 +20,7 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import filetools
+from otpme.lib import maintenance
 from otpme.lib import connections
 from otpme.lib import multiprocessing
 from otpme.lib.fuse import CONF_FILE
@@ -809,6 +810,22 @@ class OTPmeFsP1(OTPmeFsServer1):
                             except KeyError:
                                 status = False
                                 message, log_msg = _("Request missses hash parameters.", log=True)
+                                self.logger.warning(log_msg)
+                                response = {'try_other_node':False, 'message':message}
+                                return self.build_response(status, response)
+                            # Not while our site is in maintenance, where
+                            # the share does not store the key (see
+                            # maintenance.py). Gone on without it, the
+                            # home dir would be initialized below with no
+                            # key on the share, and the next mount would
+                            # find settings and bring none: it could never
+                            # be mounted again. Refused before anything
+                            # is set up, and the first mount works after.
+                            if maintenance.is_active():
+                                status = status_codes.ERR
+                                message, log_msg = _("Site is in maintenance, home directory cannot be set up now: {share_name}", log=True)
+                                message = message.format(share_name=share.name)
+                                log_msg = log_msg.format(share_name=share.name)
                                 self.logger.warning(log_msg)
                                 response = {'try_other_node':False, 'message':message}
                                 return self.build_response(status, response)
