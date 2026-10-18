@@ -241,6 +241,13 @@ class HostDaemon(OTPmeDaemon):
                                 start_connection = True
                         elif config.master_node is False:
                             start_connection = True
+                # A disabled node closes its cluster connections and
+                # never gets a cluster status, so the wait above would
+                # never end. It is not part of the cluster then and
+                # waits like a host: a job for it -- otpme-shell,
+                # otpme-deploy -- is how somebody gets in to look at it.
+                elif self.own_node_disabled():
+                    start_connection = True
             else:
                 start_connection = True
 
@@ -310,6 +317,23 @@ class HostDaemon(OTPmeDaemon):
             # for long once it is back.
             delay = min(NEWS_RETRY_MAX, NEWS_RETRY_BASE * (2 ** (failures - 1)))
             time.sleep(delay)
+
+    def own_node_disabled(self):
+        """ Whether this node is disabled, read from the index.
+
+        Asked in the process that waits for news, which has no host
+        object of its own that is kept up to date.
+        """
+        try:
+            result = backend.search(object_type="node",
+                                    attribute="uuid",
+                                    value=config.uuid,
+                                    return_attributes=['enabled'])
+        except Exception:
+            return False
+        if not result:
+            return False
+        return not result[0]
 
     def handle_news(self, event):
         """ Pass on what our site told us.

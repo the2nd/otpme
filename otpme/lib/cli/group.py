@@ -171,7 +171,7 @@ def row_getter(realm, site, group_order, group_data, acls,
                         member_roles.append(x)
                     break
             row.append("\n".join(member_roles))
-        else:
+        elif "roles" in output_fields:
             if role_access:
                 row.append("")
             else:
@@ -218,7 +218,7 @@ def row_getter(realm, site, group_order, group_data, acls,
                 member_tokens.append(x)
 
             row.append("\n".join(member_tokens))
-        else:
+        elif "tokens" in output_fields:
             if token_access:
                 row.append("")
             else:
@@ -264,7 +264,7 @@ def row_getter(realm, site, group_order, group_data, acls,
                 member_hosts.append(x)
 
             row.append("\n".join(member_hosts))
-        else:
+        elif "hosts" in output_fields:
             if host_access:
                 row.append("")
             else:
@@ -312,7 +312,7 @@ def row_getter(realm, site, group_order, group_data, acls,
                 member_users.append(x)
 
             row.append("\n".join(member_users))
-        else:
+        elif "sync_users" in output_fields:
             if user_access:
                 row.append("")
             else:

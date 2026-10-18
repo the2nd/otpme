@@ -72,7 +72,7 @@ read_value_acls = {
                             "offline_expiry",
                             "offline_unused_expiry",
                             "session_keep",
-                            "signature",
+                            "signatures",
                             ],
             }
 
@@ -721,12 +721,12 @@ class YubikeypivToken(Token):
         # tokens.
         if action == "verify_signature":
             if self._verify_acl("verify:signature") \
-            or self._verify_acl("view:signature") \
+            or self._verify_acl("view:signatures") \
             or self._verify_acl("view:ssh_public_key"):
                 return True
 
         if action == "get_signatures":
-            if self._verify_acl("view:signature") \
+            if self._verify_acl("view:signatures") \
             or self.verify_acl("view:ssh_public_key"):
                 return True
 

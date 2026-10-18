@@ -19,7 +19,6 @@ from otpme.lib import log
 from otpme.lib import net
 from otpme.lib import jwt
 from otpme.lib import oid
-from otpme.lib import ssh
 from otpme.lib import json
 from otpme.lib import stuff
 from otpme.lib import config
@@ -32,6 +31,7 @@ from otpme.lib.encoding.base import decode
 from otpme.lib.protocols import status_codes
 #from otpme.lib.protocols.utils import scauth
 from otpme.lib.protocols.utils import sshauth
+from otpme.lib.protocols.utils import bind_challenge
 from otpme.lib.protocols.utils import passauth
 from otpme.lib.protocols.request import decode_request
 from otpme.lib.protocols.response import build_response
@@ -176,6 +176,15 @@ class OTPmeServer1(object):
             self.check_peer_disabled
         except Exception:
             self.check_peer_disabled = True
+        # The commands a disabled peer may still send, on a connection it
+        # opened for them alone (see disabled_peer_allowed()). Empty for
+        # most protocols: a disabled peer gets nothing from them.
+        try:
+            self.disabled_peer_commands
+        except Exception:
+            self.disabled_peer_commands = []
+        # Set when a disabled peer opened such a connection.
+        self.disabled_peer_session = False
         try:
             self.check_user_disabled
         except Exception:
@@ -567,6 +576,35 @@ class OTPmeServer1(object):
         response['ident_response'] = ident_response
         return response
 
+    def disabled_peer_allowed(self, command, command_args):
+        """ Whether a disabled peer may send this request.
+
+        Only where the protocol names commands for it
+        (disabled_peer_commands), and only on a connection the peer
+        opened for them: it says so in its preauth_check. A peer that
+        does not say so is refused right there, as it always was -- that
+        refusal is how hostd learns that its host was disabled, and it
+        switches itself off on it. So a disabled peer never gets a
+        connection that looks like an ordinary one.
+        """
+        if not self.disabled_peer_commands:
+            return False
+        # Getting the connection up says nothing about the site.
+        if command in ("get_proto", "ping", "ident"):
+            return True
+        if command == "preauth_check":
+            if not (command_args or {}).get('disabled_peer'):
+                return False
+            self.disabled_peer_session = True
+            return True
+        if not self.disabled_peer_session:
+            return False
+        # What the client sends after the preauth check to learn that it
+        # has to authenticate, and the host authentication itself.
+        if command in ("status", "auth_host"):
+            return True
+        return command in self.disabled_peer_commands
+
     def check_cluster_status(self):
         skip_master_failover = False
         if self.process_on_master_failover:
@@ -623,6 +661,7 @@ class OTPmeServer1(object):
         #    self.logger.warning(log_msg)
         #    message = "Bye bye..."
         #    raise ClientQuit(message)
+        peer_disabled = False
         if not config.use_api:
             if config.host_type == "node":
                 if self.new_connection:
@@ -687,13 +726,12 @@ class OTPmeServer1(object):
                     self.logger.warning(log_msg)
                     raise ServerQuit(msg)
 
-            # Make sure peer is not disabled.
+            # Make sure peer is not disabled. Refused below, once the
+            # request is read: what a disabled peer may still do depends
+            # on the command (disabled_peer_allowed()).
             if self.check_peer_disabled:
                 if self.peer and not self.peer.enabled:
-                    status = status_codes.HOST_DISABLED
-                    message = _("{peer_type} is disabled: {peer_fqdn}")
-                    message = message.format(peer_type=self.peer.type, peer_fqdn=self.peer.fqdn)
-                    return self.build_response(status, message, encrypt=False)
+                    peer_disabled = True
 
         # Make sure auth user is enabled.
         if self.check_user_disabled:
@@ -741,6 +779,13 @@ class OTPmeServer1(object):
         if command == "quit":
             msg = "Bye bye..."
             raise ClientQuit(msg)
+
+        if peer_disabled:
+            if not self.disabled_peer_allowed(command, command_args):
+                status = status_codes.HOST_DISABLED
+                message = _("{peer_type} is disabled: {peer_fqdn}")
+                message = message.format(peer_type=self.peer.type, peer_fqdn=self.peer.fqdn)
+                return self.build_response(status, message, encrypt=False)
 
         if command == 'get_proto':
             message = _("Using protocol: {protocol}")
@@ -1603,6 +1648,12 @@ class OTPmeServer1(object):
             except NotRegistered:
                 continue
             smartcard_server_handler = smartcard_server_handler()
+            # A handler that binds its challenge to the session key
+            # (protocols/utils.bind_challenge) is not offered without one, rather
+            # than asking for a signature we could not verify.
+            if getattr(smartcard_server_handler, "binds_challenge", False):
+                if not self.session_key:
+                    continue
             try:
                 token_opts = smartcard_server_handler.handle_preauth(token=verify_token)
             except Exception as e:
@@ -2187,7 +2238,7 @@ class OTPmeServer1(object):
         # Handle SOTP signing.
         if self.sotp_signing:
             if not password:
-                msg = "Missing SOTP in request."
+                msg = _("Missing SOTP in request.")
                 raise OTPmeException(msg)
             # Decode SOTP signature.
             try:
@@ -2209,7 +2260,7 @@ class OTPmeServer1(object):
                 key = decode(sign_public_key, "base64")
                 key = encryption.load_public_key(key)
             except Exception as e:
-                msg = _("Unable to user load public key: {e}")
+                msg = _("Unable to load user public key: {e}")
                 msg = msg.format(e=e)
                 raise OTPmeException(msg) from e
             # Verify signature.
@@ -2273,6 +2324,12 @@ class OTPmeServer1(object):
                 if not challenge_valid:
                     msg = "Got invalid challenge"
                     raise OTPmeException(msg)
+                if getattr(smartcard_server_handler, "binds_challenge", False):
+                    # The signature is over the challenge plus this
+                    # connection, and so is what we verify.
+                    smartcard_data = dict(smartcard_data)
+                    smartcard_data['challenge'] = bind_challenge(smartcard_challenge,
+                                                                self.session_key)
             if is_2f_token:
                 if not password:
                     return passauth(message_id="password", prompt="Password/OTP:")
@@ -2295,7 +2352,7 @@ class OTPmeServer1(object):
         elif auth_type == "ssh":
             # Without a session key there is nothing to bind the
             # challenge to, and an unbound signature is good at any
-            # other server too (lib/ssh.bind_challenge). So we do not
+            # other server too (protocols/utils.bind_challenge). So we do not
             # even ask for one, instead of asking and failing to verify
             # it below.
             if not self.session_key:
@@ -2401,7 +2458,7 @@ class OTPmeServer1(object):
             if auth_type == "ssh":
                 # The response was signed over the challenge plus this
                 # connection, and so is what we verify.
-                challenge = ssh.bind_challenge(challenge, self.session_key)
+                challenge = bind_challenge(challenge, self.session_key)
             # Try to authenticate user.
             try:
                 auth_response = self.user.authenticate(auth_mode=auth_mode,
@@ -2609,6 +2666,7 @@ class OTPmeServer1(object):
         self.peer_challenge = None
         self.peer = None
         self.peer_cert = None
+        self.disabled_peer_session = False
         self.redirect_challenge = None
 
         self.client = None

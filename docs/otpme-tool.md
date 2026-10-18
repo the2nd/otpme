@@ -44,7 +44,9 @@ Show currently logged in user.
 
 **who**  
 Show all users currently logged in on this host (across TTYs and desktop
-sessions).
+sessions).  
+Nodes may run it. A host may when the site has **allow_who_from_hosts**
+on, or lists it in **allow_who**, see **otpme**(7).
 
 **message \[**--user** *username*\] \[**--host** *hostname*\] \[**--all**\] \[**--title** *title*\] *text***  
 Show a message box to users that are logged in.

@@ -1023,10 +1023,12 @@ Set CA certificate organizational unit field.
 Set CA certificate email field.
 
 There is no option for a key length or for how long a certificate is
-valid. **add** makes no key and no certificate: the CA of the site, the
-site itself and the master node get theirs when that node joins, and the
-keys are made on it. The lengths are then the **--site-key-len** (the
-key of the CA) and the **--host-key-len** (the key of the node) of
+valid. **add** makes no key, no certificate and no secret: the CA of the
+site, the site itself and the master node get theirs when that node
+joins, and the keys are made on it. So are the secrets of the site —
+those of the SSO portal, of tiqr and the cluster key — and the site that
+ran **add** never has them. The lengths are then the **--site-key-len**
+(the key of the CA) and the **--host-key-len** (the key of the node) of
 **otpme-tool join**, see **otpme-tool**(1). The key of the site and all
 three validities are the defaults.
 

@@ -184,8 +184,22 @@ How many tokens to print.
 Without it you get 10.
 .TP
 .B \-\-fields \fIF1,F2\fR
-Print these columns and no others.
+Print these columns and no others, in the order they are named.
 The names are the ones in the header of the table.
+.br
+A name with a \fB+\fR in front is added to the columns that are shown anyway, and one with a \fB\-\fR is left out of them.
+The two cannot be mixed with a plain list.
+.br
+Two columns are not in the table unless they are asked for:
+.B authscript
+and
+.BR inherit .
+.RS
+.PP
+.nf
+\&otpme-token show \-\-fields +authscript,+inherit
+.fi
+.RE
 .TP
 .B \-\-limit \fIN\fR
 How many roles, scopes and policies to print per token.

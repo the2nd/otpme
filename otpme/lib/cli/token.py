@@ -42,6 +42,13 @@ table_headers = [
             "description",
             ]
 
+# Columns that are set on few tokens and only widen the table. Shown
+# with "otpme-token show --fields +authscript,+inherit".
+optional_fields = [
+                "authscript",
+                "inherit",
+                ]
+
 REGISTER_BEFORE = []
 REGISTER_AFTER = ["otpme.lib.filetools"]
 
@@ -100,6 +107,7 @@ def register():
     register_cli(name="token",
                 id_attr="rel_path",
                 table_headers=table_headers,
+                optional_fields=optional_fields,
                 return_attributes=return_attributes,
                 row_getter=row_getter,
                 write_acls=write_acls,
@@ -331,7 +339,7 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                     token_roles_string.append(x)
                     break
             row.append("\n".join(token_roles_string))
-        else:
+        elif "roles" in output_fields:
             row.append("-")
 
         # Accessgroups.
@@ -382,7 +390,7 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                 group_strings.append(group_string)
 
             row.append("\n".join(group_strings))
-        else:
+        elif "accessgroups" in output_fields:
             row.append("-")
 
         # Groups.

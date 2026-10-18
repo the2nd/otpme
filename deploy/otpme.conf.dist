@@ -230,9 +230,11 @@ FLUSH_CACHE_ON_START="True"
 #MEMCACHED_OPTS="-d -P /var/run/otpme/pidfiles/memcached.pid -I 8m -m 128 -t 32 -c 4096 -U off -s /var/run/otpme/sockets/memcached.sock -a 700 -o lru_maintainer,lru_crawler,hash_algorithm=murmur3 -o expirezero_does_not_evict -v"
 
 # Compress object JSON files.
-#OBJECT_JSON_COMPRESSSION="lz4"
+#OBJECT_JSON_COMPRESSION="lz4"
 # Prettify object JSON files.
 #PRETTIFY_OBJECT_JSON="True"
+# Sync every file written to disk (slow, see otpme.conf(5)).
+FSYNC_FILE_WRITES="False"
 
 # Posix message queues max message size. On linux you can get/set it via
 # /proc/sys/fs/mqueue/msgsize_max. If you set it to "auto" it will be read

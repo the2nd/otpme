@@ -1,4 +1,4 @@
-.TH OTPME-ROLE 1 "2026-10-04" "OTPme 0.3.0a279" "OTPme Manual"
+.TH OTPME-ROLE 1 "2026-10-18" "OTPme 0.3.0a283" "OTPme Manual"
 .SH NAME
 otpme-role \- manage OTPme roles
 .SH SYNOPSIS
@@ -357,7 +357,7 @@ See
 .TP
 .B add_host \fIrole\fR \fIhost\fR
 Put a host into the role.
-The host is looked for in the site of the role, or written as \fIsite\fB/\fIhost\fR to take one from another site of the realm.
+Host names are unique in the realm, so the host is given by its name alone, whatever site it is in.
 .TP
 .B remove_host \fIrole\fR \fIhost\fR
 Take it out again.
@@ -404,12 +404,18 @@ That brings the account along with it.
 .TP
 .B add_sync_user \fIrole\fR \fIuser\fR
 Have that user's account copied to the hosts that name this role.
+.br
+Needs the ACL \fBadd:sync_user\fR.
 .TP
 .B remove_sync_user \fIrole\fR \fIuser\fR
 Stop that.
+.br
+Needs the ACL \fBremove:sync_user\fR.
 .TP
 .B list_sync_users \fR[\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
 The sync users of this role.
+.br
+Needs the ACL \fBview:sync_users\fR.
 .SS Policy Management
 A \fIpolicy\fR is the name of a policy, not a path.
 It is looked for in the site of the role.

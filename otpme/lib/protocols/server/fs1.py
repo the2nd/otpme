@@ -849,11 +849,18 @@ class OTPmeFsP1(OTPmeFsServer1):
                             # not something a mount has. A share that
                             # has no key for this user at all does not
                             # get past the read further down.
+                            #
+                            # No policies, like for the key read below:
+                            # the mount is not a session anybody could
+                            # be asked to authenticate again in. They
+                            # used to be skipped only because this
+                            # callback has no job.
                             callback = config.get_callback()
                             if not share.add_share_key(
                                                 username=config.auth_user.name,
                                                 share_key=new_share_key,
                                                 force=True,
+                                                run_policies=False,
                                                 callback=callback,
                                                 verify_acls=False):
                                 log_msg = _("Share did not take the new key of user '{user_name}', mounting with the key it has: {share_name}", log=True)[1]
@@ -966,9 +973,15 @@ class OTPmeFsP1(OTPmeFsServer1):
                         response = {'try_other_node':False, 'message':message}
                         return self.build_response(status, response)
                 else:
+                    # A restore share keeps the key of each of its users
+                    # itself, they need not be able to read the share it
+                    # shows. A restore share of home shares has none, and
+                    # an older one lacks the key of the token it was
+                    # added with: those read the one of the shown share.
                     share_key_share = share
                     if self.restore_share:
-                        share_key_share = restore_share
+                        if config.auth_user.uuid not in share.share_keys:
+                            share_key_share = restore_share
                     # No policies: the mount is not a session anybody
                     # could be asked to authenticate again in.
                     share_key = share_key_share.get_share_key(username=config.auth_user.name,
@@ -1097,12 +1110,15 @@ class OTPmeFsP1(OTPmeFsServer1):
             # answer below was sent whether a key had been added or not.
             # This is the request that makes a key the user's own for
             # good, so an answer of "added" has to mean it.
+            # No policies either: nobody can be asked to authenticate
+            # again on a mount, see the key read in the mount above.
             callback = config.get_callback()
             callback.raise_exception = True
             try:
                 share.add_token(token_path=config.auth_token.rel_path,
                                 share_key=share_key,
                                 force=True,
+                                run_policies=False,
                                 callback=callback,
                                 verify_acls=False)
             except Exception as e:

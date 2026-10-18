@@ -1510,7 +1510,12 @@ class OTPmeSsoP1(OTPmeServer1):
                                 own_site=config.site,
                                 peer=getattr(self.peer, 'name', None),
                                 peer_site=getattr(self.peer, 'site', None))
-        self.logger.warning(log_msg)
+        # The settings page asks for its cards on every load, and a
+        # card that is not shown is no incident.
+        if command.startswith("list_"):
+            self.logger.info(log_msg)
+        else:
+            self.logger.warning(log_msg)
 
     def _resolve_passkeys_allowed(self, user):
         """ Resolve ``sso_allow_passkeys`` to a bool, honouring the
@@ -1538,10 +1543,15 @@ class OTPmeSsoP1(OTPmeServer1):
 
         Every caller is a settings page command, so the settings card
         also needs ``sso_allow_passkey_mgmt``. """
+        return self._passkeys_denied_reason(user) is None
+
+    def _passkeys_denied_reason(self, user):
+        """ Which gate of _resolve_passkeys_allowed() refuses the user,
+        for the log; None if none does. """
         if not self._site_trusts_user_home_for_passkeys(user):
-            return False
+            return f"site {user.site} not in sso_allow_passkeys_trusts"
         if not self._mgmt_allowed(user, "sso_allow_passkey_mgmt"):
-            return False
+            return "sso_allow_passkey_mgmt=False"
         try:
             registered_default = bool(
                     config.get_config_parameter("sso_allow_passkeys")['default'])
@@ -1552,8 +1562,10 @@ class OTPmeSsoP1(OTPmeServer1):
         except Exception:
             value = None
         if value is None:
-            return registered_default
-        return bool(value)
+            value = registered_default
+        if not value:
+            return "sso_allow_passkeys=False"
+        return None
 
     def list_passkeys(self, username, sso_jwt, command_args):
         """ Return the user's passkey tokens (name + friendly description).
@@ -1593,9 +1605,9 @@ class OTPmeSsoP1(OTPmeServer1):
             # asked.
             if not self._resolve_passkeys_allowed(user):
                 self._log_passkey_denied("list_passkeys",
-                                    "originator: user home not in "
-                                    "sso_allow_passkeys_trusts, or "
-                                    "sso_allow_passkeys off", user)
+                                    "originator: "
+                                    f"{self._passkeys_denied_reason(user)}",
+                                    user)
                 return self.build_response(True, {
                         'passkeys': [], 'allowed': False, 'status': True})
             forward_args = dict(command_args)
@@ -1607,7 +1619,9 @@ class OTPmeSsoP1(OTPmeServer1):
             # Local user.
             if not self._resolve_passkeys_allowed(user):
                 self._log_passkey_denied("list_passkeys",
-                                    "local: sso_allow_passkeys off", user)
+                                    "local: "
+                                    f"{self._passkeys_denied_reason(user)}",
+                                    user)
                 return self.build_response(True, {
                         'passkeys': [], 'allowed': False, 'status': True})
         passkeys = []
@@ -1719,9 +1733,9 @@ class OTPmeSsoP1(OTPmeServer1):
         elif user.site != config.site:
             if not self._resolve_passkeys_allowed(user):
                 self._log_passkey_denied("passkey_register_begin",
-                                    "originator: user home not in "
-                                    "sso_allow_passkeys_trusts, or "
-                                    "sso_allow_passkeys off", user)
+                                    "originator: "
+                                    f"{self._passkeys_denied_reason(user)}",
+                                    user)
                 return self.build_response(False,
                         {'message':'Passkeys are not enabled.', 'status':False})
             forward_args = dict(command_args)
@@ -1734,7 +1748,9 @@ class OTPmeSsoP1(OTPmeServer1):
         else:
             if not self._resolve_passkeys_allowed(user):
                 self._log_passkey_denied("passkey_register_begin",
-                                    "local: sso_allow_passkeys off", user)
+                                    "local: "
+                                    f"{self._passkeys_denied_reason(user)}",
+                                    user)
                 return self.build_response(False,
                         {'message':'Passkeys are not enabled.', 'status':False})
         token_name = self._sanitize_passkey_token_name(device_name,
@@ -1848,9 +1864,9 @@ class OTPmeSsoP1(OTPmeServer1):
         elif user.site != config.site:
             if not self._resolve_passkeys_allowed(user):
                 self._log_passkey_denied("passkey_register_complete",
-                                    "originator: user home not in "
-                                    "sso_allow_passkeys_trusts, or "
-                                    "sso_allow_passkeys off", user)
+                                    "originator: "
+                                    f"{self._passkeys_denied_reason(user)}",
+                                    user)
                 return self.build_response(False,
                         {'message':'Passkeys are not enabled.', 'status':False})
             forward_args = dict(command_args)
@@ -1884,7 +1900,9 @@ class OTPmeSsoP1(OTPmeServer1):
         else:
             if not self._resolve_passkeys_allowed(user):
                 self._log_passkey_denied("passkey_register_complete",
-                                    "local: sso_allow_passkeys off", user)
+                                    "local: "
+                                    f"{self._passkeys_denied_reason(user)}",
+                                    user)
                 return self.build_response(False,
                         {'message':'Passkeys are not enabled.', 'status':False})
         # Pop the reg state under passkey_state_id. delete() is
@@ -2568,9 +2586,9 @@ class OTPmeSsoP1(OTPmeServer1):
             # deliver its secret to us.
             if not self._resolve_tiqr_allowed(user):
                 self._log_tiqr_denied("tiqr_enroll_begin",
-                                    "originator: user home not in "
-                                    "sso_allow_tiqr_trusts, or "
-                                    "sso_allow_tiqr off", user)
+                                    "originator: "
+                                    f"{self._tiqr_denied_reason(user)}",
+                                    user)
                 return self.build_response(False,
                         {'message':'tiqr is not enabled.', 'status':False})
             # The QR code has to point at us, not at the user's home
@@ -2967,9 +2985,9 @@ class OTPmeSsoP1(OTPmeServer1):
         if user.site != config.site:
             if not self._resolve_tiqr_allowed(user):
                 self._log_tiqr_denied("tiqr_enroll_finish",
-                                    "originator: user home not in "
-                                    "sso_allow_tiqr_trusts, or "
-                                    "sso_allow_tiqr off", user)
+                                    "originator: "
+                                    f"{self._tiqr_denied_reason(user)}",
+                                    user)
                 return self.build_response(False,
                                 {'message':'INVALID_REQUEST', 'status':False})
             command_args['_tiqr_allowed'] = True
@@ -3167,17 +3185,24 @@ class OTPmeSsoP1(OTPmeServer1):
 
         Every caller is a settings page command, so the settings card
         also needs sso_allow_tiqr_mgmt. """
+        return self._tiqr_denied_reason(user) is None
+
+    def _tiqr_denied_reason(self, user):
+        """ Which gate of _resolve_tiqr_allowed() refuses the user, for
+        the log; None if none does. """
         if not self._trusts_user_home_site(user, "sso_allow_tiqr_trusts"):
-            return False
+            return f"site {user.site} not in sso_allow_tiqr_trusts"
         if not self._mgmt_allowed(user, "sso_allow_tiqr_mgmt"):
-            return False
+            return "sso_allow_tiqr_mgmt=False"
         try:
             value = user.get_config_parameter("sso_allow_tiqr")
         except Exception:
-            return True
+            return None
         if value is None:
-            return True
-        return bool(value)
+            return None
+        if not value:
+            return "sso_allow_tiqr=False"
+        return None
 
     def _log_tiqr_denied(self, command, reason, user):
         """ Say which of the tiqr trust gates refused, and on what. See
@@ -3190,7 +3215,12 @@ class OTPmeSsoP1(OTPmeServer1):
                                 own_site=config.site,
                                 peer=getattr(self.peer, 'name', None),
                                 peer_site=getattr(self.peer, 'site', None))
-        self.logger.warning(log_msg)
+        # The settings page asks for its cards on every load, and a
+        # card that is not shown is no incident.
+        if command.startswith("list_"):
+            self.logger.info(log_msg)
+        else:
+            self.logger.warning(log_msg)
 
     def _tiqr_refused_from_peer_site(self, command, user, command_args):
         """ Home side of a tiqr request forwarded by another site.
@@ -3298,9 +3328,9 @@ class OTPmeSsoP1(OTPmeServer1):
         if user.site != config.site:
             if not self._resolve_tiqr_allowed(user):
                 self._log_tiqr_denied("list_tiqr_tokens",
-                                    "originator: user home not in "
-                                    "sso_allow_tiqr_trusts, or "
-                                    "sso_allow_tiqr off", user)
+                                    "originator: "
+                                    f"{self._tiqr_denied_reason(user)}",
+                                    user)
                 return self.build_response(True, {'tiqr_tokens': [],
                                                 'allowed': False,
                                                 'status': True})
@@ -3484,9 +3514,9 @@ class OTPmeSsoP1(OTPmeServer1):
         if user.site != config.site:
             if not self._resolve_tiqr_allowed(user):
                 self._log_tiqr_denied(command,
-                                    "originator: user home not in "
-                                    "sso_allow_tiqr_trusts, or "
-                                    "sso_allow_tiqr off", user)
+                                    "originator: "
+                                    f"{self._tiqr_denied_reason(user)}",
+                                    user)
                 return self.build_response(False,
                         {'message':'tiqr is not enabled.', 'status':False})
             forward_args = dict(command_args)
@@ -3557,17 +3587,24 @@ class OTPmeSsoP1(OTPmeServer1):
 
         Every caller is a settings page command, so the settings card
         also needs sso_allow_totp_mgmt. """
+        return self._totp_denied_reason(user) is None
+
+    def _totp_denied_reason(self, user):
+        """ Which gate of _resolve_totp_allowed() refuses the user, for
+        the log; None if none does. """
         if not self._trusts_user_home_site(user, "sso_allow_totp_trusts"):
-            return False
+            return f"site {user.site} not in sso_allow_totp_trusts"
         if not self._mgmt_allowed(user, "sso_allow_totp_mgmt"):
-            return False
+            return "sso_allow_totp_mgmt=False"
         try:
             value = user.get_config_parameter("sso_allow_totp")
         except Exception:
-            return True
+            return None
         if value is None:
-            return True
-        return bool(value)
+            return None
+        if not value:
+            return "sso_allow_totp=False"
+        return None
 
     def _log_totp_denied(self, command, reason, user):
         """ Say which of the TOTP trust gates refused, and on what. See
@@ -3580,7 +3617,12 @@ class OTPmeSsoP1(OTPmeServer1):
                                 own_site=config.site,
                                 peer=getattr(self.peer, 'name', None),
                                 peer_site=getattr(self.peer, 'site', None))
-        self.logger.warning(log_msg)
+        # The settings page asks for its cards on every load, and a
+        # card that is not shown is no incident.
+        if command.startswith("list_"):
+            self.logger.info(log_msg)
+        else:
+            self.logger.warning(log_msg)
 
     def _totp_refused_from_peer_site(self, command, user, command_args):
         """ Home side of a TOTP request forwarded by another site. Same
@@ -3646,9 +3688,9 @@ class OTPmeSsoP1(OTPmeServer1):
         if user.site != config.site:
             if not self._resolve_totp_allowed(user):
                 self._log_totp_denied("list_totp_tokens",
-                                    "originator: user home not in "
-                                    "sso_allow_totp_trusts, or "
-                                    "sso_allow_totp off", user)
+                                    "originator: "
+                                    f"{self._totp_denied_reason(user)}",
+                                    user)
                 return not_allowed
             forward_args = dict(command_args)
             forward_args['_totp_allowed'] = True
@@ -3760,9 +3802,9 @@ class OTPmeSsoP1(OTPmeServer1):
             # Decided here: the secret comes back through us.
             if not self._resolve_totp_allowed(user):
                 self._log_totp_denied("totp_enroll_begin",
-                                    "originator: user home not in "
-                                    "sso_allow_totp_trusts, or "
-                                    "sso_allow_totp off", user)
+                                    "originator: "
+                                    f"{self._totp_denied_reason(user)}",
+                                    user)
                 return self._totp_not_enabled()
             forward_args = dict(command_args)
             forward_args['_step_up_verified'] = True
@@ -3851,9 +3893,9 @@ class OTPmeSsoP1(OTPmeServer1):
         if user.site != config.site:
             if not self._resolve_totp_allowed(user):
                 self._log_totp_denied("totp_enroll_verify",
-                                    "originator: user home not in "
-                                    "sso_allow_totp_trusts, or "
-                                    "sso_allow_totp off", user)
+                                    "originator: "
+                                    f"{self._totp_denied_reason(user)}",
+                                    user)
                 return self._totp_not_enabled()
             forward_args = dict(command_args)
             forward_args['_totp_allowed'] = True
@@ -4071,9 +4113,9 @@ class OTPmeSsoP1(OTPmeServer1):
         if user.site != config.site:
             if not self._resolve_totp_allowed(user):
                 self._log_totp_denied(command,
-                                    "originator: user home not in "
-                                    "sso_allow_totp_trusts, or "
-                                    "sso_allow_totp off", user)
+                                    "originator: "
+                                    f"{self._totp_denied_reason(user)}",
+                                    user)
                 return self._totp_not_enabled()
             forward_args = dict(command_args)
             forward_args['_totp_allowed'] = True
@@ -4158,9 +4200,8 @@ class OTPmeSsoP1(OTPmeServer1):
             # Decided here: the new PIN comes through us.
             if not self._resolve_totp_allowed(user):
                 self._log_totp_denied("change_totp_pin",
-                                    "originator: user home not in "
-                                    "sso_allow_totp_trusts, or "
-                                    "sso_allow_totp/sso_allow_totp_mgmt off",
+                                    "originator: "
+                                    f"{self._totp_denied_reason(user)}",
                                     user)
                 return self._totp_not_enabled()
             forward_args = dict(command_args)
@@ -7879,7 +7920,8 @@ class OTPmeSsoP1(OTPmeServer1):
             # Originator (foreign user) or local user: check local policy.
             if not self._resolve_passkeys_allowed(user):
                 self._log_passkey_denied("set_passkey_enabled",
-                                    "sso_allow_passkeys", user)
+                                    self._passkeys_denied_reason(user),
+                                    user)
                 return self.build_response(False,
                         {'message':'Passkeys are not enabled.', 'status':False})
 

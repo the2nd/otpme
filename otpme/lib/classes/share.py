@@ -162,12 +162,12 @@ commands = {
             'default'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'oargs'             : ['unit', 'home_share', 'home_share_uid', 'force_group', 'force_create_mode', 'force_directory_mode', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token'],
+                    'oargs'             : ['unit', 'home_share', 'home_share_uid', 'force_group', 'force_create_mode', 'force_directory_mode', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token', 'no_mount_token'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
                     'method'            : 'add',
-                    'oargs'             : ['unit', 'home_share', 'home_share_uid', 'force_group', 'force_create_mode', 'force_directory_mode', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token'],
+                    'oargs'             : ['unit', 'home_share', 'home_share_uid', 'force_group', 'force_create_mode', 'force_directory_mode', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token', 'no_mount_token'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1081,6 +1081,17 @@ def register():
     config.register_auth_on_action_hook("share", "add_share_key")
     config.register_auth_on_action_hook("share", "del_share_key")
     config.register_auth_on_action_hook("share", "change_add_script")
+    config.register_auth_on_action_hook("share", "set_root_dir")
+    config.register_auth_on_action_hook("share", "force_group")
+    config.register_auth_on_action_hook("share", "force_create_mode")
+    config.register_auth_on_action_hook("share", "force_directory_mode")
+    config.register_auth_on_action_hook("share", "set_home_share_permissions")
+    config.register_auth_on_action_hook("share", "add_master_password_token")
+    config.register_auth_on_action_hook("share", "remove_master_password_token")
+    config.register_auth_on_action_hook("share", "add_root_mount_token")
+    config.register_auth_on_action_hook("share", "remove_root_mount_token")
+    config.register_auth_on_action_hook("share", "add_no_mount_token")
+    config.register_auth_on_action_hook("share", "remove_no_mount_token")
 
 def register_hooks():
     config.register_auth_on_action_hook("share", "set_config_parameter")
@@ -1225,12 +1236,14 @@ def register_config():
         return share_root
     # Default password hash algo.
     # This is the containment boundary every share root_dir is checked
-    # against, so it must not be settable by whoever may edit a share.
+    # against, so it must not be settable by whoever may edit a share --
+    # and not by the ADMIN role either, which it keeps inside of the
+    # directories of the node as well. The admin token of the site only.
     config.register_config_parameter(name="share_root",
                                     ctype=str,
                                     setter=share_root_setter,
                                     default_value="/otpme-mounts/",
-                                    admin_only=True,
+                                    superuser_only=True,
                                     object_types=object_types)
 
 @match_class_typing
@@ -1532,11 +1545,25 @@ class Share(OTPmeObject):
         no_key_gen: bool=False,
         restore_share: str=None,
         restore_token: str=None,
+        no_mount_token: bool=False,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
+        # The token add puts on the share, for --crypt the one you are
+        # logged in with and for --restore the --restore-token, goes on
+        # as a no mount token: it may mount the share, but it is not
+        # mounted at login.
+        if no_mount_token:
+            if restore_share:
+                adds_token = bool(restore_token)
+            else:
+                adds_token = encrypted and not no_key_gen \
+                            and not home_share and not home_share_uid
+            if not adds_token:
+                msg = _("--no-mount-token needs --crypt or --restore-token.")
+                return callback.error(msg)
         if home_share_uid and not home_share:
             home_share = True
         # Run parent class stuff e.g. verify ACLs.
@@ -1572,22 +1599,6 @@ class Share(OTPmeObject):
                 if token_uuid not in share.tokens:
                     msg = _("Token not assigned to share.")
                     return callback.error(msg)
-                share_key = None
-                if share.encrypted:
-                    token_user = restore_token.split("/")[0]
-                    share_key = share.get_share_key(username=token_user, run_policies=False)
-                    if not share_key:
-                        msg = _("No share key available for user: {user}")
-                        msg = msg.format(user=token_user)
-                        return callback.error(msg)
-                if not self.add_token(token_path=restore_token,
-                                        share_key=share_key,
-                                        persist_mount=False,
-                                        force=True,
-                                        callback=callback):
-                    msg = _("Failed to add token: {token}")
-                    msg = msg.format(token=restore_token)
-                    return callback.error(msg)
             self.restore_share = share.uuid
             self.home_share = share.home_share
             self.home_share_uid = share.home_share_uid
@@ -1596,7 +1607,31 @@ class Share(OTPmeObject):
             if share.force_group_uuid:
                 self.force_group(group_uuid=share.force_group_uuid,
                                     force=True,
+                                    run_policies=False,
                                     verify_acls=False)
+            # Only now: add_token() copies the share key of the user
+            # into this share when it is encrypted and a restore share.
+            # Asked before, it saw neither and copied nothing.
+            if restore_token:
+                # Like the setters above: add decides about ACLs and
+                # policies, not every single step of it.
+                if no_mount_token:
+                    token_added = self.add_no_mount_token(token_path=restore_token,
+                                                        force=True,
+                                                        run_policies=False,
+                                                        verify_acls=False,
+                                                        callback=callback)
+                else:
+                    token_added = self.add_token(token_path=restore_token,
+                                                persist_mount=False,
+                                                force=True,
+                                                run_policies=False,
+                                                verify_acls=False,
+                                                callback=callback)
+                if not token_added:
+                    msg = _("Failed to add token: {token}")
+                    msg = msg.format(token=restore_token)
+                    return callback.error(msg)
             # Add object using parent class.
             add_result = super().add(verify_acls=verify_acls,
                                             verbose_level=verbose_level,
@@ -1606,17 +1641,22 @@ class Share(OTPmeObject):
         if force_group:
             self.force_group(group_name=force_group,
                             force=True,
+                            run_policies=False,
                             verify_acls=False)
+        # The add policies of the share run for these, not those of
+        # every single change.
         if force_create_mode:
             if not self.force_create_mode(create_mode=force_create_mode,
                                         callback=callback,
                                         force=True,
+                                        run_policies=False,
                                         verify_acls=False):
                 return callback.error()
         if force_directory_mode:
             if not self.force_directory_mode(create_mode=force_directory_mode,
                                             callback=callback,
                                             force=True,
+                                            run_policies=False,
                                             verify_acls=False):
                 return callback.error()
         # Default add script.
@@ -1627,6 +1667,7 @@ class Share(OTPmeObject):
                 msg = msg.format(default_add_script=default_add_script)
                 callback.send(msg)
             self.change_add_script(default_add_script,
+                                    run_policies=False,
                                     verify_acls=False,
                                     callback=callback)
         # Default mount script.
@@ -1638,6 +1679,7 @@ class Share(OTPmeObject):
                 callback.send(msg)
             self.change_mount_script(default_mount_script,
                                     force=True,
+                                    run_policies=False,
                                     verify_acls=False,
                                     callback=callback)
         # Get root dir.
@@ -1652,7 +1694,9 @@ class Share(OTPmeObject):
             return callback.error(msg)
         # Check if root dir exists. The share is being created, there is
         # no old root dir to ask about.
-        if not self.set_root_dir(root_dir, force=True, callback=callback):
+        if not self.set_root_dir(root_dir, force=True,
+                                run_policies=False,
+                                callback=callback):
             return callback.error()
         self.home_share = home_share
         self.home_share_uid = home_share_uid
@@ -1688,10 +1732,21 @@ class Share(OTPmeObject):
             except KeyError:
                 msg = _("Share key response misses master password hash parameters.")
                 return callback.error(msg)
-            if not self.add_token(token_path=config.auth_token.rel_path,
-                            share_key=share_key,
-                            force=True,
-                            callback=callback):
+            if no_mount_token:
+                token_added = self.add_no_mount_token(token_path=config.auth_token.rel_path,
+                                                    share_key=share_key,
+                                                    force=True,
+                                                    run_policies=False,
+                                                    verify_acls=False,
+                                                    callback=callback)
+            else:
+                token_added = self.add_token(token_path=config.auth_token.rel_path,
+                                            share_key=share_key,
+                                            force=True,
+                                            run_policies=False,
+                                            verify_acls=False,
+                                            callback=callback)
+            if not token_added:
                 return callback.error()
         # Add index attributes.
         self.update_index('create_mode', self.create_mode)
@@ -1732,9 +1787,11 @@ class Share(OTPmeObject):
         self,
         root_dir,
         force: bool=False,
+        run_policies: bool=True,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
+        _caller: str="API",
         **kwargs,
         ):
         if not os.path.isabs(root_dir):
@@ -1765,6 +1822,17 @@ class Share(OTPmeObject):
                         new_dir=root_dir)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("set_root_dir",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
         self.root_dir = root_dir
         self.update_index('root_dir', self.root_dir)
         return self._cache(callback=callback)
@@ -1778,9 +1846,11 @@ class Share(OTPmeObject):
         group_name: str=None,
         group_uuid: str=None,
         force: bool=False,
+        run_policies: bool=True,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
+        _caller: str="API",
         **kwargs,
         ):
         if not group_name and not group_uuid:
@@ -1791,6 +1861,17 @@ class Share(OTPmeObject):
             msg = msg.format(share_name=self.name)
             if not self.ask_change_confirmation(msg, force=force, callback=callback):
                 return callback.abort()
+            if run_policies:
+                try:
+                    self.run_policies("modify",
+                                    callback=callback,
+                                    _caller=_caller)
+                    self.run_policies("force_group",
+                                    callback=callback,
+                                    _caller=_caller)
+                except Exception as e:
+                    msg = str(e)
+                    return callback.error(msg)
             self.del_index('force_group_uuid', self.force_group_uuid)
             self.force_group_uuid = None
             self.set_changelog("removed")
@@ -1821,6 +1902,18 @@ class Share(OTPmeObject):
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
 
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("force_group",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
         self.force_group_uuid = group.uuid
         self.update_index('force_group_uuid', self.force_group_uuid)
         return self._cache(callback=callback)
@@ -1833,9 +1926,11 @@ class Share(OTPmeObject):
         self,
         create_mode,
         force: bool=False,
+        run_policies: bool=True,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
+        _caller: str="API",
         **kwargs,
         ):
         if self.create_mode == create_mode:
@@ -1861,6 +1956,18 @@ class Share(OTPmeObject):
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
 
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("force_create_mode",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
         self.create_mode = create_mode
         self.update_index('create_mode', create_mode)
         return self._cache(callback=callback)
@@ -1873,9 +1980,11 @@ class Share(OTPmeObject):
         self,
         create_mode,
         force: bool=False,
+        run_policies: bool=True,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
+        _caller: str="API",
         **kwargs,
         ):
         if self.directory_mode == create_mode:
@@ -1900,6 +2009,18 @@ class Share(OTPmeObject):
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
 
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("force_directory_mode",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
         self.directory_mode = create_mode
         self.update_index('directory_mode', create_mode)
         return self._cache(callback=callback)
@@ -1912,9 +2033,11 @@ class Share(OTPmeObject):
         self,
         permissions,
         force: bool=False,
+        run_policies: bool=True,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
+        _caller: str="API",
         **kwargs,
         ):
         """ Set the mode the home share subdirs are created with.
@@ -1948,6 +2071,18 @@ class Share(OTPmeObject):
         msg = msg.format(share_name=self.name, permissions=permissions)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("set_home_share_permissions",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
 
         self.home_share_permissions = permissions
         return self._cache(callback=callback)
@@ -2461,6 +2596,7 @@ class Share(OTPmeObject):
         self,
         token_path: str,
         force: bool=False,
+        run_policies: bool=True,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -2496,6 +2632,18 @@ class Share(OTPmeObject):
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
 
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_master_password_token",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
         # The user has to sign the SOTP like everybody else.
         if self.sotp_signing:
             if not self.add_token_sign_public_key(token_path, callback=callback):
@@ -2513,6 +2661,7 @@ class Share(OTPmeObject):
         self,
         token_path: str,
         force: bool=False,
+        run_policies: bool=True,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -2550,6 +2699,18 @@ class Share(OTPmeObject):
         msg = msg.format(token_path=token_path, share_name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("remove_master_password_token",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
 
         self.master_password_tokens.remove(token_uuid)
 
@@ -2633,6 +2794,7 @@ class Share(OTPmeObject):
         persist_mount: bool=None,
         share_notifications: bool=None,
         force: bool=False,
+        run_policies: bool=True,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -2677,6 +2839,18 @@ class Share(OTPmeObject):
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
 
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_root_mount_token",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
         # The user has to sign the SOTP like everybody else.
         if self.sotp_signing:
             if not self.add_token_sign_public_key(token_path, callback=callback):
@@ -2694,8 +2868,17 @@ class Share(OTPmeObject):
         if not self.enabled:
             return result
 
-        # The token gets a different share root from now on, so let it
-        # mount again.
+        # The token gets a different share root from now on. fs1 decides
+        # that per connection, and the agent drops a share_mount for a
+        # share it has mounted: a mount the token has already would
+        # keep the home dir until it connects again, and then show the
+        # share root in its place, under the same paths. So it goes
+        # first and comes back with the share root. idled hands the
+        # events of a user over in the order they were sent.
+        self._notify_share_token("share_unmount", token_path,
+                                persist_mount=persist_mount,
+                                share_notifications=share_notifications,
+                                callback=callback)
         self._notify_share_token("share_mount", token_path,
                                 persist_mount=persist_mount,
                                 share_notifications=share_notifications,
@@ -2712,6 +2895,7 @@ class Share(OTPmeObject):
         persist_mount: bool=None,
         share_notifications: bool=None,
         force: bool=False,
+        run_policies: bool=True,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -2742,6 +2926,18 @@ class Share(OTPmeObject):
         msg = msg.format(token_path=token_path, share_name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("remove_root_mount_token",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
 
         self.root_mount_tokens.remove(token_uuid)
 
@@ -2804,6 +3000,7 @@ class Share(OTPmeObject):
         token_path: str,
         share_key: str=None,
         force: bool=False,
+        run_policies: bool=True,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -2841,6 +3038,18 @@ class Share(OTPmeObject):
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
 
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_no_mount_token",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
         token_user = token_path.split("/")[0]
         result = backend.search(object_type="user",
                                 attribute="name",
@@ -2865,6 +3074,11 @@ class Share(OTPmeObject):
                     return callback.error(msg)
 
         if self.encrypted and not self.home_share:
+            # A restore share keeps the key of each of its users itself,
+            # the mount reads it from there. So it may go to a user who
+            # cannot read the share it shows: whoever adds the token
+            # needs a key, here or in that share, the user does not.
+            key_shares = [self]
             if self.restore_share:
                 result = backend.search(object_type="share",
                                         attribute="uuid",
@@ -2876,31 +3090,35 @@ class Share(OTPmeObject):
                     msg = _("Unknown share: {restore_share}")
                     msg = msg.format(restore_share=self.restore_share)
                     return callback.error(msg)
-                share = result[0]
-                share_key = share.get_share_key(username=token_user, run_policies=False)
-                if not share_key:
-                    msg = _("No share key available for user: {user}")
-                    msg = msg.format(user=token_user)
+                key_shares.append(result[0])
+            # Asked only where there is a key: get_share_key() sends
+            # the client an error for every one it does not find.
+            existing_key = user.uuid in self.share_keys
+            if not existing_key and not share_key and self.restore_share:
+                if user.uuid in key_shares[1].share_keys:
+                    share_key = key_shares[1].get_share_key(username=user.name, run_policies=False)
+            if not existing_key and not share_key:
+                auth_user = config.auth_user
+                auth_user_share_key = None
+                for key_share in key_shares:
+                    if auth_user.uuid not in key_share.share_keys:
+                        continue
+                    auth_user_share_key = key_share.get_share_key(username=auth_user.name, run_policies=False)
+                    break
+                if not auth_user_share_key:
+                    msg = _("You dont have a share key for share: {share_name}")
+                    msg = msg.format(share_name=self.name)
                     return callback.error(msg)
-            else:
-                existing_key = self.get_share_key(username=user.name, run_policies=False)
-                if not existing_key and not share_key:
-                    auth_user = config.auth_user
-                    auth_user_share_key = self.get_share_key(username=auth_user.name, run_policies=False)
-                    if not auth_user_share_key:
-                        msg = _("You dont have a share key for share: {share_name}")
-                        msg = msg.format(share_name=self.name)
-                        return callback.error(msg)
-                    msg = _("Sending request to re-encrypt share key for user: {user_name}")
-                    msg = msg.format(user_name=user.name)
-                    callback.send(msg)
-                    key_mode = auth_user.key_mode
-                    share_key = callback.reencrypt_share_key(share_user=user.name,
-                                                            share_key=auth_user_share_key,
-                                                            key_mode=key_mode)
-                    if not share_key:
-                        msg = _("Failed to receive share key from client.")
-                        return callback.error(msg)
+                msg = _("Sending request to re-encrypt share key for user: {user_name}")
+                msg = msg.format(user_name=user.name)
+                callback.send(msg)
+                key_mode = auth_user.key_mode
+                share_key = callback.reencrypt_share_key(share_user=user.name,
+                                                        share_key=auth_user_share_key,
+                                                        key_mode=key_mode)
+                if not share_key:
+                    msg = _("Failed to receive share key from client.")
+                    return callback.error(msg)
             # The key the user will read this share with. A second token
             # of the same user brings the key the share already has, and
             # add_share_key() refuses to add one twice -- which is no
@@ -2912,6 +3130,7 @@ class Share(OTPmeObject):
                 if not self.add_share_key(username=user.name,
                                         share_key=share_key,
                                         force=True,
+                                        run_policies=run_policies,
                                         callback=callback,
                                         verify_acls=False):
                     msg = _("Failed to add share key for user: {user_name}")
@@ -2940,6 +3159,7 @@ class Share(OTPmeObject):
         persist_mount: bool=None,
         share_notifications: bool=None,
         force: bool=False,
+        run_policies: bool=True,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -2974,6 +3194,18 @@ class Share(OTPmeObject):
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
 
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("remove_no_mount_token",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
         self.no_mount_tokens.remove(token_uuid)
         # Update index.
         self.del_index('no_mount_token', token_uuid)
@@ -3006,12 +3238,15 @@ class Share(OTPmeObject):
                         keep_share_key = False
                 if not keep_share_key:
                     # Removing the token is the confirmed action, the
-                    # share key goes with it.
-                    self.del_share_key(username=token_user.name,
-                                        force=True,
-                                        callback=callback,
-                                        verify_acls=False)
-                    self.set_changelog("removed share key")
+                    # share key goes with it. An older restore share may
+                    # not have it: it did not get the key of the token
+                    # it was added with.
+                    if token_user.uuid in self.share_keys:
+                        self.del_share_key(username=token_user.name,
+                                            force=True,
+                                            callback=callback,
+                                            verify_acls=False)
+                        self.set_changelog("removed share key")
                 elif self.home_share:
                     self.set_changelog("kept share key (home share)")
                 else:
@@ -3049,6 +3284,7 @@ class Share(OTPmeObject):
         share_key: str=None,
         persist_mount: bool=None,
         share_notifications: bool=None,
+        run_policies: bool=True,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -3099,6 +3335,11 @@ class Share(OTPmeObject):
                     return callback.error(msg)
 
         if self.encrypted and not self.home_share:
+            # A restore share keeps the key of each of its users itself,
+            # the mount reads it from there. So it may go to a user who
+            # cannot read the share it shows: whoever adds the token
+            # needs a key, here or in that share, the user does not.
+            key_shares = [self]
             if self.restore_share:
                 result = backend.search(object_type="share",
                                         attribute="uuid",
@@ -3110,31 +3351,35 @@ class Share(OTPmeObject):
                     msg = _("Unknown share: {restore_share}")
                     msg = msg.format(restore_share=self.restore_share)
                     return callback.error(msg)
-                share = result[0]
-                share_key = share.get_share_key(username=token_user, run_policies=False)
-                if not share_key:
-                    msg = _("No share key available for user: {user}")
-                    msg = msg.format(user=token_user)
+                key_shares.append(result[0])
+            # Asked only where there is a key: get_share_key() sends
+            # the client an error for every one it does not find.
+            existing_key = user.uuid in self.share_keys
+            if not existing_key and not share_key and self.restore_share:
+                if user.uuid in key_shares[1].share_keys:
+                    share_key = key_shares[1].get_share_key(username=user.name, run_policies=False)
+            if not existing_key and not share_key:
+                auth_user = config.auth_user
+                auth_user_share_key = None
+                for key_share in key_shares:
+                    if auth_user.uuid not in key_share.share_keys:
+                        continue
+                    auth_user_share_key = key_share.get_share_key(username=auth_user.name, run_policies=False)
+                    break
+                if not auth_user_share_key:
+                    msg = _("You dont have a share key for share: {share_name}")
+                    msg = msg.format(share_name=self.name)
                     return callback.error(msg)
-            else:
-                existing_key = self.get_share_key(username=user.name, run_policies=False)
-                if not existing_key and not share_key:
-                    auth_user = config.auth_user
-                    auth_user_share_key = self.get_share_key(username=auth_user.name, run_policies=False)
-                    if not auth_user_share_key:
-                        msg = _("You dont have a share key for share: {share_name}")
-                        msg = msg.format(share_name=self.name)
-                        return callback.error(msg)
-                    msg = _("Sending request to re-encrypt share key for user: {user_name}")
-                    msg = msg.format(user_name=user.name)
-                    callback.send(msg)
-                    key_mode = auth_user.key_mode
-                    share_key = callback.reencrypt_share_key(share_user=user.name,
-                                                            share_key=auth_user_share_key,
-                                                            key_mode=key_mode)
-                    if not share_key:
-                        msg = _("Failed to receive share key from client.")
-                        return callback.error(msg)
+                msg = _("Sending request to re-encrypt share key for user: {user_name}")
+                msg = msg.format(user_name=user.name)
+                callback.send(msg)
+                key_mode = auth_user.key_mode
+                share_key = callback.reencrypt_share_key(share_user=user.name,
+                                                        share_key=auth_user_share_key,
+                                                        key_mode=key_mode)
+                if not share_key:
+                    msg = _("Failed to receive share key from client.")
+                    return callback.error(msg)
             # The key the user will read this share with. A second token
             # of the same user brings the key the share already has, and
             # add_share_key() refuses to add one twice -- which is no
@@ -3146,6 +3391,7 @@ class Share(OTPmeObject):
                 if not self.add_share_key(username=user.name,
                                         share_key=share_key,
                                         force=True,
+                                        run_policies=run_policies,
                                         callback=callback,
                                         verify_acls=False):
                     msg = _("Failed to add share key for user: {user_name}")
@@ -3158,6 +3404,7 @@ class Share(OTPmeObject):
 
         # Add token by parent class.
         result = super().add_token(token_path=token_path,
+                                run_policies=run_policies,
                                 callback=callback, **kwargs)
 
         if not result:
@@ -3285,12 +3532,15 @@ class Share(OTPmeObject):
                         keep_share_key = False
                 if not keep_share_key:
                     # Removing the token is the confirmed action, the
-                    # share key goes with it.
-                    self.del_share_key(username=token_user.name,
-                                        force=True,
-                                        callback=callback,
-                                        verify_acls=False)
-                    self.set_changelog("removed share key")
+                    # share key goes with it. An older restore share may
+                    # not have it: it did not get the key of the token
+                    # it was added with.
+                    if token_user.uuid in self.share_keys:
+                        self.del_share_key(username=token_user.name,
+                                            force=True,
+                                            callback=callback,
+                                            verify_acls=False)
+                        self.set_changelog("removed share key")
                 elif self.home_share:
                     self.set_changelog("kept share key (home share)")
                 else:
@@ -3865,19 +4115,19 @@ class Share(OTPmeObject):
         return self._cache(callback=callback)
 
     def _get_host_group(self, group_name: str):
-        """ Get a group given as name or as site/name.
+        """ Get a group given by its name.
 
-        A bare name is looked for in the site of the share, the way
-        get_host_uuid() does it for hosts.
+        Group names are unique in the realm (see Group.add()), so the
+        name alone is looked for in all of its sites.
         """
-        if "/" in group_name:
-            search_site, group_name = group_name.split("/", 1)
-        else:
-            search_site = self.site
-        return backend.get_object(object_type="group",
+        result = backend.search(object_type="group",
+                                attribute="name",
+                                value=group_name,
                                 realm=self.realm,
-                                site=search_site,
-                                name=group_name)
+                                return_type="instance")
+        if not result:
+            return None
+        return result[0]
 
     @check_acls(['add:group'])
     @object_lock()
@@ -4035,6 +4285,9 @@ class Share(OTPmeObject):
                 ('root_mount_tokens', 'token', None),
                 ('no_mount_tokens', 'token', None),
                 ('share_keys', 'user', None, 'dict_keys'),
+                # Left behind as well when a user is deleted, not only
+                # by update_sign_public_keys().
+                ('sign_public_keys', 'user', None, 'dict_keys'),
                 ]
         return super().remove_orphans(force=force,
                                     run_policies=run_policies,
@@ -4069,7 +4322,9 @@ class Share(OTPmeObject):
         if skip_disabled:
             search_attr['enabled'] = {}
             search_attr['enabled']['value'] = True
-        return_attributes = ['site', return_type]
+        # The name alone, also for a group of another site: group names
+        # are unique in the realm (see _get_host_group()).
+        return_attributes = [return_type]
         search_result = backend.search(object_type="group",
                                     attribute="uuid",
                                     values=self.groups,
@@ -4080,10 +4335,6 @@ class Share(OTPmeObject):
                 x_result = search_result[uuid][return_type]
             except Exception:
                 continue
-            if return_type == "name":
-                x_site = search_result[uuid]['site']
-                if x_site != config.site:
-                    x_result = f"{x_site}/{x_result}"
             result.append(x_result)
 
         result.sort()
@@ -4593,8 +4844,13 @@ class Share(OTPmeObject):
         **kwargs,
         ):
         """ Enable user mount script. """
+        # Before anything is asked: confirming, or authenticating again,
+        # for a change that then is not made helps nobody.
+        if self.mount_script_enabled:
+            msg = _("Mount script already enabled for this share.")
+            return callback.error(msg)
         if not self.mount_script:
-            msg = "Mount script not configured."
+            msg = _("Mount script not configured.")
             return callback.error(msg)
 
         x = backend.get_object(object_type="script",
@@ -4621,11 +4877,6 @@ class Share(OTPmeObject):
                 msg = _("Error running policies: {e}")
                 msg = msg.format(e=e)
                 return callback.error(msg)
-
-        # Check if mount_script is already enabled.
-        if self.mount_script_enabled:
-            msg = _("Mount script already enabled for this share.")
-            return callback.error(msg)
 
         self.mount_script_enabled = True
         self.update_index('mount_script_enabled', self.mount_script_enabled)
@@ -4791,6 +5042,14 @@ class Share(OTPmeObject):
         share_tokens = self.get_tokens(return_type="rel_path",
                                     include_roles=True)
         share_tokens = self.filter_mount_tokens(share_tokens)
+        # A root mount token gets the share mounted at login as well
+        # (Token.get_shares()), though it need not be assigned the
+        # normal way.
+        if self.root_mount_tokens:
+            share_tokens += backend.search(object_type="token",
+                                        attribute="uuid",
+                                        values=self.root_mount_tokens,
+                                        return_type="rel_path")
         if not share_tokens:
             return result
 
@@ -4880,10 +5139,16 @@ class Share(OTPmeObject):
 
         share_tokens = self.get_tokens(return_type="rel_path",
                                     include_roles=True)
-        if self.no_mount_tokens:
+        # Every token that may have the share mounted: a root mount
+        # token at login, a no mount and a master password token by
+        # hand.
+        other_tokens = self.no_mount_tokens \
+                        + self.root_mount_tokens \
+                        + self.master_password_tokens
+        if other_tokens:
             share_tokens += backend.search(object_type="token",
                                         attribute="uuid",
-                                        values=self.no_mount_tokens,
+                                        values=other_tokens,
                                         return_type="rel_path")
         if not share_tokens:
             return result
@@ -4963,12 +5228,16 @@ class Share(OTPmeObject):
         """
         share_tokens = self.get_tokens(return_type="rel_path",
                                     include_roles=True)
-        # A no mount token may have mounted the share by hand, see
-        # filter_mount_tokens().
-        if self.no_mount_tokens:
+        # Every token that may have the share mounted: a root mount
+        # token at login, a no mount (see filter_mount_tokens()) and a
+        # master password token by hand.
+        other_tokens = self.no_mount_tokens \
+                        + self.root_mount_tokens \
+                        + self.master_password_tokens
+        if other_tokens:
             share_tokens += backend.search(object_type="token",
                                         attribute="uuid",
-                                        values=self.no_mount_tokens,
+                                        values=other_tokens,
                                         return_type="rel_path")
         if not share_tokens:
             return {}

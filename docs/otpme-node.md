@@ -40,7 +40,8 @@ node is made with **add** here, and the machine itself joins with
 
 **add *node***  
 Create a node. The machine itself need not exist yet: this is the object
-a join with a JOTP looks for. It prints the JOTP.  
+a join with a JOTP looks for. The name has to be unique in the realm: no
+node and no host of any site may have it already. It prints the JOTP.  
 There is no **rename**. A node is found by the name it joined with,
 which is also the name in its certificate, so a machine that is renamed
 leaves the realm and joins again.

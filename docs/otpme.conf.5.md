@@ -616,6 +616,20 @@ unset) to store objects uncompressed.
 **PRETTIFY_OBJECT_JSON**  
 Pretty-print object JSON files.
 
+**FSYNC_FILE_WRITES**  
+Sync every file OTPme writes to disk before it goes on: objects,
+transactions, keys. Off by default.  
+A file is written under another name first and then put in place of the
+old one, so a crash leaves the old file or the new one, never part of
+one. (Not a file with a second hard link, or one OTPme may write but not
+replace: those are written in place.) On ext4 that holds without this,
+and a crash loses only what was written in the last seconds. Turn it on
+for another filesystem, or where those seconds must not be lost
+either.  
+It costs a few milliseconds on every file, and a change of one object
+writes several of them. Measure it on your disks before you turn it on
+for a site with many changes.
+
 # LOGGING
 
 **LOGLEVEL**  

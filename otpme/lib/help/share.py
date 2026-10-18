@@ -55,8 +55,8 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-share add [--force-group <group>] [--force-directory-mode <mode>] [--force-create-mode <mode>] [--crypt] [--no-key-gen] [--block-size <block_size>] [--home-share] [--home-share-uid] [--restore <restore_share>] [--restore-token <token>] {share}'),
-                    'cmd'   :   '--force-group :force_group: --force-directory-mode :force_directory_mode: --force-create-mode :force_create_mode: --crypt :encrypted=True: --no-key-gen :no_key_gen=True: --block-size :block_size: --home-share :home_share=True: --home-share-uid :home_share_uid=True: --restore :restore_share: --restore-token :restore_token: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-share add [--force-group <group>] [--force-directory-mode <mode>] [--force-create-mode <mode>] [--crypt] [--no-key-gen] [--block-size <block_size>] [--home-share] [--home-share-uid] [--restore <restore_share>] [--restore-token <token>] [--no-mount-token] {share}'),
+                    'cmd'   :   '--force-group :force_group: --force-directory-mode :force_directory_mode: --force-create-mode :force_create_mode: --crypt :encrypted=True: --no-key-gen :no_key_gen=True: --block-size :block_size: --home-share :home_share=True: --home-share-uid :home_share_uid=True: --restore :restore_share: --restore-token :restore_token: --no-mount-token :no_mount_token=True: <|object|>',
                     '_help' :   {
                                     'cmd'                           : _('Add new share.'),
                                     '--home-share'                  : _('Add home share (subdirs are user UUID named.).'),
@@ -67,8 +67,9 @@ cmd_help = {
                                     '--crypt'                       : _('Add encrypted share.'),
                                     '--no-key-gen'                  : _('Don\'t generate AES key.'),
                                     '--block-size <blocksize>'      : _('Encrypted share block size (default 4096).'),
-                                    '--restore <restore_share>'     : _('Add restore share.'),
-                                    '--restore-token <token>'       : _('Add token restore share.'),
+                                    '--restore <restore_share>'     : _('Add a restore share that shows the backups of <restore_share>.'),
+                                    '--restore-token <token>'       : _('Token of <restore_share> that may mount the restore share.'),
+                                    '--no-mount-token'              : _('Add the token of --crypt or --restore-token as a no mount token.'),
                                 },
                 },
 

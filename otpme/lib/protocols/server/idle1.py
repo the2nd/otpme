@@ -352,11 +352,8 @@ class OTPmeIdleP1(OTPmeServer1):
         Read the way "who" is read, and fenced the same way: only from
         a node of our own site, unless the site says otherwise.
         """
-        own_site = backend.get_object(uuid=config.site_uuid)
-        allow_who_from_hosts = own_site.get_config_parameter("allow_who_from_hosts")
-        if not allow_who_from_hosts:
-            if not self.peer.type == "node":
-                return self.build_response(False, "Permission denied")
+        if not self._who_allowed():
+            return self.build_response(False, "Permission denied")
         if self.peer.realm_uuid != config.realm_uuid \
         or self.peer.site_uuid != config.site_uuid:
             return self.build_response(False, "Permission denied")
@@ -472,6 +469,8 @@ class OTPmeIdleP1(OTPmeServer1):
                     if self.peer.uuid in share_hosts:
                         continue
                 shares.pop(share_id)
+            if not shares:
+                return False
             share_ids = ",".join(shares.keys())
             log_msg = _("Sending share unmount notification ({shares}) to {username} on host {host}", log=True)[1]
             log_msg = log_msg.format(shares=share_ids, username=username, host=self.peer.name)
@@ -644,13 +643,33 @@ class OTPmeIdleP1(OTPmeServer1):
             msg = msg.format(event_type=event_type)
             raise OTPmeException(msg)
 
+    def _who_allowed(self):
+        """ Whether the peer may ask who is here (who and host_who).
+
+        A node may. A host may when the site lets every host ask
+        (allow_who_from_hosts), or names this one in allow_who -- which
+        is not read at all while the switch is on.
+        """
+        if self.peer.type == "node":
+            return True
+        own_site = backend.get_object(uuid=config.site_uuid)
+        if own_site.get_config_parameter("allow_who_from_hosts"):
+            return True
+        if self.peer.type != "host":
+            return False
+        # The uuids as they are stored, not the names the getter turns
+        # them into for the CLI: a name belongs to a host for as long as
+        # it has it, the uuid is the host.
+        allowed_hosts = own_site.get_config_parameter("allow_who",
+                                                    apply_getter=False)
+        if not allowed_hosts:
+            return False
+        return self.peer.uuid in allowed_hosts
+
     def _handle_who(self, username=None):
         """ Get online users. """
-        own_site = backend.get_object(uuid=config.site_uuid)
-        allow_who_from_hosts = own_site.get_config_parameter("allow_who_from_hosts")
-        if not allow_who_from_hosts:
-            if not self.peer.type == "node":
-                return self.build_response(False, "Permission denied")
+        if not self._who_allowed():
+            return self.build_response(False, "Permission denied")
         # Scope to our own site/realm: the presence map (login_token,
         # client_ip, ...) belongs to this site's users. A foreign-site peer
         # must not enumerate it.

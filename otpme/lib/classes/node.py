@@ -55,6 +55,7 @@ read_value_acls = {
                                 "roles",
                                 "tokens",
                                 "dynamic_groups",
+                                "logins_limited",
                             ],
                 # The other direction: not what this node holds, but
                 # who holds this node.

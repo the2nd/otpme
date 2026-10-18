@@ -1,4 +1,4 @@
-.TH OTPME-SHARE 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.TH OTPME-SHARE 1 "2026-10-18" "OTPme 0.3.0a283" "OTPme Manual"
 .SH NAME
 otpme-share \- manage OTPme file shares
 .SH SYNOPSIS
@@ -7,9 +7,35 @@ otpme-share \- manage OTPme file shares
 [\fIoptions\fR] [\fIshare\fR]
 .SH DESCRIPTION
 .B otpme-share
-manages file shares in the OTPme system. A share provides access to a directory tree and can optionally be encrypted.
+manages the file shares of a site.
+A share is a directory on the nodes of the site.
+Users mount it on their hosts with a token, see
+.B add_token
+below.
+A share can be encrypted.
 .PP
-Shares support two types of scripts: An \fBadd script\fR (default: add_share.sh) is automatically executed when a share is created to set up the share directory structure. A \fBmount script\fR (default: mount_share.sh) can be configured to run each time a user mounts the share. Scripts are run by scriptd as \fBROOT_SCRIPT_USER\fR and \fBROOT_SCRIPT_GROUP\fR (\fBnobody\fR and \fBnogroup\fR by default, see \fBotpme.conf\fR(5)), never as root and never as the OTPme user. A script that has to mount something or write outside its own directories therefore needs \fBsudo\fR for these commands. The default scripts for new shares can be configured via the \fBdefault_share_add_script\fR and \fBdefault_share_mount_script\fR config parameters at site or unit level.
+A share has two scripts.
+The \fBadd script\fR runs once, when the share is added, on the node that adds it.
+It creates the directory of the share.
+The \fBmount script\fR runs every time a user mounts the share, on the node the mount goes to.
+.PP
+A new share gets the scripts that the config parameters
+.B default_share_add_script
+and
+.B default_share_mount_script
+of its unit or site name: \fBadd_share.sh\fR and \fBmount_share.sh\fR in the scripts unit, unless they are set otherwise.
+The mount script is set, but off;
+.B enable_mount_script
+switches it on.
+.PP
+scriptd runs both scripts as \fBROOT_SCRIPT_USER\fR and \fBROOT_SCRIPT_GROUP\fR (\fBnobody\fR and \fBnogroup\fR by default, see \fBotpme.conf\fR(5)), never as root and never as the OTPme user.
+They get \fB$share_name\fR and \fB$share_root\fR, the directory of the share (\fIshare_root\fB/\fIshare\fR), and \fB$force_group\fR, \fB$force_create_mode\fR and \fB$force_directory_mode\fR where the share has them.
+.PP
+The add script has to create \fB$share_root\fR.
+.B add
+fails if that directory is not there afterwards on the node that adds the share.
+As \fBnobody\fR a script can usually not do that itself, so it calls a helper of yours with \fBsudo\fR.
+The scripts that come with OTPme do nothing: they only show, commented out, how such a call looks.
 .SH HOME SHARES
 A normal share hands out its root directory to everybody. A \fBhome share\fR hands out \fIshare_root\fB/\fIhome_dir\fR instead, so every user gets their own directory and sees nothing else. The directory is created on the first mount, owned by the user and by default with mode 0700 (see \fBhome_share_permissions\fR).
 .PP
@@ -50,7 +76,13 @@ Who may mount it is decided on the restore share itself, like for any share, wit
 .B add_token
 and the commands next to it.
 \fB\-\-restore\-token\fR \fItoken\fR adds a first token right away; it has to be a token of the share the backups are of.
-For an encrypted share the mount reads the share key of the user from that share, so only a user who has a key there can read the backups.
+With \fB\-\-no\-mount\-token\fR it is added as a no mount token.
+.PP
+If the share is encrypted and no home share, the restore share keeps a share key of its own for each user it has a token of, and the mount reads it from there.
+.B add_token
+copies the key the user has in the share the backups are of.
+A user who has none there gets your key, encrypted for them, so you need a key in one of the two shares.
+That way a user can read the backups without being able to mount the share itself.
 .PP
 A change to a restore share is not put into the list a host keeps for later logins, unless \fB\-\-persist\-mount\fR is given.
 A restore share cannot be backed up itself.
@@ -64,17 +96,18 @@ Such a command takes these four options:
 Tell the hosts, or do not.
 Without either the config parameter \fBsend_share_notifications\fR decides, which is false by default, see
 .BR otpme (7).
+It is read from the token you are logged in with first, then from the share.
 .TP
 .B \-\-persist\-mount\fR, \fB\-\-no\-persist\-mount
 A host keeps a list of the shares of a login, which it mounts again when the user logs in without a connection to the site.
 With \fB\-\-persist\-mount\fR the change goes into that list as well, with \fB\-\-no\-persist\-mount\fR it holds for the running login only.
 Without either the change goes into the list, except for a restore share.
 .PP
-Only the hosts are told on which a user is logged in with a token the change is about.
+Only the hosts are told on which a user is logged in with a token the change is about, and if the share is limited to some hosts, only those of them.
 The user \fBroot\fR is never told.
 .SS Share Management
 .TP
-.B add \fR[\fB\-\-home\-share\fR] [\fB\-\-home\-share\-uid\fR] [\fB\-\-force\-group\fR \fIgroup\fR] [\fB\-\-force\-directory\-mode\fR \fImode\fR] [\fB\-\-force\-create\-mode\fR \fImode\fR] [\fB\-\-crypt\fR] [\fB\-\-no\-key\-gen\fR] [\fB\-\-block\-size\fR \fIsize\fR] [\fB\-\-restore\fR \fIrestore_share\fR] [\fB\-\-restore\-token\fR \fItoken\fR] \fIshare\fR
+.B add \fR[\fB\-\-home\-share\fR] [\fB\-\-home\-share\-uid\fR] [\fB\-\-force\-group\fR \fIgroup\fR] [\fB\-\-force\-directory\-mode\fR \fImode\fR] [\fB\-\-force\-create\-mode\fR \fImode\fR] [\fB\-\-crypt\fR] [\fB\-\-no\-key\-gen\fR] [\fB\-\-block\-size\fR \fIsize\fR] [\fB\-\-restore\fR \fIrestore_share\fR] [\fB\-\-restore\-token\fR \fItoken\fR] [\fB\-\-no\-mount\-token\fR] \fIshare\fR
 Create a share.
 .br
 It is created in the \fBshares\fR unit of your site; a path puts it into another unit, and
@@ -82,20 +115,12 @@ It is created in the \fBshares\fR unit of your site; a path puts it into another
 takes it there afterwards.
 The name is turned into lower case.
 .br
-OTPme runs the add script of the share and hands it the directory \fIshare_root\fR/\fIshare\fR.
-The script has to create that directory: it becomes the root directory of the share, and a share whose directory is not there after the script is refused.
-\fBshare_root\fR is a config parameter, \fB/otpme\-mounts/\fR by default.
-The script is the one \fBdefault_share_add_script\fR names.
-The \fBadd_share.sh\fR OTPme comes with is a template in which every line is a comment: it creates nothing until you fill it in, or until the directory is made by hand before.
-The mount script that \fBdefault_share_mount_script\fR names is set as well, but not enabled.
-.br
-Neither script runs as root.
-Both run as the user and the group that \fBROOT_SCRIPT_USER\fR and \fBROOT_SCRIPT_GROUP\fR name in the config file, \fBnobody\fR and \fBnogroup\fR by default, see
-.BR otpme.conf (5).
-An add script that has to create a directory outside of what that user may write therefore needs \fBsudo\fR for it.
+OTPme runs the add script of the share, see \fBDESCRIPTION\fR.
+The directory \fIshare_root\fR/\fIshare\fR it has to create becomes the root directory of the share; a share whose directory is not there afterwards is refused.
+\fBshare_root\fR is a config parameter, \fB/otpme\-mounts/\fR by default, and only the admin token of the site may set it.
 .br
 With \fB\-\-crypt\fR you are asked for a master password, twice.
-The share key is made from it on your machine and stored in the share for your user, and the token you are logged in with is added to the share.
+The share key is made from it on your machine and stored in the share for your user, and the token you are logged in with is added to the share, as a no mount token with \fB\-\-no\-mount\-token\fR.
 So this cannot be done from a script that has no terminal.
 An encrypted home share has no key of its own, and nothing is asked.
 .br
@@ -123,7 +148,7 @@ You have to type the name of the share to confirm; the global option \fB\-f\fR s
 OTPme says before which tokens and roles are assigned to the share.
 For an encrypted share it also says that the share keys are deleted with it: its data can then only be read by someone who has the master password.
 .br
-The hosts are told to unmount the share, see \fBTelling the hosts\fR above.
+The hosts are told to unmount the share, see \fBTelling the hosts\fR above, for the no mount, root mount and master password tokens as well.
 .br
 Needs the ACL \fBdelete:object\fR on the share, or \fBdelete:share\fR on the unit it sits in.
 .TP
@@ -171,7 +196,7 @@ A value that is not text has to be spelled out \(em \fB*\fR matches none of it.
 Enable a disabled share.
 .br
 The hosts are told to mount it, see \fBTelling the hosts\fR above.
-A no mount token is left out.
+A no mount token is left out, a root mount token is told as well.
 .br
 Needs the ACL \fBenable:object\fR.
 .TP
@@ -180,7 +205,7 @@ Switch a share off without deleting it.
 A disabled share cannot be mounted.
 .br
 The hosts are told to unmount it, see \fBTelling the hosts\fR above.
-That goes to the no mount tokens as well.
+That goes to the no mount, root mount and master password tokens as well: they may have it mounted too.
 .br
 Needs the ACL \fBdisable:object\fR.
 .TP
@@ -219,7 +244,8 @@ Needs the ACL \fBtouch\fR.
 Set the directory the share hands out.
 .br
 It has to exist, and it has to be below \fBshare_root\fR, which is \fB/otpme\-mounts/\fR by default.
-\fBshare_root\fR is a config parameter of the unit and the site that only an admin can set, so whoever may change a share cannot point it at any directory of the node.
+\fBshare_root\fR is a config parameter of the unit and the site that only the admin token of the site can set, so whoever may change a share cannot point it at any directory of the node.
+A token in the ADMIN role cannot set it either.
 A path with \fB..\fR or a symlink in it is resolved first, and what it resolves to is what is checked and kept.
 .br
 No data is moved.
@@ -314,13 +340,7 @@ The mount script runs on the node every time somebody mounts the share, before t
 It can make sure the directory is there, e.g. mount the file system it is on.
 If it fails, the mount fails with it, and the host tries the next node of the share.
 .PP
-The script gets the name of the share as \fB$share_name\fR and its root directory as \fB$share_root\fR, and \fB$force_group\fR, \fB$force_create_mode\fR and \fB$force_directory_mode\fR where the share has them.
-It does not run as root, see
-.B add
-above.
-.PP
-A new share gets the script \fBdefault_share_mount_script\fR names, switched off.
-The \fBmount_share.sh\fR OTPme comes with is a template in which every line is a comment.
+What the script gets, as whom it runs and which script a new share gets is said in \fBDESCRIPTION\fR.
 .TP
 .B mount_script \fIshare\fR \fImount_script\fR \fR[\fB\-\-\fR \fIscript_options\fR]
 Set the mount script of the share.
@@ -427,13 +447,14 @@ The hosts are told to mount it, unless the share is disabled.
 On an encrypted share the user of the token needs a copy of the share key.
 If they have none yet, OTPme takes your own copy and asks your machine to encrypt it anew for that user.
 So you need a share key of this share yourself, and it cannot be done from a script that has no terminal.
+On a restore share the key the user has in the share the backups are of is copied first; only if there is none yours is taken, from either of the two shares, see \fBRESTORE SHARES\fR above.
 An encrypted home share is the exception: nothing is copied, the user makes their own key at their first mount.
 .br
 With a forced group, a token whose user is not in that group is refused, unless you are an admin.
 With SOTP signing the sign public key of the user is copied into the share, and a user without one is refused.
 .br
 Needs the ACL \fBadd:token\fR.
-On an encrypted share that is no home share it needs \fBview:share_key\fR as well, because it looks at the share keys.
+On an encrypted share that is no home share it needs \fBview:share_key\fR as well when a key has to be copied, on the share the key is read from.
 .TP
 .B remove_token \fR[\fB\-\-keep\-share\-key\fR|\fB\-\-remove\-share\-key\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
 Take the token off the share.
@@ -508,9 +529,7 @@ So a role on a share counts twice: its tokens may mount, and its hosts are place
 The node checks the host when the share is mounted and goes on checking while it is mounted.
 A host that is taken off the list loses its access within a second, whether it was told or not.
 .PP
-A \fIhost\fR is looked for in the site of the share, or written as \fIsite\fB/\fIhost\fR to take one from another site of the realm.
-The same goes for a \fIgroup\fR, written as \fIsite\fB/\fIgroup\fR.
-A host name is unique within its site only, so two sites can each have a host of the same name.
+Host and group names are unique in the realm, so a \fIhost\fR or a \fIgroup\fR is given by its name alone, whatever site it is in.
 .PP
 The four options that tell the hosts are described under \fBTelling the hosts\fR above.
 As long as the share is not limited these commands tell no host: nothing changes for any of them.
@@ -569,7 +588,6 @@ Needs the ACL \fBremove:group\fR.
 .TP
 .B list_groups \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIshare\fR
 List the names of the host groups that are on the share.
-A group of another site is written as \fIsite\fB/\fIgroup\fR.
 \fB\-\-return\-type\fR selects what to print instead (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 Disabled groups are listed too, though their hosts do not count.
 .br
@@ -607,7 +625,8 @@ The token needs no other assignment to the share.
 .TP
 .B add_root_mount_token \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
 Let the token mount the root directory of the home share.
-What the token gets from the share changes, so the hosts are told to mount it, like with \fBadd_token\fR.
+What the token gets from the share changes, so the hosts are told to unmount it for the token and to mount it again, see \fBTelling the hosts\fR above.
+A mount the token has already then shows the root directory instead of the home dir; without being told, it would keep the home dir until it connects to a node again, and then switch under the same paths.
 .br
 With SOTP signing the sign public key of the user is copied into the share, and a user without one is refused.
 .br
@@ -735,21 +754,51 @@ Use \fB\-\-policy\-types\fR to list only policies of the given types; these are 
 .br
 Needs the ACL \fBview:policies\fR.
 .SS ACL Management
+An ACL says what somebody may do with this share.
+The somebody is a role or a token, never a user.
+.PP
+What the three forms \fBacl\fR, \fB+acl\fR and \fB++acl\fR mean, and which ACLs exist, is under \fBACLs\fR in
+.BR otpme (7).
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
-.B add_acl \fIshare\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
-Add an access control entry.
+.B add_acl \fIshare\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
+Give a role or a token one or more ACLs on this share.
+.br
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR, and \fIowner\fR the path of that role or token.
+An ACL may carry a value, for example \fBview:tokens\fR, and several are separated by commas.
+.br
+Needs the ACL \fBadd:acl\fR.
 .TP
-.B del_acl \fIshare\fR \fIacl\fR
-Remove an access control entry.
+.B del_acl \fIshare\fR \fIacl\fR[,\fIacl\fR]
+Take those ACLs away again.
+.br
+Here an \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fBrole:berlin/sw\-admins:view\fR.
+.br
+Needs the ACL \fBdelete:acl\fR.
 .TP
 .B list_acls \fIshare\fR
-Display all ACLs for the share.
+Show the ACLs that lie on this share, i.e. who may do what with it.
+Needs the ACL \fBview:acl\fR.
 .TP
 .B enable_acl_inheritance \fIshare\fR
-Enable ACL inheritance from parent objects.
+Let the share inherit the default ACLs of the unit above it.
+It does not by default.
+.RS
+.PP
+Only default ACLs are inherited.
+An ordinary ACL on the unit never is.
+.PP
+Moving the share into another unit then takes away the default ACLs of the old unit and applies those of the new one.
+While inheritance is off, a move leaves the ACLs of the share as they are.
+.PP
+Needs the ACL \fBenable:acl_inheritance\fR.
+.RE
 .TP
 .B disable_acl_inheritance \fIshare\fR
-Disable ACL inheritance.
+Stop inheriting them.
+Only the ACLs on the share itself count from then on.
+Needs the ACL \fBdisable:acl_inheritance\fR.
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
@@ -782,13 +831,36 @@ This needs more than the ACL \fBclear:changelog\fR: the config parameter
 has to allow it (see \fBotpme\fR(7)).
 It is true by default, but where no value is found at all, clearing is refused.
 OTPme asks the token you are signed in with first, then the object.
-.SS Import/Export
+.SS Export and Cleanup
+Both write to stdout.
+There is no import on this page: reading an export back in is
+.B otpme\-tool import\fR,
+see
+.BR otpme\-tool (1).
+.PP
+.B remove_orphans
+asks before it changes anything; the global option \fB\-f\fR skips the question.
 .TP
-.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIshare\fR
-Export share configuration.
+.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIshare\fR
+Write the whole object of the share to stdout, as JSON.
+.br
+Without \fB\-\-password\fR it is written as it is, in clear.
+With one, a key is derived from that password and the object is encrypted with it; the salt goes into the output, so the password is all you need to read it back.
+.br
+What a share holds are references by UUID \(em its tokens of every kind, its roles, hosts, host groups, nodes and pools \(em so an export says something only in the realm it came from.
+It carries the share keys as well, each encrypted for its user, and the sign public keys.
+.br
+Needs the ACL \fBexport\fR.
 .TP
 .B remove_orphans \fIshare\fR
-Remove orphaned object references.
+Remove what the share still points at although it is gone.
+.br
+On a share that is its ACLs, its policies, its tokens of every kind, its roles, host groups, hosts, nodes and pools, and the share keys and sign public keys of users that are gone.
+.br
+It shows everything it found and asks once for all of it.
+It asks nothing and changes nothing when it finds nothing.
+.br
+Needs the ACL \fBremove:orphans\fR.
 .SH OPTIONS
 .SS Creation Options
 .TP
@@ -833,6 +905,11 @@ Make a restore share that shows the backups of this share, see \fBRESTORE SHARES
 .B \-\-restore\-token \fITOKEN\fR
 With \fB\-\-restore\fR: add this token to the new share right away.
 It has to be assigned to the share the backups are of.
+.TP
+.B \-\-no\-mount\-token
+Add the token that \fBadd\fR puts on the share as a no mount token, see \fBNo Mount Token\fR above: your own with \fB\-\-crypt\fR, the one of \fB\-\-restore\-token\fR with \fB\-\-restore\fR.
+It may mount the share, but the share is not mounted for it at login.
+Without such a token, e.g. with \fB\-\-no\-key\-gen\fR or on a home share, it is refused.
 .SS Display Options
 .TP
 .B \-a

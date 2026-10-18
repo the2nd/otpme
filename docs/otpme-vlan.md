@@ -131,9 +131,9 @@ Remove a role from the VLAN. A UUID is taken as well, which is how a
 reference to a role that is gone is cleared out.
 
 **add_host *vlan* *host***  
-Add a host to the VLAN. Used for MAB port authentication. The host is
-looked for in the site of the VLAN, or written as *site***/***host* to
-take one from another site of the realm.
+Add a host to the VLAN. Used for MAB port authentication. Host names are
+unique in the realm, so the host is given by its name alone, whatever
+site it is in.
 
 **remove_host *vlan* *host***  
 Remove a host from the VLAN.

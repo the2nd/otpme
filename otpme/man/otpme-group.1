@@ -1,4 +1,4 @@
-.TH OTPME-GROUP 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.TH OTPME-GROUP 1 "2026-10-18" "OTPme 0.3.0a283" "OTPme Manual"
 .SH NAME
 otpme-group \- manage OTPme groups
 .SH SYNOPSIS
@@ -93,7 +93,7 @@ Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread
 .TP
 .B add_host \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIgroup\fR \fIhost\fR
 Add a host to the group.
-The host is looked for in the site of the group, or written as \fIsite\fB/\fIhost\fR to take one from another site of the realm.
+Host names are unique in the realm, so the host is given by its name alone, whatever site it is in.
 .RS
 .TP
 .B \-\-share\-notify
@@ -127,13 +127,19 @@ Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread
 .TP
 .B add_sync_user \fIgroup\fR \fIuser\fR
 Add a sync user to the group.
+.br
+Needs the ACL \fBadd:sync_user\fR.
 .TP
 .B remove_sync_user \fIgroup\fR \fIuser\fR
 Remove a sync user from the group.
+.br
+Needs the ACL \fBremove:sync_user\fR.
 .TP
 .B list_sync_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIgroup\fR
 List sync users in the group.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.br
+Needs the ACL \fBview:sync_users\fR.
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.

@@ -1,4 +1,4 @@
-.TH OTPME-INVENTORY 1 "2026-10-10" "OTPme 0.3.0a281" "OTPme Manual"
+.TH OTPME-INVENTORY 1 "2026-10-17" "OTPme 0.3.0a283" "OTPme Manual"
 .SH NAME
 otpme-inventory \- show the system, the packages and the hardware of hosts
 .SH SYNOPSIS
@@ -7,21 +7,22 @@ otpme-inventory \- show the system, the packages and the hardware of hosts
 [\fIoptions\fR]
 .SH DESCRIPTION
 .B otpme-inventory
-shows which system a host runs, which kernel it is running, whether it has to be rebooted, which packages are installed on it, and what it is made of.
-You can also search for hosts that have a package, run a system version or a kernel, wait for a reboot, or have certain hardware.
+shows which system a host runs, which kernel and which OTPme version it is running, whether it has to be rebooted, which packages are installed on it, and what it is made of.
+You can also search for hosts that have a package, run a system version, a kernel or an OTPme version, wait for a reboot, or have certain hardware.
 .PP
 Use it to find the hosts a job has to run on, for example all hosts with an old version of a package.
 See
 .BR otpme\-deploy (1).
 Use it to find a machine by its serial number, or to see how much memory and disk a host has.
 Use it to find the hosts that still have to be rebooted, see \fBWHEN A HOST HAS TO BE REBOOTED\fR.
+Use it to find the hosts that still run an old OTPme, see \fBOTPME VERSION\fR.
 .PP
 The \fBconfd\fR daemon on each host (and node) reports this data to the nodes of its site.
 It checks the host every 60 seconds and only sends what changed.
 It does not take stock while a job is running on the host.
 A package manager at work is no good moment for it, the next round does it.
 .PP
-The OS, the OS version, the kernel, the reboot, the packages and the hardware are stored in a separate inventory object for each host, not on the host object.
+The OS, the OS version, the kernel, the reboot, the OTPme version, the packages and the hardware are stored in a separate inventory object for each host, not on the host object.
 All of it is what the host reported about itself, and an inventory has to stand on its own.
 Host objects are synced to all hosts, and the package lists of all hosts should not be, so the inventory stays on the nodes of the host's site.
 .PP
@@ -35,13 +36,13 @@ See \fBPERMISSIONS\fR below.
 .PP
 Shown are the hosts whose inventory this site keeps: its own, and those of other sites that report here, see \fBA CENTRAL INVENTORY\fR.
 .PP
-The hardware is read on any Linux host, and the system and the kernel on any host at all.
+The hardware is read on any Linux host, and the system, the kernel and the OTPme version on any host at all.
 Package lists need a package manager the host knows, which today means Debian and Ubuntu, and so does the answer whether the host has to be rebooted.
-A host without one still reports its system, its kernel and its hardware.
+A host without one still reports its system, its kernel, its OTPme version and its hardware.
 .SH COMMANDS
 .TP
 .B show \fIhost\fR
-Show the OS, the OS version, the running kernel, whether the host has to be rebooted, the number of packages, the vendor, the model, the serial number and the time of the last update.
+Show the OS, the OS version, the running kernel, whether the host has to be rebooted, the OTPme version, the number of packages, the vendor, the model, the serial number and the time of the last update.
 .TP
 .B packages \fR[\fB\-\-filter\fR \fIpattern\fR] \fIhost\fR
 List the packages of a host, one per line with name and version.
@@ -51,8 +52,8 @@ Show what a host is made of: CPU, memory, disks, serial number and so on.
 Sizes are shown in human form, for example \fB9.7G\fR.
 Says so if the host has not reported its hardware yet.
 .TP
-.B search \fR[\fB\-\-host\fR \fIhost\fR] [\fB\-\-os\-version\fR \fIversion\fR] [\fB\-\-kernel\fR \fIkernel\fR] [\fB\-\-reboot\-required\fR] [\fB\-\-hardware\fR \fIexpression\fR] [\fIpackage\fR]
-Find hosts by package, by OS version, by kernel, by a waiting reboot, or by hardware.
+.B search \fR[\fB\-\-host\fR \fIhost\fR] [\fB\-\-os\-version\fR \fIversion\fR] [\fB\-\-kernel\fR \fIkernel\fR] [\fB\-\-otpme\-version\fR \fIversion\fR] [\fB\-\-reboot\-required\fR] [\fB\-\-hardware\fR \fIexpression\fR] [\fIpackage\fR]
+Find hosts by package, by OS version, by kernel, by OTPme version, by a waiting reboot, or by hardware.
 \fIpackage\fR is a package name, or a name and a version in the form \fIname\fB=\fIversion\fR.
 Both can contain wildcards (\fB*\fR).
 Every option you give has to match, so they narrow the result down.
@@ -81,6 +82,11 @@ Wildcards are allowed, for example \fB'debian\-*'\fR.
 .B \-\-kernel \fIkernel\fR
 Only hosts running this kernel, for example \fB6.1.0\-37\-amd64\fR.
 Wildcards are allowed, for example \fB'6.1.0\-3*'\fR.
+.TP
+.B \-\-otpme\-version \fIversion\fR
+Only hosts running this OTPme version, for example \fB0.3.0a283\fR.
+Wildcards are allowed, for example \fB'0.3.0a28*'\fR.
+See \fBOTPME VERSION\fR.
 .TP
 .B \-\-reboot\-required
 Only hosts that have to be rebooted to run what is installed on them.
@@ -250,6 +256,16 @@ Reboot it with
 otpme\-deploy add \-\-host server1 \-\-expiry 1h host_mgmt reboot
 .fi
 .RE
+.SH OTPME VERSION
+.B otpme_version
+is the OTPme version the host is running, for example \fB0.3.0a283\fR.
+.PP
+Running, not installed, the same as the kernel.
+It is the version of the \fBconfd\fR daemon that reports it.
+A host that got a new OTPme and was not restarted still runs the old one, and that is what you see here.
+.PP
+\fB\-\fR means the host has not reported a version yet.
+An OTPme older than this field sends none.
 .SH PACKAGE NAMES
 Package names are the names dpkg uses.
 A multi-arch package has its architecture in the name, for example \fBlibc6:amd64\fR.
@@ -352,6 +368,7 @@ os: Linux
 os_version: debian\-13
 kernel: 6.12.43\-amd64
 reboot_required: no
+otpme_version: 0.3.0a283
 packages: 686
 vendor: Dell Inc.
 model: PowerEdge R640
@@ -470,6 +487,23 @@ server1 6.1.0\-37\-amd64
 server2 6.1.0\-38\-amd64
 .fi
 .RE
+.SS Find hosts by OTPme version
+.TP
+.B otpme-inventory search \-\-otpme\-version 0.3.0a283
+Show all hosts running this OTPme version.
+.PP
+The line says the version, so this is how you see which hosts still run an old one:
+.PP
+.RS
+.nf
+$ otpme\-inventory search \-\-otpme\-version '*'
+client1 0.3.0a283
+dev1 0.3.0a283
+server1 0.3.0a281
+.fi
+.RE
+.PP
+A host that has not reported a version yet is left out.
 .SS Find hosts by hardware
 .TP
 .B otpme-inventory search \-\-hardware service_tag=ABC1234

@@ -1,4 +1,4 @@
-.TH OTPME-SITE 1 "2026-10-11" "OTPme 0.3.0a281" "OTPme Manual"
+.TH OTPME-SITE 1 "2026-10-18" "OTPme 0.3.0a283" "OTPme Manual"
 .SH NAME
 otpme-site \- add the sites of a realm and say how each of them is reached, trusted and signed for
 .SH SYNOPSIS
@@ -1045,7 +1045,8 @@ Set CA certificate email field.
 .PP
 There is no option for a key length or for how long a certificate is valid.
 .B add
-makes no key and no certificate: the CA of the site, the site itself and the master node get theirs when that node joins, and the keys are made on it.
+makes no key, no certificate and no secret: the CA of the site, the site itself and the master node get theirs when that node joins, and the keys are made on it.
+So are the secrets of the site \(em those of the SSO portal, of tiqr and the cluster key \(em and the site that ran \fBadd\fR never has them.
 The lengths are then the
 .B \-\-site\-key\-len
 (the key of the CA) and the

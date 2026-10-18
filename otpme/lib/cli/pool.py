@@ -167,7 +167,7 @@ def row_getter(realm, site, pool_order, pool_data, acls,
                 member_nodes.append(x)
 
             row.append("\n".join(member_nodes))
-        else:
+        elif "nodes" in output_fields:
             if node_access:
                 row.append("")
             else:

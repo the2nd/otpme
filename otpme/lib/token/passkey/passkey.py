@@ -375,6 +375,20 @@ class PasskeyToken(Token):
             return False
         credential_data = decode(self.credential_data, "hex")
         credentials = [AttestedCredentialData(credential_data)]
+        try:
+            parsed = AuthenticationResponse.from_dict(auth_response)
+        except Exception as e:
+            log_msg = _("Token verification failed: {path}: {e}", log=True)[1]
+            log_msg = log_msg.format(path=self.rel_path, e=e)
+            logger.warning(log_msg)
+            return False
+        # The assertion of another token of the user. AuthHandler tries
+        # them one by one, so this is "try the next one", no failure.
+        if parsed.raw_id != credentials[0].credential_id:
+            log_msg = _("Assertion is not for this token: {path}", log=True)[1]
+            log_msg = log_msg.format(path=self.rel_path)
+            logger.debug(log_msg)
+            return False
         fido2_server = self.get_fido2_server()
         try:
             fido2_server.authenticate_complete(self.auth_state,
@@ -385,7 +399,6 @@ class PasskeyToken(Token):
             log_msg = log_msg.format(path=self.rel_path, e=e)
             logger.warning(log_msg)
             return False
-        parsed = AuthenticationResponse.from_dict(auth_response)
         counter = parsed.response.authenticator_data.counter
         last_counter = self.get_token_counter()
         if counter == 0 and last_counter <= 0:

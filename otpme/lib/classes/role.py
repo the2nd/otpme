@@ -51,7 +51,7 @@ write_acls = []
 read_value_acls = {
                     "view"      : [
                                     "hosts",
-                                    "user",
+                                    "sync_users",
                                     "tokens",
                                     # show_config() offers the devices
                                     # of a role to whoever holds it,
@@ -79,7 +79,7 @@ read_value_acls = {
 
 write_value_acls = {
                     "add"       : [
-                                    "user",
+                                    "sync_user",
                                     "token",
                                     "role",
                                     "device",
@@ -90,7 +90,7 @@ write_value_acls = {
                                     "config",
                                 ],
                     "remove"    : [
-                                    "user",
+                                    "sync_user",
                                     "token",
                                     "role",
                                     "device",

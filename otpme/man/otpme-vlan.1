@@ -1,4 +1,4 @@
-.TH OTPME-VLAN 1 "2026-07-26" "OTPme 0.3.0a120" "OTPme Manual"
+.TH OTPME-VLAN 1 "2026-10-18" "OTPme 0.3.0a283" "OTPme Manual"
 .SH NAME
 otpme-vlan \- manage OTPme VLANs
 .SH SYNOPSIS
@@ -131,7 +131,7 @@ A UUID is taken as well, which is how a reference to a role that is gone is clea
 .TP
 .B add_host \fIvlan\fR \fIhost\fR
 Add a host to the VLAN. Used for MAB port authentication.
-The host is looked for in the site of the VLAN, or written as \fIsite\fB/\fIhost\fR to take one from another site of the realm.
+Host names are unique in the realm, so the host is given by its name alone, whatever site it is in.
 .TP
 .B remove_host \fIvlan\fR \fIhost\fR
 Remove a host from the VLAN.

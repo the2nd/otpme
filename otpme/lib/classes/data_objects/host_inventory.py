@@ -398,6 +398,11 @@ def register_backend():
     # old kernel.
     config.register_index_attribute('kernel', sync=[],
                                     object_types=inventory_types)
+    # The OTPme version the host runs, the same way: what its confd
+    # runs, not what is installed. Searchable, because the question is
+    # which hosts still run an old one.
+    config.register_index_attribute('otpme_version', sync=[],
+                                    object_types=inventory_types)
     # Whether the host has to be rebooted to run what is installed on
     # it. The host works that out, because what says so differs per
     # system (see confd/debian.py); here it is a yes or a no, and no
@@ -536,13 +541,18 @@ class HostInventory(OTPmeDataObject):
         return self._get_index_value("kernel")
 
     @property
+    def otpme_version(self):
+        """ The OTPme version the host runs (e.g. 0.3.0a283). """
+        return self._get_index_value("otpme_version")
+
+    @property
     def reboot_required(self):
         """ Whether the host has to be rebooted to run what is
         installed on it. None where it has not said. """
         return self._get_index_value("reboot_required")
 
     def update_os(self, os_name=None, os_version=None, kernel=None,
-        reboot_required=None):
+        reboot_required=None, otpme_version=None):
         """ Take what the host reported about its system.
 
         Answers whether anything changed, so the caller only writes
@@ -557,6 +567,10 @@ class HostInventory(OTPmeDataObject):
             changed = True
         if kernel is not None and kernel != self.kernel:
             self.update_index("kernel", kernel)
+            changed = True
+        if otpme_version is not None \
+        and otpme_version != self.otpme_version:
+            self.update_index("otpme_version", otpme_version)
             changed = True
         if reboot_required is not None \
         and reboot_required != self.reboot_required:

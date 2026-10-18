@@ -344,9 +344,8 @@ IP phone, and is let onto the network by its MAC address. See
 **otpme-device**(1).
 
 **add_host *role* *host***  
-Put a host into the role. The host is looked for in the site of the
-role, or written as *site***/***host* to take one from another site of
-the realm.
+Put a host into the role. Host names are unique in the realm, so the
+host is given by its name alone, whatever site it is in.
 
 **remove_host *role* *host***  
 Take it out again.
@@ -398,13 +397,16 @@ A user who is to log in there needs a token in the role instead. That
 brings the account along with it.
 
 **add_sync_user *role* *user***  
-Have that user's account copied to the hosts that name this role.
+Have that user's account copied to the hosts that name this role.  
+Needs the ACL **add:sync_user**.
 
 **remove_sync_user *role* *user***  
-Stop that.
+Stop that.  
+Needs the ACL **remove:sync_user**.
 
 **list_sync_users \[**--return-type** *type*\] *role***  
-The sync users of this role.
+The sync users of this role.  
+Needs the ACL **view:sync_users**.
 
 ## Policy Management
 

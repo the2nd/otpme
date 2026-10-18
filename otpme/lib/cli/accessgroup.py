@@ -381,7 +381,8 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
         # Timeout pass-on.
         if "to_pass_on" in output_fields:
             if check_acl("view:timeout_pass_on") \
-            or check_acl("edit:timeout_pass_on"):
+            or check_acl("enable:timeout_pass_on") \
+            or check_acl("disable:timeout_pass_on"):
                 if timeout_pass_on:
                     row.append("Enabled")
                 else:

@@ -317,7 +317,7 @@ def check_access(check_admin_user=True, check_admin_role=True, auth_token=None):
         need_acls = False
     else:
         if check_admin_user:
-            if auth_token.uuid == config.admin_token_uuid:
+            if auth_token.is_superuser():
                 # If the authenticated token is the admin token all access
                 # should be granted and theres no need to check any ACL.
                 need_acls = False

@@ -1,4 +1,4 @@
-.TH OTPME-HOST 1 "2026-10-04" "OTPme 0.3.0a279" "OTPme Manual"
+.TH OTPME-HOST 1 "2026-10-18" "OTPme 0.3.0a283" "OTPme Manual"
 .SH NAME
 otpme-host \- manage OTPme hosts
 .SH SYNOPSIS
@@ -25,6 +25,7 @@ before the machine joins, or by the join itself, which adds the host when it is 
 .B add \fIhost\fR
 Create a host.
 The machine itself need not exist yet: this is the object a join with a JOTP looks for.
+The name has to be unique in the realm: no host and no node of any site may have it already.
 Where an \fBobjecttemplates\fR policy names a host template, the new host is built from it (see \fBotpme\-policy\fR(1)).
 .br
 There is no \fBrename\fR.
@@ -294,6 +295,8 @@ Only the tokens the host holds itself count here, not the ones it gets through a
 .B list_sync_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
 The sync users of the host, as \fBadd_sync_user\fR set them.
 The ones that come with a role are not in it, see \fBSync Configuration\fR below.
+.br
+Needs the ACL \fBview:sync_users\fR.
 .TP
 .B list_sync_groups \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
 The sync groups of the host.
@@ -362,9 +365,13 @@ The sync users of the host and of its roles always come along, and so do the def
 .TP
 .B add_sync_user \fIhost\fR \fIuser\fR
 Sync this user to the host whether or not they ever log in there, so the machine can resolve them \(em where it holds their home directory, for one.
+.br
+Needs the ACL \fBadd:sync_user\fR.
 .TP
 .B remove_sync_user \fIhost\fR \fIuser\fR
 Remove a sync user from the host.
+.br
+Needs the ACL \fBremove:sync_user\fR.
 .TP
 .B add_sync_group \fIhost\fR \fIgroup\fR
 Name a group whose members are synced to the host.

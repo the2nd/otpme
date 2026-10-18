@@ -80,6 +80,7 @@ read_value_acls =    {
                                 "oidc_backchannel_ca_cert",
                                 "oidc_grant_types",
                                 "oidc_response_types",
+                                "logins_limited",
                                 ],
                     "dump"      : [
                                 "sso_logo",

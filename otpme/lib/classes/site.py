@@ -3179,20 +3179,16 @@ def register_config():
                                     object_types=['site', 'unit', 'node', 'host'])
     # Allow otpme-tool who and host_who from hosts. Both answer the
     # same kind of question -- who is connected to idled right now --
-    # so they are allowed or refused together.
+    # so they are allowed or refused together. This lets every host of
+    # the site ask; allow_who below names single hosts.
     config.register_config_parameter(name="allow_who_from_hosts",
                                     ctype=bool,
                                     default_value=False,
                                     object_types=['site'])
-    # The hosts that may send messages to the users of this site
-    # ("otpme-tool message"). Nodes may do it anyway, and this says
-    # which hosts may as well -- one host at a time and not a switch
-    # for all of them, because a host that may send one can put a
-    # window in front of somebody.
-    #
-    # admin_only: what it allows happens on other people's desktops,
-    # and an ACL on the site object says nothing about that.
-    def allow_user_messages_setter(hosts, **kwargs):
+    # Setter and getter of the parameters that list hosts which may do
+    # something only nodes may do otherwise (allow_user_messages,
+    # allow_who).
+    def host_names_to_uuids(hosts, **kwargs):
         """ Resolve the hosts to their UUIDs.
 
         Given by name, because that is what somebody types, and kept by
@@ -3223,7 +3219,7 @@ def register_config():
                 continue
             host_uuids.append(host_uuid)
         return host_uuids
-    def allow_user_messages_getter(host_uuids, **kwargs):
+    def host_uuids_to_names(host_uuids, **kwargs):
         """ And back to names, for whoever reads it.
 
         A uuid that resolves to nothing is handed back as it is rather
@@ -3241,10 +3237,32 @@ def register_config():
                 continue
             host_names.append(result[0])
         return host_names
+    # The hosts that may send messages to the users of this site
+    # ("otpme-tool message"). Nodes may do it anyway, and this says
+    # which hosts may as well -- one host at a time and not a switch
+    # for all of them, because a host that may send one can put a
+    # window in front of somebody.
+    #
+    # admin_only: what it allows happens on other people's desktops,
+    # and an ACL on the site object says nothing about that.
     config.register_config_parameter(name="allow_user_messages",
                                     ctype=list,
-                                    setter=allow_user_messages_setter,
-                                    getter=allow_user_messages_getter,
+                                    setter=host_names_to_uuids,
+                                    getter=host_uuids_to_names,
+                                    admin_only=True,
+                                    object_types=['site'])
+    # The hosts that may ask idled who is here ("otpme-tool who" and
+    # host_who), while allow_who_from_hosts is off. What comes back is
+    # every user logged in on the site, with login token, client IP and
+    # session, and every host waiting to be told something -- so one
+    # host at a time, like allow_user_messages.
+    #
+    # admin_only for the same reason: what it shows is not the site
+    # object, and an ACL on that says nothing about it.
+    config.register_config_parameter(name="allow_who",
+                                    ctype=list,
+                                    setter=host_names_to_uuids,
+                                    getter=host_uuids_to_names,
                                     admin_only=True,
                                     object_types=['site'])
     # Send share notifications.
@@ -3767,9 +3785,10 @@ class Site(OTPmeObject):
                                         },
 
             'OIDC_KEYS'                 : {
-                                            'var_name'  : 'oidc_keys',
-                                            'type'      : dict,
-                                            'required'  : False,
+                                            'var_name'      : 'oidc_keys',
+                                            'type'          : dict,
+                                            'required'      : False,
+                                            'encryption'    : config.disk_encryption,
                                         },
 
             'OIDC_PAIRWISE_SECRET'      : {
@@ -6610,6 +6629,30 @@ class Site(OTPmeObject):
         callback.send(_("Site added successful."))
         return self._write(callback=callback)
 
+    def gen_site_secrets(self):
+        """ Generate the secrets of the site that are still missing.
+
+        Run where the site lives: on its first node, when the realm is
+        made, or when that node joins (join.py). The site that adds
+        another one never has them, so neither it nor its backups hold
+        the secrets of a site that is not theirs.
+
+        Made now rather than on first use: a tiqr login must never have
+        to write to the site object, least of all from an
+        unauthenticated request that could hit any node.
+        """
+        # Flask secrets of the SSO portal.
+        if not self.sso_secret:
+            self.sso_secret = stuff.gen_secret(len=64, encoding="hex")
+        if not self.sso_csrf_secret:
+            self.sso_csrf_secret = stuff.gen_secret(len=64, encoding="hex")
+        # Derives the challenge and the poll id of a tiqr login.
+        if not self.tiqr_secret:
+            self.tiqr_secret = stuff.gen_secret(len=64, encoding="hex")
+        # Authenticates the nodes of the site to each other.
+        if not self.cluster_key:
+            self.cluster_key = stuff.gen_secret(len=64, encoding="hex")
+
     def add_per_site_objects(self, callback: JobCallback=default_callback):
         """ Add per site objects. """
         self.add_per_site_users(callback=callback)
@@ -6799,16 +6842,12 @@ class Site(OTPmeObject):
         # Set site address.
         self.address = site_address
 
-        # Set flask secrets.
-        self.sso_secret = stuff.gen_secret(len=64, encoding="hex")
-        self.sso_csrf_secret = stuff.gen_secret(len=64, encoding="hex")
-        # Derives the challenge and the poll id of a tiqr login. Made
-        # here rather than on first use: a tiqr login must never have to
-        # write to the site object, least of all from an unauthenticated
-        # request that could hit any node.
-        self.tiqr_secret = stuff.gen_secret(len=64, encoding="hex")
-        # Set cluster key.
-        self.cluster_key = stuff.gen_secret(len=64, encoding="hex")
+        # The secrets of the site are made on the site itself. The first
+        # site of a realm is added on its own node; every other one on
+        # the master site (or its parent), and gets them when its first
+        # node joins (see gen_site_secrets()).
+        if config.realm_init:
+            self.gen_site_secrets()
 
         # Set REALM_USERS_GROUP UUID.
         self.user_role_uuid = stuff.gen_uuid()

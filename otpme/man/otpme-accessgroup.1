@@ -1,4 +1,4 @@
-.TH OTPME-ACCESSGROUP 1 "2026-10-10" "OTPme 0.3.0a281" "OTPme Manual"
+.TH OTPME-ACCESSGROUP 1 "2026-10-18" "OTPme 0.3.0a283" "OTPme Manual"
 .SH NAME
 otpme-accessgroup \- say who may use a service, and how its sessions work
 .SH SYNOPSIS
@@ -210,7 +210,7 @@ Setting those needs \fBadd:host\fR on the named group, because what follows are 
 .TP
 .B add_host \fIaccessgroup\fR \fIhost\fR
 Add a host to the group.
-The host is looked for in the site of the group, or written as \fIsite\fB/\fIhost\fR to take one from another site of the realm.
+Host names are unique in the realm, so the host is given by its name alone, whatever site it is in.
 Needs the ACL \fBadd:host\fR.
 .TP
 .B remove_host \fIaccessgroup\fR \fIhost\fR

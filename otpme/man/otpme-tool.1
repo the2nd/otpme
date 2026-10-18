@@ -38,6 +38,14 @@ Show currently logged in user.
 .TP
 .B who
 Show all users currently logged in on this host (across TTYs and desktop sessions).
+.br
+Nodes may run it.
+A host may when the site has
+.B allow_who_from_hosts
+on, or lists it in
+.BR allow_who ,
+see
+.BR otpme (7).
 .TP
 .B message \fR[\fB\-\-user\fR \fIusername\fR] [\fB\-\-host\fR \fIhostname\fR] [\fB\-\-all\fR] [\fB\-\-title\fR \fItitle\fR] \fItext\fR
 Show a message box to users that are logged in.

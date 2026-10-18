@@ -845,6 +845,14 @@ class OTPmeConfig(object):
         # Prettify object JSON.
         self.register_config_var("prettify_object_json", bool, False,
                                 config_file_parameter="PRETTIFY_OBJECT_JSON")
+        # fsync every file filetools.create_file() writes, and its
+        # directory. Off by default: a file is replaced by rename either
+        # way, which ext4 keeps whole across a crash without it, and an
+        # fsync costs milliseconds on every file of every write. For a
+        # filesystem that does not, or where the last seconds before a
+        # crash must not be lost.
+        self.register_config_var("fsync_file_writes", bool, False,
+                                config_file_parameter="FSYNC_FILE_WRITES")
 
         # FIXME: where to configure this?
         # Index journal settings.
@@ -1830,7 +1838,7 @@ class OTPmeConfig(object):
         default_value=None, valid_values=None, object_types=None,
         getter=None, setter=None, deller=None, warn_if_exists=False,
         default_genner=None, gen_default_on_create=False,
-        sensitive=False, admin_only=False):
+        sensitive=False, admin_only=False, superuser_only=False):
         """ Register config parameter.
 
         sensitive: the parameter value is a secret (e.g. a password) and must
@@ -1843,6 +1851,11 @@ class OTPmeConfig(object):
         nothing about whether the value is acceptable. Enforced centrally in
         set_config_param(), so it also covers deletion and parameters that
         have no setter to put the check in.
+
+        superuser_only: the same, but only the admin token of the site may
+        change it (Token.is_superuser()), not every token in the ADMIN role.
+        For parameters that set a boundary the admins of the site are kept
+        inside of, such as share_root.
 
         gen_default_on_create: run <default_genner> while the object is being
         created, so the parameter starts out with a value the way one with a
@@ -1871,6 +1884,7 @@ class OTPmeConfig(object):
                                             'warn_if_exists'    : warn_if_exists,
                                             'sensitive'         : sensitive,
                                             'admin_only'        : admin_only,
+                                            'superuser_only'    : superuser_only,
                                         }
     def get_config_parameter(self, name):
         try:

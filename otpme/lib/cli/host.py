@@ -185,7 +185,7 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
                         member_roles.append(x)
                     break
             row.append("\n".join(member_roles))
-        else:
+        elif "roles" in output_fields:
             if role_access:
                 row.append("")
             else:
@@ -271,7 +271,7 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
                 host_tokens.append(x)
 
             row.append("\n".join(host_tokens))
-        else:
+        elif "tokens" in output_fields:
             if token_access:
                 row.append("")
             else:
@@ -373,21 +373,21 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
 
             if host_users_count > max_sync_users:
                 msg = _("({users_len} of {users_count} users total)")
-                msg = msg.format(users_len=len(processed_users), users_count=users_count)
+                msg = msg.format(users_len=len(processed_users), users_count=host_users_count)
                 x = msg
                 host_users.append(x)
 
             row.append("\n".join(host_users))
-        else:
+        elif "sync_users" in output_fields:
             if user_access:
                 row.append("")
             else:
                 row.append("-")
-        # Sync users.
+        # Sync groups.
         get_sync_groups = False
         group_access = False
         processed_groups = []
-        if "sync_users" in output_fields:
+        if "sync_groups" in output_fields:
             if check_acl("view:sync_groups"):
                 group_access = True
                 get_sync_groups = True
@@ -418,13 +418,13 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
                 processed_groups.append(group_uuid)
 
             if host_groups_count > max_sync_groups:
-                msg = _("({groups_len} of {users_count} groups total)")
-                msg = msg.format(groups_len=len(processed_groups), users_count=users_count)
+                msg = _("({processed_groups} of {groups_count} groups total)")
+                msg = msg.format(processed_groups=len(processed_groups), groups_count=host_groups_count)
                 x = msg
                 host_groups.append(x)
 
             row.append("\n".join(host_groups))
-        else:
+        elif "sync_groups" in output_fields:
             if group_access:
                 row.append("")
             else:

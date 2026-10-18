@@ -55,7 +55,7 @@ read_acls = [
 write_acls = ["assign"]
 
 read_value_acls = {
-                "view"      : [ "script", "signature" ],
+                "view"      : [ "script", "signatures" ],
                 "verify"    : [ "signature" ],
             }
 
@@ -731,12 +731,12 @@ class Script(OTPmeObject):
         # tokens.
         if action == "verify_signature":
             if self._verify_acl("verify:signature") \
-            or self._verify_acl("view:signature") \
+            or self._verify_acl("view:signatures") \
             or self._verify_acl("view:script"):
                 return True
 
         if action == "get_signatures":
-            if self._verify_acl("view:signature") \
+            if self._verify_acl("view:signatures") \
             or self.verify_acl("view:script"):
                 return True
 

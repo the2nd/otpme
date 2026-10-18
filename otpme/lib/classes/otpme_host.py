@@ -1353,15 +1353,16 @@ class OTPmeHost(OTPmeClientObject):
         if result is False:
             return callback.error()
 
-        # Check if host/node with our name exists.
+        # Check if host/node with our name exists. In the whole realm:
+        # a host is given by its name alone (get_host_uuid()), so the
+        # name has to be unique in it, not only in our site.
         result = []
         for x in ['host', 'node']:
             result += backend.search(attribute="name",
                                     value=self.name,
                                     object_type=x,
                                     return_type="oid",
-                                    realm=self.realm,
-                                    site=self.site)
+                                    realm=self.realm)
         if result:
             for object_id in result:
                 object_type = object_id.object_type
@@ -1554,6 +1555,7 @@ class OTPmeHost(OTPmeClientObject):
         os_version = ""
         kernel = ""
         reboot_required = ""
+        otpme_version = ""
         packages = ""
         last_inventory_update = ""
         if self.realm == config.realm:
@@ -1566,6 +1568,7 @@ class OTPmeHost(OTPmeClientObject):
                 # A no is an answer, empty is a host that has not said.
                 if inventory.reboot_required is not None:
                     reboot_required = "yes" if inventory.reboot_required else "no"
+                otpme_version = inventory.otpme_version or ""
                 packages = len(inventory.packages)
                 if inventory.last_inventory_update:
                     last_inventory_update = datetime.datetime.fromtimestamp(inventory.last_inventory_update)
@@ -1573,6 +1576,7 @@ class OTPmeHost(OTPmeClientObject):
         lines.append(f'OS_VERSION="{os_version}"')
         lines.append(f'KERNEL="{kernel}"')
         lines.append(f'REBOOT_REQUIRED="{reboot_required}"')
+        lines.append(f'OTPME_VERSION="{otpme_version}"')
         lines.append(f'PACKAGES="{packages}"')
         lines.append(f'LAST_INVENTORY_UPDATE="{last_inventory_update}"')
         return super().show_config(config_lines=lines,

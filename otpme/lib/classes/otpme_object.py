@@ -5276,7 +5276,7 @@ class OTPmeObject(OTPmeBaseObject):
             raise OTPmeException(msg)
 
         if verify_acls:
-            if not self.verify_acl("add:user"):
+            if not self.verify_acl("add:sync_user"):
                 msg = _("Permission denied: {self}")
                 msg = msg.format(self=self)
                 return callback.error(msg, exception=PermissionDenied)
@@ -5344,7 +5344,7 @@ class OTPmeObject(OTPmeBaseObject):
             raise OTPmeException(msg)
 
         if verify_acls:
-            if not self.verify_acl("remove:user"):
+            if not self.verify_acl("remove:sync_user"):
                 msg = _("Permission denied: {self}")
                 msg = msg.format(self=self)
                 return callback.error(msg, exception=PermissionDenied)
@@ -6207,21 +6207,17 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     def get_host_uuid(self, host_name: str):
-        """ Get the UUID of a host given as name or as site/name.
+        """ Get the UUID of a host given by its name.
 
-        A bare name is looked for in our own site, like get_role_uuid()
-        does it for roles. Returns None for a host that does not exist.
+        Host names are unique in the realm (see OTPmeHost.add()), so
+        the name alone is looked for in all of its sites. Returns None
+        for a host that does not exist.
         """
-        if "/" in host_name:
-            search_site, host_name = host_name.split("/", 1)
-        else:
-            search_site = self.site
         result = backend.search(object_type="host",
                                 attribute="name",
                                 value=host_name,
                                 return_type="uuid",
-                                realm=self.realm,
-                                site=search_site)
+                                realm=self.realm)
         if not result:
             return None
         return result[0]
@@ -6299,8 +6295,8 @@ class OTPmeObject(OTPmeBaseObject):
         ):
         """ Removes a host from this object.
 
-        The host may be given by UUID, or by name: a bare name is looked
-        for in our own site, site/name in another one.
+        The host may be given by UUID, or by its name, which is unique
+        in the realm.
         """
         if self.hosts is None:
             msg = _("Object does not support hosts.")
@@ -6375,7 +6371,9 @@ class OTPmeObject(OTPmeBaseObject):
         if skip_disabled:
             search_attr['enabled'] = {}
             search_attr['enabled']['value'] = True
-        return_attributes = ['site', return_type]
+        # The name alone, also for a host of another site: host names
+        # are unique in the realm (see get_host_uuid()).
+        return_attributes = [return_type]
         search_result = backend.search(object_type="host",
                                     attribute="uuid",
                                     values=self.hosts,
@@ -6386,10 +6384,6 @@ class OTPmeObject(OTPmeBaseObject):
                 x_result = search_result[uuid][return_type]
             except Exception:
                 continue
-            if return_type == "name":
-                x_site = search_result[uuid]['site']
-                if x_site != config.site:
-                    x_result = f"{x_site}/{x_result}"
             result.append(x_result)
 
         result.sort()
@@ -12509,6 +12503,12 @@ class OTPmeObject(OTPmeBaseObject):
         if verify_acls and para_data.get('admin_only', False):
             if config.auth_token and not config.auth_token.is_admin():
                 msg = _("You need to be admin to change this config parameter.")
+                return callback.error(msg, exception=PermissionDenied)
+        # And some set a boundary the admins of the site are kept inside
+        # of, so not even the ADMIN role may move it.
+        if verify_acls and para_data.get('superuser_only', False):
+            if config.auth_token and not config.auth_token.is_superuser():
+                msg = _("You need to be superuser to change this config parameter.")
                 return callback.error(msg, exception=PermissionDenied)
         if run_policies:
             try:

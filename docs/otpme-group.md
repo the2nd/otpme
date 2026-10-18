@@ -100,9 +100,8 @@ List users that have this group as their default group. Use
 ## Host Management
 
 **add_host \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *group* *host***  
-Add a host to the group. The host is looked for in the site of the
-group, or written as *site***/***host* to take one from another site of
-the realm.
+Add a host to the group. Host names are unique in the realm, so the host
+is given by its name alone, whatever site it is in.
 
 **--share-notify**  
 Send notification to all online hosts on new share permissions.
@@ -133,14 +132,17 @@ returned (**name**, **read_oid**, **full_oid**, **uuid**).
 ## Sync User Management
 
 **add_sync_user *group* *user***  
-Add a sync user to the group.
+Add a sync user to the group.  
+Needs the ACL **add:sync_user**.
 
 **remove_sync_user *group* *user***  
-Remove a sync user from the group.
+Remove a sync user from the group.  
+Needs the ACL **remove:sync_user**.
 
 **list_sync_users \[**--return-type** *TYPE*\] *group***  
 List sync users in the group. Use **--return-type** to select the
-attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).  
+Needs the ACL **view:sync_users**.
 
 ## Object Changelog
 

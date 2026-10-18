@@ -223,7 +223,7 @@ def row_getter(realm, site, client_order, client_data, acls,
                         member_roles.append(x)
                     break
             row.append("\n".join(member_roles))
-        else:
+        elif "roles" in output_fields:
             if role_access:
                 row.append("")
             else:
@@ -271,7 +271,7 @@ def row_getter(realm, site, client_order, client_data, acls,
                 member_tokens.append(x)
 
             row.append("\n".join(member_tokens))
-        else:
+        elif "tokens" in output_fields:
             if token_access:
                 row.append("")
             else:
@@ -312,7 +312,7 @@ def row_getter(realm, site, client_order, client_data, acls,
                         member_scopes.append(x)
                     break
             row.append("\n".join(member_scopes))
-        else:
+        elif "scopes" in output_fields:
             if scope_access:
                 row.append("")
             else:

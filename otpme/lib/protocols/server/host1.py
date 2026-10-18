@@ -862,29 +862,35 @@ class OTPmeHostP1(OTPmeServer1):
                 status = False
 
         elif command == "check_share_access":
+            # The status says whether access is DENIED: True takes it
+            # away from the mount that asks (fs1), False lets it go on.
+            # So whatever cannot be checked -- a request that misses an
+            # argument, an object that is gone -- answers True: the
+            # share of a running mount was deleted, and False let it
+            # read and write on until the user logged out.
             try:
                 host_uuid = command_args['host_uuid']
             except Exception:
-                message = {'message':"INCOMPLETE_COMMAND"}
-                status = False
+                message = {'message':"INCOMPLETE_COMMAND", 'try_other_node':False}
+                status = True
                 return self.build_response(status, message, encrypt=False)
             try:
                 share_uuid = command_args['share_uuid']
             except Exception:
-                message = {'message':"INCOMPLETE_COMMAND"}
-                status = False
+                message = {'message':"INCOMPLETE_COMMAND", 'try_other_node':False}
+                status = True
                 return self.build_response(status, message, encrypt=False)
             try:
                 token_uuid = command_args['token_uuid']
             except Exception:
-                message = {'message':"INCOMPLETE_COMMAND"}
-                status = False
+                message = {'message':"INCOMPLETE_COMMAND", 'try_other_node':False}
+                status = True
                 return self.build_response(status, message, encrypt=False)
             try:
                 user_uuid = command_args['user_uuid']
             except Exception:
-                message = {'message':"INCOMPLETE_COMMAND"}
-                status = False
+                message = {'message':"INCOMPLETE_COMMAND", 'try_other_node':False}
+                status = True
                 return self.build_response(status, message, encrypt=False)
             # Check realm auth status.
             this_realm = backend.get_object(object_type="realm",
@@ -902,12 +908,20 @@ class OTPmeHostP1(OTPmeServer1):
                 return self.build_response(status, message, encrypt=False)
             # Check user status.
             auth_user = backend.get_object(uuid=user_uuid)
+            if not auth_user:
+                status = True
+                message = {'message':"User missing.", 'try_other_node':False}
+                return self.build_response(status, message, encrypt=False)
             if not auth_user.enabled:
                 status = True
                 message = {'message':"User disabled.", 'try_other_node':True}
                 return self.build_response(status, message, encrypt=False)
             # Check token status.
             auth_token = backend.get_object(uuid=token_uuid)
+            if not auth_token:
+                status = True
+                message = {'message':"Token missing.", 'try_other_node':False}
+                return self.build_response(status, message, encrypt=False)
             if not auth_token.enabled:
                 status = True
                 message = {'message':"Token disabled.", 'try_other_node':True}
@@ -931,8 +945,8 @@ class OTPmeHostP1(OTPmeServer1):
             # Load share
             share = backend.get_object(uuid=share_uuid)
             if not share:
-                status = False
-                message = {'message':"Unknown share."}
+                status = True
+                message = {'message':"Unknown share.", 'try_other_node':False}
                 return self.build_response(status, message, encrypt=False)
             # Block access on disabled share.
             if not share.enabled:

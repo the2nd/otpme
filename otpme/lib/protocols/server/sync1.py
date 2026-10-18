@@ -132,6 +132,19 @@ class OTPmeSyncP1(OTPmeServer1):
         # The object config versions the code of the peer reads, as it
         # says them with the command. See get_peer_sync_config().
         self.peer_config_versions = {}
+        # What a disabled host or node may still do, on a connection it
+        # opens for this alone (see OTPmeServer1.disabled_peer_allowed()):
+        # fetch its configuration jobs and report on them. That is how
+        # otpme-shell and otpme-deploy reach a host that was switched
+        # off, which is often the one somebody has to look at. Whether
+        # it may run a job is decided on the host, by the signature, as
+        # always. Syncing objects stays refused.
+        self.disabled_peer_commands = [
+                                    "get_conf_jobs",
+                                    "add_conf_result",
+                                    "get_host_inventory",
+                                    "update_host_inventory",
+                                    ]
         # Call parent class init.
         OTPmeServer1.__init__(self, **kwargs)
 
@@ -981,6 +994,7 @@ class OTPmeSyncP1(OTPmeServer1):
         os_version = None
         kernel = None
         reboot_required = None
+        otpme_version = None
         if inventory:
             packages = inventory.packages
             hardware = inventory.hardware
@@ -988,12 +1002,14 @@ class OTPmeSyncP1(OTPmeServer1):
             os_version = inventory.os_version
             kernel = inventory.kernel
             reboot_required = inventory.reboot_required
+            otpme_version = inventory.otpme_version
         checksum = get_packages_checksum(packages)
         response = {
                     'os'                : os_name,
                     'os_version'        : os_version,
                     'kernel'            : kernel,
                     'reboot_required'   : reboot_required,
+                    'otpme_version'     : otpme_version,
                     'packages_checksum' : checksum,
                     'packages'          : None,
                     'hardware_checksum' : get_hardware_checksum(hardware),
@@ -1004,7 +1020,7 @@ class OTPmeSyncP1(OTPmeServer1):
 
     def update_host_inventory(self, os_name, os_version,
         set_packages, del_packages, hardware=None, kernel=None,
-        reboot_required=None):
+        reboot_required=None, otpme_version=None):
         """ Take what the asking host reports about itself.
 
         All of it goes to the inventory of the host and none of it to
@@ -1022,6 +1038,7 @@ class OTPmeSyncP1(OTPmeServer1):
                             os_version=os_version,
                             kernel=kernel,
                             reboot_required=reboot_required,
+                            otpme_version=otpme_version,
                             set_packages=set_packages,
                             del_packages=del_packages)
             # What is not a field of an inventory is dropped here, so a
@@ -1036,7 +1053,7 @@ class OTPmeSyncP1(OTPmeServer1):
         nothing_to_do = not set_packages and not del_packages
         if nothing_to_do and hardware is None:
             if os_name is None and os_version is None and kernel is None \
-            and reboot_required is None:
+            and reboot_required is None and otpme_version is None:
                 return True, {'status':True}
         if not backend.get_object(uuid=self.peer.uuid):
             return False, "SYNC_UNKNOWN_HOST"
@@ -1050,7 +1067,8 @@ class OTPmeSyncP1(OTPmeServer1):
         os_changed = inventory.update_os(os_name=os_name,
                                         os_version=os_version,
                                         kernel=kernel,
-                                        reboot_required=reboot_required)
+                                        reboot_required=reboot_required,
+                                        otpme_version=otpme_version)
         if nothing_to_do and hardware is None and not os_changed:
             return True, {'status':True}
         packages_count = len(inventory.packages) + len(set_packages)
@@ -1506,6 +1524,7 @@ class OTPmeSyncP1(OTPmeServer1):
                                     os_version=command_args.get('os_version'),
                                     kernel=command_args.get('kernel'),
                                     reboot_required=command_args.get('reboot_required'),
+                                    otpme_version=command_args.get('otpme_version'),
                                     set_packages=command_args.get('set_packages'),
                                     del_packages=command_args.get('del_packages'),
                                     hardware=command_args.get('hardware'))

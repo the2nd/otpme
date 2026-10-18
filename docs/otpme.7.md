@@ -2545,10 +2545,32 @@ Object types: site, unit, node, host
 Whether **otpme-tool who** may be run on a host that is not a node. The
 request goes to **idled**, which answers who is logged in where.  
 Off by default, so that only a node sees that list. Set it to true to
-let the hosts of the site ask as well. Turn it on where it is needed,
-not everywhere.  
+let every host of the site ask as well. To let single hosts ask, leave
+it off and list them in **allow_who** instead. While this is on,
+**allow_who** is not read.  
 Whatever it is set to, a peer of another site or of another realm is
 always refused.  
+Object types: site
+
+**allow_who (list, default: empty)**  
+The hosts that may run **otpme-tool who** while **allow_who_from_hosts**
+is off. What they see is every user logged in on the site, with login
+token, client IP and session.
+
+Nodes may ask whatever this is set to.
+
+Give the host by name, several of them separated by commas, and **-a**
+to add one to those already there:
+
+    otpme-site config berlin allow_who berlin-host1
+    otpme-site config -a berlin allow_who berlin-host2
+
+The hosts are kept by UUID and shown by name again, as with
+**allow_user_messages**. Only an admin may change it.
+
+Whatever it is set to, a peer of another site or of another realm is
+always refused.
+
 Object types: site
 
 **allow_user_messages (list, default: empty)**  
@@ -2562,8 +2584,8 @@ people who use it.
 Give the host by name, several of them separated by commas, and **-a**
 to add one to those already there:
 
-    otpme-site config berlin allow_user_messages munich-host1
-    otpme-site config -a berlin allow_user_messages munich-host2
+    otpme-site config berlin allow_user_messages berlin-host1
+    otpme-site config -a berlin allow_user_messages berlin-host2
 
 The hosts are kept by UUID and shown by name again. A name belongs to a
 host only for as long as it has it, so a host that is removed takes its

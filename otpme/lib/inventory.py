@@ -128,6 +128,7 @@ commands = {
                 'exists'    : {
                     'oargs'             : ['package', 'os_version',
                                             'kernel', 'reboot_required',
+                                            'otpme_version',
                                             'hardware', 'host'],
                     'job_type'          : 'thread',
                     },
@@ -425,10 +426,12 @@ def show_inventory(host, _caller="API", callback=default_callback, **kwargs):
     os_version = "-"
     kernel = "-"
     reboot_required = "-"
+    otpme_version = "-"
     if inventory:
         os_name = inventory.os or "-"
         os_version = inventory.os_version or "-"
         kernel = inventory.kernel or "-"
+        otpme_version = inventory.otpme_version or "-"
         # A no is an answer, so it is not "or '-'": that is for a host
         # that has not said anything.
         if inventory.reboot_required is not None:
@@ -439,6 +442,7 @@ def show_inventory(host, _caller="API", callback=default_callback, **kwargs):
             f"os_version: {os_version}",
             f"kernel: {kernel}",
             f"reboot_required: {reboot_required}",
+            f"otpme_version: {otpme_version}",
             f"packages: {packages}",
             ]
     # The three that say which machine this is. The rest of the
@@ -529,10 +533,10 @@ def list_packages(host, package_filter=None, _caller="API",
     return callback.ok("\n".join(lines))
 
 def search_inventory(package=None, os_version=None, kernel=None,
-    reboot_required=None, hardware=None, host=None, _caller="API",
-    callback=default_callback, **kwargs):
-    """ The hosts that have a package, run a system version or a
-    kernel, wait for a reboot, or are built a certain way.
+    reboot_required=None, otpme_version=None, hardware=None, host=None,
+    _caller="API", callback=default_callback, **kwargs):
+    """ The hosts that have a package, run a system version, a kernel
+    or an OTPme version, wait for a reboot, or are built a certain way.
 
     <package> is a name ("openssl"), a name and a version
     ("openssl=3.0.15-1~deb12u1"), and either may have wildcards
@@ -544,6 +548,9 @@ def search_inventory(package=None, os_version=None, kernel=None,
     <reboot_required> is a yes or nothing: the hosts that have to be
     rebooted to run what is installed on them.
 
+    <otpme_version> is the OTPme version a host runs ("0.3.0a283"), with
+    wildcards ("0.3.0a28*").
+
     <hardware> is "<field><op><value>": "serial=ABC123",
     "model=PowerEdge*", "memory<8G", "cpu_count>8". See
     parse_hardware_search().
@@ -554,8 +561,9 @@ def search_inventory(package=None, os_version=None, kernel=None,
     Whatever is given has to match, so they narrow each other down.
     """
     if not package and not os_version and not kernel \
-    and not reboot_required and not hardware and not host:
-        msg = _("Need a package, an OS version, a kernel, a reboot, a hardware field or a host.")
+    and not reboot_required and not otpme_version \
+    and not hardware and not host:
+        msg = _("Need a package, an OS version, a kernel, a reboot, an OTPme version, a hardware field or a host.")
         return callback.error(msg)
     # The hosts still in the running. None means every host of our
     # site; each of the filters below takes hosts out of it.
@@ -590,6 +598,17 @@ def search_inventory(package=None, os_version=None, kernel=None,
             host_uuids = kernel_uuids
         else:
             host_uuids &= kernel_uuids
+
+    if otpme_version:
+        version_inventories = backend.search(object_type="host_inventory",
+                                            attribute="otpme_version",
+                                            value=otpme_version,
+                                            return_type="instance")
+        version_uuids = {x.host_uuid for x in version_inventories}
+        if host_uuids is None:
+            host_uuids = version_uuids
+        else:
+            host_uuids &= version_uuids
 
     if reboot_required:
         # A yes and nothing else. The hosts that answered no are the
@@ -627,6 +646,7 @@ def search_inventory(package=None, os_version=None, kernel=None,
         return show_search_hosts(host_uuids,
                                 os_version=os_version,
                                 kernel=kernel,
+                                otpme_version=otpme_version,
                                 hardware_field=hardware and hw_name,
                                 hardware_search=hardware and hw_search,
                                 callback=callback)
@@ -685,7 +705,8 @@ def hardware_value_matches(value, search):
     return value == wanted
 
 def show_search_hosts(host_uuids, os_version=None, kernel=None,
-    hardware_field=None, hardware_search=None, callback=default_callback):
+    otpme_version=None, hardware_field=None, hardware_search=None,
+    callback=default_callback):
     """ The hosts a search without a package found.
 
     Each line says the host and what it was found by, so that a search
@@ -708,12 +729,14 @@ def show_search_hosts(host_uuids, os_version=None, kernel=None,
             continue
         line = x_host.name
         inventory = None
-        if os_version or kernel or hardware_field:
+        if os_version or kernel or otpme_version or hardware_field:
             inventory = get_host_inventory(x_host.uuid)
         if os_version:
             line = f"{line} {inventory and inventory.os_version or '-'}"
         if kernel:
             line = f"{line} {inventory and inventory.kernel or '-'}"
+        if otpme_version:
+            line = f"{line} {inventory and inventory.otpme_version or '-'}"
         if hardware_field:
             x_hardware = {}
             if inventory:

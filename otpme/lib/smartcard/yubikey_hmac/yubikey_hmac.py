@@ -164,7 +164,7 @@ class YubikeyHmacClientHandler(object):
 
         return deploy_args
 
-    def handle_preauth(self, smartcard, password):
+    def handle_preauth(self, smartcard, password, **kwargs):
         # Get yubikey slot.
         slot = self.token_options['slot']
         # Get HMAC challenge.

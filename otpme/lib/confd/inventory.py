@@ -34,6 +34,9 @@ OS_VERSION_RE = r'^[A-Za-z0-9._+~-]{1,64}$'
 # "6.12.9-1-pve", "5.15.0-1055-aws". A locally built one carries
 # whatever was set as its local version, so "+" and "_" belong in here.
 KERNEL_RE = r'^[A-Za-z0-9._+~-]{1,128}$'
+# The OTPme version the host runs, as otpme.__version__ gives it:
+# "0.3.0a283", or with a local part "0.3.0a283+git1".
+OTPME_VERSION_RE = r'^[A-Za-z0-9.+_-]{1,64}$'
 PACKAGE_NAME_RE = r'^[a-zA-Z0-9][a-zA-Z0-9+._:-]{0,191}$'
 PACKAGE_VERSION_RE = r'^[a-zA-Z0-9.+~:_-]{1,128}$'
 # How many packages a host may have, and how many change in one request.
@@ -72,7 +75,7 @@ def diff_packages(old_packages, new_packages):
     return set_packages, sorted(del_packages)
 
 def check_inventory(os_name, os_version, set_packages, del_packages,
-    kernel=None, reboot_required=None):
+    kernel=None, reboot_required=None, otpme_version=None):
     """ Refuse an inventory update that does not look like one.
 
     Asked by syncd before anything of it reaches the host object: the
@@ -93,6 +96,12 @@ def check_inventory(os_name, os_version, set_packages, del_packages,
         if not isinstance(kernel, str) or not re.match(KERNEL_RE, kernel):
             msg = _("Invalid kernel: {kernel}")
             msg = msg.format(kernel=kernel)
+            raise OTPmeException(msg)
+    if otpme_version is not None:
+        if not isinstance(otpme_version, str) \
+        or not re.match(OTPME_VERSION_RE, otpme_version):
+            msg = _("Invalid OTPme version: {otpme_version}")
+            msg = msg.format(otpme_version=otpme_version)
             raise OTPmeException(msg)
     if reboot_required is not None:
         # A yes or a no and nothing else: it goes into the index as it

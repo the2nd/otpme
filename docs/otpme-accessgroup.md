@@ -223,9 +223,9 @@ needs **add:host** on the named group, because what follows are hosts
 added to it without anybody being asked again (see **otpme**(7)).
 
 **add_host *accessgroup* *host***  
-Add a host to the group. The host is looked for in the site of the
-group, or written as *site***/***host* to take one from another site of
-the realm. Needs the ACL **add:host**.
+Add a host to the group. Host names are unique in the realm, so the host
+is given by its name alone, whatever site it is in. Needs the ACL
+**add:host**.
 
 **remove_host *accessgroup* *host***  
 Remove the host again. Needs the ACL **remove:host**.

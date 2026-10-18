@@ -655,6 +655,20 @@ class Fido2Token(Token):
             return False
         credential_data = decode(self.credential_data, "hex")
         credentials = [AttestedCredentialData(credential_data)]
+        try:
+            parsed = AuthenticationResponse.from_dict(auth_response)
+        except Exception as e:
+            log_msg = _("Token verification failed: {path}: {e}", log=True)[1]
+            log_msg = log_msg.format(path=self.rel_path, e=e)
+            logger.warning(log_msg)
+            return False
+        # The assertion of another token of the user. AuthHandler tries
+        # them one by one, so this is "try the next one", no failure.
+        if parsed.raw_id != credentials[0].credential_id:
+            log_msg = _("Assertion is not for this token: {path}", log=True)[1]
+            log_msg = log_msg.format(path=self.rel_path)
+            logger.debug(log_msg)
+            return False
         fido2_server = self.get_fido2_server(self.rp)
         try:
             fido2_server.authenticate_complete(self.auth_state,
@@ -666,7 +680,6 @@ class Fido2Token(Token):
             logger.warning(log_msg)
             return False
         # Check fido2 counter.
-        parsed = AuthenticationResponse.from_dict(auth_response)
         counter = parsed.response.authenticator_data.counter
         last_counter = self.get_token_counter()
         # W3C WebAuthn §6.1.1: counter=0 means the authenticator does

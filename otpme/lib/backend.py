@@ -200,6 +200,25 @@ def get_class_getter(object_type: str):
         return
     return class_getter, getter_args
 
+def replay_before_change(*object_ids):
+    """ Replay leftover transactions, and refuse to change what they hold.
+
+    A transaction whose replay failed stays, and it is older than the
+    change asked for now. Let through, that change would be overwritten
+    with the older state the moment the replay succeeds. So the object
+    is refused until it did -- which happens by itself on the next try,
+    once whatever made it fail (a full disk, say) is fixed.
+    """
+    blocked_objects = replay_transactions()
+    if not blocked_objects:
+        return
+    for object_id in object_ids:
+        if object_id.read_oid not in blocked_objects:
+            continue
+        msg = _("Object has a transaction that could not be replayed: {object_id}")
+        msg = msg.format(object_id=object_id)
+        raise OTPmeException(msg)
+
 # xxxxxxxxxxxxxxxxxxxx
 # FIXME: add parameter "cache_object=False" to prevent object from beeing cached!?
 #@oid_lock(args_oid_pos=[0])
@@ -339,7 +358,7 @@ def write_config(
     check_maintenance(object_id, cluster)
 
     # Replay any leftover transaction.
-    replay_transactions()
+    replay_before_change(object_id)
 
     # Get config from instance.
     if instance is not None:
@@ -393,7 +412,7 @@ def rename_object(
     """ Rename object. """
     check_maintenance(object_id, cluster)
     # Replay any leftover transaction.
-    replay_transactions()
+    replay_before_change(object_id, new_object_id)
     # Rename object in backend.
     rename(object_id,
             new_object_id,
@@ -417,7 +436,7 @@ def delete_object(
     """ Delete object. """
     check_maintenance(object_id, cluster)
     # Replay any leftover transaction.
-    replay_transactions()
+    replay_before_change(object_id)
     # Get objects UUID before deleting from backend.
     object_uuid = get_uuid(object_id)
     if object_uuid == config.realm_uuid:

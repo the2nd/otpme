@@ -2877,14 +2877,14 @@ class OTPmeMgmtP1(OTPmeServer1):
             return self.build_response(False, str(e) if str(e) else "Need OID.")
         if not self.is_admin:
             return self.build_response(False, _("Permission denied."))
-        if config.auth_token.uuid != config.admin_token_uuid:
+        if not config.auth_token.is_superuser():
             no_dump_object_types = ['realm', 'site', 'node']
             if object_id.object_type in no_dump_object_types:
                 return self.build_response(False, _("Permission denied."))
         if not backend.object_exists(object_id):
             return self.build_response(False, "Object does not exist.")
         object_config = backend.read_config(object_id)
-        if config.auth_token.uuid != config.admin_token_uuid:
+        if not config.auth_token.is_superuser():
             if object_id.object_type == "user":
                 if object_id.name == config.admin_user_name:
                     return self.build_response(False, _("Permission denied."))

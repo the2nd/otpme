@@ -179,8 +179,15 @@ Also the tokens you may only look at, not just the ones you may change.
 How many tokens to print. Without it you get 10.
 
 **--fields *F1,F2***  
-Print these columns and no others. The names are the ones in the header
-of the table.
+Print these columns and no others, in the order they are named. The
+names are the ones in the header of the table.  
+A name with a **+** in front is added to the columns that are shown
+anyway, and one with a **-** is left out of them. The two cannot be
+mixed with a plain list.  
+Two columns are not in the table unless they are asked for:
+**authscript** and **inherit**.
+
+    otpme-token show --fields +authscript,+inherit
 
 **--limit *N***  
 How many roles, scopes and policies to print per token. Without it you

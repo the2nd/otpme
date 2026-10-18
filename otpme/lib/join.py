@@ -338,6 +338,16 @@ class JoinHandler(object):
                 msg = msg.format(response=join_response)
                 raise OTPmeException(msg)
 
+        # The secrets of our site are made here, not on the site that
+        # added it (see Site.gen_site_secrets()).
+        self._my_site.acquire_lock(lock_caller="join")
+        try:
+            self._my_site.gen_site_secrets()
+            self._my_site._write()
+        finally:
+            self._my_site.release_lock(lock_caller="join")
+        config.cluster_key = self._my_site.cluster_key
+
         # Enabling site on master node join.
         if not self._my_site.enabled:
             self._my_site.enable(force=True,

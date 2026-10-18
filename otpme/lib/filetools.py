@@ -3,6 +3,7 @@
 import os
 import stat
 import time
+import errno
 import fcntl
 import pprint
 import shutil
@@ -31,6 +32,13 @@ from otpme.lib.incremental_objects import incremental_update
 from otpme.lib.exceptions import *
 
 FILE_LOCK_TYPE = "file"
+# What create_file() writes before it takes the place of a file, see
+# get_replace_path().
+REPLACE_SUFFIX = ".otpme-tmp"
+# Where the access ACL of a file is kept.
+POSIX_ACL_XATTR = "system.posix_acl_access"
+# How many increment IDs an object file keeps, see trim_increment_ids().
+MAX_INCREMENT_IDS = 500
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = ["otpme.lib.encoding.base"]
@@ -315,6 +323,9 @@ def list_dir(directory, sort_by="name"):
     except OSError as e:
         if e.errno != 2:
             raise
+    # What create_file() was writing when a power failure stopped it is
+    # not a file of this directory.
+    _list = [x for x in _list if not is_replace_file(x)]
     # Sort functions to handle dirs/files removed while listing.
     def sort_by_ctime(x):
         try:
@@ -438,6 +449,140 @@ def read_file(path, read_mode="r", compression=None):
         file_content = stuff.decompress(file_content, compression=_compression)
     return file_content
 
+def get_replace_path(path):
+    """ The file create_file() writes before it takes the place of <path>.
+
+    In the same directory, as a rename only replaces a file atomically
+    within one filesystem. Always the same name: create_file() holds the
+    lock of <path> while it writes it, so there is never more than one
+    writer, and what a power failure leaves of it is overwritten by the
+    next write. Hidden, and left out by list_dir(), so a directory that
+    is read file by file -- a transaction journal -- does not take it for
+    one of its own.
+    """
+    directory, name = os.path.split(path)
+    return os.path.join(directory, f".{name}{REPLACE_SUFFIX}")
+
+def is_replace_file(name):
+    """ Whether <name> is one of the files get_replace_path() names. """
+    return name.startswith(".") and name.endswith(REPLACE_SUFFIX)
+
+def copy_posix_acl(src_path, dst_fd):
+    """ Give <dst_fd> the access ACL of <src_path>, where it has one.
+
+    Read by path: that needs no right to read the file, which a process
+    that may only write it does not have.
+    """
+    try:
+        acl = os.getxattr(src_path, POSIX_ACL_XATTR)
+    except OSError as e:
+        # No ACL, or a filesystem without them.
+        if e.errno in (errno.ENODATA, errno.ENOTSUP):
+            return
+        raise
+    os.setxattr(dst_fd, POSIX_ACL_XATTR, acl)
+
+def fsync_path(path):
+    """ fsync a file or a directory by its path. """
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+def replace_file(path, content, write_mode="w", file_existed=True,
+    user=None, group=None, mode=0o660, user_acls=None, group_acls=None):
+    """ Write <content> to a file of its own and put it in place of <path>.
+
+    So <path> holds the old content or the new, never part of one. In
+    place -- cut to nothing, then written -- a power failure in between
+    left it empty or cut off, and that is what took objects with it: the
+    replay of a transaction could not read the file it had to add to.
+
+    No fsync by default: what ext4 does for a file that replaces another
+    by rename (data=ordered, auto_da_alloc) puts the data on disk before
+    the rename. A crash then loses the last seconds, but leaves no file
+    broken. FSYNC_FILE_WRITES in otpme.conf (config.fsync_file_writes)
+    syncs the file before the rename and its directory after it, for a
+    filesystem that does not, at milliseconds a file.
+
+    The new file is given what the old one had: owner, group, mode and
+    access ACL. A file that is new gets what create_file() always gave
+    it. Returns False where the file cannot be replaced, and create_file()
+    writes it in place then, as before:
+
+      * it has more than one link, which a new file would not keep,
+      * it belongs to somebody else and we are not root, so we could not
+        give the new one the same owner,
+      * we may write the file but not create one in its directory.
+    """
+    from otpme.lib import config
+    old_stat = None
+    if file_existed:
+        try:
+            old_stat = os.stat(path)
+        except FileNotFoundError:
+            old_stat = None
+    if old_stat:
+        if old_stat.st_nlink > 1:
+            return False
+        euid = os.geteuid()
+        if euid != 0 and old_stat.st_uid != euid:
+            return False
+    tmp_path = get_replace_path(path)
+    old_umask = os.umask(0o000)
+    try:
+        tmp_fd = os.open(tmp_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+    except PermissionError:
+        return False
+    finally:
+        os.umask(old_umask)
+    try:
+        with os.fdopen(tmp_fd, write_mode) as tmp_file:
+            tmp_file.write(content)
+            tmp_file.flush()
+            if old_stat:
+                tmp_fileno = tmp_file.fileno()
+                tmp_stat = os.fstat(tmp_fileno)
+                if (tmp_stat.st_uid, tmp_stat.st_gid) \
+                != (old_stat.st_uid, old_stat.st_gid):
+                    try:
+                        os.fchown(tmp_fileno, old_stat.st_uid, old_stat.st_gid)
+                    except PermissionError:
+                        # A group we are not in, as somebody who is not
+                        # root.
+                        os.unlink(tmp_path)
+                        return False
+                os.fchmod(tmp_fileno, stat.S_IMODE(old_stat.st_mode))
+                # After the mode, which changes the mask of an ACL.
+                copy_posix_acl(path, tmp_fileno)
+        if not old_stat:
+            set_fs_ownership(path=tmp_path,
+                            user=user,
+                            group=group,
+                            recursive=False)
+            set_fs_permissions(path=tmp_path,
+                                mode=mode,
+                                user_acls=user_acls or [],
+                                group_acls=group_acls or [],
+                                recursive=False)
+        fsync_writes = config.fsync_file_writes
+        # Data, owner and mode on disk before the file takes the place
+        # of the old one ...
+        if fsync_writes:
+            fsync_path(tmp_path)
+        os.replace(tmp_path, path)
+        # ... and the rename itself before we go on.
+        if fsync_writes:
+            fsync_path(os.path.dirname(path))
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except FileNotFoundError:
+            pass
+        raise
+    return True
+
 def create_file(path, content=None, user=None, group=True, mode=0o660,
     flags=None, user_acls=None, group_acls=None, write_mode="w",
     compression=None, lock=True):
@@ -472,10 +617,34 @@ def create_file(path, content=None, user=None, group=True, mode=0o660,
                         flags=flags,
                         write_lock=True,
                         perms=mode)
-    # Truncate file.
+    try:
+        replaced = replace_file(file_real_path, content,
+                                write_mode=write_mode,
+                                file_existed=file_existed,
+                                user=user,
+                                group=group,
+                                mode=mode,
+                                user_acls=user_acls,
+                                group_acls=group_acls)
+    except Exception:
+        fd.close()
+        fd.release_lock()
+        raise
+    if replaced:
+        fd.close()
+        fd.release_lock()
+        return
+
+    # Where the file cannot be replaced, it is written in place, as it
+    # always was: cut to nothing and written again.
+    from otpme.lib import config
     fd.truncate()
-    # Write data to file.
     fd.write(content)
+    if config.fsync_file_writes:
+        fd.flush()
+        os.fsync(fd.fileno())
+        if not file_existed:
+            fsync_path(os.path.dirname(file_real_path))
     fd.close()
 
     if not file_existed:
@@ -774,6 +943,35 @@ def read_data_file(filename, *args, **kwargs):
     _file = JsonFile(filename)
     return _file.read(*args, **kwargs)
 
+def trim_increment_ids(object_config):
+    """ Keep the last MAX_INCREMENT_IDS increment IDs of an object.
+
+    They are there so a replay does not apply an increment twice that
+    its write had applied already. A replay repeats the last write of an
+    object -- changes to one object are made one after the other, and a
+    change is refused while an older transaction of the object is left
+    to replay (backend.replay_before_change()) -- so the IDs of that
+    write are what it needs. The rest is kept as a margin for a way of
+    writing that does not go through there. Kept all, they were never
+    dropped: up to three quarters of an object file, read and written
+    again on every change.
+    """
+    try:
+        increment_ids = object_config['INCREMENT_IDS']
+    except KeyError:
+        return
+    increment_ids = valid_increment_ids(increment_ids)
+    object_config['INCREMENT_IDS'] = increment_ids[-MAX_INCREMENT_IDS:]
+
+def valid_increment_ids(increment_ids):
+    """ The increment IDs of the current format, a list of md5 strings.
+
+    Before 834059c8 an entry was [time, md5] of all increments of a
+    write. Such an ID never equals one of a single increment, so it
+    cannot stop a replay from applying one twice; it is dropped.
+    """
+    return [x for x in increment_ids if isinstance(x, str)]
+
 def write_data_file(filename, *args, **kwargs):
     _file = JsonFile(filename)
     return _file.write(*args, **kwargs)
@@ -866,6 +1064,11 @@ class JsonFile(object):
             log_msg = _("Failed to write file: {file_path}: {error}", log=True)[1]
             log_msg = log_msg.format(file_path=self.file_path, error=e)
             self.logger.critical(log_msg)
+            # Said and passed on. Swallowed, a write that did not happen
+            # looked like one that did: the transaction it belonged to was
+            # committed and removed, journal and all, and the journal was
+            # the one copy of the data left.
+            raise
 
     def read(self, parameters=None):
         """ Import bash style config file into dictionary. """
@@ -958,6 +1161,7 @@ class JsonFile(object):
             pass
 
         if full_data_update is True:
+            trim_increment_ids(object_config)
             self.write_file(object_config,
                             user=user,
                             group=group,
@@ -973,18 +1177,41 @@ class JsonFile(object):
         increment_ids = []
         _incremental_updates = []
         if not new_file:
-            current_oc = self.read_file()
+            try:
+                current_oc = self.read_file()
+            except Exception as e:
+                # Empty or cut off: a write that did not finish, by a
+                # power failure or a full disk. Increments need the file
+                # they go onto. What we were handed is the whole object
+                # though -- ObjectConfig.encrypt() copies all of it and
+                # only adds the markers -- so it is written whole. That
+                # is how the replay of a transaction heals the file.
+                log_msg = _("Unreadable object file, writing it whole: {file_path}: {error}", log=True)[1]
+                log_msg = log_msg.format(file_path=self.file_path, error=e)
+                self.logger.warning(log_msg)
+                trim_increment_ids(object_config)
+                self.write_file(object_config,
+                                user=user,
+                                group=group,
+                                mode=mode,
+                                user_acls=user_acls,
+                                group_acls=group_acls)
+                return object_config
             if incremental_updates:
                 # Get increment IDs.
                 try:
-                    increment_ids = current_oc["INCREMENT_IDS"]
+                    increment_ids = valid_increment_ids(current_oc["INCREMENT_IDS"])
                 except KeyError:
                     increment_ids = []
-                # Skip already written increment.
+                # Skip what the file has already: the replay of a write
+                # that went through. Asked of the file alone, so two
+                # increments of this write that look the same are both
+                # applied -- two equal entries of a list are meant.
+                written_ids = set(increment_ids)
                 for x in incremental_updates:
                     new_incr_id = json.dumps(x)
                     new_incr_id = stuff.gen_md5(new_incr_id)
-                    if new_incr_id in increment_ids:
+                    if new_incr_id in written_ids:
                         continue
                     increment_ids.append(new_incr_id)
                     _incremental_updates.append(x)
@@ -1099,6 +1326,7 @@ class JsonFile(object):
         # Save increment ID.
         if _incremental_updates:
             current_oc['INCREMENT_IDS'] = increment_ids
+        trim_increment_ids(current_oc)
 
         # Make sure data is written.
         self.write_file(current_oc,

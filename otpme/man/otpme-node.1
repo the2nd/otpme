@@ -1,4 +1,4 @@
-.TH OTPME-NODE 1 "2026-10-10" "OTPme 0.3.0a281" "OTPme Manual"
+.TH OTPME-NODE 1 "2026-10-18" "OTPme 0.3.0a283" "OTPme Manual"
 .SH NAME
 otpme-node \- manage OTPme nodes
 .SH SYNOPSIS
@@ -44,6 +44,7 @@ here, and the machine itself joins with
 .B add \fInode\fR
 Create a node.
 The machine itself need not exist yet: this is the object a join with a JOTP looks for.
+The name has to be unique in the realm: no node and no host of any site may have it already.
 It prints the JOTP.
 .br
 There is no \fBrename\fR.

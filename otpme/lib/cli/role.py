@@ -343,7 +343,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
             if check_acl("view:sync_users") \
             or check_acl("add:sync_user") \
             or check_acl("remove:sync_user"):
-                # Get all tokens of this role.
+                # Get all sync users of this role.
                 return_attrs = ['name', 'enabled']
                 users_count, \
                 role_users_result = backend.search(object_type="user",
@@ -367,9 +367,9 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                     role_users.append(token_string)
                     processed_users = len(role_users)
                     if processed_users == max_sync_users:
-                        if tokens_count > max_sync_users:
-                            msg = _("({processed_users} of {tokens_count} tokens total)")
-                            msg = msg.format(processed_users=processed_users, tokens_count=tokens_count)
+                        if users_count > max_sync_users:
+                            msg = _("({users_len} of {users_count} users total)")
+                            msg = msg.format(users_len=processed_users, users_count=users_count)
                             x = msg
                             role_users.append(x)
                         break
@@ -378,9 +378,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                 row.append("-")
         # Accessgroups.
         if "accessgroups" in output_fields:
-            if check_acl("view:accessgroups") \
-            or check_acl("add:accessgroup") \
-            or check_acl("remove:accessgroup"):
+            if check_acl("view:accessgroups"):
                 # Get all ags this role is in.
                 role_ags = []
                 role_ag_strings = []
@@ -459,9 +457,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                 row.append("-")
         # Groups.
         if "groups" in output_fields:
-            if check_acl("view:groups") \
-            or check_acl("add:group") \
-            or check_acl("remove:group"):
+            if check_acl("view:groups"):
                 # Get all groups this role is in.
                 role_groups = []
                 role_group_stings = []

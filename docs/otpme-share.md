@@ -8,20 +8,33 @@ otpme-share - manage OTPme file shares
 
 # DESCRIPTION
 
-**otpme-share** manages file shares in the OTPme system. A share
-provides access to a directory tree and can optionally be encrypted.
+**otpme-share** manages the file shares of a site. A share is a
+directory on the nodes of the site. Users mount it on their hosts with a
+token, see **add_token** below. A share can be encrypted.
 
-Shares support two types of scripts: An **add script** (default:
-add_share.sh) is automatically executed when a share is created to set
-up the share directory structure. A **mount script** (default:
-mount_share.sh) can be configured to run each time a user mounts the
-share. Scripts are run by scriptd as **ROOT_SCRIPT_USER** and
+A share has two scripts. The **add script** runs once, when the share is
+added, on the node that adds it. It creates the directory of the share.
+The **mount script** runs every time a user mounts the share, on the
+node the mount goes to.
+
+A new share gets the scripts that the config parameters
+**default_share_add_script** and **default_share_mount_script** of its
+unit or site name: **add_share.sh** and **mount_share.sh** in the
+scripts unit, unless they are set otherwise. The mount script is set,
+but off; **enable_mount_script** switches it on.
+
+scriptd runs both scripts as **ROOT_SCRIPT_USER** and
 **ROOT_SCRIPT_GROUP** (**nobody** and **nogroup** by default, see
-**otpme.conf**(5)), never as root and never as the OTPme user. A script
-that has to mount something or write outside its own directories
-therefore needs **sudo** for these commands. The default scripts for new
-shares can be configured via the **default_share_add_script** and
-**default_share_mount_script** config parameters at site or unit level.
+**otpme.conf**(5)), never as root and never as the OTPme user. They get
+**$share_name** and **$share_root**, the directory of the share
+(*share_root***/***share*), and **$force_group**, **$force_create_mode**
+and **$force_directory_mode** where the share has them.
+
+The add script has to create **$share_root**. **add** fails if that
+directory is not there afterwards on the node that adds the share. As
+**nobody** a script can usually not do that itself, so it calls a helper
+of yours with **sudo**. The scripts that come with OTPme do nothing:
+they only show, commented out, how such a call looks.
 
 # HOME SHARES
 
@@ -73,9 +86,16 @@ looked at.
 Who may mount it is decided on the restore share itself, like for any
 share, with **add_token** and the commands next to it.
 **--restore-token** *token* adds a first token right away; it has to be
-a token of the share the backups are of. For an encrypted share the
-mount reads the share key of the user from that share, so only a user
-who has a key there can read the backups.
+a token of the share the backups are of. With **--no-mount-token** it is
+added as a no mount token.
+
+If the share is encrypted and no home share, the restore share keeps a
+share key of its own for each user it has a token of, and the mount
+reads it from there. **add_token** copies the key the user has in the
+share the backups are of. A user who has none there gets your key,
+encrypted for them, so you need a key in one of the two shares. That way
+a user can read the backups without being able to mount the share
+itself.
 
 A change to a restore share is not put into the list a host keeps for
 later logins, unless **--persist-mount** is given. A restore share
@@ -92,7 +112,8 @@ goes without a new login. Such a command takes these four options:
 **--share-notify, **--no-share-notify****  
 Tell the hosts, or do not. Without either the config parameter
 **send_share_notifications** decides, which is false by default, see
-**otpme**(7).
+**otpme**(7). It is read from the token you are logged in with first,
+then from the share.
 
 **--persist-mount, **--no-persist-mount****  
 A host keeps a list of the shares of a login, which it mounts again when
@@ -102,35 +123,27 @@ the user logs in without a connection to the site. With
 either the change goes into the list, except for a restore share.
 
 Only the hosts are told on which a user is logged in with a token the
-change is about. The user **root** is never told.
+change is about, and if the share is limited to some hosts, only those
+of them. The user **root** is never told.
 
 ## Share Management
 
-**add \[**--home-share**\] \[**--home-share-uid**\] \[**--force-group** *group*\] \[**--force-directory-mode** *mode*\] \[**--force-create-mode** *mode*\] \[**--crypt**\] \[**--no-key-gen**\] \[**--block-size** *size*\] \[**--restore** *restore_share*\] \[**--restore-token** *token*\] *share***  
+**add \[**--home-share**\] \[**--home-share-uid**\] \[**--force-group** *group*\] \[**--force-directory-mode** *mode*\] \[**--force-create-mode** *mode*\] \[**--crypt**\] \[**--no-key-gen**\] \[**--block-size** *size*\] \[**--restore** *restore_share*\] \[**--restore-token** *token*\] \[**--no-mount-token**\] *share***  
 Create a share.  
 It is created in the **shares** unit of your site; a path puts it into
 another unit, and **move** takes it there afterwards. The name is turned
 into lower case.  
-OTPme runs the add script of the share and hands it the directory
-*share_root*/*share*. The script has to create that directory: it
-becomes the root directory of the share, and a share whose directory is
-not there after the script is refused. **share_root** is a config
-parameter, **/otpme-mounts/** by default. The script is the one
-**default_share_add_script** names. The **add_share.sh** OTPme comes
-with is a template in which every line is a comment: it creates nothing
-until you fill it in, or until the directory is made by hand before. The
-mount script that **default_share_mount_script** names is set as well,
-but not enabled.  
-Neither script runs as root. Both run as the user and the group that
-**ROOT_SCRIPT_USER** and **ROOT_SCRIPT_GROUP** name in the config file,
-**nobody** and **nogroup** by default, see **otpme.conf**(5). An add
-script that has to create a directory outside of what that user may
-write therefore needs **sudo** for it.  
+OTPme runs the add script of the share, see **DESCRIPTION**. The
+directory *share_root*/*share* it has to create becomes the root
+directory of the share; a share whose directory is not there afterwards
+is refused. **share_root** is a config parameter, **/otpme-mounts/** by
+default, and only the admin token of the site may set it.  
 With **--crypt** you are asked for a master password, twice. The share
 key is made from it on your machine and stored in the share for your
-user, and the token you are logged in with is added to the share. So
-this cannot be done from a script that has no terminal. An encrypted
-home share has no key of its own, and nothing is asked.  
+user, and the token you are logged in with is added to the share, as a
+no mount token with **--no-mount-token**. So this cannot be done from a
+script that has no terminal. An encrypted home share has no key of its
+own, and nothing is asked.  
 With **--restore** none of this is done, see **RESTORE SHARES** above.
 The other options are described under **Creation Options** below.  
 Needs the ACL **add:share** on the unit.
@@ -153,7 +166,8 @@ to the share. For an encrypted share it also says that the share keys
 are deleted with it: its data can then only be read by someone who has
 the master password.  
 The hosts are told to unmount the share, see **Telling the hosts**
-above.  
+above, for the no mount, root mount and master password tokens as
+well.  
 Needs the ACL **delete:object** on the share, or **delete:share** on the
 unit it sits in.
 
@@ -208,14 +222,15 @@ it.
 **enable \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share***  
 Enable a disabled share.  
 The hosts are told to mount it, see **Telling the hosts** above. A no
-mount token is left out.  
+mount token is left out, a root mount token is told as well.  
 Needs the ACL **enable:object**.
 
 **disable \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share***  
 Switch a share off without deleting it. A disabled share cannot be
 mounted.  
 The hosts are told to unmount it, see **Telling the hosts** above. That
-goes to the no mount tokens as well.  
+goes to the no mount, root mount and master password tokens as well:
+they may have it mounted too.  
 Needs the ACL **disable:object**.
 
 **rename *share* *new_name***  
@@ -246,9 +261,10 @@ Needs the ACL **touch**.
 Set the directory the share hands out.  
 It has to exist, and it has to be below **share_root**, which is
 **/otpme-mounts/** by default. **share_root** is a config parameter of
-the unit and the site that only an admin can set, so whoever may change
-a share cannot point it at any directory of the node. A path with **..**
-or a symlink in it is resolved first, and what it resolves to is what is
+the unit and the site that only the admin token of the site can set, so
+whoever may change a share cannot point it at any directory of the node.
+A token in the ADMIN role cannot set it either. A path with **..** or a
+symlink in it is resolved first, and what it resolves to is what is
 checked and kept.  
 No data is moved. What is below the old directory stays there and is not
 served any more.  
@@ -330,14 +346,8 @@ before the mount is answered. It can make sure the directory is there,
 e.g. mount the file system it is on. If it fails, the mount fails with
 it, and the host tries the next node of the share.
 
-The script gets the name of the share as **$share_name** and its root
-directory as **$share_root**, and **$force_group**,
-**$force_create_mode** and **$force_directory_mode** where the share has
-them. It does not run as root, see **add** above.
-
-A new share gets the script **default_share_mount_script** names,
-switched off. The **mount_share.sh** OTPme comes with is a template in
-which every line is a comment.
+What the script gets, as whom it runs and which script a new share gets
+is said in **DESCRIPTION**.
 
 **mount_script *share* *mount_script* \[**--** *script_options*\]**  
 Set the mount script of the share.  
@@ -455,13 +465,17 @@ On an encrypted share the user of the token needs a copy of the share
 key. If they have none yet, OTPme takes your own copy and asks your
 machine to encrypt it anew for that user. So you need a share key of
 this share yourself, and it cannot be done from a script that has no
-terminal. An encrypted home share is the exception: nothing is copied,
-the user makes their own key at their first mount.  
+terminal. On a restore share the key the user has in the share the
+backups are of is copied first; only if there is none yours is taken,
+from either of the two shares, see **RESTORE SHARES** above. An
+encrypted home share is the exception: nothing is copied, the user makes
+their own key at their first mount.  
 With a forced group, a token whose user is not in that group is refused,
 unless you are an admin. With SOTP signing the sign public key of the
 user is copied into the share, and a user without one is refused.  
 Needs the ACL **add:token**. On an encrypted share that is no home share
-it needs **view:share_key** as well, because it looks at the share keys.
+it needs **view:share_key** as well when a key has to be copied, on the
+share the key is read from.
 
 **remove_token \[**--keep-share-key**\|**--remove-share-key**\] \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path***  
 Take the token off the share. The hosts are told to unmount it, unless
@@ -538,11 +552,8 @@ The node checks the host when the share is mounted and goes on checking
 while it is mounted. A host that is taken off the list loses its access
 within a second, whether it was told or not.
 
-A *host* is looked for in the site of the share, or written as
-*site***/***host* to take one from another site of the realm. The same
-goes for a *group*, written as *site***/***group*. A host name is unique
-within its site only, so two sites can each have a host of the same
-name.
+Host and group names are unique in the realm, so a *host* or a *group*
+is given by its name alone, whatever site it is in.
 
 The four options that tell the hosts are described under **Telling the
 hosts** above. As long as the share is not limited these commands tell
@@ -594,10 +605,10 @@ on the list no more are told to unmount it.
 Needs the ACL **remove:group**.
 
 **list_groups \[**--return-type** *TYPE*\] *share***  
-List the names of the host groups that are on the share. A group of
-another site is written as *site***/***group*. **--return-type** selects
-what to print instead (**name**, **read_oid**, **full_oid**, **uuid**).
-Disabled groups are listed too, though their hosts do not count.  
+List the names of the host groups that are on the share.
+**--return-type** selects what to print instead (**name**, **read_oid**,
+**full_oid**, **uuid**). Disabled groups are listed too, though their
+hosts do not count.  
 Needs the ACL **view:groups**.
 
 ## Master Password Token
@@ -640,8 +651,11 @@ read none of them. The token needs no other assignment to the share.
 
 **add_root_mount_token \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path***  
 Let the token mount the root directory of the home share. What the token
-gets from the share changes, so the hosts are told to mount it, like
-with **add_token**.  
+gets from the share changes, so the hosts are told to unmount it for the
+token and to mount it again, see **Telling the hosts** above. A mount
+the token has already then shows the root directory instead of the home
+dir; without being told, it would keep the home dir until it connects to
+a node again, and then switch under the same paths.  
 With SOTP signing the sign public key of the user is copied into the
 share, and a user without one is refused.  
 Needs the ACL **add:root_mount_token**.
@@ -773,20 +787,47 @@ Needs the ACL **view:policies**.
 
 ## ACL Management
 
-**add_acl *share* *owner_type* *owner* *acl***  
-Add an access control entry.
+An ACL says what somebody may do with this share. The somebody is a role
+or a token, never a user.
 
-**del_acl *share* *acl***  
-Remove an access control entry.
+What the three forms **acl**, **+acl** and **++acl** mean, and which
+ACLs exist, is under **ACLs** in **otpme**(7).
+
+A command that changes something asks first; the global option **-f**
+skips the question.
+
+**add_acl *share* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
+Give a role or a token one or more ACLs on this share.  
+*owner_type* is **role** or **token**, and *owner* the path of that role
+or token. An ACL may carry a value, for example **view:tokens**, and
+several are separated by commas.  
+Needs the ACL **add:acl**.
+
+**del_acl *share* *acl*\[,*acl*\]**  
+Take those ACLs away again.  
+Here an *acl* is the whole entry, owner and all, the way **list_acls**
+prints it: **role:berlin/sw-admins:view**.  
+Needs the ACL **delete:acl**.
 
 **list_acls *share***  
-Display all ACLs for the share.
+Show the ACLs that lie on this share, i.e. who may do what with it.
+Needs the ACL **view:acl**.
 
 **enable_acl_inheritance *share***  
-Enable ACL inheritance from parent objects.
+Let the share inherit the default ACLs of the unit above it. It does not
+by default.
+
+Only default ACLs are inherited. An ordinary ACL on the unit never is.
+
+Moving the share into another unit then takes away the default ACLs of
+the old unit and applies those of the new one. While inheritance is off,
+a move leaves the ACLs of the share as they are.
+
+Needs the ACL **enable:acl_inheritance**.
 
 **disable_acl_inheritance *share***  
-Disable ACL inheritance.
+Stop inheriting them. Only the ACLs on the share itself count from then
+on. Needs the ACL **disable:acl_inheritance**.
 
 ## Object Changelog
 
@@ -822,13 +863,34 @@ true by default, but where no value is found at all, clearing is
 refused. OTPme asks the token you are signed in with first, then the
 object.
 
-## Import/Export
+## Export and Cleanup
 
-**export \[**--password** *PASS*\] *share***  
-Export share configuration.
+Both write to stdout. There is no import on this page: reading an export
+back in is **otpme-tool import,** see **otpme-tool**(1).
+
+**remove_orphans** asks before it changes anything; the global option
+**-f** skips the question.
+
+**export \[**--password** *password*\] *share***  
+Write the whole object of the share to stdout, as JSON.  
+Without **--password** it is written as it is, in clear. With one, a key
+is derived from that password and the object is encrypted with it; the
+salt goes into the output, so the password is all you need to read it
+back.  
+What a share holds are references by UUID — its tokens of every kind,
+its roles, hosts, host groups, nodes and pools — so an export says
+something only in the realm it came from. It carries the share keys as
+well, each encrypted for its user, and the sign public keys.  
+Needs the ACL **export**.
 
 **remove_orphans *share***  
-Remove orphaned object references.
+Remove what the share still points at although it is gone.  
+On a share that is its ACLs, its policies, its tokens of every kind, its
+roles, host groups, hosts, nodes and pools, and the share keys and sign
+public keys of users that are gone.  
+It shows everything it found and asks once for all of it. It asks
+nothing and changes nothing when it finds nothing.  
+Needs the ACL **remove:orphans**.
 
 # OPTIONS
 
@@ -876,6 +938,13 @@ SHARES** above.
 **--restore-token *TOKEN***  
 With **--restore**: add this token to the new share right away. It has
 to be assigned to the share the backups are of.
+
+**--no-mount-token**  
+Add the token that **add** puts on the share as a no mount token, see
+**No Mount Token** above: your own with **--crypt**, the one of
+**--restore-token** with **--restore**. It may mount the share, but the
+share is not mounted for it at login. Without such a token, e.g. with
+**--no-key-gen** or on a home share, it is refused.
 
 ## Display Options
 

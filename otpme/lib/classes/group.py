@@ -54,6 +54,7 @@ read_value_acls = {
                                 "roles",
                                 "tokens",
                                 "hosts",
+                                "sync_users",
                                 ],
                     # The other direction: not what this group holds,
                     # but who holds this group.
@@ -65,7 +66,7 @@ read_value_acls = {
 
 write_value_acls = {
                     "add"       : [
-                                "user",
+                                "sync_user",
                                 "token",
                                 "role",
                                 "host",
@@ -75,7 +76,7 @@ write_value_acls = {
                                 "config",
                                 ],
                     "remove"    : [
-                                "user",
+                                "sync_user",
                                 "token",
                                 "role",
                                 "host",

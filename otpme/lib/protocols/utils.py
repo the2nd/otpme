@@ -10,6 +10,7 @@ try:
 except Exception:
     pass
 
+from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib.protocols.server import get_class as get_class_server
 from otpme.lib.protocols.client import get_class as get_class_client
@@ -180,6 +181,33 @@ def passauth(message_id, prompt="Password:",
             'prompt'        : prompt,
             }
     return request
+
+def bind_challenge(challenge, session_key):
+    """ Bind a challenge to the connection it is answered on.
+
+    A challenge says nothing about who asked for it, so a signature over
+    it is good at any other server too: a server that gets a challenge
+    from a second one, hands it to the user as its own and passes the
+    signature on logs in there as that user. Appending something only
+    this connection has makes the signature worthless everywhere else.
+    Both ends build this string, the client before it signs and the
+    server before it verifies, so both have to build it here.
+
+    What is appended is a hash of the session key and not the key
+    itself, because the data to be signed leaves the process: an SSH
+    challenge goes to the ssh-agent, and SSH_AUTH_SOCK may be an agent
+    forwarded from another machine. The hash binds the same and tells
+    the signer nothing.
+
+    Used for the SSH challenge (lib/ssh.gen_challenge), where it is the
+    fifth field and the four before it keep their index -- time, OTP
+    length, nonce, public key -- and for the one a yubikey_piv token
+    signs at login (smartcard/yubikey_piv).
+    """
+    if not session_key:
+        msg = _("Unable to bind challenge: No session key.")
+        raise OTPmeException(msg)
+    return f"{challenge}:{stuff.gen_sha256(session_key)}"
 
 def sshauth(message_id, challenge, token_test=False):
     """ Sends request to client to do SSH authentication. """

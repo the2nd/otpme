@@ -177,7 +177,7 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
                         member_roles.append(x)
                     break
             row.append("\n".join(member_roles))
-        else:
+        elif "roles" in output_fields:
             if role_access:
                 row.append("")
             else:
@@ -222,7 +222,7 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
                 host_tokens.append(x)
 
             row.append("\n".join(host_tokens))
-        else:
+        elif "tokens" in output_fields:
             if token_access:
                 row.append("")
             else:

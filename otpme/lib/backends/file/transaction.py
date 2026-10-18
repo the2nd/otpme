@@ -187,15 +187,69 @@ def remove_transaction():
 
 def get_file_transactions():
     """ Get all file transaction IDs. """
-    file_transactions = filetools.list_dir(FILE_TRANSACTIONS_DIR,
-                                            sort_by="ctime")
+    file_transactions = filetools.list_dir(FILE_TRANSACTIONS_DIR)
     return file_transactions
 
 def get_object_transactions():
     """ Get all object transaction UUIDs. """
-    object_transactions = filetools.list_dir(OBJECT_TRANSACTIONS_DIR,
-                                                sort_by="ctime")
+    object_transactions = filetools.list_dir(OBJECT_TRANSACTIONS_DIR)
     return object_transactions
+
+def get_transaction_start(spool_dir, transaction_id):
+    """ When a transaction began: the time its id starts with.
+
+    Not the ctime of its directory, which these were sorted by. That is
+    the time of whatever changed in the directory last -- a status
+    written, an entry removed -- is coarse enough on ext4 for two to be
+    the same, and is the same for all of them after a restore. The ctime
+    is only asked where the id does not start with a time.
+    """
+    try:
+        return float(transaction_id.split(":")[0])
+    except ValueError:
+        try:
+            return os.path.getctime(os.path.join(spool_dir, transaction_id))
+        except OSError:
+            return 0.0
+
+def get_transaction_objects(_transaction):
+    """ The read OIDs of the objects a transaction that was read changes.
+
+    From its journal and cluster journal. The entries name an object as
+    full OID or as read OID, depending on the action, and a rename names
+    two.
+    """
+    read_oids = set()
+    entries = list(_transaction.journal_entries.values())
+    entries += list(_transaction.cluster_journal_entries.values())
+    for entry in entries:
+        for key in ("object_id", "new_object_id", "old_oid", "new_oid"):
+            try:
+                x_oid = entry[key]
+            except (KeyError, TypeError):
+                continue
+            try:
+                read_oids.add(oid.get(object_id=x_oid).read_oid)
+            except Exception:
+                continue
+    return read_oids
+
+def get_pending_transactions():
+    """ File and object transactions on disk, as one list, oldest first.
+
+    One list and not one kind after the other: an object transaction
+    that began before a file transaction is replayed before it. Each
+    entry is (start time, transaction class, id).
+    """
+    pending = []
+    for x in get_file_transactions():
+        x_start = get_transaction_start(FILE_TRANSACTIONS_DIR, x)
+        pending.append((x_start, FileTransaction, x))
+    for x in get_object_transactions():
+        x_start = get_transaction_start(OBJECT_TRANSACTIONS_DIR, x)
+        pending.append((x_start, ObjectTransaction, x))
+    pending.sort(key=lambda x: x[0])
+    return pending
 
 def begin_transaction(name=None, callback=default_callback):
     """ Begin transaction. """
@@ -310,19 +364,32 @@ def abort_transaction():
         logger.debug(log_msg)
 
 def replay_transactions():
-    """ Replay transactions. """
+    """ Replay transactions.
+
+    Returns the read OIDs of the objects a transaction changes whose
+    replay failed. Such a transaction stays for the next try, and it is
+    older than anything written now: a write that went on would be
+    overwritten with the older state the moment the replay succeeds. So
+    backend.write_config(), rename_object() and delete_object() refuse
+    these objects until it did.
+    """
+    blocked_objects = set()
     # Will not replay transactions from within controld.
     # This would lead to open posix semaphores as root.
     if config.daemon_name == "controld":
-        return
-    # Replay file transactions.
-    for x in get_file_transactions():
+        return blocked_objects
+    # In the order they began, file and object transactions alike.
+    for x_start, transaction_class, x in get_pending_transactions():
+        is_file = transaction_class is FileTransaction
         # Get transaction.
-        _transaction = FileTransaction(id=x)
+        _transaction = transaction_class(id=x)
         # Ignore active transaction.
         if _transaction.is_active():
             if config.debug_level(DEBUG_SLOT) > 1:
-                log_msg = _("Ignoring active transaction (file): {id}", log=True)[1]
+                if is_file:
+                    log_msg = _("Ignoring active transaction (file): {id}", log=True)[1]
+                else:
+                    log_msg = _("Ignoring active transaction (object): {id}", log=True)[1]
                 log_msg = log_msg.format(id=_transaction.id)
                 logger.debug(log_msg)
             continue
@@ -341,57 +408,15 @@ def replay_transactions():
             if not _transaction.exists():
                 _transaction.remove()
                 continue
-            # Load transaction.
-            try:
-                _transaction.read()
-            except NotFound:
-                continue
-            except Exception as e:
-                config.raise_exception()
-                log_msg = _("Failed to load transaction: {transaction}: {error}", log=True)[1]
-                log_msg = log_msg.format(transaction=x, error=e)
-                logger.critical(log_msg)
-                continue
-            if config.debug_level(DEBUG_SLOT) > 0:
-                log_msg = _("Replaying transaction (file): {transaction}", log=True)[1]
-                log_msg = log_msg.format(transaction=x)
-                logger.debug(log_msg)
-            # Commit transaction.
-            try:
-                _transaction.replay()
-            except Exception as e:
-                config.raise_exception()
-                log_msg = _("Failed to replay transaction: {id}: {error}", log=True)[1]
-                log_msg = log_msg.format(id=_transaction.id, error=e)
-                logger.critical(log_msg)
-                continue
-            # Delete transaction.
-            _transaction.remove()
-        finally:
-            _transaction.release_lock()
-
-    # Replay object transactions.
-    for x in get_object_transactions():
-        # Get transaction.
-        _transaction = ObjectTransaction(id=x)
-        # Ignore active transaction.
-        if _transaction.is_active():
-            if config.debug_level(DEBUG_SLOT) > 1:
-                log_msg = _("Ignoring active transaction (object): {id}", log=True)[1]
-                log_msg = log_msg.format(id=_transaction.id)
-                logger.debug(log_msg)
-            continue
-        # Lock transaction. Asked once and not waited for: a live
-        # transaction holds its lock, and every read of an object comes
-        # through here, so a wait is paid once per transaction of
-        # somebody else on every read.
-        try:
-            _transaction.acquire_lock(timeout=0)
-        except ObjectLocked:
-            continue
-        try:
-            # Remove finished or incomplete transaction.
-            if not _transaction.exists():
+            # Part of an object transaction: that one writes the object
+            # again on its replay, from the same entry. Replaying both
+            # wrote it twice, in whichever order the two were found.
+            # remove() leaves the entry of the object transaction alone.
+            if is_file and _transaction.from_object_transaction():
+                if config.debug_level(DEBUG_SLOT) > 0:
+                    log_msg = _("Dropping transaction of an object transaction, which replays it: {transaction}", log=True)[1]
+                    log_msg = log_msg.format(transaction=x)
+                    logger.debug(log_msg)
                 _transaction.remove()
                 continue
             # Load transaction.
@@ -406,13 +431,17 @@ def replay_transactions():
                 logger.critical(log_msg)
                 continue
             if config.debug_level(DEBUG_SLOT) > 0:
-                log_msg = _("Replaying transaction (object): {transaction}", log=True)[1]
+                if is_file:
+                    log_msg = _("Replaying transaction (file): {transaction}", log=True)[1]
+                else:
+                    log_msg = _("Replaying transaction (object): {transaction}", log=True)[1]
                 log_msg = log_msg.format(transaction=x)
                 logger.debug(log_msg)
             # Commit transaction.
             try:
                 _transaction.replay()
             except Exception as e:
+                blocked_objects |= get_transaction_objects(_transaction)
                 config.raise_exception()
                 log_msg = _("Failed to replay transaction: {id}: {error}", log=True)[1]
                 log_msg = log_msg.format(id=_transaction.id, error=e)
@@ -422,6 +451,7 @@ def replay_transactions():
             _transaction.remove()
         finally:
             _transaction.release_lock()
+    return blocked_objects
 
 def transaction(func):
     """ Decorator to handle transaction for class method. """
@@ -806,7 +836,13 @@ class BaseTransaction(object):
             log_msg = _("Error writing config file: {config_file}: {error}", log=True)[1]
             log_msg = log_msg.format(config_file=config_file, error=e)
             logger.critical(log_msg)
-            config.raise_exception()
+            # Passed on whatever the debug options say. The commit has to
+            # fail here: carried on, it updated the index, removed the
+            # journal entry and then the transaction, and an object file
+            # that was not written was left with nothing to replay it
+            # from. Failed, a transaction that is written stays for
+            # replay_transactions().
+            raise
 
     def get_journal_file(self, action):
         """ Build journal spool file path. """
@@ -922,9 +958,17 @@ class BaseTransaction(object):
             if self.name is None:
                 raise OTPmeException(msg)
         except Exception as e:
+            # Cut off, by a power failure while it was being written:
+            # incomplete, like a status that is not "written" below. That
+            # is safe to remove, as nothing was done yet -- the commit
+            # starts only once the status is all there. Kept, it was read
+            # and refused on every read of an object, for good.
             msg = _("Error decoding transaction status data: {status_file}: {error}")
             msg = msg.format(status_file=self.status_file, error=e)
-            raise OTPmeException(msg) from e
+            logger.warning(msg)
+            if not self.is_active():
+                self.remove()
+            raise NotFound() from e
 
         # Break if transaction is incomplete.
         if self.status != "written":
@@ -1139,6 +1183,16 @@ class FileTransaction(BaseTransaction):
             return
         for x in self.commit_files:
             self.add_commit_file(x)
+
+    def from_object_transaction(self):
+        """ Whether this one writes an object for an object transaction.
+
+        Said by its commit files, which are linked from begin() on and
+        go only with a commit that went through. While they are there,
+        the object transaction has the object in its journal as well and
+        writes it again on its replay.
+        """
+        return bool(filetools.list_dir(self.commits_dir))
 
     def add_commit_file(self, commit_file):
         """ Add commit file to transaction. """
@@ -1432,8 +1486,17 @@ class FileTransaction(BaseTransaction):
             self._remove_file(commit_link)
 
     def remove(self):
-        """ Delete transaction. """
-        self.remove_commit_files()
+        """ Delete transaction.
+
+        Without its commit files. Those are the entries of the object
+        transaction this one writes an object for, and they go with a
+        commit that went through, which _commit() does at its end. This
+        removed them as well, on every way here: after a failed write
+        (file.write()), and for a transaction left in "new" or "saving"
+        by a crash (read(), _remove_incomplete_transaction()). The object
+        transaction was then replayed without the object, and the change
+        to it was gone.
+        """
         return super().remove()
 
 class ObjectTransaction(BaseTransaction):

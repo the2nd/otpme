@@ -2592,13 +2592,13 @@ class OTPmeAuthP1(OTPmeServer1):
                         'status'    : auth_status,
                         'message'   : "Auth failed.",
                         }
+            # Debug only, and not for the audit log. The site that asks
+            # tries the tokens of a login one by one (AuthHandler), so a
+            # token that does not match is "try the next one" and no
+            # failure; whether the login failed is said there.
             log_msg = _("Token verification failed: {user}: {tried_tokens}", log=True)[1]
             log_msg = log_msg.format(user=user.name, tried_tokens=tried_tokens)
-            self.logger.warning(log_msg)
-            # Audit logging.
-            if audit_logger:
-                audit_msg = f"{config.daemon_name}: {log_msg}"
-                audit_logger.warning(audit_msg)
+            self.logger.debug(log_msg)
         # Build response message.
         message = auth_response
         if auth_status:

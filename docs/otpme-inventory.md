@@ -9,17 +9,18 @@ hosts
 
 # DESCRIPTION
 
-**otpme-inventory** shows which system a host runs, which kernel it is
-running, whether it has to be rebooted, which packages are installed on
-it, and what it is made of. You can also search for hosts that have a
-package, run a system version or a kernel, wait for a reboot, or have
-certain hardware.
+**otpme-inventory** shows which system a host runs, which kernel and
+which OTPme version it is running, whether it has to be rebooted, which
+packages are installed on it, and what it is made of. You can also
+search for hosts that have a package, run a system version, a kernel or
+an OTPme version, wait for a reboot, or have certain hardware.
 
 Use it to find the hosts a job has to run on, for example all hosts with
 an old version of a package. See **otpme-deploy**(1). Use it to find a
 machine by its serial number, or to see how much memory and disk a host
 has. Use it to find the hosts that still have to be rebooted, see **WHEN
-A HOST HAS TO BE REBOOTED**.
+A HOST HAS TO BE REBOOTED**. Use it to find the hosts that still run an
+old OTPme, see **OTPME VERSION**.
 
 The **confd** daemon on each host (and node) reports this data to the
 nodes of its site. It checks the host every 60 seconds and only sends
@@ -27,12 +28,12 @@ what changed. It does not take stock while a job is running on the host.
 A package manager at work is no good moment for it, the next round does
 it.
 
-The OS, the OS version, the kernel, the reboot, the packages and the
-hardware are stored in a separate inventory object for each host, not on
-the host object. All of it is what the host reported about itself, and
-an inventory has to stand on its own. Host objects are synced to all
-hosts, and the package lists of all hosts should not be, so the
-inventory stays on the nodes of the host's site.
+The OS, the OS version, the kernel, the reboot, the OTPme version, the
+packages and the hardware are stored in a separate inventory object for
+each host, not on the host object. All of it is what the host reported
+about itself, and an inventory has to stand on its own. Host objects are
+synced to all hosts, and the package lists of all hosts should not be,
+so the inventory stays on the nodes of the host's site.
 
 Changing the inventory does not change the last modified time of the
 host.
@@ -44,18 +45,18 @@ are left out of search results. See **PERMISSIONS** below.
 Shown are the hosts whose inventory this site keeps: its own, and those
 of other sites that report here, see **A CENTRAL INVENTORY**.
 
-The hardware is read on any Linux host, and the system and the kernel on
-any host at all. Package lists need a package manager the host knows,
-which today means Debian and Ubuntu, and so does the answer whether the
-host has to be rebooted. A host without one still reports its system,
-its kernel and its hardware.
+The hardware is read on any Linux host, and the system, the kernel and
+the OTPme version on any host at all. Package lists need a package
+manager the host knows, which today means Debian and Ubuntu, and so does
+the answer whether the host has to be rebooted. A host without one still
+reports its system, its kernel, its OTPme version and its hardware.
 
 # COMMANDS
 
 **show *host***  
 Show the OS, the OS version, the running kernel, whether the host has to
-be rebooted, the number of packages, the vendor, the model, the serial
-number and the time of the last update.
+be rebooted, the OTPme version, the number of packages, the vendor, the
+model, the serial number and the time of the last update.
 
 **packages \[**--filter** *pattern*\] *host***  
 List the packages of a host, one per line with name and version.
@@ -65,12 +66,12 @@ Show what a host is made of: CPU, memory, disks, serial number and so
 on. Sizes are shown in human form, for example **9.7G**. Says so if the
 host has not reported its hardware yet.
 
-**search \[**--host** *host*\] \[**--os-version** *version*\] \[**--kernel** *kernel*\] \[**--reboot-required**\] \[**--hardware** *expression*\] \[*package*\]**  
-Find hosts by package, by OS version, by kernel, by a waiting reboot, or
-by hardware. *package* is a package name, or a name and a version in the
-form *name***=***version*. Both can contain wildcards (**\***). Every
-option you give has to match, so they narrow the result down. You have
-to give at least one of them.
+**search \[**--host** *host*\] \[**--os-version** *version*\] \[**--kernel** *kernel*\] \[**--otpme-version** *version*\] \[**--reboot-required**\] \[**--hardware** *expression*\] \[*package*\]**  
+Find hosts by package, by OS version, by kernel, by OTPme version, by a
+waiting reboot, or by hardware. *package* is a package name, or a name
+and a version in the form *name***=***version*. Both can contain
+wildcards (**\***). Every option you give has to match, so they narrow
+the result down. You have to give at least one of them.
 
 Each line says a host and what made it match. With a *package* that is
 the package and its version, one line per package. With **--hardware**
@@ -99,6 +100,11 @@ are allowed, for example **'debian-\*'**.
 **--kernel *kernel***  
 Only hosts running this kernel, for example **6.1.0-37-amd64**.
 Wildcards are allowed, for example **'6.1.0-3\*'**.
+
+**--otpme-version *version***  
+Only hosts running this OTPme version, for example **0.3.0a283**.
+Wildcards are allowed, for example **'0.3.0a28\*'**. See **OTPME
+VERSION**.
 
 **--reboot-required**  
 Only hosts that have to be rebooted to run what is installed on them.
@@ -268,6 +274,18 @@ it with **otpme-deploy**(1):
 
 >     otpme-deploy add --host server1 --expiry 1h host_mgmt reboot
 
+# OTPME VERSION
+
+**otpme_version** is the OTPme version the host is running, for example
+**0.3.0a283**.
+
+Running, not installed, the same as the kernel. It is the version of the
+**confd** daemon that reports it. A host that got a new OTPme and was
+not restarted still runs the old one, and that is what you see here.
+
+**-** means the host has not reported a version yet. An OTPme older than
+this field sends none.
+
 # PACKAGE NAMES
 
 Package names are the names dpkg uses. A multi-arch package has its
@@ -370,6 +388,7 @@ is:
 >     os_version: debian-13
 >     kernel: 6.12.43-amd64
 >     reboot_required: no
+>     otpme_version: 0.3.0a283
 >     packages: 686
 >     vendor: Dell Inc.
 >     model: PowerEdge R640
@@ -470,6 +489,21 @@ Which kernel each of them runs is one question further:
 >     dev1 6.1.0-37-amd64
 >     server1 6.1.0-37-amd64
 >     server2 6.1.0-38-amd64
+
+## Find hosts by OTPme version
+
+**otpme-inventory search --otpme-version 0.3.0a283**  
+Show all hosts running this OTPme version.
+
+The line says the version, so this is how you see which hosts still run
+an old one:
+
+>     $ otpme-inventory search --otpme-version '*'
+>     client1 0.3.0a283
+>     dev1 0.3.0a283
+>     server1 0.3.0a281
+
+A host that has not reported a version yet is left out.
 
 ## Find hosts by hardware
 

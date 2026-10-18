@@ -68,6 +68,12 @@ class OTPmeRacP1(OTPmeServer1):
         # address both sides are told to meet at.
         self.require_master_node = True
         self.require_cluster_status = True
+        # A disabled host or node meets here like any other. Being let
+        # in on it is the very thing otpme-shell is for -- somebody has
+        # to look at a host that was switched off -- and nothing here
+        # gives permission: the job was verified on the host, and SSH
+        # decides who gets the shell.
+        self.check_peer_disabled = False
         # What travels through here is SSH, which brings its own. A
         # session key on top would be encryption of ciphertext.
         self.encrypt_session = False

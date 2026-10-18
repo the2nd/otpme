@@ -60,6 +60,7 @@ read_value_acls = {
                                 "dynamic_groups",
                                 "accessgroups",
                                 "auto_disable",
+                                "logins_limited",
                             ],
                 # The other direction: not what this host holds, but
                 # who holds this host.
@@ -73,6 +74,7 @@ read_value_acls = {
 
 write_value_acls = {
                 "add"       : [
+                                "sync_user",
                                 "sync_group",
                                 "dynamic_group",
                             ],
@@ -84,6 +86,7 @@ write_value_acls = {
                                 "auto_disable",
                             ],
                 "remove"    : [
+                                "sync_user",
                                 "sync_group",
                                 "dynamic_group",
                             ],

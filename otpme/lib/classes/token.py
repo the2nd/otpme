@@ -2171,7 +2171,7 @@ class Token(OTPmeObject):
         ):
         """ Check if the token has admin priviledges """
         if check_admin_user:
-            if self.uuid == config.admin_token_uuid:
+            if self.is_superuser():
                 return True
 
         if check_admin_role:
@@ -2189,6 +2189,17 @@ class Token(OTPmeObject):
         # This point should never be reached.
         msg = (_("WARNING: You may have hit a BUG of Token().is_admin()."))
         raise OTPmeException(msg)
+
+    def is_superuser(self):
+        """ Whether this is the admin token of the site.
+
+        More than is_admin(): a token in the ADMIN role is an admin, but
+        only the admin token of the site is the superuser. It needs no
+        ACL at all (otpme_acl.check_acls()), and a few things are left
+        to it alone, such as config parameters registered with
+        superuser_only.
+        """
+        return self.uuid == config.admin_token_uuid
 
     def gen_used_hash(self, data: str):
         """ Generate SHA-256 hash for used OTP/counter, salted with the
@@ -4704,9 +4715,12 @@ class Token(OTPmeObject):
         """ Delete token. """
         exception = []
 
-        if self.uuid == config.admin_token_uuid:
-            if config.site_uuid == config.admin_token_uuid:
-                return callback.error(_("Cannot delete realm admin token."))
+        # The admin token is the superuser of the site, like the admin
+        # user it belongs to (see User.delete()). This used to ask
+        # whether the UUID of the site was the one of the token as
+        # well, which it never is, so nothing kept it from being deleted.
+        if self.is_superuser():
+            return callback.error(_("Cannot delete the admin token of the site."))
 
         # Get parent object to check ACLs.
         if verify_acls:

@@ -913,6 +913,11 @@ def delete(object_id, no_lock=False, commit_files=None, object_uuid=None,
                                                 no_index_writes=no_index_writes,
                                                 commit_files=commit_files)
                 del_transaction.begin()
+                # Done with: there is nothing to delete. remove() leaves
+                # the commit files alone (they are an object transaction's
+                # to keep until its write went through), so here it is
+                # said that this one did.
+                del_transaction.remove_commit_files()
                 del_transaction.remove()
                 del_transaction.release_lock()
                 return False

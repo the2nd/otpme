@@ -53,6 +53,7 @@ from otpme.lib.socket.connect import ConnectSocket
 from otpme.lib.protocols.request import build_request
 from otpme.lib.socket.handler import SocketProtoHandler
 from otpme.lib.protocols.response import decode_response
+from otpme.lib.protocols.utils import bind_challenge
 
 from otpme.lib.exceptions import *
 
@@ -1241,7 +1242,7 @@ class OTPmeClient(OTPmeClientBase):
             # use it on another one. A token test is the one case that
             # cannot be bound: the challenge is verified by the job
             # that asked for it, which has no session key.
-            sign_challenge = ssh.bind_challenge(challenge, self.session_key)
+            sign_challenge = bind_challenge(challenge, self.session_key)
         # Try to sign challenge with via running SSH agent.
         try:
             response = ssh.sign_challenge(challenge=sign_challenge)
@@ -2294,7 +2295,8 @@ class OTPmeClient1(OTPmeClientBase):
         request_token=None, check_login_status=True, allow_untrusted=False,
         do_preauth=True, check_connected_site=True, verify_preauth=None,
         follow_redirect=True, login_redirect=False, backup_key=None,
-        backup_home_dir=None, sotp_sign_method=None, share=None, **kwargs):
+        backup_home_dir=None, sotp_sign_method=None, share=None,
+        disabled_peer=False, **kwargs):
         # Init parent class.
         if offline_iterations_by_score is None:
             offline_iterations_by_score = {}
@@ -2306,6 +2308,12 @@ class OTPmeClient1(OTPmeClientBase):
             self.redirect_args.pop("socket_uri")
         except KeyError:
             pass
+        # This connection is for what a disabled host may still do, see
+        # OTPmeServer1.disabled_peer_allowed(). Said in the preauth
+        # check, and kept for a redirect, which asks again.
+        self.disabled_peer = disabled_peer
+        if disabled_peer:
+            self.redirect_args['disabled_peer'] = True
 
         # Get logger.
         self.logger = config.logger
@@ -2993,6 +3001,11 @@ class OTPmeClient1(OTPmeClientBase):
         command_args['preauth_request'] = preauth_request
         # Add reneg.
         command_args['reneg'] = self.reneg
+        # Ask for the commands a disabled host may still use. Outside of
+        # the preauth request, because the daemon reads it before that.
+        # It only ever narrows what we get, so it needs no signature.
+        if self.disabled_peer:
+            command_args['disabled_peer'] = True
 
         # Send preauth request.
         if self.socket_uri:
@@ -3783,7 +3796,8 @@ class OTPmeClient1(OTPmeClientBase):
                 for smartcard_client_handler in smartcard_client_handlers:
                     try:
                         smartcard_data = smartcard_client_handler.handle_preauth(smartcard=self.smartcard,
-                                                                                password=self.sc_pass)
+                                                                                password=self.sc_pass,
+                                                                                session_key=self.connection.session_key)
                     except Exception as e:
                         smartcard_error = e
                         continue

@@ -90,8 +90,8 @@ class OTPmeJoinP1(OTPmeServer1):
 
     def get_host(self, host_name):
         """ Get host object. """
-        # Search for existing hosts. We only search for hosts of our site
-        # because we do not support cross site joins.
+        # Search for existing hosts. In the whole realm: host and node
+        # names are unique in it (see OTPmeHost.add()).
         hosts = backend.search(object_type="host",
                                 attribute="name",
                                 value=host_name,

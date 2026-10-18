@@ -32,6 +32,8 @@ import shutil
 import subprocess
 import setproctitle
 
+import otpme
+
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
         msg = _("Loading module: {module_name}")
@@ -785,6 +787,9 @@ class ConfDaemon(OTPmeDaemon):
                 return
         os_name, os_version = os_handlers.get_os_info()
         kernel = os_handlers.get_kernel()
+        # The OTPme this daemon runs. A host that was updated and not
+        # restarted runs the old one, and that is what matters here.
+        otpme_version = otpme.__version__
         handler = None
         try:
             handler = os_handlers.get_handler(logger=self.logger)
@@ -821,7 +826,7 @@ class ConfDaemon(OTPmeDaemon):
         checksum = inventory.get_packages_checksum(packages)
         hardware_checksum = hardware_mod.get_hardware_checksum(hardware)
         local_inventory = (os_name, os_version, kernel, reboot_required,
-                            checksum, hardware_checksum)
+                            otpme_version, checksum, hardware_checksum)
         now = time.time()
         if local_inventory == self.reported_inventory:
             if (now - self.last_inventory_check) < self.inventory_check_interval:
@@ -861,6 +866,8 @@ class ConfDaemon(OTPmeDaemon):
                 send_os = True
             if response.get('kernel') != kernel:
                 send_os = True
+            if response.get('otpme_version') != otpme_version:
+                send_os = True
             # Only where we have an answer: a host that cannot say
             # would otherwise ask for a change every round and never
             # get one, because nothing reported changes nothing.
@@ -881,6 +888,7 @@ class ConfDaemon(OTPmeDaemon):
                     command_args['os_version'] = os_version
                     command_args['kernel'] = kernel
                     command_args['reboot_required'] = reboot_required
+                    command_args['otpme_version'] = otpme_version
                     send_os = False
                 # Whole, with the first of the updates: it is a dozen
                 # values, and sending it again with every part of a
@@ -926,7 +934,14 @@ class ConfDaemon(OTPmeDaemon):
         return updates
 
     def get_sync_connection(self, site=None):
-        """ Connection to the syncd of our site, or of another one. """
+        """ Connection to the syncd of our site, or of another one.
+
+        Opened as one for a disabled host (disabled_peer): all confd
+        asks syncd for are its jobs and its inventory, and those a
+        disabled host still gets -- otpme-shell and otpme-deploy are
+        how somebody reaches a host that was switched off. For a host
+        that is enabled it changes nothing.
+        """
         if site is None:
             site = config.site
         log_msg = _("Connecting to syncd: {realm}/{site}", log=True)[1]
@@ -936,7 +951,22 @@ class ConfDaemon(OTPmeDaemon):
                             realm=config.realm,
                             site=site,
                             timeout=60,
-                            interactive=False)
+                            interactive=False,
+                            disabled_peer=True)
+
+    def own_node_disabled(self):
+        """ Whether this node is disabled, read from the index. """
+        from otpme.lib import backend
+        try:
+            result = backend.search(object_type="node",
+                                    attribute="uuid",
+                                    value=config.uuid,
+                                    return_attributes=['enabled'])
+        except Exception:
+            return False
+        if not result:
+            return False
+        return not result[0]
 
     def get_inventory_site(self):
         """ The site this host reports its inventory to.
@@ -1190,6 +1220,12 @@ class ConfDaemon(OTPmeDaemon):
                                     process_jobs = True
                             elif config.master_node is False:
                                 process_jobs = True
+                    # A disabled node closes its cluster connections and
+                    # never gets a cluster status. It is not part of the
+                    # cluster then and acts like a host: it still gets
+                    # its jobs and reports its inventory.
+                    elif self.own_node_disabled():
+                        process_jobs = True
                 else:
                     process_jobs = True
 
@@ -1222,7 +1258,8 @@ class ConfDaemon(OTPmeDaemon):
                             check_jobs = True
                     if config.host_type == "node":
                         if not config.cluster_status:
-                            check_jobs = False
+                            if not self.own_node_disabled():
+                                check_jobs = False
                     if check_jobs:
                         try:
                             self.process_jobs()

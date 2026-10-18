@@ -21,6 +21,7 @@ from otpme.lib import config
 from otpme.lib import encryption
 from otpme.lib.help import command_map
 from otpme.lib.encryption.rsa import RSAKey
+from otpme.lib.protocols.utils import bind_challenge
 from otpme.lib.smartcard.yubikey import piv
 from otpme.lib.smartcard.yubikey.yubikey import Yubikey
 
@@ -483,13 +484,18 @@ class YubikeypivClientHandler(object):
 
         return deploy_args
 
-    def handle_preauth(self, smartcard, password):
+    def handle_preauth(self, smartcard, password, session_key=None, **kwargs):
         challenge = self.token_options['challenge']
+        # Bind our answer to this connection, so that nobody can use it
+        # on another one (protocols/utils.bind_challenge). What we send
+        # back is the challenge as we got it: the server checks it is the
+        # one it sent, and binds it itself before it verifies.
+        sign_challenge = bind_challenge(challenge, session_key)
         # Sign challenge.
         try:
             signature = smartcard.sign_challenge(slot="AUTHENTICATION",
                                             pin=password,
-                                            challenge=challenge)
+                                            challenge=sign_challenge)
         except Exception as e:
             msg = _("Error signing challenge with smartcard: {error}")
             msg = msg.format(error=e)
@@ -564,6 +570,12 @@ class YubikeypivClientHandler(object):
         return otp
 
 class YubikeypivServerHandler(object):
+    # The signature is over the challenge plus a hash of the session key,
+    # see protocols/utils.bind_challenge(). The server binds the challenge
+    # before it verifies, and does not offer the token without a session
+    # key.
+    binds_challenge = True
+
     def __init__(self):
         self.token_type = None
         self.challenge = None

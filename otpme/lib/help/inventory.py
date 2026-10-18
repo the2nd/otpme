@@ -24,7 +24,7 @@ cmd_help = {
                     '_cmd_usage_help' : _('Usage: otpme-inventory show {host}'),
                     'cmd'   :   '<host>',
                     '_help' :   {
-                                    'cmd'                       : _('Show the system and kernel of a host, whether it waits for a reboot and how many packages it has.'),
+                                    'cmd'                       : _('Show the system, kernel and OTPme version of a host, whether it waits for a reboot and how many packages it has.'),
                                 },
                 },
 
@@ -46,13 +46,14 @@ cmd_help = {
                 },
 
     'search'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-inventory search [--host <host>] [--os-version <version>] [--kernel <kernel>] [--reboot-required] [--hardware <expression>] [package]'),
-                    'cmd'   :   '--host :host: --os-version :os_version: --kernel :kernel: --reboot-required :reboot_required=True: --hardware :hardware: [package]',
+                    '_cmd_usage_help' : _('Usage: otpme-inventory search [--host <host>] [--os-version <version>] [--kernel <kernel>] [--otpme-version <version>] [--reboot-required] [--hardware <expression>] [package]'),
+                    'cmd'   :   '--host :host: --os-version :os_version: --kernel :kernel: --otpme-version :otpme_version: --reboot-required :reboot_required=True: --hardware :hardware: [package]',
                     '_help' :   {
-                                    'cmd'                       : _('Search hosts by package (e.g. openssl, "openssl=3.0.*"), OS version, kernel, reboot or hardware.'),
+                                    'cmd'                       : _('Search hosts by package (e.g. openssl, "openssl=3.0.*"), OS version, kernel, OTPme version, reboot or hardware.'),
                                     '--host <host>'             : _('Only this host (e.g. to search its packages).'),
                                     '--os-version <version>'    : _('Only hosts with this OS version (e.g. debian-12).'),
                                     '--kernel <kernel>'         : _('Only hosts running this kernel (e.g. "6.1.0-3*").'),
+                                    '--otpme-version <version>' : _('Only hosts running this OTPme version (e.g. "0.3.0a28*").'),
                                     '--reboot-required'         : _('Only hosts that have to be rebooted.'),
                                     '--hardware <expression>'   : _('Only hosts whose hardware matches (e.g. serial=ABC123, "memory<8G").'),
                                 },

@@ -33,9 +33,10 @@ join itself, which adds the host when it is not there yet (see
 
 **add *host***  
 Create a host. The machine itself need not exist yet: this is the object
-a join with a JOTP looks for. Where an **objecttemplates** policy names
-a host template, the new host is built from it (see
-**otpme-policy**(1)).  
+a join with a JOTP looks for. The name has to be unique in the realm: no
+host and no node of any site may have it already. Where an
+**objecttemplates** policy names a host template, the new host is built
+from it (see **otpme-policy**(1)).  
 There is no **rename**. A host is found by the name it joined with,
 which is also the name in its certificate, so a machine that is renamed
 leaves the realm and joins again.
@@ -293,7 +294,8 @@ holds itself count here, not the ones it gets through a role.
 
 **list_sync_users \[**--return-type** *TYPE*\] *host***  
 The sync users of the host, as **add_sync_user** set them. The ones that
-come with a role are not in it, see **Sync Configuration** below.
+come with a role are not in it, see **Sync Configuration** below.  
+Needs the ACL **view:sync_users**.
 
 **list_sync_groups \[**--return-type** *TYPE*\] *host***  
 The sync groups of the host.
@@ -378,10 +380,13 @@ the default tokens of the users and the destinations of link tokens.
 
 **add_sync_user *host* *user***  
 Sync this user to the host whether or not they ever log in there, so the
-machine can resolve them — where it holds their home directory, for one.
+machine can resolve them — where it holds their home directory, for
+one.  
+Needs the ACL **add:sync_user**.
 
 **remove_sync_user *host* *user***  
-Remove a sync user from the host.
+Remove a sync user from the host.  
+Needs the ACL **remove:sync_user**.
 
 **add_sync_group *host* *group***  
 Name a group whose members are synced to the host. It is only read while

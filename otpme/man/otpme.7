@@ -2693,12 +2693,46 @@ The request goes to
 which answers who is logged in where.
 .br
 Off by default, so that only a node sees that list.
-Set it to true to let the hosts of the site ask as well.
-Turn it on where it is needed, not everywhere.
+Set it to true to let every host of the site ask as well.
+To let single hosts ask, leave it off and list them in
+.B allow_who
+instead.
+While this is on,
+.B allow_who
+is not read.
 .br
 Whatever it is set to, a peer of another site or of another realm is always refused.
 .br
 Object types: site
+.TP
+.B allow_who \fR(list, default: empty)
+The hosts that may run
+.B otpme\-tool who
+while
+.B allow_who_from_hosts
+is off.
+What they see is every user logged in on the site, with login token, client IP and session.
+.RS
+.PP
+Nodes may ask whatever this is set to.
+.PP
+Give the host by name, several of them separated by commas, and
+.B \-a
+to add one to those already there:
+.PP
+.nf
+otpme\-site config berlin allow_who berlin\-host1
+otpme\-site config \-a berlin allow_who berlin\-host2
+.fi
+.PP
+The hosts are kept by UUID and shown by name again, as with
+.BR allow_user_messages .
+Only an admin may change it.
+.PP
+Whatever it is set to, a peer of another site or of another realm is always refused.
+.PP
+Object types: site
+.RE
 .TP
 .B allow_user_messages \fR(list, default: empty)
 The hosts that may send messages to the users of this site.
@@ -2717,8 +2751,8 @@ Give the host by name, several of them separated by commas, and
 to add one to those already there:
 .PP
 .nf
-otpme\-site config berlin allow_user_messages munich\-host1
-otpme\-site config \-a berlin allow_user_messages munich\-host2
+otpme\-site config berlin allow_user_messages berlin\-host1
+otpme\-site config \-a berlin allow_user_messages berlin\-host2
 .fi
 .PP
 The hosts are kept by UUID and shown by name again.

@@ -1538,7 +1538,7 @@ class Session(OTPmeLockObject):
         that flag unsolicited backchannel hits.
         """
         if verify_acls and config.auth_token:
-            if config.auth_token.uuid != config.admin_token_uuid:
+            if not config.auth_token.is_superuser():
                 actor = None
                 try:
                     actor = config.auth_token.rel_path
