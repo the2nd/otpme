@@ -36,6 +36,7 @@ Delete a host.
 It goes to the trash, from where \fBotpme-trash\fR(1) can bring it back; \fB\-\-no\-trash\fR deletes it right away.
 .br
 The certificate of the host is revoked, and the roles and access groups that name the host let it go first, so nothing is left pointing at it.
+The passwords of the host stay; the question says how many there are.
 .TP
 .B show \fR[\fB\-a\fR] [\fB\-t\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-token\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] [\fIhost\fR]
 Show the hosts, with their tokens, roles and policies.
@@ -325,6 +326,19 @@ A group matters for the shares of that group that are limited to hosts.
 .TP
 .B find_shares \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
 The shares the host is named in, so the ones it may mount without a role bringing it.
+.SS Passwords
+Passwords can belong to the host, for example its root password, see
+.BR otpme\-pass (1).
+Each password decides itself whether you may see it.
+.TP
+.B find_passwords \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
+The password objects that belong to the host.
+.TP
+.B show_password \fIhost\fR [\fIentry\fR]
+Show the entries of these passwords, with their passwords.
+With \fIentry\fR only the entries of that name.
+.br
+Each password needs \fBview:entries\fR, and you need a key for it.
 .SS Dynamic Groups
 A dynamic group is a local group of the machine, such as \fBplugdev\fR or \fBaudio\fR.
 Whoever logs in through the PAM module is put into it for that session, without being a member of anything in the realm.
@@ -895,6 +909,7 @@ The tokens the machine can check while it cannot reach the realm, one directory 
 .BR otpme\-role (1),
 .BR otpme\-accessgroup (1),
 .BR otpme\-vlan (1),
+.BR otpme\-pass (1),
 .BR otpme\-policy (1),
 .BR otpme\-deploy (1),
 .BR otpme\-inventory (1),

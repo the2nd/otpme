@@ -220,6 +220,12 @@ class HostDisabled(OTPmeException):
 class SyncDisabled(OTPmeException):
     pass
 
+# The peer site is in maintenance and hands out no objects now. A kind
+# of SyncDisabled, so whatever passes that on passes this on as well;
+# unlike it, it is over by itself.
+class SiteMaintenance(SyncDisabled):
+    pass
+
 class EncryptException(OTPmeException):
     pass
 

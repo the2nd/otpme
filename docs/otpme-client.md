@@ -68,6 +68,8 @@ client — there is none yet.
 **del \[**--no-trash**\] *client***  
 Delete a client. It goes to the trash, from where **otpme-trash**(1) can
 bring it back; **--no-trash** deletes it right away.  
+The passwords of the client stay; the question says how many there
+are.  
 Needs the ACL **delete:object** on the client, or **delete:client** on
 the unit it sits in.  
 A client a site brings with it cannot be deleted.
@@ -537,6 +539,20 @@ Needs the ACL **dump:sso_logo**.
 Remove it. The tile then carries the name alone.  
 Needs the ACL **delete:sso_logo**.
 
+## Passwords
+
+Passwords can belong to the client, for example the admin password of
+the application, see **otpme-pass**(1). Each password decides itself
+whether you may see it.
+
+**find_passwords \[**--return-type** *TYPE*\] *client***  
+The password objects that belong to the client.
+
+**show_password *client* \[*entry*\]**  
+Show the entries of these passwords, with their passwords. With *entry*
+only the entries of that name.  
+Each password needs **view:entries**, and you need a key for it.
+
 ## Object Changelog
 
 Every change to the object writes an entry: who made it, when, and what
@@ -977,8 +993,8 @@ about it.
 **otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-accessgroup**(1),
 **otpme-scope**(1), **otpme-site**(1), **otpme-token**(1),
 **otpme-role**(1), **otpme-user**(1), **otpme-vlan**(1),
-**otpme-host**(1), **otpme-policy**(1), **otpme-unit**(1),
-**otpme-trash**(1)
+**otpme-host**(1), **otpme-pass**(1), **otpme-policy**(1),
+**otpme-unit**(1), **otpme-trash**(1)
 
 # AUTHOR
 

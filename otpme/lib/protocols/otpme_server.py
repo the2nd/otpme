@@ -2011,10 +2011,12 @@ class OTPmeServer1(object):
             log_msg = log_msg.format(peer_fqdn=self.peer.fqdn)
             self.logger.debug(log_msg)
 
-        # Set proctitle to contain peer name.
-        peer_type = self.peer.type[0].upper() + self.peer.type[1:].lower()
-        new_proctitle = f"{self.proctitle} {peer_type}: {self.peer.name}"
-        setproctitle.setproctitle(new_proctitle)
+        # Set proctitle to contain peer name. Not with connections in
+        # threads: the title is the one of the whole process.
+        if config.proc_mode == "multiprocessing":
+            peer_type = self.peer.type[0].upper() + self.peer.type[1:].lower()
+            new_proctitle = f"{self.proctitle} {peer_type}: {self.peer.name}"
+            setproctitle.setproctitle(new_proctitle)
 
         # In debug mode its handy to have node name included in loglines.
         if config.debug_enabled or config.loglevel == "DEBUG":

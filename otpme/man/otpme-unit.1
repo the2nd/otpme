@@ -57,6 +57,44 @@ opened in the editor specified by the \fBEDITOR\fR environment variable.
 .TP
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIunit\fR
 Dump the info text to stdout.
+.SS Password Members
+The config parameter
+.B password_store_members
+names who gets the keys of the passwords below the unit, see
+.BR otpme\-pass (1).
+The members count only when a user signed them.
+.TP
+.B sign_password_members \fIunit\fR
+Sign the members with your sign key.
+The signature covers the members and the users they stand for now.
+.br
+It first shows what changed since your last signature, and asks.
+The global option \fB\-f\fR skips the question.
+When nothing changed, it says so and signs nothing.
+.br
+Whether a signature counts is decided by each host: only a signer of type
+\fBpassword\fR set up there makes it count, see
+.BR otpme\-tool (1).
+.br
+Needs the ACL \fBset:config:password_store_members\fR.
+.TP
+.B show_password_members \fIunit\fR
+Show the members, the users they stand for, and each signature.
+A signature is up to date, or out of date with the users it lacks
+(\fB+\fR) and the ones it still names (\fB\-\fR).
+.br
+Needs the ACL \fBview:config:password_store_members\fR.
+.TP
+.B unsign_password_members \fR[\fB\-\-signer\fR \fIuser\fR] \fIunit\fR
+Remove your signature.
+With \fB\-\-signer\fR the one of that user.
+For a user that is gone, give the UUID that \fBshow_password_members\fR
+shows.
+.br
+It asks first; the global option \fB\-f\fR skips the question.
+The members and the other signatures stay.
+.br
+Needs the ACL \fBset:config:password_store_members\fR.
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
@@ -258,7 +296,8 @@ OTPme data directory
 .BR otpme (7),
 .BR otpme\-acls (7),
 .BR otpme-user (1),
-.BR otpme-group (1)
+.BR otpme-group (1),
+.BR otpme-pass (1)
 
 .SH AUTHOR
 the2nd <the2nd@otpme.org>

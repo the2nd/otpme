@@ -342,6 +342,24 @@ cmd_help = {
                                     '--return-type'         : _('Attribute to return.'),
                                 },
                 },
+    'find_passwords'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client find_passwords [--return-type <return_type>] {client}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('Find password objects of this client.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                },
+                },
+    'show_password'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client show_password {client} [entry]'),
+                    'cmd'   :   '<|object|> [entry_name]',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the passwords of this client, see otpme-pass.'),
+                                },
+                },
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client list_policies {client}'),
                     'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',

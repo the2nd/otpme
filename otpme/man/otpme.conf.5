@@ -497,11 +497,50 @@ The sync says so in its log, and you take the new key over by hand as root:
 Until then a session to that host does not open.
 A host that was never synced here has no key written down and gets no session either.
 .PP
+The sync never removes a key it wrote down, not even the key of a host that is gone.
+Else whoever controls a node could delete a host and add it again, with the same UUID and a key of their own.
+.B otpme\-tool update_host_keys
+removes the keys of hosts that are gone.
+.PP
+Without it a host gets only its own host object, and the copies of the other hosts it had are removed.
+So a remote access session from a host to another host needs this.
+A session to a node works either way, because a host gets all nodes.
+.PP
 Default False, because it means a command for every host whose key changes.
 See
 .BR otpme\-shell (1)
 and
 .BR otpme\-tool (1).
+.RE
+.TP
+.B PIN_USER_KEYS
+If True, write down the encrypt public key of every user that is synced here, and hold the user to it.
+Only on hosts.
+.RS
+.PP
+.B otpme\-pass
+encrypts the key of a password for every member, with the encrypt public key of that member.
+That key comes from the nodes.
+Whoever runs a node could hand in a key of their own for a member, and read every password that is written after that.
+With this, the key from the nodes must be the one written down here, or the member gets no key from this host.
+.PP
+It works like
+.BR PIN_HOST_KEYS :
+the sync writes down the first key of a user, a key that differs does not replace it, and you take the new key over by hand as root:
+.PP
+.RS
+.B otpme\-tool update_user_keys
+.RE
+.PP
+The sync never removes a key it wrote down, not even the key of a user that is gone.
+.B update_user_keys
+removes those as well.
+.PP
+A member whose user this host does not get has no key written down here, and gets no key from this host.
+.PP
+Default False.
+See
+.BR otpme\-pass (1).
 .RE
 .SH DAEMON
 .TP
@@ -538,6 +577,14 @@ Seconds before otpme-agent closes idle daemon connections.
 .TP
 .B AGENT_KEEPALIVE_INTERVAL
 Interval in seconds for keepalive messages to daemons.
+.TP
+.B AGENT_PASS_CACHE_INTERVAL
+Interval in seconds in which otpme-agent fetches the passwords this host may keep for offline use.
+It also fetches them at login and when one of them changes.
+Which passwords a host may keep is set with the config parameter
+.B password_offline_cache
+of a unit or site.
+Default 3600.
 .SH NETWORK
 .TP
 .B MAX_REQUEST_SIZE

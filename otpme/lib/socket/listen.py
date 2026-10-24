@@ -679,9 +679,21 @@ class ListenSocket(object):
                 self.logger.info(log_msg)
             elif (now - self.last_max_workers_warn) > 60:
                 self.last_max_workers_warn = now
-                log_msg = _("All {count} workers busy and pool at its maximum. New connections wait in the listen backlog: {uri}", log=True)[1]
-                log_msg = log_msg.format(count=running, uri=self.socket_uri)
-                self.logger.warning(log_msg)
+                if self.worker_threads > 0:
+                    # Not the backlog yet: the pool state set above is
+                    # what lets the workers take more in threads (see
+                    # may_serve_in_thread()). Only once each of them is
+                    # at worker_threads does a connection wait, and how
+                    # many they serve is not on the scoreboard.
+                    log_msg = _("All {count} workers busy and pool at its maximum. New connections are served in threads, up to {threads} per worker: {uri}", log=True)[1]
+                    log_msg = log_msg.format(count=running,
+                                            threads=self.worker_threads,
+                                            uri=self.socket_uri)
+                    self.logger.info(log_msg)
+                else:
+                    log_msg = _("All {count} workers busy and pool at its maximum. New connections wait in the listen backlog: {uri}", log=True)[1]
+                    log_msg = log_msg.format(count=running, uri=self.socket_uri)
+                    self.logger.warning(log_msg)
             return
 
         # Hand back workers we forked on demand, one per round, once the

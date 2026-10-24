@@ -64,6 +64,8 @@ It goes to the trash, from where
 .BR otpme\-trash (1)
 can bring it back; \fB\-\-no\-trash\fR deletes it right away.
 .br
+The passwords of the client stay; the question says how many there are.
+.br
 Needs the ACL \fBdelete:object\fR on the client, or \fBdelete:client\fR on the unit it sits in.
 .br
 A client a site brings with it cannot be deleted.
@@ -561,6 +563,20 @@ Remove it.
 The tile then carries the name alone.
 .br
 Needs the ACL \fBdelete:sso_logo\fR.
+.SS Passwords
+Passwords can belong to the client, for example the admin password of the
+application, see
+.BR otpme\-pass (1).
+Each password decides itself whether you may see it.
+.TP
+.B find_passwords \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIclient\fR
+The password objects that belong to the client.
+.TP
+.B show_password \fIclient\fR [\fIentry\fR]
+Show the entries of these passwords, with their passwords.
+With \fIentry\fR only the entries of that name.
+.br
+Each password needs \fBview:entries\fR, and you need a key for it.
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
@@ -978,6 +994,7 @@ The service desk may read the shared secret of the VPN, and nothing else about i
 .BR otpme\-user (1),
 .BR otpme\-vlan (1),
 .BR otpme\-host (1),
+.BR otpme\-pass (1),
 .BR otpme\-policy (1),
 .BR otpme\-unit (1),
 .BR otpme\-trash (1)

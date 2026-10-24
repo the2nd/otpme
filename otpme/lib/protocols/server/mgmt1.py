@@ -66,6 +66,7 @@ valid_commands = [
                 'delete_object',
                 'get_share',
                 'get_shares',
+                'get_pass_cache',
                 'get_token_type',
                 'get_policy_type',
                 'check_duplicate_ids',
@@ -2449,6 +2450,8 @@ class OTPmeMgmtP1(OTPmeServer1):
                         'packages'  : inventory.list_packages,
                         'hardware'  : inventory.show_hardware,
                         'search'    : inventory.search_inventory,
+                        'systems'   : inventory.show_systems,
+                        'available' : inventory.list_available,
                         }
         if not inventory_command:
             message = _("Missing inventory sub command.")
@@ -2744,6 +2747,25 @@ class OTPmeMgmtP1(OTPmeServer1):
                                         host_uuid=self.peer.uuid)
         return self.build_response(True, shares)
 
+    def _cmd_get_pass_cache(self, subcommand, command_args):
+        """ The passwords the login user may keep on the asking host.
+
+        For otpme-agent, which keeps them there for offline use. Which
+        host asks is the peer of this connection and not something the
+        host says: password_offline_cache names the hosts that may keep
+        them, and a host could say anything.
+        """
+        from otpme.lib.classes import otpme_password
+        if self.peer.type != "host":
+            response = _("Passwords are kept for offline use on hosts only.")
+            return self.build_response(False, response)
+        try:
+            user = otpme_password.get_caller()
+        except OTPmeException as e:
+            return self.build_response(False, str(e))
+        cache = otpme_password.get_pass_cache(user, self.peer.uuid)
+        return self.build_response(True, cache)
+
     def _cmd_get_token_type(self, subcommand, command_args):
         try:
             token_path = command_args['token_path']
@@ -2795,7 +2817,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             config.last_reauth.pop(config.auth_token.uuid)
         except KeyError:
             pass
-        message = _("Preauth reset.")
+        message = _("Reauth reset.")
         return self.build_response(True, message)
 
     def _cmd_do_reauth(self, subcommand, command_args):

@@ -1104,12 +1104,42 @@ def get_sync_list(
                                 site=site)
             _skip_list += user_tokens
 
+    # Passwords stay on the nodes of the site that owns them: a host gets
+    # none, and neither does a node of another site or realm. Not the
+    # passwords and not anything below their unit. A password that was
+    # moved out of it is still a password.
+    skip_passwords = False
+    if peer is not None:
+        if peer.type == "host":
+            skip_passwords = True
+        elif peer.realm != config.realm or peer.site != config.site:
+            skip_passwords = True
+    # Asked only where it is needed: the asking side, a host among them,
+    # does not always have the password module registered.
+    pass_unit_path = None
+    if skip_passwords:
+        pass_unit = config.get_default_unit("pass")
+        pass_unit_path = f"/{realm}/{site}/{pass_unit}"
+
+    def is_skipped_password(object_type, object_data):
+        """ If <object_data> is not for the peer, see above. """
+        if not skip_passwords:
+            return False
+        if object_type == "pass":
+            return True
+        object_path = object_data['path']
+        if object_path == pass_unit_path:
+            return True
+        return object_path.startswith(f"{pass_unit_path}/")
+
     if not quiet:
         log_msg = _("Generating sync list...", log=True)[1]
         logger.debug(log_msg)
 
     for t in config.object_types:
         if not t in object_types:
+            continue
+        if skip_passwords and t == "pass":
             continue
         # By default we do not include templates.
         search_attrs = {
@@ -1139,11 +1169,15 @@ def get_sync_list(
                                 attributes=search_attrs,
                                 realm=realm,
                                 site=site,
-                                return_attributes=['full_oid', checksum_attribute])
+                                return_attributes=['full_oid',
+                                                    'path',
+                                                    checksum_attribute])
         # Add checksums to sync list.
         for x in object_checksums:
             x_data = object_checksums[x]
             x_oid = x_data['full_oid']
+            if is_skipped_password(t, x_data):
+                continue
             x_checksum = get_list_checksum(x_data, checksum_attribute)
             if x_oid in _skip_list:
                 continue
@@ -1169,11 +1203,15 @@ def get_sync_list(
                                     attributes=x_search_attrs,
                                     realm=realm,
                                     site=site,
-                                    return_attributes=['full_oid', checksum_attribute])
+                                    return_attributes=['full_oid',
+                                                        'path',
+                                                        checksum_attribute])
             # Add checksums to sync list.
             for x in object_checksums:
                 x_data = object_checksums[x]
                 x_oid = x_data['full_oid']
+                if is_skipped_password(t, x_data):
+                    continue
                 x_checksum = get_list_checksum(x_data, checksum_attribute)
                 if x_oid in _skip_list:
                     continue
@@ -1203,11 +1241,15 @@ def get_sync_list(
                                 attributes=c_search_attrs,
                                 realm=realm,
                                 site=site,
-                                return_attributes=['full_oid', checksum_attribute])
+                                return_attributes=['full_oid',
+                                                    'path',
+                                                    checksum_attribute])
         # Add checksums to sync list.
         for x in object_checksums:
             x_data = object_checksums[x]
             x_oid = x_data['full_oid']
+            if is_skipped_password(t, x_data):
+                continue
             x_checksum = get_list_checksum(x_data, checksum_attribute)
             if x_oid in _skip_list:
                 continue

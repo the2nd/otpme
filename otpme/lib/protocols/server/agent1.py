@@ -190,6 +190,9 @@ class OTPmeAgentP1(object):
             status = True
         if status_code == status_codes.ERR:
             status = False
+        # Passed on as it is, build_response() takes a code as status.
+        if status_code == status_codes.DAEMON_UNREACHABLE:
+            status = status_code
         return status, message
 
     def check_ssh_agent_pid(self, pid, ssh_agent_pid):
@@ -278,6 +281,7 @@ class OTPmeAgentP1(object):
                             "get_proto",
                             "auth",
                             "status",
+                            "login_info",
                             "add_session",
                             "del_session",
                             "get_sessions",
@@ -792,6 +796,21 @@ class OTPmeAgentP1(object):
                 else:
                     message = _("Not logged in")
                     status = status_codes.NOT_FOUND
+
+        elif command == "login_info":
+            # What status says, for a program to read: the status line
+            # is translated, so it is no way to get the token from.
+            if self.login_token:
+                message = {
+                        'token'         : self.login_token,
+                        'token_type'    : self.login_token_type,
+                        'pass_type'     : self.login_pass_type,
+                        'offline'       : not bool(self.rsp),
+                        }
+                status = True
+            else:
+                message = _("Not logged in")
+                status = status_codes.NOT_FOUND
 
 
         elif not self.authorized:
@@ -1438,7 +1457,7 @@ class OTPmeAgentP1(object):
                 message = message.format(user=self.login_user, srp=self.srp)
                 status = True
             else:
-                message = "no RSP set"
+                message = _("No SRP set.")
                 status = False
 
 
@@ -1467,6 +1486,9 @@ class OTPmeAgentP1(object):
                 message = share_error
                 status = False
             else:
+                # Why the login to the site failed, which says more than
+                # that there is no session there.
+                login_error = None
                 if site:
                     try:
                         rsp = self.session['server_sessions'][realm][site]['rsp']
@@ -1482,8 +1504,7 @@ class OTPmeAgentP1(object):
                             self.send_command(command="login_user",
                                             request=login_request)
                         except Exception as e:
-                            message = str(e)
-                            status = False
+                            login_error = str(e)
                         # Re-load session.
                         try:
                             self.session = self.login_sessions[self.login_pid]
@@ -1501,6 +1522,10 @@ class OTPmeAgentP1(object):
                     otp = sotp.gen(password_hash=rsp_hash, share=share)
                     message = {'username':self.login_user, 'sotp':otp}
                     status = True
+                elif login_error:
+                    message = _("Login to site {site} failed: {error}")
+                    message = message.format(site=site, error=login_error)
+                    status = False
                 else:
                     message = _("No server session.")
                     status = False
@@ -1511,7 +1536,7 @@ class OTPmeAgentP1(object):
                 message = message.format(user=self.login_user, slp=self.slp)
                 status = True
             else:
-                message = "no RSP set"
+                message = _("No SLP set.")
                 status = False
 
         elif command == "get_offline":

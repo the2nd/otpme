@@ -6,6 +6,7 @@ import time
 import signal
 import psutil
 import secrets
+import threading
 import subprocess
 
 try:
@@ -46,6 +47,9 @@ from otpme.lib.socket.handler import SocketProtoHandler
 from otpme.lib.exceptions import *
 
 CONN_LOCK_TYPE = "agent.connection"
+# How long a fetch of the passwords kept for offline use waits for the
+# key script of a new login, see OTPmeAgent._fetch_pass_cache().
+PASS_CACHE_KEY_SCRIPT_WAIT = 60
 
 # PIV helpers are imported lazily on first use to keep the agent module
 # cheap to load for CLI clients that never touch smartcards.
@@ -55,13 +59,14 @@ piv_sign = None
 piv_decrypt = None
 piv_ecdh = None
 piv_get_public_key = None
+piv_export_public_key = None
 piv_derive_password = None
 hpke_decap_x25519 = None
 hpke_info_default = None
 
 def _load_piv():
     global get_piv, slot_map, piv_sign, piv_decrypt, piv_ecdh
-    global piv_get_public_key, piv_derive_password
+    global piv_get_public_key, piv_export_public_key, piv_derive_password
     global hpke_decap_x25519, hpke_info_default
     if get_piv is not None:
         return
@@ -71,6 +76,7 @@ def _load_piv():
     from otpme.lib.smartcard.yubikey.piv import decrypt as _pd
     from otpme.lib.smartcard.yubikey.piv import ecdh as _pe
     from otpme.lib.smartcard.yubikey.piv import get_public_key as _pgpk
+    from otpme.lib.smartcard.yubikey.piv import export_public_key as _pepk
     from otpme.lib.smartcard.yubikey.piv import derive_password as _pdp
     from otpme.lib.encryption.x25519 import hpke_decap_x25519_aes256gcm as _hd
     from otpme.lib.encryption.x25519 import HPKE_INFO_DEFAULT as _hi
@@ -80,6 +86,7 @@ def _load_piv():
     piv_decrypt = _pd
     piv_ecdh = _pe
     piv_get_public_key = _pgpk
+    piv_export_public_key = _pepk
     piv_derive_password = _pdp
     hpke_decap_x25519 = _hd
     hpke_info_default = _hi
@@ -206,6 +213,11 @@ class OTPmeAgent(UnixDaemon):
         self.piv_conn = None
         self.piv_session = None
         self.piv_start = 0
+        # When the passwords this host may keep were last fetched, per
+        # user, and that only one fetch runs at a time (sync_pass_cache()).
+        self.pass_cache_synced = {}
+        self.pass_cache_lock = threading.Lock()
+        self.pass_cache_again = False
         # Call parent class init to init UnixDaemon
         super().__init__("otpme-agent", pidfile)
 
@@ -549,9 +561,11 @@ class OTPmeAgent(UnixDaemon):
         gone again whether anybody did or not.
 
         The display comes from the login session, which got it from the
-        PAM module when the session was opened. A session without one
-        is a login on a terminal, and there is no window to draw there
-        -- it is said in the log and left at that.
+        PAM module when the session was opened. A session without one,
+        a login on a terminal, gets the window on the display of the
+        other processes of the user, else on ":0" (see
+        desktop_dialog.session_env()). A host without a helper to draw
+        it gets a notification instead.
 
         Nothing is sent back. The OK button closes the window, and
         whoever sent the message is long gone by then.
@@ -713,6 +727,14 @@ class OTPmeAgent(UnixDaemon):
 
                 if event_type == "message":
                     self.show_message(login_pid, login_user, data)
+                    continue
+
+                # One of the passwords this host may keep changed, see
+                # otpme_password.notify_cache_users().
+                if event_type == "pass_changed":
+                    log_msg = _("Passwords changed, fetching them again.", log=True)[1]
+                    self.logger.info(log_msg)
+                    self.start_pass_cache_sync(login_pid)
                     continue
 
                 if event_type == "share_mount":
@@ -1401,7 +1423,6 @@ class OTPmeAgent(UnixDaemon):
                 msg = _("Error connecting to auth daemon to logout: {e}")
                 msg = msg.format(e=e)
                 raise OTPmeException(msg) from e
-                break
             except Exception as e:
                 msg = _("Error connecting to auth daemon to logout: {e}")
                 msg = msg.format(e=e)
@@ -1430,6 +1451,12 @@ class OTPmeAgent(UnixDaemon):
             log_msg = log_msg.format(error=e)
             self.logger.warning(log_msg)
             config.raise_exception()
+            # Passed on: the session on the node may still be there, and
+            # whoever logged out is to hear it. del_session deletes the
+            # agent session all the same.
+            msg = _("Logout at {realm}/{site} failed: {error}")
+            msg = msg.format(realm=realm, site=site, error=e)
+            raise OTPmeException(msg) from e
         finally:
             auth_conn.close()
 
@@ -1672,12 +1699,11 @@ class OTPmeAgent(UnixDaemon):
         session['session_uuid'] = session_uuid
         session['session_timeout'] = timeout
         session['session_unused_timeout'] = unused_timeout
-        # Update login session.
-        if not realm in login_session:
-            login_session[realm] = {}
-        if not site in login_session[realm]:
-            login_session[realm][site] = {}
-        login_session['server_sessions'][realm][site] = session
+        # Update login session. Below server_sessions, where the session
+        # goes: this made the keys at the top of the login session, and
+        # worked only because the realm is always our own one.
+        server_sessions = login_session.setdefault('server_sessions', {})
+        server_sessions.setdefault(realm, {})[site] = session
         self.login_sessions[login_pid] = login_session
         # Inform main agent loop about a new RSP.
         add_command = f"add_rsp {login_pid}"
@@ -1735,6 +1761,115 @@ class OTPmeAgent(UnixDaemon):
             log_msg = _("Failed to start idled connection: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
+
+    def start_pass_cache_sync(self, login_pid):
+        """ Fetch the passwords this host may keep, in a thread. """
+        try:
+            start_thread(name=self.full_name,
+                        target=self.sync_pass_cache,
+                        target_args=(login_pid,),
+                        daemon=True)
+        except Exception as e:
+            log_msg = _("Failed to start password cache sync: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
+
+    def sync_pass_cache(self, login_pid):
+        """ Fetch the passwords this host may keep for offline use.
+
+        From mgmtd of the site the user logged in to, which decides
+        which they are, and kept as a whole (see otpme.lib.pass_cache).
+        One fetch at a time. Asked for while one runs, that one fetches
+        once more when it is done: it may have had its answer before
+        the change it is asked for.
+        """
+        # otpme-pass runs on hosts only, see OTPmeClient.pass_crypt().
+        register_module("otpme.lib.host")
+        if config.host_data['type'] != "host":
+            return
+        try:
+            login_session = self.login_sessions[login_pid]
+            login_user = login_session['login_user']
+            realm = login_session['realm']
+            site = login_session['site']
+        except KeyError:
+            return
+        if not self.pass_cache_lock.acquire(blocking=False):
+            self.pass_cache_again = True
+            return
+        try:
+            while True:
+                self.pass_cache_again = False
+                self._fetch_pass_cache(login_pid, login_user, realm, site)
+                if not self.pass_cache_again:
+                    break
+        finally:
+            self.pass_cache_lock.release()
+
+    def _fetch_pass_cache(self, login_pid, login_user, realm, site):
+        """ One fetch of sync_pass_cache(). """
+        from otpme.lib import pass_cache
+        # Taken as tried: a node that cannot be reached is tried again
+        # at the next interval, not at every round.
+        self.pass_cache_synced[login_user] = time.time()
+        # The key script comes with the login, after the session we
+        # are started for: OTPmeClient adds the RSP first and saves the
+        # key script later. Without it nothing kept could be opened, and
+        # mgmtd may want the SOTPs signed with it.
+        wait_until = time.time() + PASS_CACHE_KEY_SCRIPT_WAIT
+        while not self.have_key_script(login_user):
+            if time.time() >= wait_until:
+                log_msg = _("No key script for user '{user}', passwords not fetched for offline use.", log=True)[1]
+                log_msg = log_msg.format(user=login_user)
+                self.logger.warning(log_msg)
+                return
+            time.sleep(1)
+        log_msg = _("Fetching passwords for offline use: {realm}/{site}", log=True)[1]
+        log_msg = log_msg.format(realm=realm, site=site)
+        self.logger.info(log_msg)
+        daemon = "mgmtd"
+        try:
+            mgmtd_conn = self.get_daemon_conn(realm=realm,
+                                            site=site,
+                                            daemon=daemon,
+                                            login_pid=login_pid)
+        except Exception as e:
+            log_msg = _("Unable to fetch passwords for offline use: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
+            return
+        try:
+            status, \
+            status_code, \
+            response, \
+            binary_data = mgmtd_conn.send("get_pass_cache",
+                                        {'subcommand': None})
+        except Exception as e:
+            self.close_daemon_conn(realm, site, daemon, login_pid)
+            log_msg = _("Unable to fetch passwords for offline use: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
+            return
+        finally:
+            self.release_daemon_conn(realm=realm,
+                                    site=site,
+                                    daemon=daemon,
+                                    login_pid=login_pid)
+        if not status:
+            log_msg = _("Unable to fetch passwords for offline use: {error}", log=True)[1]
+            log_msg = log_msg.format(error=response)
+            self.logger.warning(log_msg)
+            return
+        try:
+            cache_file = pass_cache.write_cache(login_user, response)
+        except Exception as e:
+            log_msg = _("Unable to keep passwords for offline use: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
+            return
+        log_msg = _("Passwords kept for offline use: {count}: {file}", log=True)[1]
+        log_msg = log_msg.format(count=len(response['objects']), file=cache_file)
+        self.logger.info(log_msg)
 
     def get_daemon_conn(self, realm, site, daemon,
         login_pid, keepalive=False, use_dns=None):
@@ -2032,7 +2167,7 @@ class OTPmeAgent(UnixDaemon):
             try:
                 site = request['site']
             except KeyError:
-                realm = None
+                site = None
             daemon = request['daemon']
             try:
                 use_dns = request['use_dns']
@@ -2328,12 +2463,14 @@ class OTPmeAgent(UnixDaemon):
                     else:
                         _load_piv()
                         try:
+                            # The slot name, export_public_key() maps
+                            # it itself. As PEM, which goes over the
+                            # socket where a key object does not.
                             slot = request.get('slot', 'AUTHENTICATION')
-                            result = piv_get_public_key(
-                                slot=slot_map[slot],
+                            message = piv_export_public_key(
+                                slot=slot,
                                 piv_session=self.piv_session,
                             )
-                            message = result
                             status_code = status_codes.OK
                         except Exception as e:
                             message = _("PIV get public key failed: {e}")
@@ -2389,6 +2526,10 @@ class OTPmeAgent(UnixDaemon):
             except OTPmeException as e:
                 response = str(e)
                 status_code = status_codes.ERR
+                # get_daemon_conn() wraps it, the cause says whether the
+                # daemon was there at all.
+                if isinstance(e.__cause__, (ConnectionError, ConnectionTimeout)):
+                    status_code = status_codes.DAEMON_UNREACHABLE
             except Exception as e:
                 response = _("Internal error getting daemon connection.")
                 status_code = status_codes.ERR
@@ -2690,6 +2831,20 @@ class OTPmeAgent(UnixDaemon):
                     server_sessions = sessions[login_pid]['server_sessions']
                 except Exception:
                     server_sessions = {}
+
+                # Fetch the passwords this host may keep for offline use:
+                # in the first round after the login, then at every
+                # interval. Noted here and not only by the fetch, so the
+                # next rounds do not start another one meanwhile.
+                login_user = sessions[login_pid]['login_user']
+                last_sync = self.pass_cache_synced.get(login_user)
+                sync_due = last_sync is None
+                if not sync_due:
+                    since_sync = time.time() - last_sync
+                    sync_due = since_sync >= config.agent_pass_cache_interval
+                if server_sessions and sync_due:
+                    self.pass_cache_synced[login_user] = time.time()
+                    self.start_pass_cache_sync(login_pid)
 
                 # Handle realm login sessions (e.g. do reneg or send keepalive).
                 for realm in dict(server_sessions):

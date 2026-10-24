@@ -574,6 +574,19 @@ A share can also use SOTP signing.
 The login to the share must then be signed with the sign key of the user, see
 .BR otpme\-share (1)
 and \fBTokens\fR above.
+.SS Passwords
+A password object keeps passwords for people, for example the iDRAC and
+root passwords of a server.
+The passwords are encrypted on the host where the user works, and the
+nodes store only what they cannot read.
+.PP
+Who gets a key is set with the config parameter
+.B password_store_members
+of a unit or site, and signed by a user.
+The hosts trust only the signers they have set up, so whoever runs a node
+cannot add themselves.
+See
+.BR otpme\-pass (1).
 .SS Node Pools
 A node pool is a group of nodes.
 Assign a pool to a share, and only the nodes of this pool serve the share.
@@ -1237,6 +1250,42 @@ The directory must exist when you set the parameter.
 wins over it on a single host.
 .br
 Can only be changed by an admin.
+.br
+Object types: site, unit
+.SS Passwords
+.TP
+.B password_store_members \fR(str)
+The tokens and roles that get the keys of the passwords below, see
+.BR otpme\-pass (1).
+Given as OIDs, for example \fBrole|example.org/berlin/admins\fR or
+\fBtoken|example.org/alice/login\fR.
+They are stored as UUIDs, so a renamed token or role stays a member.
+.br
+The members must be signed with
+.BR "otpme\-unit sign_password_members" .
+The signatures are kept in the same value.
+Changing the members makes them out of date, but does not remove them.
+.br
+The nearest unit that sets it counts, else the site.
+.br
+Object types: site, unit
+.TP
+.B password_offline_cache \fR(list)
+The hosts that may keep the passwords below for offline use, see
+.BR otpme\-pass (1).
+Given as OIDs of hosts, groups and roles of this site, for example
+host|example.org/host1 or group|example.org/admins; a name
+without a type is a host.
+A group or role stands for the hosts in it, and the hosts of its roles.
+They are stored as UUIDs.
+One that is gone is removed by the UUID that is shown for it.
+.br
+The nearest unit that sets it counts, else the site.
+An empty value (\fB\(dq\(dq\fR) on a unit keeps its passwords off every host.
+Without the parameter anywhere, no host keeps anything.
+.br
+A change tells the users of the passwords below, and their hosts fetch
+them again.
 .br
 Object types: site, unit
 .SS Hosts
@@ -2551,6 +2600,57 @@ available to anyone who sends one request and then stops talking.
 .br
 Object types: site, unit, node
 .TP
+.B syncd_workers \fR(int, default: 2)
+Number of preforked
+.B syncd
+worker processes.
+They stay for as long as the daemon runs.
+.br
+Each worker serves its sync connections in threads (see
+.BR syncd_worker_threads ).
+A process for each connection would cost the memory of the whole daemon again, about 150 MB.
+With a few hundred hosts that sync at the same time, for example after an update, that is more than a node has.
+.br
+The value is looked up on the node, then on its unit and the units above it, then on the site.
+The first one found wins.
+.br
+Object types: site, unit, node
+.TP
+.B syncd_max_workers \fR(int, default: 8)
+How far the
+.B syncd
+worker pool may grow while every one of its workers is busy.
+Workers above
+.B syncd_workers
+are stopped again once the pool has not been full for a minute.
+.br
+Each worker is a process.
+So this value is what limits the memory of
+.BR syncd ,
+whatever the number of hosts.
+.br
+Object types: site, unit, node
+.TP
+.B syncd_worker_threads \fR(int, default: 64)
+How many sync connections one
+.B syncd
+worker serves at the same time, each in a thread.
+.br
+A sync connection spends most of its time waiting for the peer, and a thread that waits holds no GIL.
+So many of them fit into one worker.
+.br
+A worker takes more than one connection only once the pool sits at
+.B syncd_max_workers
+and every worker in it is busy.
+So at most
+.B syncd_max_workers
+times this value sync at the same time.
+More connections wait in the listen backlog (\fBsocket_backlog\fR).
+.br
+\fB0\fR serves one connection per worker.
+.br
+Object types: site, unit, node
+.TP
 .B socket_backlog \fR(int, default: 1024)
 Length of the accept queue the kernel keeps for the listening sockets of the OTPme daemons.
 A connection the kernel has finished on its own waits in there until a worker calls accept().
@@ -2979,6 +3079,9 @@ Cap for device names.
 .TP
 .B max_vlan_name_len \fR(int, default: 64)
 Cap for VLAN names.
+.TP
+.B max_pass_name_len \fR(int, default: 64)
+Cap for the names of password objects.
 .SS Backup
 .TP
 .B backup_enabled \fR(bool)
@@ -3477,6 +3580,7 @@ The settings of one user, e.g. which agent to talk to.
 .BR otpme-inventory (1),
 .BR otpme-mount (1),
 .BR otpme-node (1),
+.BR otpme-pass (1),
 .BR otpme-policy (1),
 .BR otpme-pool (1),
 .BR otpme-realm (1),

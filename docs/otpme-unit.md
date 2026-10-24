@@ -68,6 +68,35 @@ opened in the editor specified by the **EDITOR** environment variable.
 **dump_info \[**--language** *LANG*\] *unit***  
 Dump the info text to stdout.
 
+## Password Members
+
+The config parameter **password_store_members** names who gets the keys
+of the passwords below the unit, see **otpme-pass**(1). The members
+count only when a user signed them.
+
+**sign_password_members *unit***  
+Sign the members with your sign key. The signature covers the members
+and the users they stand for now.  
+It first shows what changed since your last signature, and asks. The
+global option **-f** skips the question. When nothing changed, it says
+so and signs nothing.  
+Whether a signature counts is decided by each host: only a signer of
+type **password** set up there makes it count, see **otpme-tool**(1).  
+Needs the ACL **set:config:password_store_members**.
+
+**show_password_members *unit***  
+Show the members, the users they stand for, and each signature. A
+signature is up to date, or out of date with the users it lacks (**+**)
+and the ones it still names (**-**).  
+Needs the ACL **view:config:password_store_members**.
+
+**unsign_password_members \[**--signer** *user*\] *unit***  
+Remove your signature. With **--signer** the one of that user. For a
+user that is gone, give the UUID that **show_password_members** shows.  
+It asks first; the global option **-f** skips the question. The members
+and the other signatures stay.  
+Needs the ACL **set:config:password_store_members**.
+
 ## Object Changelog
 
 Every change to the object writes an entry: who made it, when, and what
@@ -284,7 +313,7 @@ OTPme data directory
 # SEE ALSO
 
 **otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-user**(1),
-**otpme-group**(1)
+**otpme-group**(1), **otpme-pass**(1)
 
 # AUTHOR
 

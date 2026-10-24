@@ -96,6 +96,34 @@ def page(text):
         os.environ['LESS'] = f"{less} -R".strip()
     pydoc.pager(text)
 
+def parse_cert_fingerprint(value):
+    """ The digest and the fingerprint of "join --check-site-cert".
+
+    "sha256:<hex>", "sha1:<hex>" or the hex alone, which is sha256.
+    Compared with what OTPmeClient computes, lowercase hex without
+    colons, so the colons and the capitals of "openssl x509
+    -fingerprint" are taken off. A value without the digest was
+    ignored, and join asked instead.
+    """
+    if not value:
+        return "sha256", None
+    value = str(value).strip()
+    digest = "sha256"
+    prefix, sep, rest = value.partition(":")
+    if sep and prefix.lower() in ("sha256", "sha1"):
+        digest = prefix.lower()
+        value = rest
+    fingerprint = value.replace(":", "").lower()
+    return digest, fingerprint
+
+# Subcommands of otpme-pass that name an entry, see handle_pass_command().
+PASS_LOCAL_SUBCOMMANDS = [
+                        'add',
+                        'change_entry',
+                        'del_entry',
+                        'show_password',
+                        ]
+
 class CommandHandler(object):
     """ Handle OTPme commands. """
     def __init__(self, interactive=True):
@@ -202,12 +230,18 @@ class CommandHandler(object):
             command_syntax = self.command_map[command][mod_name][subcommand]['cmd']
         return command_syntax
 
-    def send_command(self, daemon="mgmtd", socket_uri=None, realm=config.realm,
-        site=config.site, command=None, subcommand=None, command_line=None,
+    def send_command(self, daemon="mgmtd", socket_uri=None, realm=None,
+        site=None, command=None, subcommand=None, command_line=None,
         command_args=None, username=None, password=None, aes_pass=None,
         parse_command_syntax=True, object_list=None, interactive=None,
         timeout=30, client_type="CLIENT"):
-        """ Send the given command to the given daemon. """
+        """ Send the given command to the given daemon.
+
+        <realm> and <site> default to None, and not to config.realm and
+        config.site: those were read when this module was imported,
+        before the config knew them. None is what reached the daemon
+        then, and authd takes the realm and site of the config for it.
+        """
         if object_list is None:
             object_list = []
         if interactive is None:
@@ -817,6 +851,13 @@ class CommandHandler(object):
             if command == "vlan":
                 register_module('otpme.lib.classes.vlan')
                 register_module('otpme.lib.cli.vlan')
+            if command == "pass":
+                register_module('otpme.lib.classes.otpme_password')
+                register_module('otpme.lib.cli.otpme_password')
+                # The password signers of this host are users or roles,
+                # and reading them parses their OIDs (signing.py).
+                register_module('otpme.lib.classes.user')
+                register_module('otpme.lib.classes.role')
 
             if subcommand == "show":
                 register_module("otpme.lib.cli")
@@ -1080,6 +1121,27 @@ class CommandHandler(object):
         if command == "dictionary" and subcommand == "word_learning":
             self.handle_dictionary_word_learning_command(command, subcommand)
 
+        # Only what this host keeps of the passwords, no node asked.
+        # A copy of the command line, because parsing it empties it:
+        # once sent, there is nothing left to read offline.
+        pass_command_line = list(self.command_line or [])
+        if command == "pass" and "--offline" in pass_command_line:
+            return self.handle_pass_offline(subcommand, pass_command_line)
+
+        # The entry of a password stays on the client, see
+        # otpme.lib.pass_crypt.
+        if (command == "pass" and subcommand in PASS_LOCAL_SUBCOMMANDS) \
+        or subcommand == "show_password":
+            try:
+                return self.handle_pass_command(command, subcommand,
+                                                client_type=client_type)
+            except (ConnectionError, ConnectionTimeout) as e:
+                if command != "pass":
+                    raise
+                return self.handle_pass_offline(subcommand,
+                                                pass_command_line,
+                                                error=e)
+
         # Rewrite "token add" command to "user add_token". This is a workaround
         # to be backward compatible with OTPme commands before v0.3 handling
         # this in mgmtd would make things much more complicated.
@@ -1093,6 +1155,13 @@ class CommandHandler(object):
                                     username=login_user,
                                     client_type=client_type)
             status = True
+        except (ConnectionError, ConnectionTimeout) as e:
+            # What a host keeps of the passwords, see otpme.lib.pass_cache.
+            if command != "pass":
+                raise
+            return self.handle_pass_offline(subcommand,
+                                            pass_command_line,
+                                            error=e)
         except OTPmeException as e:
             status = False
             result = str(e)
@@ -2042,6 +2111,9 @@ class CommandHandler(object):
         if subcommand == "update_host_keys":
             return self.handle_update_host_keys_command(command, command_line)
 
+        if subcommand == "update_user_keys":
+            return self.handle_update_user_keys_command(command, command_line)
+
         if subcommand == "dump" or subcommand == "sync" or subcommand == "resync":
             if config.use_api:
                 raise OTPmeException(_("Command invalid for API mode."))
@@ -2609,10 +2681,19 @@ class CommandHandler(object):
             raise Exception(msg)
 
     def handle_show_sessions_command(self, command_line):
-        """ Handle show sessions command. """
+        """ Handle show sessions command.
+
+        Read by hand and not through get_opts(): the PID of a login is
+        all it takes. Anything more, or anything that is no PID, gets
+        the help instead of a search for a session of that name.
+        """
         login_pid = None
+        if len(command_line) > 1:
+            return self.get_help()
         if len(command_line) > 0:
             login_pid = command_line[0]
+            if not str(login_pid).isdigit():
+                return self.get_help(_("Not a PID: {pid}").format(pid=login_pid))
         return self.show_login_session(login_pid)
 
     def handle_get_jwt_command(self, command_line):
@@ -2673,14 +2754,47 @@ class CommandHandler(object):
             unit = command_args['unit']
         except Exception:
             unit = None
+        # Without a value the defaults of the config are taken, see
+        # JoinHandler.join_realm(). The CA, the site certificate and
+        # their validity are of the first node of a site alone.
         try:
             host_key_len = command_args['host_key_len']
         except Exception:
-            host_key_len = 4096
+            host_key_len = None
+        try:
+            ca_key_len = command_args['ca_key_len']
+        except Exception:
+            ca_key_len = None
         try:
             site_key_len = command_args['site_key_len']
         except Exception:
-            site_key_len = 4096
+            site_key_len = None
+        try:
+            ca_valid = command_args['ca_valid']
+        except Exception:
+            ca_valid = None
+        try:
+            site_valid = command_args['site_valid']
+        except Exception:
+            site_valid = None
+        # Before anything is written: a key length or a validity that
+        # is no number would fail halfway through the join.
+        numbers = {
+                '--host-key-len'    : host_key_len,
+                '--ca-key-len'      : ca_key_len,
+                '--site-key-len'    : site_key_len,
+                '--ca-valid'        : ca_valid,
+                '--site-valid'      : site_valid,
+                }
+        for x_option, x_value in numbers.items():
+            if x_value is None:
+                continue
+            if isinstance(x_value, bool) \
+            or not isinstance(x_value, int) \
+            or x_value < 1:
+                msg = _("{option} needs a number: {value}")
+                msg = msg.format(option=x_option, value=x_value)
+                raise OTPmeException(msg)
         try:
             joind_uri = command_args['joind_uri']
         except Exception:
@@ -2694,12 +2808,11 @@ class CommandHandler(object):
         except Exception:
             no_daemon_start = False
         try:
-            x = command_args['site_cert_fingerprint']
-            fingerprint_digest = x.split(":")[0].lower()
-            site_cert_fingerprint = x.split(":")[1]
+            site_cert_fingerprint = command_args['site_cert_fingerprint']
         except Exception:
-            fingerprint_digest = "sha256"
             site_cert_fingerprint = None
+        fingerprint_digest, \
+        site_cert_fingerprint = parse_cert_fingerprint(site_cert_fingerprint)
 
         # Get index module.
         _index = config.get_index_module()
@@ -2741,7 +2854,10 @@ class CommandHandler(object):
                         socket_uri=joind_uri,
                         jotp=jotp, unit=unit,
                         host_key_len=host_key_len,
+                        ca_key_len=ca_key_len,
                         site_key_len=site_key_len,
+                        ca_valid=ca_valid,
+                        site_valid=site_valid,
                         no_daemon_start=no_daemon_start,
                         trust_site_cert=trust_site_cert,
                         create_db_indexes=create_db_indexes,
@@ -3219,15 +3335,25 @@ class CommandHandler(object):
             # root and for the OTPme user.
             msg = _("You must be root to look at or update host keys.")
             raise OTPmeException(msg)
-        if not config.pin_host_keys:
-            msg = _("Host keys are not pinned here. See PIN_HOST_KEYS in otpme.conf(5).")
-            raise OTPmeException(msg)
         # The tree itself, not hostd: there is no asking hostd for an
         # object, and the keys of every host are what this is about.
-        # Which is why it is root's -- see above.
+        # Which is why it is root's -- see above. Set up before the
+        # check below: host_data (otpme.lib.host) is filled out of our
+        # own object, and writes our type to its file for those who may
+        # not read the tree (see host.update_data()). Before, it said
+        # None here on every host, and the file was never written.
+        register_module("otpme.lib.host")
         register_module("otpme.lib.classes.host")
         register_module("otpme.lib.classes.node")
         self.init(use_backend=True)
+        # A node first: switching the parameter on would change nothing
+        # there.
+        if config.host_data['type'] != "host":
+            msg = _("Host keys are pinned on hosts only.")
+            raise OTPmeException(msg)
+        if not config.pin_host_keys:
+            msg = _("Host keys are not pinned here. See PIN_HOST_KEYS in otpme.conf(5).")
+            raise OTPmeException(msg)
 
         only_host = command_args.get('host_name')
         hosts = backend.search(object_types=["host", "node"],
@@ -3272,6 +3398,20 @@ class CommandHandler(object):
                         host_key_pins.fingerprint(pinned),
                         host_key_pins.fingerprint(new_key),
                         ])
+        # The pins of hosts that are gone. Only here: the sync takes no
+        # pin away, see host_key_pins.py.
+        if not only_host:
+            known = set(x.uuid for x in hosts)
+            pins = host_key_pins.all_pins()
+            for host_uuid in sorted(pins):
+                if host_uuid in known:
+                    continue
+                take_over[host_uuid] = None
+                table.add_row([
+                            host_uuid,
+                            host_key_pins.fingerprint(pins[host_uuid]),
+                            _("gone, remove"),
+                            ])
         if not take_over:
             if only_host:
                 msg = _("No host key changed for: {host}")
@@ -3290,9 +3430,137 @@ class CommandHandler(object):
 
         done = []
         for host_uuid in sorted(take_over):
-            host_key_pins.write_pin(host_uuid, take_over[host_uuid])
+            if take_over[host_uuid] is None:
+                host_key_pins.del_pin(host_uuid)
+            else:
+                host_key_pins.write_pin(host_uuid, take_over[host_uuid])
             done.append(host_uuid)
         msg = _("Host keys updated: {count}")
+        msg = msg.format(count=len(done))
+        return msg
+
+    def handle_update_user_keys_command(self, command, command_line):
+        """ Take over the encrypt keys of users whose key changed.
+
+        The same as update_host_keys for the keys otpme-pass encrypts
+        for, see user_key_pins.py. The keys come out of the index of
+        this host's copy of the tree, one search for all users, which
+        is what the sync wrote with the objects.
+
+        It also removes the pins of users that are gone. Nothing else
+        does: the sync takes no pin away.
+        """
+        from otpme.lib import cli
+        from otpme.lib import help
+        from otpme.lib import host_key_pins
+        from otpme.lib import user_key_pins
+        help_dict = help.get_cmd_help(command)
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            command_args = cli.get_opts(
+                                command_syntax=help_dict['update_user_keys']['cmd'],
+                                command_line=list(command_line))
+        except Exception as e:
+            if str(e) == "help":
+                return self.get_help()
+            return self.get_help(str(e))
+        list_only = bool(command_args.get('list_only'))
+        if config.system_user() != "root":
+            # Root for the looking as well, see update_host_keys.
+            msg = _("You must be root to look at or update user keys.")
+            raise OTPmeException(msg)
+        # Set up before the check below, see update_host_keys.
+        register_module("otpme.lib.host")
+        register_module("otpme.lib.classes.host")
+        register_module("otpme.lib.classes.node")
+        register_module("otpme.lib.classes.user")
+        self.init(use_backend=True)
+        # A node first, see update_host_keys.
+        if config.host_data['type'] != "host":
+            msg = _("User keys are pinned on hosts only.")
+            raise OTPmeException(msg)
+        if not config.pin_user_keys:
+            msg = _("User keys are not pinned here. See PIN_USER_KEYS in otpme.conf(5).")
+            raise OTPmeException(msg)
+
+        only_user = command_args.get('user_name')
+        result = backend.search(object_type="user",
+                                attribute="uuid",
+                                value="*",
+                                return_attributes=['name', 'encrypt_public_key'])
+
+        table_headers = [
+                    "user",
+                    "written down",
+                    "wants to be",
+                    ]
+        table = PrettyTable(table_headers,
+                            header_style="title",
+                            vrules=NONE,
+                            hrules=FRAME)
+        table.align = "l"
+        table.padding_width = 0
+        table.right_padding_width = 1
+
+        take_over = {}
+        for user_uuid in sorted(result, key=lambda x: result[x]['name']):
+            user_name = result[user_uuid]['name']
+            if only_user and user_name != only_user:
+                continue
+            new_key = result[user_uuid].get('encrypt_public_key')
+            if isinstance(new_key, list):
+                new_key = new_key[0] if new_key else None
+            if not new_key:
+                continue
+            pinned = user_key_pins.get_pin(user_uuid)
+            # One that is already the key we hold the user to is nothing
+            # to say yes to; one with nothing written down yet is.
+            if pinned is not None and pinned == new_key.strip():
+                continue
+            take_over[user_uuid] = new_key
+            table.add_row([
+                        user_name,
+                        host_key_pins.fingerprint(pinned),
+                        host_key_pins.fingerprint(new_key),
+                        ])
+        # The pins of users that are gone.
+        if not only_user:
+            pins = user_key_pins.all_pins()
+            for user_uuid in sorted(pins):
+                if user_uuid in result:
+                    continue
+                take_over[user_uuid] = None
+                table.add_row([
+                            user_uuid,
+                            host_key_pins.fingerprint(pins[user_uuid]),
+                            _("gone, remove"),
+                            ])
+        if not take_over:
+            if only_user:
+                msg = _("No user key changed for: {user}")
+                msg = msg.format(user=only_user)
+                return msg
+            return _("No user key changed.")
+
+        message(table.get_string(border=True, fields=table_headers))
+        if list_only:
+            return ""
+        if not config.force:
+            msg = _("Hold these users to the keys above?: ")
+            answer = cli.user_input(msg)
+            if str(answer).lower() != "y":
+                return _("Nothing changed.")
+
+        done = []
+        for user_uuid in sorted(take_over):
+            if take_over[user_uuid] is None:
+                user_key_pins.del_pin(user_uuid)
+            else:
+                user_key_pins.write_pin(user_uuid, take_over[user_uuid])
+            done.append(user_uuid)
+        msg = _("User keys updated: {count}")
         msg = msg.format(count=len(done))
         return msg
 
@@ -3493,6 +3761,8 @@ class CommandHandler(object):
                     except Exception:
                         progress = 0
 
+                    running_age = "-"
+                    failed_age = "-"
                     if last_run:
                         # Get time since sync started.
                         x = int(time.time() - last_run)
@@ -3577,6 +3847,15 @@ class CommandHandler(object):
         else:
             resync = False
 
+        # Options the sync type does not use were taken and dropped.
+        if request_site_cert and sync_type != "sites":
+            msg = _("--request-site-cert works with the sync type sites only.")
+            return self.get_help(msg)
+        if realm or site:
+            if sync_type != "objects" and not (resync and sync_type is None):
+                msg = _("--realm and --site work with the sync type objects only.")
+                return self.get_help(msg)
+
         result = self.start_sync(sync_type,
                             resync=resync,
                             realm=realm,
@@ -3636,7 +3915,7 @@ class CommandHandler(object):
         # Register modules.
         register_modules()
         if config.system_user() != "root":
-            msg = ("You must be root for this command.")
+            msg = _("You must be root for this command.")
             raise OTPmeException(msg)
         # Get command syntax.
         try:
@@ -4341,9 +4620,12 @@ class CommandHandler(object):
             except Exception:
                 current_row.append("")
             try:
-                if login_session["session_type"] == "realm_login":
+                # Set for each row: an unknown type took the one of the
+                # row before.
+                session_type = login_session.get("session_type") or ""
+                if session_type == "realm_login":
                     session_type = "login"
-                elif login_session["session_type"] == "ssh_key_pass":
+                elif session_type == "ssh_key_pass":
                     session_type = "ssh_pass"
                 current_row.append(session_type)
             except Exception:
@@ -4418,7 +4700,7 @@ class CommandHandler(object):
             sync_proto = sync_conn.protocol
         except Exception as e:
             sync_conn = None
-            sync_cache = SyncCache(config.realm, config.site)
+            sync_cache = SyncCache(realm, site)
             sync_proto = sync_cache.protocol
             msg, log_msg = _("Unable to get sync connection: {realm}/{site}: {e}", log=True)
             msg = msg.format(realm=realm, site=site, e=e)
@@ -4449,6 +4731,20 @@ class CommandHandler(object):
                                     ignore_changed_objects=ignore_changed_objects)
         if sync_conn:
             sync_conn.close()
+        # The sync puts the keys in the cache only. hostd writes the
+        # authorized_keys files after it, under the same lock.
+        if sync_type == "ssh_authorized_keys" and sync_status is not False:
+            from otpme.lib import ssh
+            from otpme.lib import locking
+            from otpme.lib import filetools
+            from otpme.lib.daemon.hostd import LOCK_TYPE
+            sync_lock = locking.acquire_lock(lock_type=LOCK_TYPE,
+                                    lock_id="sync_ssh_authorized_keys")
+            try:
+                sync_status = ssh.update_authorized_keys()
+            finally:
+                sync_lock.release_lock()
+            filetools.touch(config.authorized_keys_dir)
         return sync_status
 
     def get_login_status(self):
@@ -5160,7 +5456,7 @@ class CommandHandler(object):
         try:
             login_token = agent_conn.get_login_token()
         except Exception as e:
-            msg = _("Error getting login user from agent: {e}")
+            msg = _("Error getting login token from agent: {e}")
             msg = msg.format(e=e)
             raise OTPmeException(msg) from e
         return login_token
@@ -5179,7 +5475,7 @@ class CommandHandler(object):
         try:
             login_token_type = agent_conn.get_login_token_type()
         except Exception as e:
-            msg = _("Error getting login user from agent: {e}")
+            msg = _("Error getting login token type from agent: {e}")
             msg = msg.format(e=e)
             raise OTPmeException(msg) from e
         return login_token_type
@@ -5215,7 +5511,7 @@ class CommandHandler(object):
             elif not sync_type or sync_type == "objects":
                 # First start a sync of all sites.
                 cmd = "sync_sites"
-                sync_message = self.send_command(daemon="hostd",
+                sites_message = self.send_command(daemon="hostd",
                                                 command=cmd,
                                                 interactive=False)
                 # Then start resync of all objects.
@@ -5232,6 +5528,7 @@ class CommandHandler(object):
                                                 command=cmd,
                                                 command_args=command_args,
                                                 interactive=False)
+                sync_message = f"{sites_message}\n{sync_message}"
             else:
                 return self.get_help()
         else:
@@ -5769,7 +6066,8 @@ class CommandHandler(object):
 
     def join_realm(self, host_type, realm=None, site=None,
         domain=None, socket_uri=None, jotp=None, unit=None, host_key_len=None,
-        site_key_len=None, trust_site_cert=False, no_daemon_start=False,
+        ca_key_len=None, site_key_len=None, ca_valid=None, site_valid=None,
+        trust_site_cert=False, no_daemon_start=False,
         check_site_cert=None, fingerprint_digest=None, create_db_indexes=False):
         """ Join host/node to realm. """
         from otpme.lib.join import JoinHandler
@@ -5793,7 +6091,10 @@ class CommandHandler(object):
                                             socket_uri=socket_uri,
                                             host_type=host_type,
                                             host_key_len=host_key_len,
+                                            ca_key_len=ca_key_len,
                                             site_key_len=site_key_len,
+                                            ca_valid=ca_valid,
+                                            site_valid=site_valid,
                                             jotp=jotp,
                                             unit=unit,
                                             force=config.force,
@@ -5913,7 +6214,7 @@ class CommandHandler(object):
         #init_otpme(use_backend=False)
         self.init(use_backend=False)
         login_handler = LoginHandler()
-        return login_handler.whoami(verify_server_session=False)
+        return login_handler.whoami()
 
     def handle_message_command(self, command, command_line):
         """ Show a message box to users that are logged in.
@@ -5992,8 +6293,10 @@ class CommandHandler(object):
         table.padding_width = 0
         table.right_padding_width = 1
 
+        # A refusal of idled is an error and not the answer: returned,
+        # it was printed like a list and the command ended well.
         if not status:
-            return response
+            raise OTPmeException(response)
 
         if not response:
             return table.get_string()
@@ -6067,8 +6370,9 @@ class CommandHandler(object):
         table.padding_width = 0
         table.right_padding_width = 1
 
+        # See who().
         if not status:
-            return response
+            raise OTPmeException(response)
         if not response:
             return table.get_string()
 
@@ -6366,6 +6670,122 @@ class CommandHandler(object):
         self.subcommand = "word_import"
         self.command_line = [ object_identifier ]
         self.command_args = { 'word_list' : word_list }
+
+    def handle_pass_command(self, command, subcommand, client_type="CLIENT"):
+        """ Handle the commands that name an entry of a password.
+
+        The entry name, username, URL, notes and the password itself
+        never go to mgmtd. They are kept here for the PASS_CRYPT
+        callback, which does the work on this side (see
+        otpme.lib.pass_crypt), and the command goes out without them.
+        """
+        from otpme.lib import pass_crypt
+        # Get command syntax.
+        # A wrong command line ends with the help, the way send_command()
+        # ends it.
+        try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except Exception as e:
+            msg = _("Unknown command: {subcommand}")
+            msg = msg.format(subcommand=subcommand)
+            raise OTPmeException(self.get_help(msg)) from e
+        # Parse command line.
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            command_args = cli.get_opts(command_syntax=command_syntax,
+                                        command_line=self.command_line,
+                                        command_args={})
+        except Exception as e:
+            if str(e) == "help":
+                raise OTPmeException(self.get_help()) from e
+            raise OTPmeException(self.get_help(str(e))) from e
+        if not object_identifier:
+            msg = _("Error: Please give {command}")
+            msg = msg.format(command=command)
+            raise OTPmeException(self.get_help(msg))
+        local_args, remote_args = pass_crypt.split_local_args(command_args)
+        if command == "pass" and subcommand == "add":
+            # Whether to ask for an entry, not the entry.
+            remote_args['with_entry'] = bool(local_args.get('entry_name'))
+        pass_crypt.set_local_request(local_args)
+        login_user = config.login_user
+        return self.send_command(daemon="mgmtd",
+                                command=command,
+                                subcommand=subcommand,
+                                command_args=remote_args,
+                                object_list=object_identifier,
+                                parse_command_syntax=False,
+                                username=login_user,
+                                client_type=client_type)
+
+    def handle_pass_offline(self, subcommand, command_line, error=None):
+        """ Answer otpme-pass from what this host keeps of the passwords.
+
+        When no node could be reached at all (<error>), or when asked
+        to with --offline (no <error>), and only for what reads (see
+        otpme.lib.pass_cache). Opened with the key script, as online.
+        <command_line> as given, from before anything parsed it.
+        """
+        from otpme.lib import stuff
+        from otpme.lib import pass_cache
+        if subcommand not in pass_cache.OFFLINE_SUBCOMMANDS:
+            if error:
+                raise error
+            msg = _("--offline works only with: {subcommands}")
+            msg = msg.format(subcommands=", ".join(pass_cache.OFFLINE_SUBCOMMANDS))
+            raise OTPmeException(msg)
+        # The passwords are opened where the user sits, see
+        # OTPmeClient.pass_crypt().
+        register_module("otpme.lib.host")
+        if config.host_data['type'] != "host":
+            if error:
+                raise error
+            msg = _("Passwords are kept for offline use only on hosts.")
+            raise OTPmeException(msg)
+        try:
+            command_syntax = self.get_command_syntax("pass", subcommand)
+        except Exception as e:
+            msg = _("Unknown command: {subcommand}")
+            msg = msg.format(subcommand=subcommand)
+            raise OTPmeException(self.get_help(msg)) from e
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            command_args = cli.get_opts(command_syntax=command_syntax,
+                                        command_line=list(command_line),
+                                        command_args={})
+        except Exception as e:
+            if str(e) == "help":
+                raise OTPmeException(self.get_help()) from e
+            raise OTPmeException(self.get_help(str(e))) from e
+        username = config.login_user
+        try:
+            cache = pass_cache.read_cache(username)
+        except OTPmeException as e:
+            if not error:
+                raise
+            msg = _("No node reachable: {error}")
+            msg = msg.format(error=error)
+            raise OTPmeException(f"{msg}\n{e}") from error
+        key_mode = cache['key_mode']
+        def unwrap_key(encrypted_key):
+            if not self.interactive:
+                msg = _("Cannot call key script in non-interactive mode.")
+                raise OTPmeException(msg)
+            fernet_key = stuff.decrypt_share_key(username,
+                                                encrypted_key,
+                                                key_mode,
+                                                encode=False)
+            if not fernet_key:
+                msg = _("Key script returned an empty key.")
+                raise OTPmeException(msg)
+            return fernet_key
+        return pass_cache.handle_offline(subcommand, cache, unwrap_key,
+                                        object_name=object_identifier,
+                                        command_args=command_args)
 
     def handle_dictionary_word_import_command(self, command, subcommand):
         """ Handle dictionary word import command. """

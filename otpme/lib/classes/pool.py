@@ -522,7 +522,8 @@ def register_oid():
                             name_regex=pool_name_re,
                             path_regex=pool_path_re,
                             oid_regex=pool_oid_re)
-    rel_path_getter = lambda x: x[-2:]
+    # Everything after realm and site: the unit can be a sub unit.
+    rel_path_getter = lambda x: x[2:]
     oid.register_rel_path_getter(object_type="pool",
                                 getter=rel_path_getter)
 

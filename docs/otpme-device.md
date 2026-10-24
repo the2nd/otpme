@@ -27,7 +27,8 @@ top of that, see **VLAN Assignment** below.
 Create a new device.
 
 **del *device***  
-Delete a device.
+Delete a device. The passwords of the device stay; the question says how
+many there are.
 
 **show \[*device*\]**  
 Display device information.
@@ -78,6 +79,20 @@ access granted through the access group. Membership wins: the **vlans**
 parameter is only looked at when no VLAN of the site answering the
 RADIUS request names the device. A device that is in a VLAN only through
 a role is overridden by one that names the device itself.
+
+## Passwords
+
+Passwords can belong to the device, for example the admin password of a
+switch, see **otpme-pass**(1). Each password decides itself whether you
+may see it.
+
+**find_passwords \[**--return-type** *TYPE*\] *device***  
+The password objects that belong to the device.
+
+**show_password *device* \[*entry*\]**  
+Show the entries of these passwords, with their passwords. With *entry*
+only the entries of that name.  
+Each password needs **view:entries**, and you need a key for it.
 
 ## Configuration
 
@@ -267,7 +282,8 @@ OTPme data directory
 # SEE ALSO
 
 **otpme**(7), **otpme-acls**(7), **otpme-accessgroup**(1),
-**otpme-host**(1), **otpme-vlan**(1), **otpme-client**(1)
+**otpme-host**(1), **otpme-vlan**(1), **otpme-pass**(1),
+**otpme-client**(1)
 
 # AUTHOR
 

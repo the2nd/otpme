@@ -57,6 +57,7 @@ from otpme.lib.changelog import object_changelog
 from otpme.lib.cache import supported_acls_cache
 from otpme.lib.otpme_acl import check_special_user
 from otpme.lib.classes.object_config import ObjectConfig
+from otpme.lib.classes import get_object_module_path
 from otpme.lib.incremental_objects import IncrementalDict
 from otpme.lib.incremental_objects import IncrementalList
 
@@ -149,6 +150,9 @@ write_acl_types = global_write_acls + [
 # a site is how one stops using it: a site we disabled is not contacted
 # (hostd) and the realm master does not offer a disabled site to anyone
 # (sync1.get_sites_command()).
+# A touch changes nothing: it writes our copy again and builds its
+# index, ACLs and LDIF anew, which is what a copy needs as much as the
+# original does.
 sync_safe_acls = [
                     "edit:description",
                     "enable:auth",
@@ -157,6 +161,7 @@ sync_safe_acls = [
                     "disable:sync",
                     "enable:object",
                     "disable:object",
+                    "touch",
                 ]
 
 global_read_value_acls = {
@@ -3214,6 +3219,43 @@ class OTPmeBaseObject(OTPmeLockObject):
             return
         return values
 
+    def set_config_index(self, object_config, key, attribute):
+        """ Index <key> with the value of <attribute>, in a config.
+
+        For an upgrade_to_<n>() that puts an attribute into the index:
+        a step works on the config and not on the loaded object (see
+        upgrade_object_config()), and not every config it brings up is
+        written by _write(): the sync writes the config of the instance
+        it loaded as it is.
+
+        <attribute> is read as _load() reads it: without its headers,
+        and a value that had some was stored as JSON.
+        """
+        try:
+            stored = object_config[attribute]
+        except KeyError:
+            stored = None
+        value = None
+        if stored:
+            value = ObjectConfig(object_id=self.oid,
+                                object_config={attribute: stored},
+                                encrypted=False).get(attribute,
+                                                    no_headers=True)
+            if value != stored:
+                try:
+                    value = json.decode(value)
+                except OTPmeTypeError:
+                    pass
+        try:
+            index = object_config['INDEX']
+        except KeyError:
+            index = None
+        index = dict(index or {})
+        index.pop(key, None)
+        if value:
+            index[key] = [value]
+        object_config['INDEX'] = index
+
     def del_index(
         self,
         key: Union[str,int,float],
@@ -4308,6 +4350,27 @@ class OTPmeObject(OTPmeBaseObject):
         if answer != self.name:
             return False
         return True
+
+    def get_passwords_notice(self):
+        """ Say that passwords belong to this object, for its delete.
+
+        They are not deleted with it: a password can belong to more
+        than one object, what it holds cannot be made again, and a host
+        brought back from the trash has the same UUID and gets them
+        back. The UUID stays in the password until its remove_orphans.
+
+        A count and no names: who deletes the object need not be
+        allowed to see the passwords.
+        """
+        passwords = backend.search(object_type="pass",
+                                attribute=self.type,
+                                value=self.uuid,
+                                return_type="uuid")
+        if not passwords:
+            return None
+        msg = _("Passwords that belong to this {object_type} and are kept: {count}")
+        msg = msg.format(object_type=self.type, count=len(passwords))
+        return msg
 
     def ask_change_confirmation(self, msg, force=False,
         callback=default_callback):
@@ -6422,13 +6485,13 @@ class OTPmeObject(OTPmeBaseObject):
                                     site=self.site,
                                     name=device_name)
             if not device:
-                msg = _("Host does not exist: {device_name}")
+                msg = _("Device does not exist: {device_name}")
                 msg = msg.format(device_name=device_name)
                 return callback.error(msg)
             device_uuid = device.uuid
 
         if device_uuid in self.devices:
-            msg = _("Host already added to {object_type}.")
+            msg = _("Device already added to {object_type}.")
             msg = msg.format(object_type=self.type)
             return callback.error(msg)
 
@@ -6491,12 +6554,12 @@ class OTPmeObject(OTPmeBaseObject):
                                     site=self.site,
                                     name=device_name)
         if not device:
-            msg = _("Host does not exist: {device_name}")
+            msg = _("Device does not exist: {device_name}")
             msg = msg.format(device_name=device_name or device_uuid)
             return callback.error(msg)
 
         if device.uuid not in self.devices:
-            msg = _("Host not in {object_type}.")
+            msg = _("Device not in {object_type}.")
             msg = msg.format(object_type=self.type)
             return callback.error(msg)
 
@@ -6603,11 +6666,13 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = msg.format(self=self)
                 return callback.error(msg, exception=PermissionDenied)
 
+        # The name finds a node of any site (see node.py), and only the
+        # nodes of our own site are ours to add.
         node = backend.get_object(object_type="node",
                                     realm=config.realm,
                                     site=config.site,
                                     name=node_name)
-        if not node:
+        if not node or node.site != config.site:
             msg = _("Unknown node: {node_name}")
             msg = msg.format(node_name=node_name)
             return callback.error(msg)
@@ -6671,11 +6736,12 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = msg.format(self=self)
                 return callback.error(msg, exception=PermissionDenied)
 
+        # See add_node().
         node = backend.get_object(object_type="node",
                                     realm=config.realm,
                                     site=config.site,
                                     name=node_name)
-        if not node:
+        if not node or node.site != config.site:
             msg = _("Unknown node: {node_name}")
             msg = msg.format(node_name=node_name)
             return callback.error(msg)
@@ -7679,12 +7745,19 @@ class OTPmeObject(OTPmeBaseObject):
         type.
         """
         # The ACL cannot sit in a decorator, the object type arrives as
-        # an argument.
-        find_acl = f"find:{object_type}s"
-        if not self.verify_acl(find_acl):
-            msg = _("Permission denied: {object_path}")
-            msg = msg.format(object_path=self.path)
-            return callback.error(msg, exception=PermissionDenied)
+        # an argument. Not for passwords: which of them may be seen is
+        # said by each password, the way "otpme-pass list" goes by them,
+        # and not by the object they belong to.
+        verify_acls = None
+        if object_type == "pass":
+            if config.auth_token and not config.auth_token.is_admin():
+                verify_acls = ["view_public", "view", "view:entries"]
+        else:
+            find_acl = f"find:{object_type}s"
+            if not self.verify_acl(find_acl):
+                msg = _("Permission denied: {object_path}")
+                msg = msg.format(object_path=self.path)
+                return callback.error(msg, exception=PermissionDenied)
 
         search_attributes = {
                         self.type   : {'value':self.uuid},
@@ -7694,7 +7767,8 @@ class OTPmeObject(OTPmeBaseObject):
         return_attributes = ['uuid', 'site', return_type]
         search_result = backend.search(object_type=object_type,
                                     attributes=search_attributes,
-                                    return_attributes=return_attributes)
+                                    return_attributes=return_attributes,
+                                    verify_acls=verify_acls)
         result = []
         for uuid in search_result:
             if return_type == "name":
@@ -7715,6 +7789,52 @@ class OTPmeObject(OTPmeBaseObject):
         if _caller == "CLIENT":
             result = "\n".join(result)
         return callback.ok(result)
+
+    def show_password(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Show the passwords that belong to this object (otpme-pass). """
+        from otpme.lib.classes.otpme_password import show_passwords_of
+        return show_passwords_of(self, callback=callback)
+
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def sign_password_members(
+        self,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Sign password_store_members of this unit or site. """
+        from otpme.lib.classes.otpme_password import sign_members_of
+        return sign_members_of(self, force=force, callback=callback)
+
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def unsign_password_members(
+        self,
+        signer: Union[str,None]=None,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Remove a signature of password_store_members. """
+        from otpme.lib.classes.otpme_password import unsign_members_of
+        return unsign_members_of(self, signer=signer,
+                                force=force, callback=callback)
+
+    def show_password_members(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Show password_store_members and their signatures. """
+        from otpme.lib.classes.otpme_password import show_members_of
+        return show_members_of(self, callback=callback)
 
     @cli.check_rapi_opts()
     @check_acls(acls=['view:roles'])
@@ -8972,7 +9092,7 @@ class OTPmeObject(OTPmeBaseObject):
                 if i.startswith("+"):
                     object_type = i.split("+")[1]
                     # Build module path to module.
-                    object_module_path = f"otpme.lib.classes.{object_type}"
+                    object_module_path = get_object_module_path(object_type)
                     # Import object module.
                     object_module = importlib.import_module(object_module_path)
                     # Get object ACLs.
@@ -9036,7 +9156,7 @@ class OTPmeObject(OTPmeBaseObject):
                 if i.startswith("+"):
                     object_type = i.split("+")[1]
                     # Build module path to module.
-                    object_module_path = f"otpme.lib.classes.{object_type}"
+                    object_module_path = get_object_module_path(object_type)
                     # Import object module.
                     object_module = importlib.import_module(object_module_path)
                     # Get object ACLs.
@@ -12532,6 +12652,30 @@ class OTPmeObject(OTPmeBaseObject):
             para_setter = None
         # Delete config parameter.
         if delete:
+            if value and para_data.get('merging_setter', False):
+                # The setter takes the value out and hands back what is
+                # left, see register_config_parameter().
+                if parameter not in self.config_params:
+                    msg = _("Config parameter not set.")
+                    return callback.error(msg)
+                try:
+                    value = para_setter(value,
+                                    config_object=self,
+                                    delete=True,
+                                    callback=callback)
+                except Exception as e:
+                    msg = _("Failed to set config parameter: {parameter}: {e}")
+                    msg = msg.format(parameter=parameter, e=e)
+                    return callback.error(msg)
+                # Popped first, see the end of this method.
+                self.config_params.pop(parameter)
+                self.config_params[parameter] = value
+                config_cache.invalidate()
+                if para_data.get('sensitive', False):
+                    self.set_changelog(f"removed value from '{parameter}'")
+                else:
+                    self.set_changelog(f"removed value '{changelog_value}' from '{parameter}'")
+                return self._cache(callback=callback)
             if value:
                 try:
                     if para_setter:
@@ -12681,8 +12825,13 @@ class OTPmeObject(OTPmeBaseObject):
 
         if parameter not in self.config_params:
             append = False
+        # A merging setter has added the value already and hands back the
+        # whole of it, see register_config_parameter().
+        add_values = append
+        if para_data.get('merging_setter', False):
+            add_values = False
 
-        if append:
+        if add_values:
             # Remove values we already have and warn.
             for x in list(value):
                 if x not in self.config_params[parameter]:

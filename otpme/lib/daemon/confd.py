@@ -133,6 +133,14 @@ class ConfDaemon(OTPmeDaemon):
         self.inventory_check_interval = INVENTORY_CHECK_INTERVAL
         self.reported_inventory = None
         self.last_inventory_check = 0.0
+        # The same for the packages our system offers, if we are a
+        # reference host: what the package lists looked like when we
+        # last reported, and when.
+        self.reported_available = None
+        self.last_available_check = 0.0
+        # Whether the site that keeps our inventory wants that from us.
+        # It says so with every answer about our inventory.
+        self.reference_host = False
         # What we ran, and what we refused and said so about, read from
         # the markers on startup.
         self.done_jobs = []
@@ -805,6 +813,9 @@ class ConfDaemon(OTPmeDaemon):
                 log_msg = _("Failed to get installed packages: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
                 self.logger.debug(log_msg)
+        arch = None
+        if handler is not None:
+            arch = handler.get_arch()
         reboot_required = None
         if handler is not None:
             try:
@@ -825,7 +836,7 @@ class ConfDaemon(OTPmeDaemon):
             self.logger.debug(log_msg)
         checksum = inventory.get_packages_checksum(packages)
         hardware_checksum = hardware_mod.get_hardware_checksum(hardware)
-        local_inventory = (os_name, os_version, kernel, reboot_required,
+        local_inventory = (os_name, os_version, arch, kernel, reboot_required,
                             otpme_version, checksum, hardware_checksum)
         now = time.time()
         if local_inventory == self.reported_inventory:
@@ -849,6 +860,9 @@ class ConfDaemon(OTPmeDaemon):
                 msg = _("Failed to get inventory: {response}")
                 msg = msg.format(response=response)
                 raise OTPmeException(msg)
+            # Whether we are to report what our system offers, see
+            # update_available_packages().
+            self.reference_host = bool(response.get('reference_host'))
             set_packages = {}
             del_packages = []
             if response.get('packages') is not None:
@@ -867,6 +881,8 @@ class ConfDaemon(OTPmeDaemon):
             if response.get('kernel') != kernel:
                 send_os = True
             if response.get('otpme_version') != otpme_version:
+                send_os = True
+            if arch is not None and response.get('arch') != arch:
                 send_os = True
             # Only where we have an answer: a host that cannot say
             # would otherwise ask for a change every round and never
@@ -889,6 +905,7 @@ class ConfDaemon(OTPmeDaemon):
                     command_args['kernel'] = kernel
                     command_args['reboot_required'] = reboot_required
                     command_args['otpme_version'] = otpme_version
+                    command_args['arch'] = arch
                     send_os = False
                 # Whole, with the first of the updates: it is a dozen
                 # values, and sending it again with every part of a
@@ -918,20 +935,110 @@ class ConfDaemon(OTPmeDaemon):
 
     def split_inventory_update(self, set_packages, del_packages):
         """ The changes in parts the nodes take in one request. """
+        from otpme.lib.confd.inventory import split_package_update
         from otpme.lib.confd.inventory import MAX_PACKAGES_PER_UPDATE
-        changes = [('del', name) for name in del_packages]
-        changes += [('set', name) for name in sorted(set_packages)]
-        updates = []
-        for start in range(0, len(changes), MAX_PACKAGES_PER_UPDATE):
-            x_set = {}
-            x_del = []
-            for kind, name in changes[start:start + MAX_PACKAGES_PER_UPDATE]:
-                if kind == "del":
-                    x_del.append(name)
-                else:
-                    x_set[name] = set_packages[name]
-            updates.append((x_set, x_del))
-        return updates
+        return split_package_update(set_packages, del_packages,
+                                    MAX_PACKAGES_PER_UPDATE)
+
+    def update_available_packages(self):
+        """ Tell the nodes which packages our system offers, if we are a
+        reference host (see os_packages.py).
+
+        Whether we are one the nodes say, with their answer about our
+        inventory (update_inventory()): the site that keeps it decides,
+        in its reference_hosts. A change of that reaches us with the
+        next of those answers, at the latest after the hour the
+        inventory waits.
+
+        Like the inventory, and after it: the nodes take the report for
+        the system our inventory says we run. The package lists are
+        only read when they changed (get_available_stamp()) or after
+        that same hour -- they are some 50 MB out of apt. """
+        from otpme.lib import confd as os_handlers
+        from otpme.lib.confd import inventory
+        from otpme.lib.confd.inventory import MAX_AVAILABLE_PER_UPDATE
+        if not self.reference_host:
+            self.reported_available = None
+            return
+        for x_type in self.running_jobs.values():
+            if confd_job.runs_alone(x_type):
+                return
+        try:
+            handler = os_handlers.get_handler(logger=self.logger)
+        except Exception:
+            return
+        os_name, os_version = os_handlers.get_os_info()
+        arch = handler.get_arch()
+        if not os_version or not arch:
+            return
+        stamp = handler.get_available_stamp()
+        now = time.time()
+        local_state = (os_version, arch, stamp)
+        if local_state == self.reported_available:
+            if (now - self.last_available_check) < self.inventory_check_interval:
+                return
+        packages = handler.get_available_packages(arch=arch)
+        checksum = inventory.get_packages_checksum(packages)
+        sync_conn = self.get_sync_connection(site=self.get_inventory_site())
+        set_packages = {}
+        del_packages = []
+        try:
+            command_args = {
+                        'os_version'        : os_version,
+                        'arch'              : arch,
+                        'packages_checksum' : checksum,
+                        }
+            status, \
+            status_code, \
+            response, \
+            binary_data = sync_conn.send("get_os_packages", command_args)
+            if not status:
+                msg = _("Failed to get packages of our system: {response}")
+                msg = msg.format(response=response)
+                raise OTPmeException(msg)
+            held_by = response.get('held_by')
+            if held_by:
+                log_msg = _("Packages of {os_version}/{arch} are reported by reference host: {host}", log=True)[1]
+                log_msg = log_msg.format(os_version=os_version,
+                                        arch=arch,
+                                        host=held_by)
+                self.logger.debug(log_msg)
+            elif response.get('packages') is not None:
+                set_packages, del_packages = inventory.diff_packages(response['packages'],
+                                                                    packages)
+                updates = inventory.split_package_update(set_packages,
+                                                        del_packages,
+                                                        MAX_AVAILABLE_PER_UPDATE)
+                for x_set, x_del in updates:
+                    command_args = {
+                                'os_version'    : os_version,
+                                'arch'          : arch,
+                                'set_packages'  : x_set,
+                                'del_packages'  : x_del,
+                                }
+                    status, \
+                    status_code, \
+                    response, \
+                    binary_data = sync_conn.send("update_os_packages",
+                                                command_args)
+                    if not status:
+                        msg = _("Failed to update packages of our system: {response}")
+                        msg = msg.format(response=response)
+                        raise OTPmeException(msg)
+                    # Another reference host took it while we sent.
+                    if response.get('held_by'):
+                        break
+        finally:
+            sync_conn.close()
+        if set_packages or del_packages:
+            log_msg = _("Reported packages of {os_version}/{arch}: {set_count} new or changed, {del_count} removed.", log=True)[1]
+            log_msg = log_msg.format(os_version=os_version,
+                                    arch=arch,
+                                    set_count=len(set_packages),
+                                    del_count=len(del_packages))
+            self.logger.info(log_msg)
+        self.reported_available = local_state
+        self.last_available_check = now
 
     def get_sync_connection(self, site=None):
         """ Connection to the syncd of our site, or of another one.
@@ -1283,6 +1390,12 @@ class ConfDaemon(OTPmeDaemon):
                             self.update_inventory()
                         except Exception as e:
                             log_msg = _("Failed to update inventory: {e}", log=True)[1]
+                            log_msg = log_msg.format(e=e)
+                            self.logger.warning(log_msg)
+                        try:
+                            self.update_available_packages()
+                        except Exception as e:
+                            log_msg = _("Failed to report available packages: {e}", log=True)[1]
                             log_msg = log_msg.format(e=e)
                             self.logger.warning(log_msg)
                         last_job_check = time.time()

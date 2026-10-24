@@ -588,6 +588,17 @@ A share can also use SOTP signing. The login to the share must then be
 signed with the sign key of the user, see **otpme-share**(1) and
 **Tokens** above.
 
+## Passwords
+
+A password object keeps passwords for people, for example the iDRAC and
+root passwords of a server. The passwords are encrypted on the host
+where the user works, and the nodes store only what they cannot read.
+
+Who gets a key is set with the config parameter
+**password_store_members** of a unit or site, and signed by a user. The
+hosts trust only the signers they have set up, so whoever runs a node
+cannot add themselves. See **otpme-pass**(1).
+
 ## Node Pools
 
 A node pool is a group of nodes. Assign a pool to a share, and only the
@@ -1267,6 +1278,34 @@ change this parameter, and not everybody who may edit a share.
 The directory must exist when you set the parameter. **SHARE_ROOT** in
 **otpme.conf**(5) wins over it on a single host.  
 Can only be changed by an admin.  
+Object types: site, unit
+
+## Passwords
+
+**password_store_members (str)**  
+The tokens and roles that get the keys of the passwords below, see
+**otpme-pass**(1). Given as OIDs, for example
+**role\|example.org/berlin/admins** or
+**token\|example.org/alice/login**. They are stored as UUIDs, so a
+renamed token or role stays a member.  
+The members must be signed with **otpme-unit sign_password_members**.
+The signatures are kept in the same value. Changing the members makes
+them out of date, but does not remove them.  
+The nearest unit that sets it counts, else the site.  
+Object types: site, unit
+
+**password_offline_cache (list)**  
+The hosts that may keep the passwords below for offline use, see
+**otpme-pass**(1). Given as OIDs of hosts, groups and roles of this
+site, for example host\|example.org/host1 or group\|example.org/admins;
+a name without a type is a host. A group or role stands for the hosts in
+it, and the hosts of its roles. They are stored as UUIDs. One that is
+gone is removed by the UUID that is shown for it.  
+The nearest unit that sets it counts, else the site. An empty value
+(**""**) on a unit keeps its passwords off every host. Without the
+parameter anywhere, no host keeps anything.  
+A change tells the users of the passwords below, and their hosts fetch
+them again.  
 Object types: site, unit
 
 ## Hosts
@@ -2432,6 +2471,38 @@ against a deliberate attacker: whatever a real login is allowed here is
 available to anyone who sends one request and then stops talking.  
 Object types: site, unit, node
 
+**syncd_workers (int, default: 2)**  
+Number of preforked **syncd** worker processes. They stay for as long as
+the daemon runs.  
+Each worker serves its sync connections in threads (see
+**syncd_worker_threads**). A process for each connection would cost the
+memory of the whole daemon again, about 150 MB. With a few hundred hosts
+that sync at the same time, for example after an update, that is more
+than a node has.  
+The value is looked up on the node, then on its unit and the units above
+it, then on the site. The first one found wins.  
+Object types: site, unit, node
+
+**syncd_max_workers (int, default: 8)**  
+How far the **syncd** worker pool may grow while every one of its
+workers is busy. Workers above **syncd_workers** are stopped again once
+the pool has not been full for a minute.  
+Each worker is a process. So this value is what limits the memory of
+**syncd**, whatever the number of hosts.  
+Object types: site, unit, node
+
+**syncd_worker_threads (int, default: 64)**  
+How many sync connections one **syncd** worker serves at the same time,
+each in a thread.  
+A sync connection spends most of its time waiting for the peer, and a
+thread that waits holds no GIL. So many of them fit into one worker.  
+A worker takes more than one connection only once the pool sits at
+**syncd_max_workers** and every worker in it is busy. So at most
+**syncd_max_workers** times this value sync at the same time. More
+connections wait in the listen backlog (**socket_backlog**).  
+**0** serves one connection per worker.  
+Object types: site, unit, node
+
 **socket_backlog (int, default: 1024)**  
 Length of the accept queue the kernel keeps for the listening sockets of
 the OTPme daemons. A connection the kernel has finished on its own waits
@@ -2795,6 +2866,9 @@ Cap for device names.
 
 **max_vlan_name_len (int, default: 64)**  
 Cap for VLAN names.
+
+**max_pass_name_len (int, default: 64)**  
+Cap for the names of password objects.
 
 ## Backup
 
@@ -3225,12 +3299,12 @@ The settings of one user, e.g. which agent to talk to.
 **otpme-client**(1), **otpme-cluster**(1), **otpme-deploy**(1),
 **otpme-device**(1), **otpme-dictionary**(1), **otpme-group**(1),
 **otpme-host**(1), **otpme-inventory**(1), **otpme-mount**(1),
-**otpme-node**(1), **otpme-policy**(1), **otpme-pool**(1),
-**otpme-realm**(1), **otpme-resolver**(1), **otpme-role**(1),
-**otpme-scope**(1), **otpme-script**(1), **otpme-share**(1),
-**otpme-site**(1), **otpme-token**(1), **otpme-tool**(1),
-**otpme-trash**(1), **otpme-unit**(1), **otpme-user**(1),
-**otpme-vlan**(1)
+**otpme-node**(1), **otpme-pass**(1), **otpme-policy**(1),
+**otpme-pool**(1), **otpme-realm**(1), **otpme-resolver**(1),
+**otpme-role**(1), **otpme-scope**(1), **otpme-script**(1),
+**otpme-share**(1), **otpme-site**(1), **otpme-token**(1),
+**otpme-tool**(1), **otpme-trash**(1), **otpme-unit**(1),
+**otpme-user**(1), **otpme-vlan**(1)
 
 # AUTHOR
 

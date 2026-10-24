@@ -793,7 +793,8 @@ def register_oid():
                             name_regex=vlan_name_re,
                             path_regex=vlan_path_re,
                             oid_regex=vlan_oid_re)
-    rel_path_getter = lambda x: x[-2:]
+    # Everything after realm and site: the unit can be a sub unit.
+    rel_path_getter = lambda x: x[2:]
     oid.register_rel_path_getter(object_type="vlan",
                                 getter=rel_path_getter)
 

@@ -440,7 +440,18 @@ SYNC_IGNORE_CHANGED_OBJECTS="False"
 # host does not open, and a host that was never synced here gets none either.
 # The keys live in /var/spool/otpme/host_keys/. Default False, because it means
 # a command for every host whose key changes.
+# Without it a host gets only its own host object, and the copies of the other
+# hosts it had are removed. So otpme-shell from a host to another host needs
+# this. A session to a node works either way.
 PIN_HOST_KEYS="False"
+# The same for the encrypt keys of users, which otpme-pass encrypts passwords
+# for. The first key of a user is written down by the sync that brings it. A key
+# that differs does not replace it: otpme-pass gives that user no key, and you
+# take the new key over by hand as root with "otpme-tool update_user_keys". A
+# user whose key was never written down here gets no key either. Keys are never
+# removed by the sync, only by hand. Only on hosts, not on nodes.
+# The keys live in /var/spool/otpme/user_keys/. Default False.
+PIN_USER_KEYS="False"
 
 # Heartbeat interval in seconds controld sends a 'ping' message to all child deamons.
 CONTROLD_HEARTBEAT_INTERVAL="15"
@@ -463,6 +474,10 @@ AGENT_CONNECTION_IDLE_TIMEOUT="300"
 # Time interval in seconds otpme-agent sends keepalive messages to keep up
 # daemon connections.
 AGENT_KEEPALIVE_INTERVAL="5"
+# Interval in seconds otpme-agent fetches the passwords this host may keep for
+# offline use (see password_offline_cache). It also fetches them at login and
+# when one of them changes.
+AGENT_PASS_CACHE_INTERVAL="3600"
 
 # Interval in seconds we will check if config file or reload file has changed
 # and a reload is needed.

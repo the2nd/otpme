@@ -1,4 +1,4 @@
-.TH OTPME-SHARE 1 "2026-10-18" "OTPme 0.3.0a283" "OTPme Manual"
+.TH OTPME-SHARE 1 "2026-10-23" "OTPme 0.3.0a286" "OTPme Manual"
 .SH NAME
 otpme-share \- manage OTPme file shares
 .SH SYNOPSIS
@@ -37,7 +37,7 @@ fails if that directory is not there afterwards on the node that adds the share.
 As \fBnobody\fR a script can usually not do that itself, so it calls a helper of yours with \fBsudo\fR.
 The scripts that come with OTPme do nothing: they only show, commented out, how such a call looks.
 .SH HOME SHARES
-A normal share hands out its root directory to everybody. A \fBhome share\fR hands out \fIshare_root\fB/\fIhome_dir\fR instead, so every user gets their own directory and sees nothing else. The directory is created on the first mount, owned by the user and by default with mode 0700 (see \fBhome_share_permissions\fR).
+A normal share hands out its root directory to everybody. A \fBhome share\fR hands out \fIshare_root\fR/\fIshare\fR/\fIhome_dir\fR instead, so every user gets their own directory and sees nothing else. The directory is created on the first mount, owned by the user and by default with mode 0700 (see \fBhome_share_permissions\fR).
 .PP
 Two naming schemes are available, chosen when the share is created:
 .RS
@@ -49,7 +49,7 @@ The directory is named after the user UUID. Renaming a user keeps the directory.
 The directory is named after the user name (uid), which is what one expects below e.g. /home. Implies \fB\-\-home\-share\fR.
 .RE
 .PP
-A \fBroot mount token\fR gets no home dir and mounts \fIshare_root\fR itself, so it reaches the home dirs of all users (see \fBadd_root_mount_token\fR).
+A \fBroot mount token\fR gets no home dir and mounts the root directory of the share itself, so it reaches the home dirs of all users (see \fBadd_root_mount_token\fR).
 .PP
 Home shares can be encrypted. Every home dir is then encrypted on its own, with a share key per user, which is why an encrypted home share has no root mount token.
 .SH RESTORE SHARES
@@ -635,6 +635,7 @@ Needs the ACL \fBadd:root_mount_token\fR.
 .B remove_root_mount_token \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
 Take that away again.
 The hosts are told to unmount the share for the token, like with \fBremove_token\fR.
+A token that is on the share as well, itself or through a role, is told to mount it again then, and gets its home dir; a no mount token is not.
 .br
 Needs the ACL \fBremove:root_mount_token\fR.
 .SS No Mount Token
@@ -865,16 +866,19 @@ Needs the ACL \fBremove:orphans\fR.
 .SS Creation Options
 .TP
 .B \-\-force\-group \fIGROUP\fR
-Force group for the share.
+Give every file and directory that is created on the share to this group, see \fBforce_group\fR above.
 .TP
 .B \-\-force\-directory\-mode \fIMODE\fR
-Force directory creation mode.
+Create every directory with this mode, written like 0o770, see \fBforce_directory_mode\fR above.
 .TP
 .B \-\-force\-create\-mode \fIMODE\fR
-Force file creation mode.
+Create every file with this mode, written like 0o660, see \fBforce_create_mode\fR above.
 .TP
 .B \-\-crypt
-Enable encryption for the share.
+Make an encrypted share, see \fBEncryption\fR above.
+It cannot be changed later.
+.br
+\fBadd\fR asks for the master password twice, makes the share key from it and adds your token to the share with a copy of the key; with \fB\-\-no\-mount\-token\fR as a no mount token.
 .TP
 .B \-\-no\-key\-gen
 Do not generate an AES key.
@@ -897,10 +901,13 @@ Such a share has no master password settings of its own, and then every master p
 Data written under such a mount cannot be read again.
 .TP
 .B \-\-block\-size \fISIZE\fR
-Encrypted share block size (default 4096).
+With \fB\-\-crypt\fR: the size of the blocks the files are encrypted in, a power of two from 512 to 1048576.
+Default 4096.
+.br
+It is written to the share directory at the first mount and cannot be changed after that.
 .TP
 .B \-\-restore \fIRESTORE_SHARE\fR
-Make a restore share that shows the backups of this share, see \fBRESTORE SHARES\fR above.
+Make the new share a restore share that shows the backups of \fIRESTORE_SHARE\fR, see \fBRESTORE SHARES\fR above.
 .TP
 .B \-\-restore\-token \fITOKEN\fR
 With \fB\-\-restore\fR: add this token to the new share right away.
@@ -910,73 +917,31 @@ It has to be assigned to the share the backups are of.
 Add the token that \fBadd\fR puts on the share as a no mount token, see \fBNo Mount Token\fR above: your own with \fB\-\-crypt\fR, the one of \fB\-\-restore\-token\fR with \fB\-\-restore\fR.
 It may mount the share, but the share is not mounted for it at login.
 Without such a token, e.g. with \fB\-\-no\-key\-gen\fR or on a home share, it is refused.
-.SS Display Options
-.TP
-.B \-a
-Show all shares.
-.TP
-.B \-z \fISIZE\fR
-Limit output size.
-.TP
-.B \-\-fields \fIFIELD1,FIELD2\fR
-Display only specified fields.
-.TP
-.B \-\-node\-limit \fIN\fR
-Limit number of nodes shown.
-.TP
-.B \-\-pool\-limit \fIN\fR
-Limit number of pools shown.
-.TP
-.B \-\-token\-limit \fIN\fR
-Limit number of tokens shown.
-.TP
-.B \-\-role\-limit \fIN\fR
-Limit number of roles shown.
-.TP
-.B \-\-group\-limit \fIN\fR
-Limit number of groups shown.
-.TP
-.B \-\-policy\-limit \fIN\fR
-Limit number of policies shown.
-.TP
-.B \-\-limit \fIN\fR
-Limit number of items shown per object.
-.TP
-.B \-\-sort\-by \fIFIELD\fR
-Sort output by field.
-.TP
-.B \-\-reverse
-Reverse sort order.
-.TP
-.B \-\-raw
-Output without headers/borders.
-.TP
-.B \-\-csv
-Output as CSV.
-.TP
-.B \-\-csv\-sep \fISEP\fR
-CSV separator character.
-.TP
-.B \-\-attribute \fIATTR\fR
-Of \fBlist\fR: match the regex against this attribute instead of the name.
-.SS General Options
-.TP
-.B \-\-keep\-acls
-Preserve ACLs when moving share.
-.TP
-.B \-\-password \fIPASS\fR
-Password for encrypting exports.
-.TP
-.B \-r
-List roles recursively.
 .PP
-Global options are available for all commands. See
-.BR otpme (1)
-for details.
+The options of every other command are described with that command above.
+.PP
+Global options work with every command, see
+.BR otpme (1).
 .SH CONFIG PARAMETERS
-Configuration parameters can be set with the \fBconfig\fR command and displayed with \fBshow_config\fR.
-For a complete description of all available parameters and their applicable object types, see
+A share takes these.
+What each of them does, and how a parameter is resolved, is in
 .BR otpme (7).
+.TP
+.B send_share_notifications \fR(bool, default: false)
+Whether the hosts are told when the share changes, see \fBTelling the hosts\fR above.
+.TP
+.BR backup_enabled ", " backup_mode ", " backup_server ", ..."
+The backup of the share, see \fBBackup\fR in
+.BR otpme (7)
+and
+.BR otpme\-backup (1).
+Without \fBbackup_mode\fR a share is backed up as \fBtree\fR, which a restore share needs.
+.TP
+.B changelog \fR(bool, default: true)
+Whether the commands on this share are written to its changelog.
+.TP
+.B allow_changelog_clearing \fR(bool, default: true)
+Whether that changelog may be cleared.
 .SH EXAMPLES
 .TP
 .B otpme-share add myshare
@@ -997,26 +962,38 @@ Add a token to the share
 .B otpme-share add_pool myshare europe
 Add a pool to the share
 .TP
+.B otpme-share add \-\-home\-share homes
+Create a home share, each user gets \fI<share_root>/homes/<user uuid>\fR
+.TP
 .B otpme-share add \-\-home\-share\-uid homes
-Create a home share, each user gets \fI<share_root>/<username>\fR
+The same, but each user gets \fI<share_root>/homes/<username>\fR
 .TP
 .B otpme-share home_share_permissions homes 0o750
 Let the home dirs group be readable
 .TP
 .B otpme-share add_root_mount_token homes backup/login
 Let the token "backup/login" mount the share root and reach all home dirs
+.TP
+.B otpme-share add \-\-restore myshare \-\-restore\-token alice/login myshare-backups
+A restore share that shows the backups of "myshare"; alice/login may mount it
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
 .BR otpme\-acls (7),
 .BR otpme\-mount (1),
-.BR otpme-pool (1),
-.BR otpme-token (1),
-.BR otpme-role (1)
-
+.BR otpme\-backup (1),
+.BR otpme\-trash (1),
+.BR otpme\-token (1),
+.BR otpme\-role (1),
+.BR otpme\-group (1),
+.BR otpme\-accessgroup (1),
+.BR otpme\-host (1),
+.BR otpme\-pool (1),
+.BR otpme\-policy (1),
+.BR otpme\-tool (1)
 .SH AUTHOR
 the2nd <the2nd@otpme.org>
 .SH NOTE
 This manual page was created with AI assistance.
 .SH COPYRIGHT
-Copyright \(co 2014-2025 the2nd. License: GPLv3
+Copyright \(co 2014-2026 the2nd. License: GPLv3

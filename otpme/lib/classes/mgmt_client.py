@@ -14,6 +14,7 @@ from otpme.lib import oid
 from otpme.lib import config
 from otpme.lib import connections
 from otpme.lib.register import register_module
+from otpme.lib.classes import get_object_module_path
 
 from otpme.lib.exceptions import *
 
@@ -181,7 +182,7 @@ class OTPmeMgmtClient(object):
         # nothing registers the object types on the client side. Without
         # this every absolute path died with "Unknown object type".
         if [x for x in object_list if x.startswith("/")]:
-            register_module(f"otpme.lib.classes.{command}")
+            register_module(get_object_module_path(command))
 
         # If this command includes a OTPme object (e.g. user, token etc.)
         # we need to do some special handling.

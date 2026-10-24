@@ -151,6 +151,11 @@ class IncrementalDict(IncrementaObject):
             add_value = False
         if isinstance(value, IncrementalDict):
             add_value = False
+        # A list or dict is written by the increments of its items. An
+        # empty one has none, and without this the key would be lost on
+        # write.
+        if not add_value and len(value) == 0:
+            add_value = True
         if not add_value:
             return
         self.incremental_add(key, value)

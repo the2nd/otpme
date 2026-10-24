@@ -14,6 +14,15 @@ in the log and leaves the key that is written down where it is. Somebody
 with root takes the key of the tree over by hand, with otpme-tool
 update_host_keys, which shows what it is about to change.
 
+Nothing written down is ever taken away by the sync, not even for a
+host that is gone: whoever controls a node could otherwise delete a
+host and add it again with the same uuid and a key of their own. The
+pins of hosts that are gone are removed with update_host_keys as well.
+
+On hosts only. A node holds the tree, and whoever controls it controls
+what would be written down there as well; a session started on a node
+is held against the key of the tree (rac_client.get_host_public_key()).
+
 Nothing is parked anywhere in between. What a host's key would be is
 read from the host object when update_host_keys runs, so what is shown
 is the tree as it is at that moment and not what some sync saw.
@@ -133,11 +142,12 @@ def note_key(host_uuid, public_key):
     object again when somebody runs update_host_keys, so there is no
     second copy here that could be out of date by then.
 
-    A host whose key is taken away loses what was written down as well:
-    there is nothing left to hold it to.
+    A host whose key is taken away keeps what was written down. Taking
+    it away and setting another is what somebody who controls a node
+    would do to get a key of their own past us; a pin goes by hand only,
+    with update_host_keys.
     """
     if not public_key:
-        del_pin(host_uuid)
         return "unchanged"
     pinned = get_pin(host_uuid)
     if pinned is None:

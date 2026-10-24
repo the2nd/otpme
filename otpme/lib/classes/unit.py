@@ -69,6 +69,13 @@ write_value_acls = {
                                 "script",
                                 "policy",
                                 "resolver",
+                                "pass",
+                                "vlan",
+                                "device",
+                                "pool",
+                                "share",
+                                "scope",
+                                "dictionary",
                                 ],
                     "set"       : [
                                 "config",
@@ -86,6 +93,13 @@ write_value_acls = {
                                 "script",
                                 "policy",
                                 "resolver",
+                                "pass",
+                                "vlan",
+                                "device",
+                                "pool",
+                                "share",
+                                "scope",
+                                "dictionary",
                                 ],
                     }
 
@@ -523,6 +537,31 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'list_acls',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'sign_password_members'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'sign_password_members',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'unsign_password_members'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'unsign_password_members',
+                    'oargs'             : ['signer'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'show_password_members'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_password_members',
                     'job_type'          : 'thread',
                     },
                 },

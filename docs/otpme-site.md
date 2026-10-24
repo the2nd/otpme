@@ -147,9 +147,10 @@ Needs the ACL **touch**.
 A site is changed on the site itself. From another site only a few
 things can be set, the ones that say how your site deals with that one:
 **description**, **enable** and **disable**, **enable_auth** and
-**disable_auth**, **enable_sync** and **disable_sync**. Everything else
-is refused there, because the next sync would bring the site's own
-values back.
+**disable_auth**, **enable_sync** and **disable_sync**. And **touch**,
+which changes nothing: it only builds the index of your copy anew.
+Everything else is refused there, because the next sync would bring the
+site's own values back.
 
 The three commands that change how the site is reached ask first; the
 global option **-f** skips the question.
@@ -776,6 +777,22 @@ Needs the ACL **delete:fido2_ca_cert**.
 Print the subjects of the CA certificates of the site, one per line.  
 Needs the ACL **view:fido2_ca_cert**.
 
+## Password Members
+
+The config parameter **password_store_members** of the site names who
+gets the keys of the passwords, where no unit sets it, see
+**otpme-pass**(1). The members count only when a user signed them. The
+commands are the same as for a unit, see **otpme-unit**(1).
+
+**sign_password_members *site***  
+Sign the members with your sign key.
+
+**show_password_members *site***  
+Show the members, the users they stand for, and each signature.
+
+**unsign_password_members \[**--signer** *user*\] *site***  
+Remove your signature, or with **--signer** the one of that user.
+
 ## Object Changelog
 
 Every change to the object writes an entry: who made it, when, and what
@@ -1165,7 +1182,7 @@ replaced by the sync, see **renew_cert**.
 **otpme-realm**(1), **otpme-node**(1), **otpme-host**(1),
 **otpme-ca**(1), **otpme-tool**(1), **otpme-client**(1),
 **otpme-scope**(1), **otpme-policy**(1), **otpme-dictionary**(1),
-**otpme-unit**(1), **otpme-trash**(1)
+**otpme-unit**(1), **otpme-pass**(1), **otpme-trash**(1)
 
 # AUTHOR
 

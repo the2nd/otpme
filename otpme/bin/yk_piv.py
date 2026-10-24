@@ -340,10 +340,16 @@ def main():
     elif args.public_key_out:
         # No PIN: the public key is read from the slot metadata, or
         # from the certificate of the slot where there is one.
-        sys.stdout.write(export_public_key(
-            slot=args.slot or SIGN_SLOT_DEFAULT,
-            serial=args.serial,
-        ))
+        slot = args.slot or SIGN_SLOT_DEFAULT
+        if args.use_agent:
+            # The agent holds the card while it has a PIV session.
+            agent = _get_agent()
+            sys.stdout.write(agent.piv_get_public_key(slot=slot))
+        else:
+            sys.stdout.write(export_public_key(
+                slot=slot,
+                serial=args.serial,
+            ))
 
     elif args.import_cert:
         if not args.slot:

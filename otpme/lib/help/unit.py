@@ -248,6 +248,31 @@ cmd_help = {
                                 },
                 },
 
+    'sign_password_members'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-unit sign_password_members {unit}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Sign password_store_members of this unit.'),
+                                },
+                },
+
+    'unsign_password_members'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-unit unsign_password_members [--signer <user>] {unit}'),
+                    'cmd'   :   '--signer :signer: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove your signature of password_store_members of this unit.'),
+                                    '--signer <user>'       : _('Remove the signature of this user instead.'),
+                                },
+                },
+
+    'show_password_members'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-unit show_password_members {unit}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show password_store_members of this unit and their signatures.'),
+                                },
+                },
+
 
      'enable_acl_inheritance'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit enable_acl_inheritance {unit}'),

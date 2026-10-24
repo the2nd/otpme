@@ -51,7 +51,8 @@ Delete a node. It goes to the trash, from where **otpme-trash**(1) can
 bring it back; **--no-trash** deletes it right away.
 
 The certificate of the node is revoked and the sessions it holds are
-deleted. The node that holds the master role is refused: let the role
+deleted. The passwords of the node stay; the question says how many
+there are. The node that holds the master role is refused: let the role
 move first, see **The Master Role** below.
 
 The shares and pools that name this node keep their reference. Nothing
@@ -246,6 +247,20 @@ serves nothing. See **otpme-share**(1).
 **find_pools \[**--return-type** *TYPE*\] *node***  
 The pools this node serves. A pool hands out shares of its own, and it
 names its nodes the same way a share does, see **otpme-pool**(1).
+
+## Passwords
+
+Passwords can belong to the node, for example the password of its iDRAC,
+see **otpme-pass**(1). Each password decides itself whether you may see
+it.
+
+**find_passwords \[**--return-type** *TYPE*\] *node***  
+The password objects that belong to the node.
+
+**show_password *node* \[*entry*\]**  
+Show the entries of these passwords, with their passwords. With *entry*
+only the entries of that name.  
+Each password needs **view:entries**, and you need a key for it.
 
 ## Dynamic Groups
 
@@ -693,6 +708,7 @@ well, so a cluster of alike nodes is configured once.
 
 Then the settings the daemons of the node read: **authd_workers**,
 **authd_max_workers**, **authd_worker_threads**, **authd_idle_timeout**,
+**syncd_workers**, **syncd_max_workers**, **syncd_worker_threads**,
 **ldapd_processes**, **ldap_cache**, **ldap_shared_cache**,
 **ldap_shared_cache_time**, **httpd_workers**, **httpd_ssl_workers**,
 **httpd_socket_uri**, **httpd_ssl_socket_uri**, **socket_backlog**,
@@ -828,9 +844,9 @@ The SSH keys of that user, as sshd gets them through
 **pam_otpme**(8), **otpme-cluster**(1), **otpme-tool**(1),
 **otpme-host**(1), **otpme-realm**(1), **otpme-site**(1),
 **otpme-token**(1), **otpme-role**(1), **otpme-script**(1),
-**otpme-share**(1), **otpme-pool**(1), **otpme-policy**(1),
-**otpme-backup**(1), **otpme-shell**(1), **otpme-trash**(1),
-**otpme-ca**(1)
+**otpme-share**(1), **otpme-pool**(1), **otpme-pass**(1),
+**otpme-policy**(1), **otpme-backup**(1), **otpme-shell**(1),
+**otpme-trash**(1), **otpme-ca**(1)
 
 # AUTHOR
 

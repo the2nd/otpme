@@ -11,33 +11,149 @@ provides various utility commands for the OTPme system including realm join/leav
 .SH COMMANDS
 .SS Realm
 .TP
-.B join \fR[\fIoptions\fR] [\fIdomain\fR]
-Join OTPme realm.
+.B join \fR[\fB\-\-jotp\fR \fIjotp\fR] [\fB\-\-host\-type\fR \fBhost\fR|\fBnode\fR] [\fB\-\-unit\fR \fIunit\fR] [\fB\-\-host\-key\-len\fR \fIbits\fR] [\fB\-\-ca\-key\-len\fR \fIbits\fR] [\fB\-\-ca\-valid\fR \fIdays\fR] [\fB\-\-site\-key\-len\fR \fIbits\fR] [\fB\-\-site\-valid\fR \fIdays\fR] [\fB\-\-trust\-site\-cert\fR|\fB\-\-check\-site\-cert\fR \fIfingerprint\fR] [\fB\-\-joind\-uri\fR \fIuri\fR] [\fB\-\-no\-daemon\-start\fR] [\fIdomain\fR]
+Make this machine a host or a node of a realm.
+You must be root, and the machine must not be in a realm yet.
+.RS
+.PP
+\fBFinding the realm.\fR
+The joind of the realm is looked up in DNS, as the SRV record \fB_otpme\-join._tcp.\fR\fIdomain\fR.
+Realm and site come from the TXT records \fB_otpme\-realm._tcp.\fR\fIdomain\fR and \fB_otpme\-site._tcp.\fR\fIdomain\fR, or from the global options \fB\-r\fR and \fB\-s\fR.
+Without \fIdomain\fR it is \fIsite\fR.\fIrealm\fR when \fB\-r\fR and \fB\-s\fR are given, else the domain of the FQDN of this machine.
+.br
+\fB\-\-joind\-uri\fR names the joind instead of the SRV record, e.g. \fBtcp://node1.berlin.example.org:2024\fR; 2024 is the port of joind.
+.PP
+\fBWho may join.\fR
+With \fB\-\-jotp\fR nobody logs in: the JOTP is the one-time password that
+.B otpme\-host add
+or
+.B otpme\-node add
+printed, and the object has to exist.
+.br
+Without it you log in as a user: the one of the global option \fB\-u\fR, else root.
+The user needs the ACL \fBjoin:host\fR or \fBjoin:node\fR on the access group \fBJOIN\fR.
+An object that is not there yet is made in \fB\-\-unit\fR, which needs \fBadd:host\fR or \fBadd:node\fR on that unit.
+.PP
+\fB\-\-host\-type\fR is \fBhost\fR by default.
+A host joins the site of the joind it asks.
+.PP
+\fB\-\-unit\fR is \fBhosts\fR or \fBnodes\fR by default.
+An object that exists has to be in this unit: one in another unit needs \fB\-\-unit\fR.
+.PP
+\fBKeys.\fR
+\fB\-\-host\-key\-len\fR, or \fB\-\-node\-key\-len\fR, is the length of the key of the certificate of this machine, when it has none yet.
+The default is the config variable \fBdefault_host_key_len\fR or \fBdefault_node_key_len\fR.
+.br
+The first node of a site makes the CA of the site and the site certificate as well, the way
+.B otpme\-realm init
+does it for the first site:
+\fB\-\-ca\-key\-len\fR and \fB\-\-ca\-valid\fR are for the CA, which the CA of the parent site or the realm signs,
+\fB\-\-site\-key\-len\fR and \fB\-\-site\-valid\fR for the site certificate.
+The defaults are \fBdefault_ca_key_len\fR, \fBdefault_ca_validity\fR, \fBdefault_site_key_len\fR and \fBdefault_site_validity\fR.
+Any other join leaves these four alone.
+.PP
+\fBThe site certificate.\fR
+join shows the fingerprint of the certificate of the site it connects to and asks whether to trust it.
+\fB\-\-check\-site\-cert\fR compares it instead, given as \fBsha256:\fR\fIhex\fR, \fBsha1:\fR\fIhex\fR or the sha256 hex alone; the colons and capitals of
+.B openssl x509 \-fingerprint
+are fine.
+\fB\-\-trust\-site\-cert\fR trusts any certificate.
+.PP
+At the end join starts the OTPme daemons, unless \fB\-\-no\-daemon\-start\fR.
+It prints the LOTP that \fBleave\fR takes, where the host or node has LOTPs enabled.
+.br
+An object that has joined already is refused; the global option \fB\-f\fR joins it again.
+.RE
 .TP
-.B leave \fR[\fIoptions\fR] [\fIdomain\fR]
-Leave OTPme realm.
+.B leave \fR[\fB\-\-lotp\fR \fIlotp\fR] [\fB\-\-offline\fR] [\fB\-\-keep\-host\fR|\fB\-\-no\-keep\-host\fR] [\fB\-\-keep\-data\fR] [\fB\-\-keep\-cache\fR] [\fB\-\-keep\-cert\fR]
+Take this machine out of its realm.
+You must be root.
+The master node cannot leave.
+.RS
+.PP
+leave stops the OTPme daemons and
+.BR otpme\-agent ,
+tells the realm, and removes the data of the realm from this machine:
+its objects, \fB/var/lib/otpme\fR, \fB/var/cache/otpme\fR, \fB/var/spool/otpme\fR, the certificate and its key, and the auth key.
+.PP
+With \fB\-\-lotp\fR nobody logs in: the LOTP is the one join printed.
+Without it you log in as a user: the one of the global option \fB\-u\fR, else the one logged in to
+.BR otpme\-agent ,
+else root.
+The user needs \fBleave:host\fR or \fBleave:node\fR on the access group \fBJOIN\fR.
+Either way the realm checks the certificate of this machine.
+.PP
+On the realm a host is kept by default: its certificate is revoked and it is disabled, and it can join again.
+A node is deleted.
+\fB\-\-keep\-host\fR and \fB\-\-no\-keep\-host\fR say otherwise.
+.TP
+.B \-\-keep\-cert
+Keep the certificate: it is not revoked, it stays on this machine, and the object is kept on the realm.
+.TP
+.B \-\-keep\-cache
+Keep \fB/var/cache/otpme\fR, with the users and groups of nsscache.
+.TP
+.B \-\-keep\-data
+Remove nothing but the files that make this machine a member, \fB/etc/otpme/otpme.uuid\fR and \fB/etc/otpme/otpme.host_type\fR.
+It takes \fB\-\-keep\-cert\fR with it.
+.TP
+.B \-\-offline
+Do not tell the realm, which changes nothing there: the object stays, the certificate is not revoked.
+For a machine that cannot reach its realm any more.
+.RE
 .TP
 .B get_realm
-Show realm of this host.
+Print the realm this machine is a member of.
+Nothing is printed when it is in none.
 .TP
 .B get_site
-Show site of this host.
+Print the site this machine is a member of, the same way.
 .TP
 .B get_user_site
-Get site of login user.
+Print the site of a user: the one of the global option \fB\-u\fR, else the one logged in to
+.BR otpme\-agent .
+It asks hostd, so the machine has to be in a realm.
 .SS Session
+A login to the realm is kept by
+.BR otpme\-agent ,
+one per system user.
+These commands ask the agent of the user who runs them, for the session of the login they run in.
 .TP
-.B login \fR[\fB\-\-node\fR \fInode\fR] [\fIusername\fR]
-Login to OTPme realm.
+.B login \fR[\fB\-\-node\fR \fInode\fR] [\fB\-\-no\-authorize\-host\fR] [\fIusername\fR]
+Log in to the realm.
+It starts
+.B otpme\-agent
+if it is not running, asks for the password or OTP of the user, and leaves the session with the agent.
+The user is \fIusername\fR, else the one of the global option \fB\-u\fR, else the system user.
+A user who is logged in already is refused.
+.br
+This is not the login of PAM: no shares are mounted, and nothing is kept for offline logins.
+.RS
+.TP
+.B \-\-node \fInode\fR
+Send the login to this node, instead of the one DNS names.
+.TP
+.B \-\-no\-authorize\-host
+Do not ask whether the token may log in on this host, through the roles and groups of the host, and do not apply \fBlogins_limited\fR.
+For tests, e.g. to log in as a user on a node without assigning the token there.
+The policies of the token, the user and the access group still apply.
+A login through PAM always asks.
+.RE
 .TP
 .B logout
-Logout from OTPme realm.
+Log out of the realm.
+The shares mounted for the session are unmounted first; if that fails, nothing is logged out.
+Then the session is ended on every site it is logged in to, and the agent drops it.
+A site that could not be told is named in the error; the agent drops the session all the same.
 .TP
 .B whoami
-Show currently logged in user.
+Print the name of the user that is logged in.
 .TP
 .B who
-Show all users currently logged in on this host (across TTYs and desktop sessions).
+Print the users that are logged in to the realm, on every host of the site: user, login token, host, IP address, when the agent connected, when the user logged in, the session and the version of OTPme.
+A user logged in more than once on a host is one line.
+.br
+It asks the idled of the master node, so it says nothing while the cluster is not healthy.
 .br
 Nodes may run it.
 A host may when the site has
@@ -46,6 +162,15 @@ on, or lists it in
 .BR allow_who ,
 see
 .BR otpme (7).
+That is decided for the host: every user who may read its certificate key may run it there.
+.TP
+.B host_who
+Print the hosts and nodes that wait to be told of a job: host, type, IP address and when they connected.
+A host that is listed hears of a new job at once, for example of
+.BR otpme\-shell ;
+one that is not picks it up at its next sync.
+.br
+Who may run it is the same as for \fBwho\fR.
 .TP
 .B message \fR[\fB\-\-user\fR \fIusername\fR] [\fB\-\-host\fR \fIhostname\fR] [\fB\-\-all\fR] [\fB\-\-title\fR \fItitle\fR] \fItext\fR
 Show a message box to users that are logged in.
@@ -58,7 +183,7 @@ Give one of
 or
 .BR \-\-all :
 one user, all users logged in on one host, or all users of this site.
-The command says how many users were told.
+The command says how many users it found logged in, the way \fBwho\fR lists them; each session of a user gets the message.
 .PP
 The window is drawn by the first helper the user's host has:
 .BR kdialog ,
@@ -66,8 +191,9 @@ The window is drawn by the first helper the user's host has:
 .B pinentry
 or
 .BR xmessage .
-A host with none of them, or a user who is logged in on a terminal, gets a desktop notification instead.
+A host with none of them gets a desktop notification instead.
 Such a notification cannot be confirmed, so it stays until the user closes it.
+A session without a display of its own gets the window on the display of the user's other processes, else on \fB:0\fR.
 .PP
 Nothing comes back when the user clicks OK.
 .PP
@@ -79,60 +205,145 @@ see
 Only users of your own site can be reached, because the message goes through the idled of that site.
 .RE
 .TP
-.B show_sessions
-Get otpme-agent login sessions.
+.B show_sessions \fR[\fIpid\fR]
+List the sessions of the agent you may see: the PID of the login, the token, the pass type, realm and site, whether it is a login or the passphrase of an SSH key, who else may use it, and the sites it is logged in to.
+With the \fIpid\fR of a login: its sessions on each site, with login time, last and next renegotiation, timeouts, whether it may go offline, and the session UUID.
 .TP
 .B get_login_session_id
-Get otpme-agent login session ID.
+Print the ID of the agent session of this login, the one PAM puts into \fBOTPME_LOGIN_SESSION\fR.
 .TP
 .B get_login_token
-Show token of currently logged in user.
+Print the token the user logged in with.
 .TP
 .B get_login_token_type
-Show token type of currently logged in user.
+Print the type of that token.
 .TP
 .B get_login_pass_type
-Show token password type used at login.
+Print what was given at login, for example \fBotp\fR or \fBstatic\fR.
+.br
+These three also answer for an offline login.
 .TP
 .B get_tty
-Get TTY for logged in user.
+Print the TTY the login was made on.
 .TP
 .B get_display
-Get \fBDISPLAY\fR of currently logged in user.
+Print the \fBDISPLAY\fR PAM gave the login.
 .TP
 .B get_sotp \fR[\fB\-\-site\fR \fIsite\fR]
-Get a SOTP for logged in user.
+Print an SOTP, a one-time password made from the session: it is how the tools of a logged-in user, e.g. the mount of a share, authenticate as that session.
+It is valid for about a minute.
+.br
+With \fB\-\-site\fR it is made for the session at that site of the realm.
+Without one there yet, the agent logs in there first, which the site of the user has to trust.
 .TP
 .B get_srp
-Get a SRP for logged in user.
+Print the SRP, the session refresh password.
+Sent instead of a password, it keeps the session on the node from running into its unused timeout, and authenticates nothing.
+It changes with every renegotiation.
 .TP
 .B get_jwt \fIchallenge\fR
-Request JWT from mgmtd.
+Print a JWT that authd signs with the key of the site, for \fIchallenge\fR, after you authenticated once more with password or OTP.
+It is what an \fBauth_on_action\fR policy asks for; as a command it is there to test that.
 .TP
 .B reneg
-Try to renegotiate login session.
+Renegotiate the session with the site of the global options \fB\-r\fR and \fB\-s\fR, by default the one of this host, now and not when it is due.
+A session that cannot be renegotiated any more, because it timed out or the node refuses it, is ended.
+With \fB\-v\fR it says when it worked.
 .TP
 .B reset_reauth
-Reset auth_on_action reauth.
+Forget that you authenticated again for an \fBauth_on_action\fR policy, so that the next action it protects asks.
 .TP
 .B do_reauth
-Trigger a manual \fBauth_on_action\fR reauth, e.g. from a helper script that wants to force the next protected action to prompt for reauthentication.
+Authenticate again for an \fBauth_on_action\fR policy now, with password or OTP.
+Actions it protects do not ask again until its \fBreauth_timeout\fR has passed.
+.br
+Both are kept by the mgmtd of the node you are connected to, not for the realm.
 .SS Synchronization
 .TP
-.B sync \fR[\fB\-\-realm\fR \fIrealm\fR] [\fB\-\-site\fR \fIsite\fR] [\fIsync_type\fR]
-Tell OTPme daemon to start sync with master node. Sync types: sites, objects, token_data, ssh_authorized_keys, nsscache.
+.B sync \fR[\fB\-\-realm\fR \fIrealm\fR] [\fB\-\-site\fR \fIsite\fR] [\fB\-\-request\-site\-cert\fR] [\fIsync_type\fR]
+Tell hostd to start a sync now and not when it is due.
+The sync runs in the background: the command prints \(lqCommand queued\(rq and does not wait for it.
+Use \fBsync_status\fR to see how it went.
+Only root and the user \fBotpme\fR may do this.
+The sync types:
+.RS
 .TP
-.B resync \fR[\fB\-\-realm\fR \fIrealm\fR] [\fB\-\-site\fR \fIsite\fR] \fIsync_type\fR
-Tell OTPme daemon to start resync the given data type.
+.B sites
+The realm and site objects.
 .TP
-.B sync_status
-Get time of last successful sync.
+.B objects
+The objects this host gets.
+A node gets the objects of its own site from the other nodes of the site, not this way.
+A sites sync runs first.
 .TP
-.B do_sync \fR[\fIoptions\fR] \fIsync_type\fR
-Do a manual hostd sync. Sync types: objects, token_counters, used_otps, nsscache, ssh_authorized_keys.
+.B token_data
+The used OTPs and token counters of the offline logins on this host.
+.TP
+.B ssh_authorized_keys
+The SSH keys this host gets, and the \fBauthorized_keys\fR files made from them.
+.TP
+.B nsscache
+The NSS cache, built from the objects this host already has.
+.RE
 .IP
+Without a sync type it syncs objects, token_data and ssh_authorized_keys.
+.IP
+.B \-\-realm \fIrealm\fR
+and
+.B \-\-site \fIsite\fR
+sync the objects of this realm or site only.
+They work with the sync type objects only.
+.IP
+.B \-\-request\-site\-cert
+takes the site certs anew from the sites.
+Each host keeps the cert of every site in \fI/etc/otpme/ssl/\fR, and a sync does not replace it.
+After a \fBrenew_cert\fR of a site, run \fBsync \-\-request\-site\-cert sites\fR on the hosts and nodes of the realm.
+The cert is taken only if it is the cert of that site and the CA of the site issued it and did not revoke it.
+It works with the sync type sites only.
+.TP
+.B resync \fR[\fB\-\-realm\fR \fIrealm\fR] [\fB\-\-site\fR \fIsite\fR] \fBobjects\fR|\fBnsscache\fR
+Like \fBsync\fR, but full: \fBobjects\fR compares every object with the site, not only the ones that changed since the last sync, and then builds the NSS cache new.
+\fBnsscache\fR builds the NSS cache new from scratch.
+Nothing is removed before.
+\fB\-\-realm\fR and \fB\-\-site\fR work as with \fBsync\fR.
+.TP
+.B sync_status \fR[\fIsync_type\fR]
+Show for each site and sync type when the last sync run started, and how it went: how long ago that was, how far a running one is, or when it last failed.
+\(lqNever synced\(rq means no run started yet.
+Every user may run it.
+On a node the objects of its own site are not listed, see \fBsync\fR.
+.TP
+.B do_sync \fR[\fB\-\-realm\fR \fIrealm\fR] [\fB\-\-site\fR \fIsite\fR] [\fB\-\-resync\fR] [\fB\-\-offline\fR] [\fB\-\-sync\-older\-objects\fR] [\fB\-\-ignore\-changed\-objects\fR] [\fB\-\-remove\-orphan\-objects\fR] \fIsync_type\fR
+Do a sync here and now, without hostd: it connects to syncd itself and waits until the sync is done.
+It works when hostd does not run.
+If it cannot connect, it uses what an earlier sync left in the sync cache on disk.
+Only root may do this.
+The sync types: \fBobjects\fR, \fBtoken_counters\fR, \fBused_otps\fR, \fBnsscache\fR and \fBssh_authorized_keys\fR, which also writes the \fBauthorized_keys\fR files.
+.RS
+.TP
+.B \-\-realm \fIrealm\fR, \-\-site \fIsite\fR
+The site to sync with.
+The default is the site of this host.
+.TP
+.B \-\-resync
+Compare every object, not only the ones that changed since the last sync.
+.TP
+.B \-\-offline
+Sync the token data of the offline logins.
+A host can sync token_counters and used_otps only with this.
+.TP
+.B \-\-sync\-older\-objects
+Also take objects that are older than the local ones.
+For a node, with its own site.
+.TP
+.B \-\-ignore\-changed\-objects
+Also take objects that changed on the site while the sync ran.
+.TP
 .B \-\-remove\-orphan\-objects
-also removes local objects of a type this host no longer syncs. A normal sync never names those objects, so nothing else takes them away. It runs only after a sync that finished and left no object behind.
+Also remove local objects of a type this host no longer syncs.
+A normal sync never names those objects, so nothing else takes them away.
+It runs only after a sync that finished and left no object behind.
+.RE
 .TP
 .B force_sync \fIobject_id\fR
 Write an object again, whole. The search index, the ACLs and the LDIF data are built from the object itself instead of being updated step by step. Entries that were left over are removed this way. Use it when the index of an object does not match the object.
@@ -141,7 +352,10 @@ This also sets the last modified time of the object, so other nodes fetch it aga
 .IP
 It takes an object ID, so it works for every object. This includes the ones without a
 .B touch
-command, like a host inventory or a used OTP. You need to be admin.
+command, like a host inventory or a used OTP.
+A session cannot be written this way.
+It fails while the site is in maintenance.
+You need to be admin.
 .SS Cryptographic Operations
 .TP
 .B sign \fR[\fB\-\-stdin\-pass\fR] \fIfile\fR \fIsign_file\fR
@@ -192,6 +406,17 @@ It lets that signer ask for a shell on a key the job brings along, instead of on
 That way in needs nothing but the signature of the job, so it is off unless you say otherwise.
 See
 .BR otpme\-shell (1).
+.PP
+A signer of type
+.B password
+says whose signature of
+.B password_store_members
+this host trusts.
+Without one,
+.B otpme\-pass
+encrypts nothing on this host.
+See
+.BR otpme\-pass (1).
 .RE
 .TP
 .B del_signer \fR[\fB\-\-private\fR] \fIsigner_uuid\fR
@@ -234,6 +459,32 @@ What it shows is what it will take over.
 Name a \fIhost\fR to take over that one alone.
 .PP
 You must be root, because the keys are read from this host's copy of the realm, and the global \fB\-f\fR skips the question.
+.B \-\-list
+only shows and changes nothing.
+.PP
+It also removes the keys of hosts that are gone.
+Nothing else does: the sync never takes a key away.
+.RE
+.SS User Keys
+.TP
+.B update_user_keys \fR[\fB\-\-list\fR] [\fIuser\fR]
+Take over the encrypt public keys of users whose key changed.
+Only with \fBPIN_USER_KEYS\fR, see
+.BR otpme.conf (5).
+.RS
+.PP
+.B otpme\-pass
+encrypts the keys of passwords with these keys, see
+.BR otpme\-pass (1).
+With that parameter the encrypt public key of every user synced here is written down.
+A member whose key differs from the one written down gets no key until somebody takes the new key over here.
+.PP
+It works like \fBupdate_host_keys\fR: it shows every user whose key in the realm is not the one written down, with both fingerprints, and asks once.
+Name a \fIuser\fR to take over that one alone.
+It also removes the keys of users that are gone.
+.PP
+You must be root, and only on a host.
+The global \fB\-f\fR skips the question, and
 .B \-\-list
 only shows and changes nothing.
 .RE
@@ -353,56 +604,6 @@ Run login benchmark.
 .B detect_smartcard \fR[\fB\-t\fR \fItype1,type2\fR]
 Detect connected smartcards.
 .SH OPTIONS
-.SS Join Options
-.TP
-.B \-\-jotp \fIJOTP\fR
-Join using the given JOTP.
-.TP
-.B \-\-host\-type \fInode|host\fR
-Join host as type.
-.TP
-.B \-\-unit \fIUNIT\fR
-Join host to the given unit.
-.TP
-.B \-\-host\-key\-len \fILENGTH\fR
-Host/Node key length.
-.TP
-.B \-\-site\-key\-len \fILENGTH\fR
-Site key length.
-.TP
-.B \-\-trust\-site\-cert
-Trust any site certificate.
-.TP
-.B \-\-check\-site\-cert \fIFINGERPRINT\fR
-Check the site certificate fingerprint.
-.TP
-.B \-\-no\-daemon\-start
-Don't start OTPme daemons after joining realm.
-.SS Leave Options
-.TP
-.B \-\-lotp \fILOTP\fR
-Leave using the given LOTP.
-.TP
-.B \-\-offline
-Leave realm without talking to OTPme servers.
-.TP
-.B \-\-keep\-host
-Do not delete node/host object on server side.
-.TP
-.B \-\-no\-keep\-host
-Delete node/host object on server side.
-.TP
-.B \-\-keep\-data
-Keep all data (realm data, certs, offline tokens).
-.TP
-.B \-\-keep\-cache
-Keep cached data (offline tokens, nsscache etc.).
-.TP
-.B \-\-keep\-cert
-Do not revoke host certificate when leaving.
-.TP
-.B \-\-keep\-auth\-key
-Do not revoke host auth key when leaving.
 .SS Encrypt Options
 .TP
 .B \-\-rsa
@@ -422,25 +623,6 @@ Read password/passphrase from stdin.
 .TP
 .B \-\-force\-pass
 Force encryption with password (AES only).
-.SS Do_sync Options
-.TP
-.B \-\-realm \fIREALM\fR
-Realm to sync.
-.TP
-.B \-\-site \fISITE\fR
-Site to sync.
-.TP
-.B \-\-resync
-Do a complete resync.
-.TP
-.B \-\-offline
-Sync offline token data.
-.TP
-.B \-\-sync\-older\-objects
-Sync objects even if they are older than the local ones.
-.TP
-.B \-\-ignore\-changed\-objects
-Sync objects even if they changed while syncing.
 .SS Signer Options
 .TP
 .B \-\-private

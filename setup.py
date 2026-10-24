@@ -228,6 +228,7 @@ data_files = [
                         "otpme/man/otpme-inventory.1",
                         "otpme/man/otpme-mount.1",
                         "otpme/man/otpme-node.1",
+                        "otpme/man/otpme-pass.1",
                         "otpme/man/otpme-policy.1",
                         "otpme/man/otpme-pool.1",
                         "otpme/man/otpme-realm.1",

@@ -755,6 +755,8 @@ class OTPmeClient(OTPmeClientBase):
                 exception = AuthFailed
             elif status_code == status_codes.NEED_HOST_AUTH:
                 exception = AuthFailed
+            elif status_code == status_codes.DAEMON_UNREACHABLE:
+                exception = ConnectionError
             elif status_code != status_codes.OK:
                 exception = Exception
 
@@ -846,7 +848,7 @@ class OTPmeClient(OTPmeClientBase):
                     log_msg = log_msg.format(site_fingerprint=site_fingerprint)
                     self.logger.debug(log_msg)
                 return
-            msg = _("Rececived wrong site certificate fingerprint: {fingerprint}")
+            msg = _("Received wrong site certificate fingerprint: {fingerprint}")
             msg = msg.format(fingerprint=site_fingerprint)
             raise OTPmeException(msg)
         msg = _("Trust the following site certificate? {digest}:{fingerprint} [y/n] ")
@@ -1727,6 +1729,61 @@ class OTPmeClient(OTPmeClientBase):
                                                     key_mode)
         return encrypted_share_key
 
+    def pass_crypt(self, command_dict):
+        """ Read or write password entries, see otpme.lib.pass_crypt. """
+        from otpme.lib import pass_crypt
+        from otpme.lib import user_key_pins
+        pass_request = command_dict['pass_request']
+        key_mode = pass_request['key_mode']
+
+        # The passwords are opened where the user sits. A node holds the
+        # tree, and they would be in the clear there. host_data is a
+        # property of otpme.lib.host, see CommandHandler. The type in it
+        # comes from a file a user may read (see host.load_data()): read
+        # off the tree it was None for a user, on a node as well. Only a
+        # host is let through, also when the type is not known.
+        register_module("otpme.lib.host")
+        if config.host_data['type'] != "host":
+            msg = _("otpme-pass runs on hosts only.")
+            raise OTPmeException(msg)
+        # The password signers of this host are users or roles, and the
+        # members are checked against them below, which parses their
+        # OIDs (signing.py). Here and not with the command: every
+        # subcommand that ends in this callback needs it, update_keys
+        # as much as add, and on a host otpme-pass is a client of mgmtd
+        # and never goes through the API branch of handle_command().
+        register_module("otpme.lib.classes.user")
+        register_module("otpme.lib.classes.role")
+
+        # When not in interactive mode we cannot call key script.
+        if not self.interactive:
+            msg = (_("Cannot call key script in non-interactive mode."))
+            raise OTPmeException(msg)
+
+        check_keys = None
+        if config.pin_user_keys:
+            check_keys = user_key_pins.check_keys
+
+        username = self.username
+        def unwrap_key(encrypted_key):
+            fernet_key = stuff.decrypt_share_key(username,
+                                                encrypted_key,
+                                                key_mode,
+                                                encode=False)
+            if not fernet_key:
+                msg = _("Key script returned an empty key.")
+                raise OTPmeException(msg)
+            return fernet_key
+
+        response, output = pass_crypt.handle_request(pass_request,
+                                    unwrap_key=unwrap_key,
+                                    get_password=self.get_password,
+                                    check_keys=check_keys)
+        # Shown here, never sent.
+        if output:
+            print(output)
+        return response
+
     def move_objects(self, command_dict):
         """ Handle objects move. """
         from otpme.lib.classes.mgmt_client import OTPmeMgmtClient
@@ -2095,6 +2152,13 @@ class OTPmeClient(OTPmeClientBase):
                 send_request = True
                 try:
                     request = self.reencrypt_share_key(response)
+                except Exception as e:
+                    exception = e
+
+            elif client_command == "PASS_CRYPT":
+                send_request = True
+                try:
+                    request = self.pass_crypt(response)
                 except Exception as e:
                     exception = e
 
@@ -2809,6 +2873,24 @@ class OTPmeClient1(OTPmeClientBase):
         self.check_login_status = False
         self.cache_login_tokens = False
 
+    def check_requested_site_cert(self, site_cert, realm, site):
+        """ The site cert the peer sent in place of the pinned one must
+            be the cert of that site, out of the CA of that site. That
+            the peer holds its key says little: the TLS connection is
+            good with any cert of the realm CAs, a host cert included. """
+        cas_unit = config.get_default_unit("ca")
+        site_ca_cn = os.path.join("/", realm, site, cas_unit, config.site_ca)
+        site_cert_cn = f"{site}.{realm}"
+        ca_data = config.host_data['ca_data']
+        if site_cert.get_cn() != site_cert_cn:
+            msg = _("Received site certificate of {cn}, not of site {realm}/{site}.")
+            msg = msg.format(cn=site_cert.get_cn(), realm=realm, site=site)
+            raise OTPmeException(msg)
+        if not site_cert.verify_issued_by(ca_data, site_ca_cn):
+            msg = _("Received site certificate is not valid from the site CA: {site_ca}")
+            msg = msg.format(site_ca=site_ca_cn)
+            raise OTPmeException(msg)
+
     def preauth_check(self):
         """ Do preauth check with daemon. """
         preauth_args = {}
@@ -2912,7 +2994,9 @@ class OTPmeClient1(OTPmeClientBase):
             if self.connection.peer_site:
                 site = self.connection.peer_site
             if self.req_site_cert:
-                self.site_cert = self.connection.request_site_cert()
+                site_cert = self.connection.request_site_cert()
+                self.check_requested_site_cert(site_cert, realm, site)
+                self.site_cert = site_cert
             else:
                 cert = stuff.get_site_cert(realm=realm, site=site)
                 if not cert:

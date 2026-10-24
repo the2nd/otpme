@@ -145,6 +145,10 @@ and they cannot change it here: the key of a host is written down on the first s
 A session to that host does not open until you take the new key over with
 .B otpme\-tool update_host_keys
 as root, which shows you what changed.
+.PP
+On a host, a session to another host needs \fBPIN_HOST_KEYS\fR.
+Without it a host gets only its own host object, so it has no key for any other host.
+A session to a node works either way.
 .SS How long it lasts
 .B \-\-expiry
 says how long the request stays good.

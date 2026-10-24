@@ -25,6 +25,8 @@ from otpme.lib import backend
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.exceptions import *
 
+logger = config.logger
+
 default_callback = config.get_callback()
 
 commands = {
@@ -79,6 +81,40 @@ def backup_object(object_id, decrypt=False):
     file_content = oc.get_backup_data(object_id, object_uuid, x_oc, file_content)
     file_content = json.dumps(file_content)
     return file_content
+
+def upgrade_restored_object(object_uuid, callback=default_callback):
+    """ Store a restored object in the versions its site writes.
+
+    Returns True when it is stored in them, or the result of
+    callback.error().
+    """
+    x_object = backend.get_object(uuid=object_uuid, add_to_cache=False)
+    if not x_object:
+        msg = _("Failed to load restored object: {object_uuid}")
+        msg = msg.format(object_uuid=object_uuid)
+        return callback.error(msg)
+    if not x_object.config_upgraded:
+        return True
+    x_object.acquire_lock(lock_caller="restore")
+    try:
+        result = x_object._write(update_last_modified=False,
+                                update_last_modified_by=False,
+                                callback=callback)
+    except Exception as e:
+        result = False
+        log_msg = _("Failed to upgrade object config: {oid}: {error}", log=True)[1]
+        log_msg = log_msg.format(oid=x_object.oid, error=e)
+        logger.warning(log_msg)
+    finally:
+        x_object.release_lock(lock_caller="restore")
+    if result is False:
+        msg = _("Failed to store restored object in the current version: {oid}")
+        msg = msg.format(oid=x_object.oid)
+        return callback.error(msg)
+    msg = _("Stored in the current version: {oid}")
+    msg = msg.format(oid=x_object.oid)
+    callback.send(msg)
+    return True
 
 def restore_object(object_data, force=False, callback=default_callback, **kwargs):
     """ Restore object. """
@@ -142,6 +178,13 @@ def restore_object(object_data, force=False, callback=default_callback, **kwargs
         return callback.error(msg)
     # Clear caches.
     cache.clear()
+    # What comes back is stored as it was deleted or backed up, maybe
+    # in a version this site has left. Loading brings it up, and it is
+    # stored the way "otpme-site upgrade" does (Site.write_object_to_
+    # upgrade()): only where the site is at the newer version.
+    upgrade_result = upgrade_restored_object(object_uuid, callback=callback)
+    if upgrade_result is not True:
+        return upgrade_result
     # Run class restore method.
     oc.restore_object_data(object_id, object_uuid, object_data, callback)
     # Set last used time.

@@ -292,6 +292,9 @@ class OTPmeSigner(object):
                                 # purpose: whoever may install a package
                                 # is not thereby allowed to log in.
                                 'remote_access',
+                                # password_store_members: whose users get
+                                # the key of a password, see otpme-pass.
+                                'password',
                                 ]
 
     def __init__(self, uuid=None, object_uuid=None,

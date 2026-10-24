@@ -654,6 +654,24 @@ commands = {
                     },
                 },
             },
+    'find_passwords'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_objects',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'object_type':'pass', 'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_password'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_password',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'list_policies'   : {
             'default'    : {
                 'exists'    : {
@@ -993,6 +1011,11 @@ def register():
     register_object_unit()
     register_sync_settings()
     register_commands("host", commands)
+    # Read by the sync, which writes down the key a host is held to
+    # (host_key_pins.py), for all hosts in one search. Public, so every
+    # view gets it.
+    config.register_index_attribute("public_key", sync=True,
+                                    object_types=["host"])
     # The configuration management of a host: its jobs and what came of
     # them. Pulled in here because the objects belong to hosts and this
     # module is registered early enough for the index to learn their
@@ -1035,7 +1058,9 @@ def register_object_unit():
 
 def register_oid():
     full_oid_schema = [ 'realm', 'site', 'unit', 'name' ]
-    read_oid_schema = [ 'realm', 'site', 'name' ]
+    # Host and node names are unique in the realm (see OTPmeHost.add()),
+    # so the read OID needs no site, like the one of a group.
+    read_oid_schema = [ 'realm', 'name' ]
     # OID regex stuff.
     unit_path_re = oid.object_regex['unit']['path']
     realm_name_re = oid.object_regex['realm']['name']
@@ -1043,11 +1068,13 @@ def register_oid():
     unit_name_re = oid.object_regex['unit']['name']
     host_name_re = '([0-9a-z]([0-9a-z_.-]*[0-9a-z]){0,})'
     host_path_re = f'{unit_path_re}[/]{host_name_re}'
-    # An OID is not a path, see accessgroup.py: no leading slash, and
-    # the unit part is optional because the read OID has none.
+    # An OID is not a path, see accessgroup.py: no leading slash. The
+    # read OID is "host|<realm>/<host>", the full one has site and
+    # unit. "host|<realm>/<site>/<host>", the read OID of before, is
+    # taken as well: decode_oid() makes the new one of it.
     #host_oid_re = f'host|{host_path_re}'
-    host_oid_re = (f'host[|]{realm_name_re}[/]{site_name_re}'
-                f'([/]{unit_name_re})*[/]{host_name_re}')
+    host_oid_re = (f'host[|]{realm_name_re}[/]'
+                f'({site_name_re}([/]{unit_name_re})*[/])?{host_name_re}')
     oid.register_oid_schema(object_type="host",
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,
@@ -1098,8 +1125,10 @@ def register_backend():
                 ]
         return backend.rebuild_object_index("host", objects, after)
     # Register object to config.
+    # Version 2: the public key is in the index, see
+    # OTPmeHost.upgrade_to_2().
     config.register_object_type(object_type="host",
-                            version=1,
+                            version=2,
                             tree_object=True,
                             uniq_name=True,
                             add_after=["node"],
@@ -1783,14 +1812,13 @@ class Host(OTPmeHost, OTPmeDevice):
                 callback.error(msg)
         return add_result
 
-    @object_lock(full_lock=True)
-    @backend.transaction
-    def delete(
-        self,
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Delete a host. """
+    def remove_references(self, callback: JobCallback=default_callback):
+        """ Take the host out of its access groups and roles.
+
+        Called by OTPmeHost.delete() once the delete is allowed and
+        confirmed. It ran first, before the ACL check and the question,
+        and stayed done when the delete did not.
+        """
         # Check for default accessgroup.
         result = backend.search(object_type="accessgroup",
                                 attribute="host",
@@ -1817,7 +1845,6 @@ class Host(OTPmeHost, OTPmeDevice):
                             verify_acls=False,
                             callback=callback)
             role._cache(callback=callback)
-        return super().delete(callback=callback, **kwargs)
 
     def remove_orphans(
         self,

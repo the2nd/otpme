@@ -27,7 +27,22 @@ modules = [
         'otpme.lib.classes.device',
         'otpme.lib.classes.scope',
         'otpme.lib.classes.vlan',
+        'otpme.lib.classes.otpme_password',
         ]
+
+# Object types whose module is not named after them. The object type of
+# otpme-pass is "pass", taken from the command name, and a module named
+# pass.py cannot be loaded with an import statement.
+object_modules = {
+        'pass'  : 'otpme.lib.classes.otpme_password',
+        }
+
+def get_object_module_path(object_type):
+    """ The module of the given object type. """
+    try:
+        return object_modules[object_type]
+    except KeyError:
+        return f"otpme.lib.classes.{object_type}"
 
 def register():
     """ Register object modules. """

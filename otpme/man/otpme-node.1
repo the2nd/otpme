@@ -56,6 +56,7 @@ It goes to the trash, from where \fBotpme-trash\fR(1) can bring it back; \fB\-\-
 .RS
 .PP
 The certificate of the node is revoked and the sessions it holds are deleted.
+The passwords of the node stay; the question says how many there are.
 The node that holds the master role is refused: let the role move first, see
 .B The Master Role
 below.
@@ -237,6 +238,19 @@ See
 The pools this node serves.
 A pool hands out shares of its own, and it names its nodes the same way a share does, see
 .BR otpme\-pool (1).
+.SS Passwords
+Passwords can belong to the node, for example the password of its iDRAC, see
+.BR otpme\-pass (1).
+Each password decides itself whether you may see it.
+.TP
+.B find_passwords \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fInode\fR
+The password objects that belong to the node.
+.TP
+.B show_password \fInode\fR [\fIentry\fR]
+Show the entries of these passwords, with their passwords.
+With \fIentry\fR only the entries of that name.
+.br
+Each password needs \fBview:entries\fR, and you need a key for it.
 .SS Dynamic Groups
 A dynamic group is a local group of the machine, such as \fBplugdev\fR or \fBaudio\fR.
 Whoever logs in through the PAM module is put into it for that session, without being a member of anything in the realm.
@@ -668,6 +682,9 @@ Then the settings the daemons of the node read:
 .BR authd_max_workers ,
 .BR authd_worker_threads ,
 .BR authd_idle_timeout ,
+.BR syncd_workers ,
+.BR syncd_max_workers ,
+.BR syncd_worker_threads ,
 .BR ldapd_processes ,
 .BR ldap_cache ,
 .BR ldap_shared_cache ,
@@ -837,6 +854,7 @@ The SSH keys of that user, as sshd gets them through \fBotpme-get-authorized-key
 .BR otpme\-script (1),
 .BR otpme\-share (1),
 .BR otpme\-pool (1),
+.BR otpme\-pass (1),
 .BR otpme\-policy (1),
 .BR otpme\-backup (1),
 .BR otpme\-shell (1),

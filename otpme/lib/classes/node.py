@@ -16,6 +16,7 @@ from otpme.lib import cli
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
+from otpme.lib import maintenance
 from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
@@ -558,6 +559,24 @@ commands = {
                     },
                 },
             },
+    'find_passwords'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_objects',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'object_type':'pass', 'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_password'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_password',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'add_extension'   : {
             'default'    : {
                 'exists'    : {
@@ -901,6 +920,11 @@ def register():
     register_object_unit()
     register_sync_settings()
     register_commands("node", commands)
+    # Read by the sync, which writes down the key a node is held to
+    # (host_key_pins.py), for all nodes in one search. Public, so every
+    # view gets it.
+    config.register_index_attribute("public_key", sync=True,
+                                    object_types=["node"])
     node_types = ["node"]
     # Which node a pool or a share names is registered where it is set,
     # see pool.py and share.py.
@@ -929,7 +953,8 @@ def register_object_unit():
 
 def register_oid():
     full_oid_schema = [ 'realm', 'site', 'unit', 'name' ]
-    read_oid_schema = [ 'realm', 'site', 'name' ]
+    # Node names are unique in the realm, see host.py.
+    read_oid_schema = [ 'realm', 'name' ]
     # OID regex stuff.
     unit_path_re = oid.object_regex['unit']['path']
     realm_name_re = oid.object_regex['realm']['name']
@@ -937,11 +962,10 @@ def register_oid():
     unit_name_re = oid.object_regex['unit']['name']
     node_name_re = '([0-9a-z]([0-9a-z_.-]*[0-9a-z]){0,})'
     node_path_re = f'{unit_path_re}[/]{node_name_re}'
-    # An OID is not a path, see accessgroup.py: no leading slash, and
-    # the unit part is optional because the read OID has none.
+    # An OID is not a path, see accessgroup.py. As for hosts, see there.
     #node_oid_re = f'node|{node_path_re}'
-    node_oid_re = (f'node[|]{realm_name_re}[/]{site_name_re}'
-                f'([/]{unit_name_re})*[/]{node_name_re}')
+    node_oid_re = (f'node[|]{realm_name_re}[/]'
+                f'({site_name_re}([/]{unit_name_re})*[/])?{node_name_re}')
     oid.register_oid_schema(object_type="node",
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,
@@ -985,8 +1009,10 @@ def register_backend():
                 ]
         return backend.rebuild_object_index("node", objects, after)
     # Register object to config.
+    # Version 2: the public key is in the index, see
+    # OTPmeHost.upgrade_to_2().
     config.register_object_type(object_type="node",
-                            version=1,
+                            version=2,
                             tree_object=True,
                             add_after=["accessgroup"],
                             sync_after=["user", "token"],
@@ -1336,10 +1362,15 @@ class Node(OTPmeHost):
             shutdown_started = True
         disable_status = None
         try:
-            disable_status = super().disable(*args,
-                                            force=force,
-                                            callback=callback,
-                                            **kwargs)
+            # Also in maintenance, see enable().
+            with maintenance.override():
+                disable_status = super().disable(*args,
+                                                force=force,
+                                                callback=callback,
+                                                **kwargs)
+                disable_status = self.write_switched(disable_status,
+                                                    offline=offline,
+                                                    callback=callback)
         finally:
             # Node not disabled (e.g. aborted). So the node has to handle
             # requests again.
@@ -1368,9 +1399,42 @@ class Node(OTPmeHost):
         #   Failed to start node services: <node>: Failed to get clusterd
         #   connection: <node>: No cluster serivce on this node.
         #
-        # <offline> is taken and dropped, so a caller can enable a node
-        # the same way it disables one.
-        return super().enable(*args, callback=callback, **kwargs)
+        # <offline> is taken, so a caller can enable a node the same way
+        # it disables one: see write_switched().
+        #
+        # Also in maintenance. Disabling a node that cannot be brought up
+        # yet, and enabling it once it is, is how a site is taken through
+        # "otpme-site upgrade" (a disabled node is not waited for, see
+        # Site.get_config_upgrade_blockers()). Refused in maintenance,
+        # a node disabled before the update could not come back until
+        # the upgrade was through. A node that is enabled behind the code
+        # holds up the upgrade again, which is right.
+        with maintenance.override():
+            enable_status = super().enable(*args, callback=callback, **kwargs)
+            return self.write_switched(enable_status, offline=offline,
+                                    callback=callback)
+
+    def write_switched(self, status, offline: bool=False,
+        callback: JobCallback=default_callback):
+        """ Write the node now, while the maintenance lets us.
+
+        enable() and disable() only cache the object. It is written at
+        the end of the job (callback.write_modified_objects()), and that
+        is no longer within maintenance.override(). Written here, there
+        is nothing left for the end of the job.
+
+        Not <offline>: that is the node switching itself (clusterd,
+        enable_node()/disable_node()), which writes it on its own and
+        without the cluster. It is no member then, and a write to the
+        cluster would wait for an answer nobody gives.
+        """
+        if offline:
+            return status
+        if not status or not self._modified:
+            return status
+        if self._write(callback=callback) is False:
+            return callback.error()
+        return status
 
     @backend.transaction
     def add(

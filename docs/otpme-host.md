@@ -46,6 +46,7 @@ Delete a host. It goes to the trash, from where **otpme-trash**(1) can
 bring it back; **--no-trash** deletes it right away.  
 The certificate of the host is revoked, and the roles and access groups
 that name the host let it go first, so nothing is left pointing at it.
+The passwords of the host stay; the question says how many there are.
 
 **show \[**-a**\] \[**-t**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--token-limit** *N*\] \[**--role-limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*host*\]**  
 Show the hosts, with their tokens, roles and policies. Without a host
@@ -332,6 +333,19 @@ that are limited to hosts.
 **find_shares \[**--return-type** *TYPE*\] *host***  
 The shares the host is named in, so the ones it may mount without a role
 bringing it.
+
+## Passwords
+
+Passwords can belong to the host, for example its root password, see
+**otpme-pass**(1). Each password decides itself whether you may see it.
+
+**find_passwords \[**--return-type** *TYPE*\] *host***  
+The password objects that belong to the host.
+
+**show_password *host* \[*entry*\]**  
+Show the entries of these passwords, with their passwords. With *entry*
+only the entries of that name.  
+Each password needs **view:entries**, and you need a key for it.
 
 ## Dynamic Groups
 
@@ -914,9 +928,9 @@ which is what the machine resolves them from.
 **otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme.conf**(5),
 **pam_otpme**(8), **otpme-tool**(1), **otpme-node**(1),
 **otpme-token**(1), **otpme-role**(1), **otpme-accessgroup**(1),
-**otpme-vlan**(1), **otpme-policy**(1), **otpme-deploy**(1),
-**otpme-inventory**(1), **otpme-shell**(1), **otpme-trash**(1),
-**otpme-ca**(1)
+**otpme-vlan**(1), **otpme-pass**(1), **otpme-policy**(1),
+**otpme-deploy**(1), **otpme-inventory**(1), **otpme-shell**(1),
+**otpme-trash**(1), **otpme-ca**(1)
 
 # AUTHOR
 

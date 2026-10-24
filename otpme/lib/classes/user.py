@@ -1231,6 +1231,11 @@ def register():
     register_config_properties()
     register_config_parameters()
     register_commands("user", commands)
+    # Read by the sync of a host, which writes down the key otpme-pass
+    # holds a user to (user_key_pins.py), for all users in one search.
+    # Public, so every view gets it.
+    config.register_index_attribute("encrypt_public_key", sync=True,
+                                    object_types=["user"])
     # The default token is looked up when a node builds the sync
     # parameters for a host it serves (OTPmeHost.get_sync_parameters()),
     # so a node holding users of another site needs it. Admin access is
@@ -1708,8 +1713,10 @@ def register_backend():
                 ]
         return backend.rebuild_object_index("user", objects, after)
     # Register object to config.
+    # Version 2: the encrypt public key is in the index, see
+    # User.upgrade_to_2().
     config.register_object_type(object_type="user",
-                            version=1,
+                            version=2,
                             tree_object=True,
                             uniq_name=True,
                             add_after=["group"],
@@ -3394,9 +3401,8 @@ class User(OTPmeObject):
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
         if public_key == "":
-            setattr(self, attr, None)
-        else:
-            setattr(self, attr, public_key)
+            public_key = None
+        self.set_public_key(key_role, public_key)
         return self._cache(callback=callback)
 
     @object_lock(full_lock=True)
@@ -3427,6 +3433,42 @@ class User(OTPmeObject):
                 return callback.error(msg)
         return self._change_public_key("sign", public_key, force,
                                         run_policies, callback, _caller)
+
+    def set_public_key(self, key_role: str, public_key: Union[str,None]):
+        """ Set the sign or encrypt public key.
+
+        The encrypt public key goes into the index as well, see
+        user_key_pins.py. Every place that sets a public key does it
+        here, or the index says another key than the user has.
+        """
+        setattr(self, self._key_attr(key_role, private=False), public_key)
+        if key_role != "encrypt":
+            return
+        self.del_index("encrypt_public_key")
+        if public_key:
+            self.add_index("encrypt_public_key", public_key)
+
+    def upgrade_to_2(self, object_config):
+        """ Version 2: the encrypt public key is in the index.
+
+        Into the INDEX of the config, and not by a write: the sync
+        writes the config it brought up as it is. The version is what
+        makes "otpme-site upgrade" write every user once.
+        """
+        self.set_config_index(object_config, "encrypt_public_key",
+                            "ENCRYPT_PUBLIC_KEY")
+
+    def downgrade_to_1(self, object_config):
+        """ A peer of version 1 does not know the index attribute. """
+        try:
+            index = object_config['INDEX']
+        except KeyError:
+            return
+        if not index or "encrypt_public_key" not in index:
+            return
+        index = dict(index)
+        index.pop("encrypt_public_key")
+        object_config['INDEX'] = index
 
     @object_lock(full_lock=True)
     @audit_log()
@@ -3737,9 +3779,9 @@ class User(OTPmeObject):
                     return callback.error(msg)
 
             self.sign_private_key = {'key_blob': response['sign_private_key']}
-            self.sign_public_key = response['sign_public_key']
+            self.set_public_key("sign", response['sign_public_key'])
             self.encrypt_private_key = {'key_blob': response['encrypt_private_key']}
-            self.encrypt_public_key = response['encrypt_public_key']
+            self.set_public_key("encrypt", response['encrypt_public_key'])
             self.sign_key_type = response.get('sign_key_type', 'rsa')
             self.encrypt_key_type = response.get('encrypt_key_type', 'rsa')
 
@@ -3805,8 +3847,8 @@ class User(OTPmeObject):
             msg = msg.format(e=e)
             return callback.error(msg)
 
-        self.sign_public_key = encode(sign_key.public_key_base64, "base64")
-        self.encrypt_public_key = encode(enc_key_obj.public_key_base64, "base64")
+        self.set_public_key("sign", encode(sign_key.public_key_base64, "base64"))
+        self.set_public_key("encrypt", encode(enc_key_obj.public_key_base64, "base64"))
         self.sign_key_type = sign_algo
         self.encrypt_key_type = encrypt_algo
 
@@ -3871,9 +3913,9 @@ class User(OTPmeObject):
             return callback.abort()
 
         self.sign_private_key = {}
-        self.sign_public_key = None
+        self.set_public_key("sign", None)
         self.encrypt_private_key = {}
-        self.encrypt_public_key = None
+        self.set_public_key("encrypt", None)
 
         return self._cache(callback=callback)
 
@@ -3946,7 +3988,7 @@ class User(OTPmeObject):
         else:
             self._set_key(key_role, rsa_key=key.private_key_base64)
 
-        setattr(self, pub_attr, encode(key.public_key_base64, "base64"))
+        self.set_public_key(key_role, encode(key.public_key_base64, "base64"))
 
         return self._cache(callback=callback)
 

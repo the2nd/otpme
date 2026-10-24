@@ -827,6 +827,24 @@ commands = {
                     },
                 },
             },
+    'find_passwords'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_objects',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'object_type':'pass', 'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_password'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_password',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     # No add_extension/add_attribute/add_object_class here, and no
     # remove counterparts: a client is no LDAP object and no extension
     # names "client" among its object types, so there is nothing for
@@ -3431,7 +3449,12 @@ class Client(OTPmeClientObject):
             except Exception as e:
                 return callback.error()
 
-        if not self.ask_delete_confirmation(force=force, callback=callback):
+        exception = None
+        if not force:
+            exception = self.get_passwords_notice()
+        if not self.ask_delete_confirmation(force=force,
+                                            exception=exception,
+                                            callback=callback):
             return callback.abort()
 
         # Delete object using parent class.

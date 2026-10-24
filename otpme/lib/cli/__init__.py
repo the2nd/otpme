@@ -62,6 +62,7 @@ modules = [
             'otpme.lib.cli.pool',
             'otpme.lib.cli.scope',
             'otpme.lib.cli.vlan',
+            'otpme.lib.cli.otpme_password',
             'otpme.lib.cli.job',
             'otpme.lib.classes',
         ]
@@ -444,8 +445,12 @@ def get_opts(command_syntax, command_line, command_args=None,
         result = check_string(x, '"', '"')
         return result
 
+    # A command without options and objects. What it answers is what
+    # every other template answers without them: no object, and the
+    # command args as they came. None for both made the object list
+    # [None] for mgmtd (otpme-inventory systems) and lost the args.
     if not command_syntax:
-        return None, None, None, None
+        return False, False, [], command_args
 
     para_count = 0
     cmd_list = command_syntax.split(" ")

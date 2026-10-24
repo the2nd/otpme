@@ -127,7 +127,7 @@ def register_backend():
                         counter += 1
                         x_path = os.path.join(revoked_signs_dir, x)
                         if object_dir:
-                            if x_path != x_path:
+                            if x_path != object_dir:
                                 continue
                         x_file = os.path.join(x_path, config.object_config_file_name)
                         log_msg = _("Processing {path_id} ({counter}/{files_count}): {x_file}", log=True)[1]

@@ -34,6 +34,7 @@ from otpme.lib.protocols.utils import gen_user_keys
 from otpme.lib.protocols.utils import send_keepalive
 from otpme.lib.protocols.utils import gen_backup_rsa_key
 from otpme.lib.protocols.utils import reencrypt_share_key
+from otpme.lib.protocols.utils import pass_crypt
 from otpme.lib.protocols.utils import create_remote_job
 from otpme.lib.protocols.utils import change_user_default_group
 
@@ -615,8 +616,8 @@ class JobCallback(object):
         try:
             jwt_key = RSAKey(key=site_cert.public_key())
         except Exception as e:
-            msg = _("Unable to get public key of site certificate: {user_site}: e{}")
-            msg = msg.format(user_site=user.site, e=e)
+            msg = _("Unable to get public key of site certificate: {user_site}: {error}")
+            msg = msg.format(user_site=user.site, error=e)
             raise OTPmeException(msg) from e
         try:
             jwt_data = _jwt.decode(jwt=jwt,
@@ -713,6 +714,26 @@ class JobCallback(object):
                             share_user=share_user,
                             share_key=share_key,
                             key_mode=key_mode)
+        # Send message.
+        response = self._send_message(message_id, message, timeout=timeout)
+        return response
+
+    @handle_exception
+    def pass_crypt(self, pass_request, timeout=1):
+        """ Send message to client to read or write password entries.
+
+        The client decrypts, changes and encrypts, see
+        otpme.lib.pass_crypt. What comes back is ciphertext only.
+        """
+        # If the callback is disabled we do not send anything to the client.
+        if not self.enabled:
+            raise OTPmeException(self.api_exception)
+        if self.api_mode:
+            raise OTPmeException(self.api_exception)
+        # Gen message ID.
+        message_id = self._gen_message_id()
+        # Build message string.
+        message = pass_crypt(message_id, pass_request=pass_request)
         # Send message.
         response = self._send_message(message_id, message, timeout=timeout)
         return response

@@ -234,6 +234,17 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
     # Get logger.
     logger = config.logger
 
+    # Not in maintenance. The member updates below write the tree, which
+    # is refused then, and the spool files of what failed were removed
+    # all the same. Nothing is done and nothing is removed: the files
+    # wait for the first run after the maintenance.
+    from otpme.lib import maintenance
+    if maintenance.is_active():
+        log_msg = _("Site is in maintenance, not syncing nsscache: {realm}/{site}", log=True)[1]
+        log_msg = log_msg.format(realm=realm, site=site)
+        logger.info(log_msg)
+        return None
+
     log_msg = _("Starting sync of nsscache: {realm}/{site}", log=True)[1]
     log_msg = log_msg.format(realm=realm, site=site)
     logger.info(log_msg)
@@ -298,6 +309,9 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
     updated_objects = {}
     removed_objects = {}
     files_to_remove = {}
+    # Roles and groups whose members could not be updated. Their spool
+    # files stay, so the next run tries again.
+    failed_members = set()
 
     update_members = True
     if config.host_type == "host":
@@ -343,13 +357,9 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
             if x_object.type == "role":
                 if x_object.site != config.site:
                     continue
+                # Its file is removed at the end with the others, and
+                # only if its members were updated.
                 update_roles.append(x_object)
-                try:
-                    filetools.delete(file_path)
-                except Exception as e:
-                    log_msg = _("Failed to remove nsscache file: {file_path}: {e}", log=True)[1]
-                    log_msg = log_msg.format(file_path=file_path, e=e)
-                    logger.critical(log_msg)
 
             if x_object.type == "group":
                 if x_object.site != config.site:
@@ -370,6 +380,7 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                     updated_groups += role.update_extensions("update_members",
                                                             callback=callback)[1]
                 except Exception as e:
+                    failed_members.add(role.oid.read_oid)
                     log_msg = _("Failed to update role members: {role_oid}: {e}", log=True)[1]
                     log_msg = log_msg.format(role_oid=role.oid, e=e)
                     logger.critical(log_msg)
@@ -396,6 +407,7 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                     _group.update_extensions("update_members",
                                             callback=callback)
                 except Exception as e:
+                    failed_members.add(_group.oid.read_oid)
                     log_msg = _("Failed to update group members: {group_oid}: {e}", log=True)[1]
                     log_msg = log_msg.format(group_oid=_group.oid, e=e)
                     logger.critical(log_msg)
@@ -471,18 +483,18 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                 continue
 
             file_path = os.path.join(config.nsscache_objects_dir, f)
+            # What could not be updated stays for the next run.
+            if object_id.read_oid in failed_members:
+                continue
             try:
                 files_to_remove[file_path] = os.path.getmtime(file_path)
             except FileNotFoundError:
                 continue
 
+            # A role is not in the nsscache itself, only what it does to
+            # the members of groups (above). Its file goes at the end,
+            # with the others.
             if object_type == "role":
-                try:
-                    filetools.delete(file_path)
-                except Exception as e:
-                    log_msg = _("Failed to remove nsscache file: {file_path}: {e}", log=True)[1]
-                    log_msg = log_msg.format(file_path=file_path, e=e)
-                    logger.warning(log_msg)
                 continue
 
             if action == "update":

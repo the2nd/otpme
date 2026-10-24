@@ -1009,6 +1009,31 @@ commands = {
                     },
                 },
             },
+    'sign_password_members'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'sign_password_members',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'unsign_password_members'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'unsign_password_members',
+                    'oargs'             : ['signer'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'show_password_members'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_password_members',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     '_show_supported_acls'   : {
             'default'    : {
                 'exists'    : {
@@ -3102,6 +3127,38 @@ def register_config():
                                     ctype=int,
                                     default_value=1024,
                                     object_types=['site', 'unit', 'node'])
+    # syncd serves its connections from a pool of workers, each of them
+    # in threads. A process for each connection costs the whole heap of
+    # the daemon again (about 150 MB): Python writes to the reference
+    # counts of what it touches, and the pages that were shared after
+    # the fork are not any more. One for each host that syncs is what a
+    # few hundred hosts after an update cannot pay. A sync connection
+    # mostly waits for its peer, which works through what it got before
+    # it asks for more, and a thread parked in a read holds no GIL.
+    #
+    # The workers syncd starts with. They stay for good.
+    config.register_config_parameter(name="syncd_workers",
+                                    ctype=int,
+                                    default_value=2,
+                                    object_types=['site', 'unit', 'node'])
+    # How far the pool may grow while every worker is busy. The extra
+    # ones are given back once the load is gone. Each one is a process,
+    # so this is what bounds the memory of syncd: this times the heap of
+    # the daemon, whatever the number of hosts.
+    config.register_config_parameter(name="syncd_max_workers",
+                                    ctype=int,
+                                    default_value=8,
+                                    object_types=['site', 'unit', 'node'])
+    # Connections one syncd worker serves at once, in threads. Every
+    # connection is served in a thread with this set; more than one in a
+    # worker only once the pool is at syncd_max_workers and every worker
+    # in it is busy (see authd_worker_threads). So at most
+    # syncd_max_workers times this sync at once, and the rest waits in
+    # the listen backlog. 0 serves one connection per worker.
+    config.register_config_parameter(name="syncd_worker_threads",
+                                    ctype=int,
+                                    default_value=64,
+                                    object_types=['site', 'unit', 'node'])
     config.register_config_parameter(name="ssod_max_conn",
                                     ctype=int,
                                     default_value=1024,
@@ -3988,6 +4045,9 @@ class Site(OTPmeObject):
         # Handed on to the units, which is where the members are and
         # therefore where workers are started.
         procs: Union[int,None]=None,
+        # Top level units this walk leaves alone, see add_acls(). Named
+        # so that it stays here and does not ride along to the units.
+        skip_units: Union[List,None]=None,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -3995,6 +4055,8 @@ class Site(OTPmeObject):
         """ Method to call inherit_default_acl() for all site units. """
         if object_types is None:
             object_types = []
+        if skip_units is None:
+            skip_units = []
         exception = None
 
         if action == "add":
@@ -4014,7 +4076,8 @@ class Site(OTPmeObject):
         # The top level units, which is what we walk. Counted first so
         # every message can say where in them it is, see
         # Unit._handle_acl().
-        top_units = [x for x in all_units if x and not x.unit]
+        top_units = [x for x in all_units if x and not x.unit
+                    and x.name not in skip_units]
         unit_count = len(top_units)
         unit_pos = 0
 
@@ -6339,6 +6402,13 @@ class Site(OTPmeObject):
             callback.send(msg)
             for reason in reasons:
                 callback.send(reason)
+        elif realm_master and realm:
+            # The sync leaves it alone in maintenance (it writes the
+            # realm), so a CA that changed meanwhile is taken in here.
+            # It writes nothing if nothing changed.
+            realm.update_ca_data(force=True,
+                                verify_acls=False,
+                                callback=callback)
 
         if not upgraded:
             msg = _("Object configs of site '{name}' are up to date.")
@@ -7040,6 +7110,16 @@ class Site(OTPmeObject):
         """ Add default ACLs. """
         callback.send(_("Adding default ACLs..."))
 
+        # Base units whose ACLs are set by hand only (e.g. the one of the
+        # password objects). The recursive ACLs below walk every unit of
+        # the site, so these are left out of the walk.
+        no_acl_units = []
+        for early in (True, False):
+            base_units = config.get_base_objects("unit", early=early)
+            for x_unit in base_units:
+                if base_units[x_unit]['no_acls']:
+                    no_acl_units.append(x_unit)
+
         # Add default ACLs to allow view of some objects for realm users.
         view_objects = ['site']
         for acl in self._recursive_default_acls:
@@ -7059,6 +7139,7 @@ class Site(OTPmeObject):
                     recursive_acls=True,
                     apply_default_acls=True,
                     object_types=view_objects,
+                    skip_units=no_acl_units,
                     verify_acls=False,
                     verbose_level=1,
                     callback=callback)
@@ -7073,6 +7154,7 @@ class Site(OTPmeObject):
                     recursive_acls=True,
                     apply_default_acls=True,
                     object_types=view_objects,
+                    skip_units=no_acl_units,
                     verify_acls=False,
                     verbose_level=1,
                     callback=callback)
@@ -7131,7 +7213,11 @@ class Site(OTPmeObject):
             if unit.exists():
                 #unit.add_default_policies()
                 continue
-            if not unit.add(verify_acls=False, callback=callback):
+            # A unit with no_acls takes nothing from the site either.
+            inherit_acls = not early_units[u]['no_acls']
+            if not unit.add(verify_acls=False,
+                            inherit_acls=inherit_acls,
+                            callback=callback):
                 msg = _("Problem adding base unit '{unit_path}'.")
                 msg = msg.format(unit_path=unit_path)
                 config.raise_exception()
@@ -7175,7 +7261,11 @@ class Site(OTPmeObject):
             if unit.exists():
                 #unit.add_default_policies()
                 continue
-            if not unit.add(verify_acls=False, callback=callback):
+            # A unit with no_acls takes nothing from the site either.
+            inherit_acls = not early_units[u]['no_acls']
+            if not unit.add(verify_acls=False,
+                            inherit_acls=inherit_acls,
+                            callback=callback):
                 msg = _("Problem adding base unit '{unit_path}'.")
                 msg = msg.format(unit_path=unit_path)
                 config.raise_exception()
@@ -7190,7 +7280,11 @@ class Site(OTPmeObject):
             if unit.exists():
                 #unit.add_default_policies()
                 continue
-            if not unit.add(verify_acls=False, callback=callback):
+            # A unit with no_acls takes nothing from the site either.
+            inherit_acls = not base_units[u]['no_acls']
+            if not unit.add(verify_acls=False,
+                            inherit_acls=inherit_acls,
+                            callback=callback):
                 msg = _("Problem adding base unit '{unit_path}'.")
                 msg = msg.format(unit_path=unit_path)
                 config.raise_exception()

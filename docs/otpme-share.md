@@ -39,7 +39,7 @@ they only show, commented out, how such a call looks.
 # HOME SHARES
 
 A normal share hands out its root directory to everybody. A **home
-share** hands out *share_root***/***home_dir* instead, so every user
+share** hands out *share_root*/*share*/*home_dir* instead, so every user
 gets their own directory and sees nothing else. The directory is created
 on the first mount, owned by the user and by default with mode 0700 (see
 **home_share_permissions**).
@@ -54,8 +54,9 @@ Two naming schemes are available, chosen when the share is created:
 > The directory is named after the user name (uid), which is what one
 > expects below e.g. /home. Implies **--home-share**.
 
-A **root mount token** gets no home dir and mounts *share_root* itself,
-so it reaches the home dirs of all users (see **add_root_mount_token**).
+A **root mount token** gets no home dir and mounts the root directory of
+the share itself, so it reaches the home dirs of all users (see
+**add_root_mount_token**).
 
 Home shares can be encrypted. Every home dir is then encrypted on its
 own, with a share key per user, which is why an encrypted home share has
@@ -662,7 +663,9 @@ Needs the ACL **add:root_mount_token**.
 
 **remove_root_mount_token \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path***  
 Take that away again. The hosts are told to unmount the share for the
-token, like with **remove_token**.  
+token, like with **remove_token**. A token that is on the share as well,
+itself or through a role, is told to mount it again then, and gets its
+home dir; a no mount token is not.  
 Needs the ACL **remove:root_mount_token**.
 
 ## No Mount Token
@@ -897,16 +900,23 @@ Needs the ACL **remove:orphans**.
 ## Creation Options
 
 **--force-group *GROUP***  
-Force group for the share.
+Give every file and directory that is created on the share to this
+group, see **force_group** above.
 
 **--force-directory-mode *MODE***  
-Force directory creation mode.
+Create every directory with this mode, written like 0o770, see
+**force_directory_mode** above.
 
 **--force-create-mode *MODE***  
-Force file creation mode.
+Create every file with this mode, written like 0o660, see
+**force_create_mode** above.
 
 **--crypt**  
-Enable encryption for the share.
+Make an encrypted share, see **Encryption** above. It cannot be changed
+later.  
+**add** asks for the master password twice, makes the share key from it
+and adds your token to the share with a copy of the key; with
+**--no-mount-token** as a no mount token.
 
 **--no-key-gen**  
 Do not generate an AES key.  
@@ -929,11 +939,14 @@ password settings of its own, and then every master password mount makes
 a different key. Data written under such a mount cannot be read again.
 
 **--block-size *SIZE***  
-Encrypted share block size (default 4096).
+With **--crypt**: the size of the blocks the files are encrypted in, a
+power of two from 512 to 1048576. Default 4096.  
+It is written to the share directory at the first mount and cannot be
+changed after that.
 
 **--restore *RESTORE_SHARE***  
-Make a restore share that shows the backups of this share, see **RESTORE
-SHARES** above.
+Make the new share a restore share that shows the backups of
+*RESTORE_SHARE*, see **RESTORE SHARES** above.
 
 **--restore-token *TOKEN***  
 With **--restore**: add this token to the new share right away. It has
@@ -946,76 +959,30 @@ Add the token that **add** puts on the share as a no mount token, see
 share is not mounted for it at login. Without such a token, e.g. with
 **--no-key-gen** or on a home share, it is refused.
 
-## Display Options
+The options of every other command are described with that command
+above.
 
-**-a**  
-Show all shares.
-
-**-z *SIZE***  
-Limit output size.
-
-**--fields *FIELD1,FIELD2***  
-Display only specified fields.
-
-**--node-limit *N***  
-Limit number of nodes shown.
-
-**--pool-limit *N***  
-Limit number of pools shown.
-
-**--token-limit *N***  
-Limit number of tokens shown.
-
-**--role-limit *N***  
-Limit number of roles shown.
-
-**--group-limit *N***  
-Limit number of groups shown.
-
-**--policy-limit *N***  
-Limit number of policies shown.
-
-**--limit *N***  
-Limit number of items shown per object.
-
-**--sort-by *FIELD***  
-Sort output by field.
-
-**--reverse**  
-Reverse sort order.
-
-**--raw**  
-Output without headers/borders.
-
-**--csv**  
-Output as CSV.
-
-**--csv-sep *SEP***  
-CSV separator character.
-
-**--attribute *ATTR***  
-Of **list**: match the regex against this attribute instead of the name.
-
-## General Options
-
-**--keep-acls**  
-Preserve ACLs when moving share.
-
-**--password *PASS***  
-Password for encrypting exports.
-
-**-r**  
-List roles recursively.
-
-Global options are available for all commands. See **otpme**(1) for
-details.
+Global options work with every command, see **otpme**(1).
 
 # CONFIG PARAMETERS
 
-Configuration parameters can be set with the **config** command and
-displayed with **show_config**. For a complete description of all
-available parameters and their applicable object types, see
-**otpme**(7).
+A share takes these. What each of them does, and how a parameter is
+resolved, is in **otpme**(7).
+
+**send_share_notifications (bool, default: false)**  
+Whether the hosts are told when the share changes, see **Telling the
+hosts** above.
+
+**backup_enabled**, **backup_mode**, **backup_server**, ...  
+The backup of the share, see **Backup** in **otpme**(7) and
+**otpme-backup**(1). Without **backup_mode** a share is backed up as
+**tree**, which a restore share needs.
+
+**changelog (bool, default: true)**  
+Whether the commands on this share are written to its changelog.
+
+**allow_changelog_clearing (bool, default: true)**  
+Whether that changelog may be cleared.
 
 # EXAMPLES
 
@@ -1036,8 +1003,11 @@ Add a token to the share
 **otpme-share add_pool myshare europe**  
 Add a pool to the share
 
+**otpme-share add --home-share homes**  
+Create a home share, each user gets *\<share_root\>/homes/\<user uuid\>*
+
 **otpme-share add --home-share-uid homes**  
-Create a home share, each user gets *\<share_root\>/\<username\>*
+The same, but each user gets *\<share_root\>/homes/\<username\>*
 
 **otpme-share home_share_permissions homes 0o750**  
 Let the home dirs group be readable
@@ -1046,10 +1016,17 @@ Let the home dirs group be readable
 Let the token "backup/login" mount the share root and reach all home
 dirs
 
+**otpme-share add --restore myshare --restore-token alice/login myshare-backups**  
+A restore share that shows the backups of "myshare"; alice/login may
+mount it
+
 # SEE ALSO
 
 **otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-mount**(1),
-**otpme-pool**(1), **otpme-token**(1), **otpme-role**(1)
+**otpme-backup**(1), **otpme-trash**(1), **otpme-token**(1),
+**otpme-role**(1), **otpme-group**(1), **otpme-accessgroup**(1),
+**otpme-host**(1), **otpme-pool**(1), **otpme-policy**(1),
+**otpme-tool**(1)
 
 # AUTHOR
 
@@ -1061,4 +1038,4 @@ This manual page was created with AI assistance.
 
 # COPYRIGHT
 
-Copyright © 2014-2025 the2nd. License: GPLv3
+Copyright © 2014-2026 the2nd. License: GPLv3

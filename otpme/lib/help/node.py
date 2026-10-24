@@ -414,6 +414,24 @@ cmd_help = {
                                     '--return-type'         : _('Attribute to return.'),
                                 },
                 },
+    'find_passwords'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-node find_passwords [--return-type <return_type>] {node}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('Find password objects of this node.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                },
+                },
+    'show_password'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-node show_password {node} [entry]'),
+                    'cmd'   :   '<|object|> [entry_name]',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the passwords of this node, see otpme-pass.'),
+                                },
+                },
     'dump_cert'   : {
                     '_cmd_usage_help' : _('Usage: otpme-node dump_cert {node}'),
                     'cmd'   :   '<|object|>',

@@ -298,6 +298,24 @@ commands = {
                     },
                 },
             },
+    'find_passwords'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_objects',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'object_type':'pass', 'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_password'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_password',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'add_acl'   : {
             'default'    : {
                 'exists'    : {
@@ -533,7 +551,8 @@ def register_oid():
                             name_regex=device_name_re,
                             path_regex=device_path_re,
                             oid_regex=device_oid_re)
-    rel_path_getter = lambda x: x[-2:]
+    # Everything after realm and site: the unit can be a sub unit.
+    rel_path_getter = lambda x: x[2:]
     oid.register_rel_path_getter(object_type="device",
                                 getter=rel_path_getter)
 
@@ -851,6 +870,32 @@ class Device(OTPmeDevice):
         if not self.exists():
             return callback.error("Device does not exist.")
 
+        # Get parent object to check ACLs.
+        parent_object = self.get_parent_object()
+        if verify_acls:
+            if not self.verify_acl("delete:object"):
+                del_acl = f"delete:{self.type}"
+                if not parent_object.verify_acl(del_acl):
+                    msg = _("Permission denied: {name}")
+                    msg = msg.format(name=self.name)
+                    return callback.error(msg, exception=PermissionDenied)
+
+        exception = None
+        if not force:
+            exception = self.get_passwords_notice()
+        if not self.ask_delete_confirmation(force=force,
+                                            exception=exception,
+                                            callback=callback):
+            return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("delete", callback=callback, _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        # Not before here: the delete is allowed, confirmed and will
+        # happen. Done first, it stayed done when the delete did not.
         # Check for default accessgroup.
         result = backend.search(object_type="accessgroup",
                                 attribute="device",
@@ -878,25 +923,6 @@ class Device(OTPmeDevice):
                                 verify_acls=False,
                                 callback=callback)
             role._cache(callback=callback)
-
-        # Get parent object to check ACLs.
-        parent_object = self.get_parent_object()
-        if verify_acls:
-            if not self.verify_acl("delete:object"):
-                del_acl = f"delete:{self.type}"
-                if not parent_object.verify_acl(del_acl):
-                    msg = _("Permission denied: {name}")
-                    msg = msg.format(name=self.name)
-                    return callback.error(msg, exception=PermissionDenied)
-
-        if not self.ask_delete_confirmation(force=force, callback=callback):
-            return callback.abort()
-
-        if run_policies:
-            try:
-                self.run_policies("delete", callback=callback, _caller=_caller)
-            except Exception as e:
-                return callback.error()
 
         return super().delete(callback=callback, **kwargs)
 

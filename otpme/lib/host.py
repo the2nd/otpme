@@ -283,6 +283,25 @@ def update_ssl_files(host_cert=None, host_key=None,
     #set_ssl_file_perms()
 
 
+def read_host_type():
+    """ Our type ("host" or "node") from config.host_type_file, if any. """
+    try:
+        with open(config.host_type_file, "r") as fd:
+            host_type = fd.read().strip()
+    except OSError:
+        return None
+    if host_type not in ("host", "node"):
+        return None
+    return host_type
+
+def write_host_type(host_type):
+    """ Write our type to config.host_type_file, if it says another. """
+    if read_host_type() == host_type:
+        return
+    filetools.create_file(path=config.host_type_file,
+                        content=host_type,
+                        mode=0o644)
+
 def load_data(ignore_missing=False):
     """
     Update data of our host "host_data" dictionary as well
@@ -363,6 +382,13 @@ def load_data(ignore_missing=False):
             msg = msg.format(ssl_ca_file=config.ssl_ca_file)
             raise OTPmeException(msg)
 
+    # Our type from its file, which a user may read: out of our own
+    # object (update_data()) it is known only to whoever may read the
+    # tree. A check like "otpme-pass on hosts only" saw None for a user
+    # on a node as well.
+    host_type = read_host_type()
+    if host_type:
+        multiprocessing.host_data['type'] = host_type
     try:
         multiprocessing.host_data['type']
     except Exception:
@@ -471,6 +497,11 @@ def update_data(host_cert=None, host_key=None, ca_data=None,
         multiprocessing.host_data['type'] = None
         return
 
+    # Without the master key (a user) the tree cannot be read: what the
+    # files say, our type among it (load_data()), is all there is.
+    if not config.master_key:
+        return
+
     # Try to get host object from backend.
     myhost = None
     if config.uuid:
@@ -522,6 +553,23 @@ def update_data(host_cert=None, host_key=None, ca_data=None,
     host_site = myhost.site
 
     config.host_type = host_type
+
+    # For those who may not read our object, see load_data(). Written
+    # here so a host or node that joined before there was the file gets
+    # it with the next run of something as root (a daemon start before
+    # it drops its privileges, otpme-tool). /etc/otpme is root's, so a
+    # process that runs as the OTPme user cannot add it, and says so in
+    # the debug log only.
+    try:
+        write_host_type(host_type)
+    except PermissionError as e:
+        log_msg = _("Cannot write host type file: {file}: {error}", log=True)[1]
+        log_msg = log_msg.format(file=config.host_type_file, error=e)
+        logger.debug(log_msg)
+    except Exception as e:
+        log_msg = _("Failed to write host type file: {file}: {error}", log=True)[1]
+        log_msg = log_msg.format(file=config.host_type_file, error=e)
+        logger.warning(log_msg)
 
     # Update host data in config.
     multiprocessing.host_data['name'] = host_name

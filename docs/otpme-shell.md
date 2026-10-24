@@ -150,6 +150,10 @@ not replace it. A session to that host does not open until you take the
 new key over with **otpme-tool update_host_keys** as root, which shows
 you what changed.
 
+On a host, a session to another host needs **PIN_HOST_KEYS**. Without it
+a host gets only its own host object, so it has no key for any other
+host. A session to a node works either way.
+
 ## How long it lasts
 
 **--expiry** says how long the request stays good. Default is 5 minutes,

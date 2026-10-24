@@ -27,6 +27,7 @@ Create a new device.
 .TP
 .B del \fIdevice\fR
 Delete a device.
+The passwords of the device stay; the question says how many there are.
 .TP
 .B show \fR[\fIdevice\fR]
 Display device information.
@@ -81,6 +82,20 @@ access granted through the access group. Membership wins: the
 parameter is only looked at when no VLAN of the site answering the RADIUS
 request names the device. A device that is in a VLAN only through a role is
 overridden by one that names the device itself.
+.SS Passwords
+Passwords can belong to the device, for example the admin password of a
+switch, see
+.BR otpme\-pass (1).
+Each password decides itself whether you may see it.
+.TP
+.B find_passwords \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIdevice\fR
+The password objects that belong to the device.
+.TP
+.B show_password \fIdevice\fR [\fIentry\fR]
+Show the entries of these passwords, with their passwords.
+With \fIentry\fR only the entries of that name.
+.br
+Each password needs \fBview:entries\fR, and you need a key for it.
 .SS Configuration
 .TP
 .B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIdevice\fR \fIparameter\fR \fR[\fIvalue\fR]
@@ -261,6 +276,7 @@ OTPme data directory
 .BR otpme-accessgroup (1),
 .BR otpme-host (1),
 .BR otpme-vlan (1),
+.BR otpme-pass (1),
 .BR otpme-client (1)
 .SH AUTHOR
 the2nd <the2nd@otpme.org>

@@ -45,3 +45,13 @@ MASTER_NODE_WRITE = 412
 # attempt works later, which is what a backup started by backupd then
 # does -- see BackupDaemon.start_backup().
 BACKUP_REPO_LOCKED = 413
+# The site is in maintenance and hands out no objects: its objects are
+# being brought up to new versions, and what a peer fetched now it would
+# fetch again when the upgrade is through. Nothing is wrong, the same
+# sync works after the maintenance.
+SITE_MAINTENANCE = 414
+# otpme-agent could not reach the daemon it should send the command to.
+# Its own code, so the client behind the agent learns the same as one that
+# connects directly: no node is there (ConnectionError), not that the
+# command failed. otpme-pass then reads what the host keeps offline.
+DAEMON_UNREACHABLE = 415

@@ -56,6 +56,11 @@ REGISTER_AFTER = [
                 "otpme.lib.classes.script",
                 ]
 
+# The blocks the files of an encrypted share are encrypted in (fuse.py).
+# Written to the share directory at the first mount, and read from
+# there; a block of 0 bytes divides by zero at the first read.
+MIN_BLOCK_SIZE = 512
+MAX_BLOCK_SIZE = 1048576
 ADD_SCRIPT_NAME = "add_share.sh"
 MOUNT_SCRIPT_NAME = "mount_share.sh"
 
@@ -1175,7 +1180,8 @@ def register_oid():
                             name_regex=share_name_re,
                             path_regex=share_path_re,
                             oid_regex=share_oid_re)
-    rel_path_getter = lambda x: x[-2:]
+    # Everything after realm and site: the unit can be a sub unit.
+    rel_path_getter = lambda x: x[2:]
     oid.register_rel_path_getter(object_type="share",
                                 getter=rel_path_getter)
 
@@ -1245,6 +1251,19 @@ def register_config():
                                     default_value="/otpme-mounts/",
                                     superuser_only=True,
                                     object_types=object_types)
+
+def valid_block_size(block_size):
+    """ Whether <block_size> is one an encrypted share can be made with.
+
+    A power of two between MIN_BLOCK_SIZE and MAX_BLOCK_SIZE. From the
+    CLI it comes as an int (cli.get_opts() turns "4096" into one), and
+    whatever is not a number stays a string. True is an int as well.
+    """
+    if isinstance(block_size, bool) or not isinstance(block_size, int):
+        return False
+    if block_size < MIN_BLOCK_SIZE or block_size > MAX_BLOCK_SIZE:
+        return False
+    return block_size & (block_size - 1) == 0
 
 @match_class_typing
 class Share(OTPmeObject):
@@ -1564,6 +1583,15 @@ class Share(OTPmeObject):
             if not adds_token:
                 msg = _("--no-mount-token needs --crypt or --restore-token.")
                 return callback.error(msg)
+        # A restore share has no directory of its own and takes the
+        # block size of the share it shows.
+        if encrypted and not restore_share:
+            if not valid_block_size(block_size):
+                msg = _("Block size must be a power of two from {min_size} to {max_size}: {block_size}")
+                msg = msg.format(min_size=MIN_BLOCK_SIZE,
+                                max_size=MAX_BLOCK_SIZE,
+                                block_size=block_size)
+                return callback.error(msg)
         if home_share_uid and not home_share:
             home_share = True
         # Run parent class stuff e.g. verify ACLs.
@@ -1604,6 +1632,13 @@ class Share(OTPmeObject):
             self.home_share_uid = share.home_share_uid
             self.home_share_permissions = share.home_share_permissions
             self.encrypted = share.encrypted
+            # Shown by show, which reads the index. The mount reads the
+            # block size from the backup, out of the settings file in
+            # the share directory.
+            self.add_index('encrypted', self.encrypted)
+            if self.encrypted:
+                self.block_size = share.block_size
+                self.add_index('block_size', self.block_size)
             if share.force_group_uuid:
                 self.force_group(group_uuid=share.force_group_uuid,
                                     force=True,
@@ -2952,6 +2987,20 @@ class Share(OTPmeObject):
 
         # The share root the token has mounted is not its own anymore.
         self._notify_share_token("share_unmount", token_path,
+                                persist_mount=persist_mount,
+                                share_notifications=share_notifications,
+                                callback=callback)
+        # A token that is on the share as well, itself or through a
+        # role, mounts its home dir from now on: it comes back with
+        # that, the other way of add_root_mount_token(). Not a no mount
+        # token, which does not get the share mounted at all.
+        if not self.enabled:
+            return result
+        if not self.is_assigned_token(token_uuid):
+            return result
+        if self.is_no_mount_token(token_uuid):
+            return result
+        self._notify_share_token("share_mount", token_path,
                                 persist_mount=persist_mount,
                                 share_notifications=share_notifications,
                                 callback=callback)

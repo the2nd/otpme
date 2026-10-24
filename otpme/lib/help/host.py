@@ -445,6 +445,24 @@ cmd_help = {
                                     '--return-type'         : _('Attribute to return.'),
                                 },
                 },
+    'find_passwords'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-host find_passwords [--return-type <return_type>] {host}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('Find password objects of this host.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                },
+                },
+    'show_password'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-host show_password {host} [entry]'),
+                    'cmd'   :   '<|object|> [entry_name]',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the passwords of this host, see otpme-pass.'),
+                                },
+                },
     'list_dynamic_groups'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host list_dynamic_groups {host}'),
                     'cmd'   :   '<|object|>',

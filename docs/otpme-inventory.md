@@ -1,7 +1,7 @@
 # NAME
 
 otpme-inventory - show the system, the packages and the hardware of
-hosts
+hosts, and what their systems offer
 
 # SYNOPSIS
 
@@ -20,7 +20,9 @@ an old version of a package. See **otpme-deploy**(1). Use it to find a
 machine by its serial number, or to see how much memory and disk a host
 has. Use it to find the hosts that still have to be rebooted, see **WHEN
 A HOST HAS TO BE REBOOTED**. Use it to find the hosts that still run an
-old OTPme, see **OTPME VERSION**.
+old OTPme, see **OTPME VERSION**. Use it to see which packages a system
+offers and which hosts have a package that can be updated, see
+**REFERENCE HOSTS**.
 
 The **confd** daemon on each host (and node) reports this data to the
 nodes of its site. It checks the host every 60 seconds and only sends
@@ -54,9 +56,10 @@ reports its system, its kernel, its OTPme version and its hardware.
 # COMMANDS
 
 **show *host***  
-Show the OS, the OS version, the running kernel, whether the host has to
-be rebooted, the OTPme version, the number of packages, the vendor, the
-model, the serial number and the time of the last update.
+Show the OS, the OS version, the architecture, the running kernel,
+whether the host has to be rebooted, the OTPme version, the number of
+packages, the vendor, the model, the serial number and the time of the
+last update.
 
 **packages \[**--filter** *pattern*\] *host***  
 List the packages of a host, one per line with name and version.
@@ -66,12 +69,13 @@ Show what a host is made of: CPU, memory, disks, serial number and so
 on. Sizes are shown in human form, for example **9.7G**. Says so if the
 host has not reported its hardware yet.
 
-**search \[**--host** *host*\] \[**--os-version** *version*\] \[**--kernel** *kernel*\] \[**--otpme-version** *version*\] \[**--reboot-required**\] \[**--hardware** *expression*\] \[*package*\]**  
+**search \[**--host** *host*\] \[**--os-version** *version*\] \[**--kernel** *kernel*\] \[**--otpme-version** *version*\] \[**--reboot-required**\] \[**--hardware** *expression*\] \[**--upgradable**\] \[*package*\]**  
 Find hosts by package, by OS version, by kernel, by OTPme version, by a
-waiting reboot, or by hardware. *package* is a package name, or a name
-and a version in the form *name***=***version*. Both can contain
-wildcards (**\***). Every option you give has to match, so they narrow
-the result down. You have to give at least one of them.
+waiting reboot, by hardware, or by packages that can be updated.
+*package* is a package name, or a name and a version in the form
+*name***=***version*. Both can contain wildcards (**\***). Every option
+you give has to match, so they narrow the result down. You have to give
+at least one of them.
 
 Each line says a host and what made it match. With a *package* that is
 the package and its version, one line per package. With **--hardware**
@@ -81,7 +85,35 @@ listed. A host has several disks, and then only the disks that match are
 shown, with their name. So a search for **'disk_size\>=100G'** shows
 **sdb=150.0G** and not all disks of the host. Behind the size comes what
 says which disk it is, the vendor, the model and the serial, where the
-host knows them: **sdb=150.0G(SEAGATE ST1000NM0055 ZA12345)**.
+host knows them: **sdb=150.0G(SEAGATE ST1000NM0055 ZA12345)**. With
+**--upgradable** it is the package, the version installed and the
+version the system offers: **openssl=3.0.15-1\~deb12u1 -\>
+3.0.17-1\~deb12u1**.
+
+**systems**  
+List the systems the hosts run, one line per OS version and
+architecture: how many hosts run it, the reference host that reports
+what it offers, how many packages that is, and when it last reported. A
+system nobody reports shows **-** there. Only systems with a host you
+may see are listed, and only those hosts are counted. See **REFERENCE
+HOSTS**.
+
+**available \[**--host** *host*\] \[**--os-version** *version*\] \[**--arch** *arch*\] *package***  
+List the packages a system offers: what can be installed on a host that
+runs it. *package* works as with **search**, a name or
+*name***=***version*, with wildcards. The version is the one apt would
+install.
+
+With **--host** it is the system of that host. Each line is a package,
+and behind it the version installed on the host, if it is:
+**openssl=3.0.17-1\~deb12u1 installed=3.0.15-1\~deb12u1**.
+
+Without it, **--os-version** and **--arch** say which systems, with
+wildcards, and each line starts with its system: **debian-12 amd64
+openssl=3.0.17-1\~deb12u1**. Without them it is every system you may
+see.
+
+It needs a reference host for the system, see **REFERENCE HOSTS**.
 
 # OPTIONS
 
@@ -90,12 +122,24 @@ Only list packages whose name matches the pattern, for example
 **'python3-\*'**.
 
 **--host *host***  
-Only this host. Use it to search the packages of one host instead of
-listing all of them.
+For **search**: only this host. Use it to search the packages of one
+host instead of listing all of them. For **available**: the system of
+this host, see there.
 
 **--os-version *version***  
-Only hosts with this OS version, for example **debian-12**. Wildcards
-are allowed, for example **'debian-\*'**.
+Only hosts with this OS version, for example **debian-12**, or for
+**available** only this system. Wildcards are allowed, for example
+**'debian-\*'**.
+
+**--arch *arch***  
+For **available**: only this architecture, for example **amd64**.
+Wildcards are allowed.
+
+**--upgradable**  
+For **search**: only installed packages of which the system of the host
+offers a newer version. Takes no value. With a *package* only that
+package. A host whose system no reference host reports is left out, and
+so is a package its system does not offer. See **REFERENCE HOSTS**.
 
 **--kernel *kernel***  
 Only hosts running this kernel, for example **6.1.0-37-amd64**.
@@ -155,6 +199,11 @@ Example:
 > otpme-host config client1 allow_inventory
 > 'role\|example.org/berlin/it-support'
 
+What a system offers (**systems**, **available**) belongs to no host, so
+no **allow_inventory** names it. It follows the hosts: you may read what
+a system offers when you may read the inventory of at least one host
+that runs it.
+
 For a host of another site that reports here, see **A CENTRAL
 INVENTORY**, there is a second parameter:
 
@@ -212,6 +261,10 @@ and the version from */etc/os-release*, for example **debian-13** or
 **ubuntu-24.04**. A system without a version number uses its code name,
 for example **debian-trixie**.
 
+**arch** is the architecture the way the packages name it, for example
+**amd64** or **arm64**, from **dpkg --print-architecture**. A host
+without dpkg does not report one.
+
 **kernel** is the kernel the host is running, the way **uname -r** says
 it, for example **6.1.0-37-amd64**.
 
@@ -231,6 +284,7 @@ waiting for a reboot:
 >     host: server1
 >     os: Linux
 >     os_version: debian-12
+>     arch: amd64
 >     kernel: 6.1.0-37-amd64
 >     ...
 
@@ -286,11 +340,67 @@ not restarted still runs the old one, and that is what you see here.
 **-** means the host has not reported a version yet. An OTPme older than
 this field sends none.
 
+# REFERENCE HOSTS
+
+A reference host reports the packages its system offers: what can be
+installed on a host with the same OS version and architecture. With
+that, **available** shows what can be installed, and **search
+--upgradable** finds the hosts that have a package in an older version
+than their system offers.
+
+Set them on the site that keeps the inventory of the hosts. That is the
+site they belong to, or their **inventory_site**, see **A CENTRAL
+INVENTORY**. The site that keeps the data decides, like with
+**inventory_trusts**:
+
+**reference_hosts (list)**  
+The hosts that report to this site the packages their system offers. One
+per OS version and architecture is enough.  
+Object types: site
+
+The host does not read the parameter. The site tells it with every
+answer about its inventory. So a host learns that it is a reference
+host, or is no longer one, the next time it reports its inventory, at
+the latest after an hour.
+
+Example, with one Debian 12 and one Debian 13 host:
+
+>     otpme-site config berlin reference_hosts refhost12,refhost13
+
+The **confd** daemon on a reference host reads its package lists and
+sends what changed, the same way every host sends its own packages. It
+reads them when they changed or once an hour. It does not run **apt
+update** itself. That is the job of the **apt-daily** timer of the host,
+so what is offered is as new as the last **apt update** there. The
+version is the one apt would install, so pins count. Packages for the
+architecture of the host and for **all** are reported, packages of a
+foreign architecture are not.
+
+The packages go where the host sends its inventory, and the reference
+host has to be one that site takes the inventory of. The site takes them
+for the OS version and architecture that the inventory of the host says,
+and for no other. They are kept in one object per OS version and
+architecture, on the nodes of that site.
+
+One reference host writes an object. A second one with the same system
+waits. It takes over when the first one has not reported for three days,
+is deleted, or is no longer in **reference_hosts**. So a second
+reference host is a stand-in, and two with different repositories do not
+take turns.
+
+Who may read what a system offers follows the hosts: a token that may
+read the inventory of a host that runs the system may read what it
+offers, see **PERMISSIONS**.
+
 # PACKAGE NAMES
 
 Package names are the names dpkg uses. A multi-arch package has its
 architecture in the name, for example **libc6:amd64**. Only fully
 installed packages are listed.
+
+The packages a system offers are named without the architecture.
+**search --upgradable** and **available --host** compare **libc6:amd64**
+on a host with **libc6** of its system.
 
 # HARDWARE FIELDS
 
@@ -386,6 +496,7 @@ is:
 >     host: client1
 >     os: Linux
 >     os_version: debian-13
+>     arch: amd64
 >     kernel: 6.12.43-amd64
 >     reboot_required: no
 >     otpme_version: 0.3.0a283
@@ -583,6 +694,31 @@ The Debian 12 hosts that still run this kernel.
 
 **otpme-inventory search --reboot-required --os-version debian-12**  
 The Debian 12 hosts that have to be rebooted.
+
+## What can be installed and updated
+
+These need a reference host, see **REFERENCE HOSTS**.
+
+>     $ otpme-inventory systems
+>     debian-12 amd64 hosts=14 reference_host=refhost12 packages=63644 last_report=2026-10-24 09:12
+>     debian-13 amd64 hosts=3 reference_host=refhost13 packages=65102 last_report=2026-10-24 09:15
+>     ubuntu-24.04 amd64 hosts=1 reference_host=- packages=- last_report=-
+
+**otpme-inventory available --os-version debian-13 'python3-django\*'**  
+The Django packages Debian 13 offers.
+
+**otpme-inventory available --host client1 openssl**  
+The openssl that can be installed on client1, and the one installed
+there.
+
+**otpme-inventory search --upgradable openssl**  
+The hosts with an openssl older than their system offers.
+
+**otpme-inventory search --upgradable --host server1**  
+Every package of server1 that can be updated.
+
+**otpme-inventory search --upgradable --os-version debian-12 'linux-image-\*'**  
+The Debian 12 hosts with a kernel package that can be updated.
 
 # SEE ALSO
 

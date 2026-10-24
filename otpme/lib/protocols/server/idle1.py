@@ -388,25 +388,27 @@ class OTPmeIdleP1(OTPmeServer1):
                 self.session = result[0]
         else:
             self.session = None
+        host = self.peer.name
+        login_data = {
+                    'host'          : host,
+                    'connect_time'  : time.time(),
+                    'login_time'    : login_time,
+                    'login_token'   : login_token,
+                    'client_ip'     : self.client,
+                    'session'       : self.session,
+                    'version'       : version,
+                    }
         if self.q is None:
-            host = self.peer.name
-            login_data = {
-                        'host'          : host,
-                        'connect_time'  : time.time(),
-                        'login_time'    : login_time,
-                        'login_token'   : login_token,
-                        'client_ip'     : self.client,
-                        'session'       : self.session,
-                        'version'       : version,
-                        }
             self.q = self.dispatcher.subscribe(username, host, login_data=login_data)
             self.subscribed_username = username
         elif self.subscribed_username != username:
             # Different username on same connection (shouldn't happen
-            # in practice, but stay safe).
+            # in practice, but stay safe). Subscribed the same way as
+            # the first one: subscribe() takes the host and the login
+            # data, and without them this raised a TypeError.
             self.dispatcher.unsubscribe(self.subscribed_username,
-                                        self.q,  self.peer.name)
-            self.q = self.dispatcher.subscribe(username)
+                                        self.q, host)
+            self.q = self.dispatcher.subscribe(username, host, login_data=login_data)
             self.subscribed_username = username
         while True:
             try:
@@ -638,6 +640,16 @@ class OTPmeIdleP1(OTPmeServer1):
             self.logger.info(log_msg)
             return self.build_response(True, event)
 
+        elif event_type == "pass_changed":
+            # One of the passwords of the user changed, or which of them
+            # a host may keep (otpme_password.notify_cache_users()). Every
+            # host of the user hears it: what one may keep is decided
+            # when its agent fetches them (get_pass_cache()), not here.
+            log_msg = _("Sending password change notification to {username} on host {host}", log=True)[1]
+            log_msg = log_msg.format(username=username, host=self.peer.name)
+            self.logger.info(log_msg)
+            return self.build_response(True, event)
+
         else:
             msg = _("Received invalid event: {event_type}")
             msg = msg.format(event_type=event_type)
@@ -677,9 +689,11 @@ class OTPmeIdleP1(OTPmeServer1):
         or self.peer.site_uuid != config.site_uuid:
             return self.build_response(False, "Permission denied")
         login_data = self.dispatcher.get_login_data()
+        # Of one user in the same shape as of all of them, {user: {host:
+        # ...}}, and nobody where the user is not logged in: otpme-tool
+        # who reads the answer as that table, and got the hosts of the
+        # user, or a sentence, instead.
         if username:
-            try:
-                login_data = login_data[username]
-            except Exception:
-                login_data = _("Not logged in.")
+            login_data = {x:login_data[x] for x in login_data
+                        if x == username}
         return self.build_response(True, login_data)

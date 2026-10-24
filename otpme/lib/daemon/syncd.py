@@ -13,6 +13,7 @@ except Exception:
 
 from otpme.lib import log
 from otpme.lib import config
+from otpme.lib import backend
 from otpme.lib.protocols import status_codes
 from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
 
@@ -37,6 +38,15 @@ class SyncDaemon(OTPmeDaemon):
         self.protocols = config.get_otpme_protocols(self.name, server=True)
         # Set max client connections.
         self.max_conn = self.get_max_conn("syncd_max_conn")
+        # A pool of workers serving the connections in threads, and not
+        # a process for each: see syncd_workers in classes/site.py.
+        own_node = backend.get_object(uuid=config.uuid)
+        self.worker_count = self.get_config_parameter(own_node,
+                                                    "syncd_workers")
+        self.max_worker_count = self.get_config_parameter(own_node,
+                                                    "syncd_max_workers")
+        self.worker_threads = self.get_config_parameter(own_node,
+                                                    "syncd_worker_threads")
         # Set socket banner.
         self.socket_banner = f"{status_codes.OK} {self.full_name} {config.my_version}"
 

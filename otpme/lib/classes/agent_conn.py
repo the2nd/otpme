@@ -97,35 +97,31 @@ class AgentConn(object):
             username = response
         return username
 
+    def get_login_status(self):
+        """ The login token, its type and the pass type of the session.
+
+        Asked with login_info and not read out of the status line: that
+        one is translated, and re.sub() handed back the whole line where
+        it did not match.
+        """
+        status, status_code, response = self.send("login_info")
+        if status_code != status_codes.OK:
+            msg = _("Failed to get login status from agent: {response}")
+            msg = msg.format(response=response)
+            raise OTPmeException(msg)
+        return response['token'], response['token_type'], response['pass_type']
+
     def get_login_token(self):
         """ Get login token from otpme-agent. """
-        status, status_code, response = self.send("status")
-        if status_code != status_codes.OK:
-            msg = _("Failed to get login token: {response}")
-            msg = msg.format(response=response)
-            raise Exception(msg)
-        login_token = re.sub('.* token: ([^ ]*) .*', r'\1', response)
-        return login_token
+        return self.get_login_status()[0]
 
     def get_login_token_type(self):
         """ Get login token type from otpme-agent. """
-        status, status_code, response = self.send("status")
-        if status_code != status_codes.OK:
-            msg = _("Failed to get login token: {response}")
-            msg = msg.format(response=response)
-            raise Exception(msg)
-        login_token_type = re.sub('.* type: ([^ ]*) pass_type:.*$', r'\1', response)
-        return login_token_type
+        return self.get_login_status()[1]
 
     def get_login_pass_type(self):
         """ Get login pass type from otpme-agent. """
-        status, status_code, response = self.send("status")
-        if status_code != status_codes.OK:
-            msg = _("Failed to get login pass type: {response}")
-            msg = msg.format(response=response)
-            raise Exception(msg)
-        login_pass_type = re.sub('.* pass_type: ([^ ]*)$', r'\1', response)
-        return login_pass_type
+        return self.get_login_status()[2]
 
     def get_offline(self):
         """ Get session offline info."""
@@ -164,14 +160,17 @@ class AgentConn(object):
 
     def get_srp(self):
         """ Get SRP from otpme-agent. """
-        username = None
-        srp = None
         status, status_code, response = self.send("get_srp")
-        if status_code == status_codes.OK:
-            username = re.sub('^username: ([^:]*) srp: (.*)$', r'\1',
-                            response)
-            srp = re.sub('^username: ([^:]*) srp: (.*)$', r'\2',
+        if status_code != status_codes.OK:
+            # Said, and not handed back as None: get_srp printed
+            # nothing then and ended well.
+            msg = _("Error getting SRP from agent: {response}")
+            msg = msg.format(response=response)
+            raise OTPmeException(msg)
+        username = re.sub('^username: ([^:]*) srp: (.*)$', r'\1',
                         response)
+        srp = re.sub('^username: ([^:]*) srp: (.*)$', r'\2',
+                    response)
         return username, srp
 
     def get_slp(self):
@@ -195,7 +194,9 @@ class AgentConn(object):
         if status_code != status_codes.OK:
             msg = _("Error getting TTY from agent: {response}")
             msg = msg.format(response=response)
-            raise Exception(msg)
+            # An OTPmeException, which otpme-tool prints as a message:
+            # any other one reached the user as a traceback.
+            raise OTPmeException(msg)
         tty = response
         return tty
 
@@ -214,7 +215,7 @@ class AgentConn(object):
         if status_code != status_codes.OK:
             msg = _("Error getting DISPLAY from agent: {response}")
             msg = msg.format(response=response)
-            raise Exception(msg)
+            raise OTPmeException(msg)
         display = response
         return display
 
@@ -224,7 +225,7 @@ class AgentConn(object):
         if status_code != status_codes.OK:
             msg = _("Error getting session list from agent: {response}")
             msg = msg.format(response=response)
-            raise Exception(msg)
+            raise OTPmeException(msg)
         return response
 
     def get_login_session_id(self):
@@ -233,7 +234,7 @@ class AgentConn(object):
         if status_code != status_codes.OK:
             msg = _("Error getting session ID from agent: {response}")
             msg = msg.format(response=response)
-            raise Exception(msg)
+            raise OTPmeException(msg)
         return response
 
     def mount_shares(self, shares):

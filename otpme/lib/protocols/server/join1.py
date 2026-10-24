@@ -445,7 +445,8 @@ class OTPmeJoinP1(OTPmeServer1):
         return self.build_response(status, message)
 
     def finish_join(self, host, host_public_key, callback,
-        host_cert=None, host_cert_req=None, site_cert_req=None):
+        host_cert=None, host_cert_req=None, site_cert_req=None,
+        site_ca_valid=None):
         """ Finalize realm join of given host. """
         log_msg = _("Trying to finalize realm join: {host_name}", log=True)[1]
         log_msg = log_msg.format(host_name=host.name)
@@ -519,6 +520,7 @@ class OTPmeJoinP1(OTPmeServer1):
                 try:
                     cert, key = ca.create_ca_cert(common_name,
                                                 cert_req=site_cert_req,
+                                                valid=site_ca_valid,
                                                 verify_acls=False,
                                                 callback=callback)
                 except Exception as e:
@@ -561,7 +563,7 @@ class OTPmeJoinP1(OTPmeServer1):
         # Build join message.
         msg = []
         host_desc = f"{host.type[0].upper()}{host.type[1:]}"
-        message_text, log_msg = _("{host_desc} {host_name} joined successful realm {realm}.", log=True)
+        message_text, log_msg = _("{host_desc} {host_name} joined realm {realm}.", log=True)
         message_text = message_text.format(host_desc=host_desc, host_name=host.name, realm=config.realm)
         log_msg = log_msg.format(host_desc=host_desc, host_name=host.name, realm=config.realm)
         msg.append(message_text)
@@ -678,9 +680,10 @@ class OTPmeJoinP1(OTPmeServer1):
 
             # When finalizing the join process the host must exist.
             if not host:
+                # The name: this method gets no FQDN.
                 msg, log_msg = _("Unknown {host_type}: {host_fqdn}", log=True)
-                msg = msg.format(host_type=host_type, host_fqdn=host_fqdn)
-                log_msg = log_msg.format(host_type=host_type, host_fqdn=host_fqdn)
+                msg = msg.format(host_type=host_type, host_fqdn=host_name)
+                log_msg = log_msg.format(host_type=host_type, host_fqdn=host_name)
                 log_msg = f"Join phase 2 error: {log_msg}"
                 self.logger.debug(log_msg)
                 # Prevent hostname testing for not authenticated users.
@@ -703,6 +706,16 @@ class OTPmeJoinP1(OTPmeServer1):
                 site_cert_req = _request['site_cert_req']
             except Exception:
                 site_cert_req = None
+            # Days the site CA certificate is to be valid ("join
+            # --ca-valid"), None for default_ca_validity.
+            site_ca_valid = _request.get('site_ca_valid')
+            if site_ca_valid is not None:
+                if isinstance(site_ca_valid, bool) \
+                or not isinstance(site_ca_valid, int) \
+                or site_ca_valid < 1:
+                    message = _("Invalid CA validity: {valid}")
+                    message = message.format(valid=site_ca_valid)
+                    return self.build_response(False, message)
             # Try to get host public key.
             try:
                 host_public_key = _request['host_public_key']
@@ -714,13 +727,14 @@ class OTPmeJoinP1(OTPmeServer1):
                                     host_cert=host_cert,
                                     host_cert_req=host_cert_req,
                                     site_cert_req=site_cert_req,
+                                    site_ca_valid=site_ca_valid,
                                     callback=self.callback)
 
         # If we got a JOTP the host must already exist to proceed.
         if jotp and not host:
             msg, log_msg = _("Join phase 1 error: Unknown {host_type}: {host_fqdn}", log=True)
-            msg = msg.format(host_type=host_type, host_fqdn=host_fqdn)
-            log_msg = log_msg.format(host_type=host_type, host_fqdn=host_fqdn)
+            msg = msg.format(host_type=host_type, host_fqdn=host_name)
+            log_msg = log_msg.format(host_type=host_type, host_fqdn=host_name)
             self.logger.debug(log_msg)
             raise OTPmeException(msg)
 
@@ -857,7 +871,7 @@ class OTPmeJoinP1(OTPmeServer1):
         # Build leave response.
         status = True
         host_desc = f"{host.type[0].upper()}{host.type[1:]}"
-        message, log_msg = _("{host_desc} {host_name} leaved successful realm {realm}.", log=True)
+        message, log_msg = _("{host_desc} {host_name} left realm {realm}.", log=True)
         message = message.format(host_desc=host_desc, host_name=host.name, realm=config.realm)
         log_msg = log_msg.format(host_desc=host_desc, host_name=host.name, realm=config.realm)
         self.logger.info(log_msg)

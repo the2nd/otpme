@@ -16,37 +16,159 @@ operations, backup/restore and more.
 
 ## Realm
 
-**join \[*options*\] \[*domain*\]**  
-Join OTPme realm.
+**join \[**--jotp** *jotp*\] \[**--host-type** **host**\|**node**\] \[**--unit** *unit*\] \[**--host-key-len** *bits*\] \[**--ca-key-len** *bits*\] \[**--ca-valid** *days*\] \[**--site-key-len** *bits*\] \[**--site-valid** *days*\] \[**--trust-site-cert**\|**--check-site-cert** *fingerprint*\] \[**--joind-uri** *uri*\] \[**--no-daemon-start**\] \[*domain*\]**  
+Make this machine a host or a node of a realm. You must be root, and the
+machine must not be in a realm yet.
 
-**leave \[*options*\] \[*domain*\]**  
-Leave OTPme realm.
+**Finding the realm.** The joind of the realm is looked up in DNS, as
+the SRV record **\_otpme-join.\_tcp.***domain*. Realm and site come from
+the TXT records **\_otpme-realm.\_tcp.***domain* and
+**\_otpme-site.\_tcp.***domain*, or from the global options **-r** and
+**-s**. Without *domain* it is *site*.*realm* when **-r** and **-s** are
+given, else the domain of the FQDN of this machine.  
+**--joind-uri** names the joind instead of the SRV record, e.g.
+**tcp://node1.berlin.example.org:2024**; 2024 is the port of joind.
+
+**Who may join.** With **--jotp** nobody logs in: the JOTP is the
+one-time password that **otpme-host add** or **otpme-node add** printed,
+and the object has to exist.  
+Without it you log in as a user: the one of the global option **-u**,
+else root. The user needs the ACL **join:host** or **join:node** on the
+access group **JOIN**. An object that is not there yet is made in
+**--unit**, which needs **add:host** or **add:node** on that unit.
+
+**--host-type** is **host** by default. A host joins the site of the
+joind it asks.
+
+**--unit** is **hosts** or **nodes** by default. An object that exists
+has to be in this unit: one in another unit needs **--unit**.
+
+**Keys.** **--host-key-len**, or **--node-key-len**, is the length of
+the key of the certificate of this machine, when it has none yet. The
+default is the config variable **default_host_key_len** or
+**default_node_key_len**.  
+The first node of a site makes the CA of the site and the site
+certificate as well, the way **otpme-realm init** does it for the first
+site: **--ca-key-len** and **--ca-valid** are for the CA, which the CA
+of the parent site or the realm signs, **--site-key-len** and
+**--site-valid** for the site certificate. The defaults are
+**default_ca_key_len**, **default_ca_validity**,
+**default_site_key_len** and **default_site_validity**. Any other join
+leaves these four alone.
+
+**The site certificate.** join shows the fingerprint of the certificate
+of the site it connects to and asks whether to trust it.
+**--check-site-cert** compares it instead, given as **sha256:***hex*,
+**sha1:***hex* or the sha256 hex alone; the colons and capitals of
+**openssl x509 -fingerprint** are fine. **--trust-site-cert** trusts any
+certificate.
+
+At the end join starts the OTPme daemons, unless **--no-daemon-start**.
+It prints the LOTP that **leave** takes, where the host or node has
+LOTPs enabled.  
+An object that has joined already is refused; the global option **-f**
+joins it again.
+
+**leave \[**--lotp** *lotp*\] \[**--offline**\] \[**--keep-host**\|**--no-keep-host**\] \[**--keep-data**\] \[**--keep-cache**\] \[**--keep-cert**\]**  
+Take this machine out of its realm. You must be root. The master node
+cannot leave.
+
+leave stops the OTPme daemons and **otpme-agent**, tells the realm, and
+removes the data of the realm from this machine: its objects,
+**/var/lib/otpme**, **/var/cache/otpme**, **/var/spool/otpme**, the
+certificate and its key, and the auth key.
+
+With **--lotp** nobody logs in: the LOTP is the one join printed.
+Without it you log in as a user: the one of the global option **-u**,
+else the one logged in to **otpme-agent**, else root. The user needs
+**leave:host** or **leave:node** on the access group **JOIN**. Either
+way the realm checks the certificate of this machine.
+
+On the realm a host is kept by default: its certificate is revoked and
+it is disabled, and it can join again. A node is deleted.
+**--keep-host** and **--no-keep-host** say otherwise.
+
+**--keep-cert**  
+Keep the certificate: it is not revoked, it stays on this machine, and
+the object is kept on the realm.
+
+**--keep-cache**  
+Keep **/var/cache/otpme**, with the users and groups of nsscache.
+
+**--keep-data**  
+Remove nothing but the files that make this machine a member,
+**/etc/otpme/otpme.uuid** and **/etc/otpme/otpme.host_type**. It takes
+**--keep-cert** with it.
+
+**--offline**  
+Do not tell the realm, which changes nothing there: the object stays,
+the certificate is not revoked. For a machine that cannot reach its
+realm any more.
 
 **get_realm**  
-Show realm of this host.
+Print the realm this machine is a member of. Nothing is printed when it
+is in none.
 
 **get_site**  
-Show site of this host.
+Print the site this machine is a member of, the same way.
 
 **get_user_site**  
-Get site of login user.
+Print the site of a user: the one of the global option **-u**, else the
+one logged in to **otpme-agent**. It asks hostd, so the machine has to
+be in a realm.
 
 ## Session
 
-**login \[**--node** *node*\] \[*username*\]**  
-Login to OTPme realm.
+A login to the realm is kept by **otpme-agent**, one per system user.
+These commands ask the agent of the user who runs them, for the session
+of the login they run in.
+
+**login \[**--node** *node*\] \[**--no-authorize-host**\] \[*username*\]**  
+Log in to the realm. It starts **otpme-agent** if it is not running,
+asks for the password or OTP of the user, and leaves the session with
+the agent. The user is *username*, else the one of the global option
+**-u**, else the system user. A user who is logged in already is
+refused.  
+This is not the login of PAM: no shares are mounted, and nothing is kept
+for offline logins.
+
+**--node *node***  
+Send the login to this node, instead of the one DNS names.
+
+**--no-authorize-host**  
+Do not ask whether the token may log in on this host, through the roles
+and groups of the host, and do not apply **logins_limited**. For tests,
+e.g. to log in as a user on a node without assigning the token there.
+The policies of the token, the user and the access group still apply. A
+login through PAM always asks.
 
 **logout**  
-Logout from OTPme realm.
+Log out of the realm. The shares mounted for the session are unmounted
+first; if that fails, nothing is logged out. Then the session is ended
+on every site it is logged in to, and the agent drops it. A site that
+could not be told is named in the error; the agent drops the session all
+the same.
 
 **whoami**  
-Show currently logged in user.
+Print the name of the user that is logged in.
 
 **who**  
-Show all users currently logged in on this host (across TTYs and desktop
-sessions).  
+Print the users that are logged in to the realm, on every host of the
+site: user, login token, host, IP address, when the agent connected,
+when the user logged in, the session and the version of OTPme. A user
+logged in more than once on a host is one line.  
+It asks the idled of the master node, so it says nothing while the
+cluster is not healthy.  
 Nodes may run it. A host may when the site has **allow_who_from_hosts**
-on, or lists it in **allow_who**, see **otpme**(7).
+on, or lists it in **allow_who**, see **otpme**(7). That is decided for
+the host: every user who may read its certificate key may run it there.
+
+**host_who**  
+Print the hosts and nodes that wait to be told of a job: host, type, IP
+address and when they connected. A host that is listed hears of a new
+job at once, for example of **otpme-shell**; one that is not picks it up
+at its next sync.  
+Who may run it is the same as for **who**.
 
 **message \[**--user** *username*\] \[**--host** *hostname*\] \[**--all**\] \[**--title** *title*\] *text***  
 Show a message box to users that are logged in.
@@ -54,13 +176,15 @@ Show a message box to users that are logged in.
 The message is shown in a window with an OK button, in the desktop
 session of the user. Give one of **--user**, **--host** or **--all**:
 one user, all users logged in on one host, or all users of this site.
-The command says how many users were told.
+The command says how many users it found logged in, the way **who**
+lists them; each session of a user gets the message.
 
 The window is drawn by the first helper the user's host has:
 **kdialog**, **zenity**, **pinentry** or **xmessage**. A host with none
-of them, or a user who is logged in on a terminal, gets a desktop
-notification instead. Such a notification cannot be confirmed, so it
-stays until the user closes it.
+of them gets a desktop notification instead. Such a notification cannot
+be confirmed, so it stays until the user closes it. A session without a
+display of its own gets the window on the display of the user's other
+processes, else on **:0**.
 
 Nothing comes back when the user clicks OK.
 
@@ -68,67 +192,152 @@ Nodes may send messages. A host may send them when the site lists it in
 **allow_user_messages**, see **otpme**(7). Only users of your own site
 can be reached, because the message goes through the idled of that site.
 
-**show_sessions**  
-Get otpme-agent login sessions.
+**show_sessions \[*pid*\]**  
+List the sessions of the agent you may see: the PID of the login, the
+token, the pass type, realm and site, whether it is a login or the
+passphrase of an SSH key, who else may use it, and the sites it is
+logged in to. With the *pid* of a login: its sessions on each site, with
+login time, last and next renegotiation, timeouts, whether it may go
+offline, and the session UUID.
 
 **get_login_session_id**  
-Get otpme-agent login session ID.
+Print the ID of the agent session of this login, the one PAM puts into
+**OTPME_LOGIN_SESSION**.
 
 **get_login_token**  
-Show token of currently logged in user.
+Print the token the user logged in with.
 
 **get_login_token_type**  
-Show token type of currently logged in user.
+Print the type of that token.
 
 **get_login_pass_type**  
-Show token password type used at login.
+Print what was given at login, for example **otp** or **static**.  
+These three also answer for an offline login.
 
 **get_tty**  
-Get TTY for logged in user.
+Print the TTY the login was made on.
 
 **get_display**  
-Get **DISPLAY** of currently logged in user.
+Print the **DISPLAY** PAM gave the login.
 
 **get_sotp \[**--site** *site*\]**  
-Get a SOTP for logged in user.
+Print an SOTP, a one-time password made from the session: it is how the
+tools of a logged-in user, e.g. the mount of a share, authenticate as
+that session. It is valid for about a minute.  
+With **--site** it is made for the session at that site of the realm.
+Without one there yet, the agent logs in there first, which the site of
+the user has to trust.
 
 **get_srp**  
-Get a SRP for logged in user.
+Print the SRP, the session refresh password. Sent instead of a password,
+it keeps the session on the node from running into its unused timeout,
+and authenticates nothing. It changes with every renegotiation.
 
 **get_jwt *challenge***  
-Request JWT from mgmtd.
+Print a JWT that authd signs with the key of the site, for *challenge*,
+after you authenticated once more with password or OTP. It is what an
+**auth_on_action** policy asks for; as a command it is there to test
+that.
 
 **reneg**  
-Try to renegotiate login session.
+Renegotiate the session with the site of the global options **-r** and
+**-s**, by default the one of this host, now and not when it is due. A
+session that cannot be renegotiated any more, because it timed out or
+the node refuses it, is ended. With **-v** it says when it worked.
 
 **reset_reauth**  
-Reset auth_on_action reauth.
+Forget that you authenticated again for an **auth_on_action** policy, so
+that the next action it protects asks.
 
 **do_reauth**  
-Trigger a manual **auth_on_action** reauth, e.g. from a helper script
-that wants to force the next protected action to prompt for
-reauthentication.
+Authenticate again for an **auth_on_action** policy now, with password
+or OTP. Actions it protects do not ask again until its
+**reauth_timeout** has passed.  
+Both are kept by the mgmtd of the node you are connected to, not for the
+realm.
 
 ## Synchronization
 
-**sync \[**--realm** *realm*\] \[**--site** *site*\] \[*sync_type*\]**  
-Tell OTPme daemon to start sync with master node. Sync types: sites,
-objects, token_data, ssh_authorized_keys, nsscache.
+**sync \[**--realm** *realm*\] \[**--site** *site*\] \[**--request-site-cert**\] \[*sync_type*\]**  
+Tell hostd to start a sync now and not when it is due. The sync runs in
+the background: the command prints “Command queued” and does not wait
+for it. Use **sync_status** to see how it went. Only root and the user
+**otpme** may do this. The sync types:
 
-**resync \[**--realm** *realm*\] \[**--site** *site*\] *sync_type***  
-Tell OTPme daemon to start resync the given data type.
+**sites**  
+The realm and site objects.
 
-**sync_status**  
-Get time of last successful sync.
+**objects**  
+The objects this host gets. A node gets the objects of its own site from
+the other nodes of the site, not this way. A sites sync runs first.
 
-**do_sync \[*options*\] *sync_type***  
-Do a manual hostd sync. Sync types: objects, token_counters, used_otps,
-nsscache, ssh_authorized_keys.
+**token_data**  
+The used OTPs and token counters of the offline logins on this host.
 
-**--remove-orphan-objects** also removes local objects of a type this
-host no longer syncs. A normal sync never names those objects, so
-nothing else takes them away. It runs only after a sync that finished
-and left no object behind.
+**ssh_authorized_keys**  
+The SSH keys this host gets, and the **authorized_keys** files made from
+them.
+
+**nsscache**  
+The NSS cache, built from the objects this host already has.
+
+Without a sync type it syncs objects, token_data and
+ssh_authorized_keys.
+
+**--realm *realm*** and **--site *site*** sync the objects of this realm
+or site only. They work with the sync type objects only.
+
+**--request-site-cert** takes the site certs anew from the sites. Each
+host keeps the cert of every site in */etc/otpme/ssl/*, and a sync does
+not replace it. After a **renew_cert** of a site, run **sync
+--request-site-cert sites** on the hosts and nodes of the realm. The
+cert is taken only if it is the cert of that site and the CA of the site
+issued it and did not revoke it. It works with the sync type sites only.
+
+**resync \[**--realm** *realm*\] \[**--site** *site*\] **objects**\|**nsscache****  
+Like **sync**, but full: **objects** compares every object with the
+site, not only the ones that changed since the last sync, and then
+builds the NSS cache new. **nsscache** builds the NSS cache new from
+scratch. Nothing is removed before. **--realm** and **--site** work as
+with **sync**.
+
+**sync_status \[*sync_type*\]**  
+Show for each site and sync type when the last sync run started, and how
+it went: how long ago that was, how far a running one is, or when it
+last failed. “Never synced” means no run started yet. Every user may run
+it. On a node the objects of its own site are not listed, see **sync**.
+
+**do_sync \[**--realm** *realm*\] \[**--site** *site*\] \[**--resync**\] \[**--offline**\] \[**--sync-older-objects**\] \[**--ignore-changed-objects**\] \[**--remove-orphan-objects**\] *sync_type***  
+Do a sync here and now, without hostd: it connects to syncd itself and
+waits until the sync is done. It works when hostd does not run. If it
+cannot connect, it uses what an earlier sync left in the sync cache on
+disk. Only root may do this. The sync types: **objects**,
+**token_counters**, **used_otps**, **nsscache** and
+**ssh_authorized_keys**, which also writes the **authorized_keys**
+files.
+
+**--realm *realm*, --site *site***  
+The site to sync with. The default is the site of this host.
+
+**--resync**  
+Compare every object, not only the ones that changed since the last
+sync.
+
+**--offline**  
+Sync the token data of the offline logins. A host can sync
+token_counters and used_otps only with this.
+
+**--sync-older-objects**  
+Also take objects that are older than the local ones. For a node, with
+its own site.
+
+**--ignore-changed-objects**  
+Also take objects that changed on the site while the sync ran.
+
+**--remove-orphan-objects**  
+Also remove local objects of a type this host no longer syncs. A normal
+sync never names those objects, so nothing else takes them away. It runs
+only after a sync that finished and left no object behind.
 
 **force_sync *object_id***  
 Write an object again, whole. The search index, the ACLs and the LDIF
@@ -141,8 +350,9 @@ fetch it again. Hosts do not, because the data a host gets does not
 include that time.
 
 It takes an object ID, so it works for every object. This includes the
-ones without a **touch** command, like a host inventory or a used OTP.
-You need to be admin.
+ones without a **touch** command, like a host inventory or a used OTP. A
+session cannot be written this way. It fails while the site is in
+maintenance. You need to be admin.
 
 ## Cryptographic Operations
 
@@ -193,6 +403,10 @@ of on a key this host already holds for the user. That way in needs
 nothing but the signature of the job, so it is off unless you say
 otherwise. See **otpme-shell**(1).
 
+A signer of type **password** says whose signature of
+**password_store_members** this host trusts. Without one, **otpme-pass**
+encrypts nothing on this host. See **otpme-pass**(1).
+
 **del_signer \[**--private**\] *signer_uuid***  
 Delete signer.
 
@@ -237,6 +451,28 @@ take over that one alone.
 You must be root, because the keys are read from this host's copy of the
 realm, and the global **-f** skips the question. **--list** only shows
 and changes nothing.
+
+It also removes the keys of hosts that are gone. Nothing else does: the
+sync never takes a key away.
+
+## User Keys
+
+**update_user_keys \[**--list**\] \[*user*\]**  
+Take over the encrypt public keys of users whose key changed. Only with
+**PIN_USER_KEYS**, see **otpme.conf**(5).
+
+**otpme-pass** encrypts the keys of passwords with these keys, see
+**otpme-pass**(1). With that parameter the encrypt public key of every
+user synced here is written down. A member whose key differs from the
+one written down gets no key until somebody takes the new key over here.
+
+It works like **update_host_keys**: it shows every user whose key in the
+realm is not the one written down, with both fingerprints, and asks
+once. Name a *user* to take over that one alone. It also removes the
+keys of users that are gone.
+
+You must be root, and only on a host. The global **-f** skips the
+question, and **--list** only shows and changes nothing.
 
 ## Offline Token
 
@@ -369,58 +605,6 @@ Detect connected smartcards.
 
 # OPTIONS
 
-## Join Options
-
-**--jotp *JOTP***  
-Join using the given JOTP.
-
-**--host-type *node\|host***  
-Join host as type.
-
-**--unit *UNIT***  
-Join host to the given unit.
-
-**--host-key-len *LENGTH***  
-Host/Node key length.
-
-**--site-key-len *LENGTH***  
-Site key length.
-
-**--trust-site-cert**  
-Trust any site certificate.
-
-**--check-site-cert *FINGERPRINT***  
-Check the site certificate fingerprint.
-
-**--no-daemon-start**  
-Don't start OTPme daemons after joining realm.
-
-## Leave Options
-
-**--lotp *LOTP***  
-Leave using the given LOTP.
-
-**--offline**  
-Leave realm without talking to OTPme servers.
-
-**--keep-host**  
-Do not delete node/host object on server side.
-
-**--no-keep-host**  
-Delete node/host object on server side.
-
-**--keep-data**  
-Keep all data (realm data, certs, offline tokens).
-
-**--keep-cache**  
-Keep cached data (offline tokens, nsscache etc.).
-
-**--keep-cert**  
-Do not revoke host certificate when leaving.
-
-**--keep-auth-key**  
-Do not revoke host auth key when leaving.
-
 ## Encrypt Options
 
 **--rsa**  
@@ -440,26 +624,6 @@ Read password/passphrase from stdin.
 
 **--force-pass**  
 Force encryption with password (AES only).
-
-## Do_sync Options
-
-**--realm *REALM***  
-Realm to sync.
-
-**--site *SITE***  
-Site to sync.
-
-**--resync**  
-Do a complete resync.
-
-**--offline**  
-Sync offline token data.
-
-**--sync-older-objects**  
-Sync objects even if they are older than the local ones.
-
-**--ignore-changed-objects**  
-Sync objects even if they changed while syncing.
 
 ## Signer Options
 

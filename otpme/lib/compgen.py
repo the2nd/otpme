@@ -19,6 +19,7 @@ from otpme.lib.help import global_opts
 from otpme.lib.help import command_map
 from otpme.lib.register import register_modules
 from otpme.lib.help.register import register_help
+from otpme.lib.classes import get_object_module_path
 
 register_help()
 
@@ -489,7 +490,7 @@ def member_list_command(help_dict, sub_command):
 
 def object_type_acls(object_type, all_acls):
     """ Add the ACLs one object type supports to the ones we have. """
-    module_path = f"otpme.lib.classes.{object_type}"
+    module_path = get_object_module_path(object_type)
     try:
         object_module = importlib.import_module(module_path)
         type_acls = object_module.get_acls()
@@ -563,7 +564,7 @@ def process_acls(default_acls, all_acls, recursive=False):
                                 continue
                             all_acls.append(default_acl)
             # Handle object default ACLs.
-            object_module_path = f"otpme.lib.classes.{acl_otype}"
+            object_module_path = get_object_module_path(acl_otype)
             object_module = importlib.import_module(object_module_path)
             for a in object_module.get_acls():
                 default_acl = f"+{acl_otype}:{a}"
@@ -989,7 +990,7 @@ def show_compgen():
                                     continue
                                 all_acls.append(default_acl)
                     else:
-                        object_module_path = f"otpme.lib.classes.{object_type}"
+                        object_module_path = get_object_module_path(object_type)
                         object_module = importlib.import_module(object_module_path)
                         for a in object_module.get_acls():
                             default_acl = f"+{object_type}:{a}"
@@ -1010,7 +1011,7 @@ def show_compgen():
                                         continue
                                     all_acls.append(default_acl)
                         else:
-                            object_module_path = f"otpme.lib.classes.{object_type}"
+                            object_module_path = get_object_module_path(object_type)
                             object_module = importlib.import_module(object_module_path)
                             for a in object_module.get_acls():
                                 default_acl = f"++{object_type}:{a}"
@@ -1062,7 +1063,7 @@ def show_compgen():
                                         continue
                                     all_acls.append(default_acl)
                         else:
-                            object_module_path = f"otpme.lib.classes.{object_type}"
+                            object_module_path = get_object_module_path(object_type)
                             object_module = importlib.import_module(object_module_path)
                             for a in object_module.get_acls():
                                 default_acl = f"+{object_type}:{a}"
@@ -1088,7 +1089,7 @@ def show_compgen():
                                         continue
                                     all_acls.append(default_acl)
                         else:
-                            object_module_path = f"otpme.lib.classes.{object_type}"
+                            object_module_path = get_object_module_path(object_type)
                             object_module = importlib.import_module(object_module_path)
                             for a in object_module.get_acls():
                                 default_acl = f"++{object_type}:{a}"
@@ -1100,7 +1101,7 @@ def show_compgen():
                         if default_acl not in all_acls:
                             all_acls.append(default_acl)
             else:
-                x_mod = f"otpme.lib.classes.{object_type}"
+                x_mod = get_object_module_path(object_type)
                 x_module = importlib.import_module(x_mod)
                 x_get_acls = getattr(x_module, "get_acls")
                 x_get_value_acls = getattr(x_module, "get_value_acls")
@@ -1198,3 +1199,17 @@ def show_compgen():
                     print(x_str)
                 continue
             print(objects)
+            # A new object goes into a unit, and the path to it is typed
+            # through the units: "otpme-pass add pa" has to offer
+            # "passwords/", where only the passwords that are already
+            # there would be found otherwise.
+            if sub_command == "add" and x_type == object_type \
+            and x_type in config.default_units:
+                config.cli_object_type = "main"
+                cmd_line = ["list"]
+                if cur:
+                    cmd_line.append(f"{cur}*")
+                units = command_handler.handle_command(command="unit",
+                                                    command_line=cmd_line)
+                for x in units.split():
+                    print(f"{x}/")

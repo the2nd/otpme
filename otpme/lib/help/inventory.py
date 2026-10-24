@@ -18,7 +18,7 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     '_include_global_opts'      : True,
-    '_usage_help'               : _("Usage: otpme-inventory {command} [host]"),
+    '_usage_help'               : _("Usage: otpme-inventory {command} [options]"),
 
     'show'    : {
                     '_cmd_usage_help' : _('Usage: otpme-inventory show {host}'),
@@ -46,16 +46,36 @@ cmd_help = {
                 },
 
     'search'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-inventory search [--host <host>] [--os-version <version>] [--kernel <kernel>] [--otpme-version <version>] [--reboot-required] [--hardware <expression>] [package]'),
-                    'cmd'   :   '--host :host: --os-version :os_version: --kernel :kernel: --otpme-version :otpme_version: --reboot-required :reboot_required=True: --hardware :hardware: [package]',
+                    '_cmd_usage_help' : _('Usage: otpme-inventory search [--host <host>] [--os-version <version>] [--kernel <kernel>] [--otpme-version <version>] [--reboot-required] [--hardware <expression>] [--upgradable] [package]'),
+                    'cmd'   :   '--host :host: --os-version :os_version: --kernel :kernel: --otpme-version :otpme_version: --reboot-required :reboot_required=True: --hardware :hardware: --upgradable :upgradable=True: [package]',
                     '_help' :   {
                                     'cmd'                       : _('Search hosts by package (e.g. openssl, "openssl=3.0.*"), OS version, kernel, OTPme version, reboot or hardware.'),
+                                    '--upgradable'              : _('Only packages of which the system of the host offers a newer version.'),
                                     '--host <host>'             : _('Only this host (e.g. to search its packages).'),
                                     '--os-version <version>'    : _('Only hosts with this OS version (e.g. debian-12).'),
                                     '--kernel <kernel>'         : _('Only hosts running this kernel (e.g. "6.1.0-3*").'),
                                     '--otpme-version <version>' : _('Only hosts running this OTPme version (e.g. "0.3.0a28*").'),
                                     '--reboot-required'         : _('Only hosts that have to be rebooted.'),
                                     '--hardware <expression>'   : _('Only hosts whose hardware matches (e.g. serial=ABC123, "memory<8G").'),
+                                },
+                },
+
+    'systems'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-inventory systems'),
+                    'cmd'   :   '',
+                    '_help' :   {
+                                    'cmd'                       : _('List the systems the hosts run, with their reference host and how many packages they offer.'),
+                                },
+                },
+
+    'available'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-inventory available [--host <host>] [--os-version <version>] [--arch <arch>] {package}'),
+                    'cmd'   :   '--host :host: --os-version :os_version: --arch :arch: <package>',
+                    '_help' :   {
+                                    'cmd'                       : _('List the packages a system offers (e.g. openssl, "python3-*").'),
+                                    '--host <host>'             : _('The system of this host, with the version installed there.'),
+                                    '--os-version <version>'    : _('Only this OS version (e.g. debian-13).'),
+                                    '--arch <arch>'             : _('Only this architecture (e.g. amd64).'),
                                 },
                 },
     }

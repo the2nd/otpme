@@ -396,4 +396,22 @@ cmd_help = {
                                     '--return-type'         : _('Attribute to return.'),
                                 },
                 },
+    'find_passwords'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-device find_passwords [--return-type <return_type>] {device}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('Find password objects of this device.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                },
+                },
+    'show_password'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-device show_password {device} [entry]'),
+                    'cmd'   :   '<|object|> [entry_name]',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the passwords of this device, see otpme-pass.'),
+                                },
+                },
     }

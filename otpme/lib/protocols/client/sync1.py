@@ -23,6 +23,7 @@ from otpme.lib import filetools
 from otpme.lib import nsscache
 from otpme.lib import maintenance
 from otpme.lib import host_key_pins
+from otpme.lib import user_key_pins
 from otpme.lib import sign_key_cache
 from otpme.lib import multiprocessing
 from otpme.lib.sync_cache import SyncCache
@@ -70,12 +71,102 @@ def note_config_versions(realm, site, config_versions):
     filetools.create_file(path=versions_file,
                         content=json.encode(config_versions))
 
-def code_reads_more(noted_versions, config_versions):
-    """ Whether our code reads a higher version of anything than noted. """
+def raised_versions(noted_versions, config_versions):
+    """ What our code reads a higher version of than noted.
+
+    As the keys of config.get_config_versions(): "user" for the fields
+    every user has, "token:hotp" for the fields only a hotp token has.
+    """
+    raised = []
     for key, version in config_versions.items():
         if version > noted_versions.get(key, 1):
-            return True
-    return False
+            raised.append(key)
+    return sorted(raised)
+
+def taken_down_versions(realm, site, noted_versions, raised):
+    """ Of <raised>, what the peer can have taken down for us.
+
+    A peer takes an object down only when it stores it in a higher
+    version than our code read. A node of our own site stores what the
+    site stores, and the site says that in config_versions; a node is
+    never behind it while it is enabled ("otpme-site upgrade" waits for
+    it). So on a node, for our own site, only what the site stores above
+    what we read at the last sync.
+
+    Anywhere else we do not know what the peer stores: a host can lag
+    behind its site, and the site objects of other sites may not say.
+    All of <raised> there.
+
+    Returns (keys, site_versions): the site versions only on a node of
+    our own site, see get_refetch_list().
+    """
+    if config.host_data['type'] != "node":
+        return raised, None
+    if realm != config.realm or site != config.site:
+        return raised, None
+    own_site = backend.get_object(object_type="site", uuid=config.site_uuid)
+    if not own_site:
+        return raised, None
+    site_versions = own_site.config_versions or {}
+    taken_down = []
+    for key in raised:
+        if site_versions.get(key, 1) > noted_versions.get(key, 1):
+            taken_down.append(key)
+    return taken_down, site_versions
+
+def get_refetch_list(realm, site, keys, local_sync_list, site_versions=None):
+    """ The objects of <local_sync_list> that <keys> stand for.
+
+    "user" stands for every user, "token:hotp" for every hotp token. The
+    sub type is not in the OID, so it is asked of our index.
+
+    With <site_versions> (a node of our own site) not those our index
+    says are at the version the site stores already. A node that was in
+    the cluster while "otpme-site upgrade" ran got every object from the
+    cluster journal, with the version in the index (update_version_index()).
+    What the notes of the last sync say is no help there: the cluster
+    notes nothing, and every object would be fetched again for nothing.
+    A copy a sync brought has no version in its index (the views leave
+    it out), so it is fetched -- and only such a copy can have been
+    taken down for us.
+    """
+    refetch = set()
+    for key in keys:
+        if ":" in key:
+            object_type, sub_type = key.split(":", 1)
+            type_attributes = {
+                    f"{object_type}_type" : {
+                                            'value' : sub_type,
+                                            },
+                    }
+            index_attribute = "sub_version"
+            result = backend.search(object_type=object_type,
+                                    attributes=type_attributes,
+                                    realm=realm,
+                                    site=site,
+                                    return_type="full_oid")
+            objects = {x for x in result if x in local_sync_list}
+        else:
+            object_type = key
+            type_attributes = {}
+            index_attribute = "version"
+            objects = {x for x in local_sync_list
+                        if oid.get_object_type(x) == object_type}
+        if site_versions is not None and objects:
+            # The number and not the string: the index holds the version
+            # as it was written, an int.
+            done_attributes = dict(type_attributes)
+            done_attributes[index_attribute] = {
+                                        'value' : site_versions.get(key, 1),
+                                        }
+            done = backend.search(object_type=object_type,
+                                attributes=done_attributes,
+                                realm=realm,
+                                site=site,
+                                return_type="full_oid")
+            objects -= set(done)
+        refetch |= objects
+    return refetch
 
 def get_own_realm_site():
     own_host = backend.get_object(uuid=config.uuid)
@@ -211,6 +302,8 @@ class OTPmeSyncP1(OTPmeClient1):
             response, \
             binary_data = self.connection.send("add_sync_list_checksum", command_args)
 
+            if status_code == status_codes.SITE_MAINTENANCE:
+                raise SiteMaintenance(response)
             if status_code == status_codes.PERMISSION_DENIED:
                 msg = _("Permission denied: {realm}/{site}")
                 msg = msg.format(realm=realm, site=site)
@@ -242,6 +335,9 @@ class OTPmeSyncP1(OTPmeClient1):
                     'site'              : site,
                     }
         command_args.update(sync_params)
+        # A host gets the other hosts only to pin their keys, see the
+        # sync server and remove_other_hosts().
+        command_args['pin_host_keys'] = bool(config.pin_host_keys)
         log_msg = _("Requesting sync list from peer.", log=True)[1]
         self.logger.debug(log_msg)
         while try_count < max_tries:
@@ -249,6 +345,8 @@ class OTPmeSyncP1(OTPmeClient1):
             status_code, \
             response, \
             binary_data = self.connection.send("get_sync_list", command_args)
+            if status_code == status_codes.SITE_MAINTENANCE:
+                raise SiteMaintenance(response)
             if status_code == status_codes.PERMISSION_DENIED:
                 msg = _("Permission denied: {realm}/{site}")
                 msg = msg.format(realm=realm, site=site)
@@ -510,22 +608,33 @@ class OTPmeSyncP1(OTPmeClient1):
         # when it changes there, and not when our code reads more than it
         # did: what we hold stays what we were handed. Where a step down
         # left something out, it would be missing until the object
-        # changed. After an update of our code everything is fetched
-        # once, for each site.
+        # changed. After an update of our code the objects of what it
+        # reads more of are fetched once, for each site.
         config_versions = config.get_config_versions()
+        refetch_versions = []
+        site_versions = None
         if self.connection and not resync:
             noted_versions = get_noted_config_versions(realm, site)
-            if code_reads_more(noted_versions, config_versions):
-                log_msg = _("Our code reads newer object config versions than at the last sync, fetching everything again: {realm}/{site}", log=True)[1]
-                log_msg = log_msg.format(realm=realm, site=site)
+            raised = raised_versions(noted_versions, config_versions)
+            if raised:
+                refetch_versions, \
+                site_versions = taken_down_versions(realm, site,
+                                                    noted_versions, raised)
+                if refetch_versions:
+                    log_msg = _("Our code reads newer object config versions than at the last sync, fetching their objects again: {realm}/{site}: {versions}", log=True)[1]
+                else:
+                    log_msg = _("Our code reads newer object config versions, but nothing was taken down for us: {realm}/{site}: {versions}", log=True)[1]
+                log_msg = log_msg.format(realm=realm, site=site,
+                                        versions=", ".join(raised))
                 self.logger.info(log_msg)
-                resync = True
         # Acquire sync lock.
         lock_id = f"sync_objects:{realm}/{site}"
         sync_lock = locking.acquire_lock(lock_type=LOCK_TYPE, lock_id=lock_id)
         try:
             result = self._sync_objects(realm, site,
                                 resync=resync, max_tries=max_tries,
+                                refetch_versions=refetch_versions,
+                                site_versions=site_versions,
                                 sync_older_objects=sync_older_objects,
                                 skip_object_deletion=skip_object_deletion,
                                 remove_orphan_objects=remove_orphan_objects,
@@ -547,8 +656,20 @@ class OTPmeSyncP1(OTPmeClient1):
         # and switching PIN_HOST_KEYS on would leave us with no key
         # written down for any of them -- and no session to any of them
         # either.
-        if config.pin_host_keys:
+        # On hosts only: a node holds the tree, and whoever controls it
+        # controls what would be written down there as well.
+        if config.pin_host_keys and config.host_data['type'] == "host":
             self.note_host_keys()
+        # Without them a host gets its own host object only (see the sync
+        # server), and the copies of the others from before are not in
+        # any sync list any more to be removed by it.
+        if self.connection and result is not False:
+            if not config.pin_host_keys and config.host_data['type'] == "host":
+                if realm == config.realm and site == config.site:
+                    self.remove_other_hosts(realm, site)
+        # The same for the encrypt keys of users, on hosts only.
+        if config.pin_user_keys and config.host_data['type'] == "host":
+            self.note_user_keys()
         # Update sync status.
         config.update_sync_status(realm=realm,
                                 site=site,
@@ -586,6 +707,56 @@ class OTPmeSyncP1(OTPmeClient1):
                         self.logger.warning(log_msg)
         return result
 
+    def get_indexed_keys(self, object_types, key_attribute):
+        """ The keys of all objects of the given types, from the index.
+
+        As {uuid: (name, key)}. One search and not an instance per
+        object: there can be many hosts and very many users, and this
+        runs after every sync.
+        """
+        keys = {}
+        for object_type in object_types:
+            result = backend.search(object_type=object_type,
+                                    attribute="uuid",
+                                    value="*",
+                                    return_attributes=['name', key_attribute])
+            for x_uuid in result:
+                x_name = result[x_uuid].get('name')
+                x_key = result[x_uuid].get(key_attribute)
+                if isinstance(x_key, list):
+                    x_key = x_key[0] if x_key else None
+                keys[x_uuid] = (x_name, x_key)
+        return keys
+
+    def note_keys(self, pins, object_types, key_attribute, what):
+        """ Write down the keys we have not seen yet, see note_host_keys(). """
+        try:
+            keys = self.get_indexed_keys(object_types, key_attribute)
+        except Exception as e:
+            log_msg = _("Unable to look for keys: {what}: {e}", log=True)[1]
+            log_msg = log_msg.format(what=what, e=e)
+            self.logger.warning(log_msg)
+            return
+        for x_uuid in sorted(keys):
+            x_name, x_key = keys[x_uuid]
+            try:
+                said = pins.note_key(x_uuid, x_key)
+            except Exception as e:
+                log_msg = _("Unable to note key: {what}: {name}: {e}", log=True)[1]
+                log_msg = log_msg.format(what=what, name=x_name, e=e)
+                self.logger.critical(log_msg)
+                continue
+            if said == "changed":
+                # Said out loud: nothing happens until somebody runs
+                # update_host_keys or update_user_keys.
+                log_msg = _("Key changed, take it over with update_{what}_keys: {name}", log=True)[1]
+                log_msg = log_msg.format(what=what, name=x_name)
+                self.logger.warning(log_msg)
+            elif said == "pinned":
+                log_msg = _("Key written down: {what}: {name}", log=True)[1]
+                log_msg = log_msg.format(what=what, name=x_name)
+                self.logger.info(log_msg)
+
     def note_host_keys(self):
         """ Write down the key of every host we hold a copy of.
 
@@ -593,69 +764,70 @@ class OTPmeSyncP1(OTPmeClient1):
         fetches what changed: a host that was already in step is never
         handed to a worker, and the key of a host that was synced
         before PIN_HOST_KEYS was switched on would never be written
-        down at all.
+        down at all. Read from the index, see get_indexed_keys().
 
         Nothing is replaced here. A key that differs from the one
         written down is said out loud and nothing else: taking it over
         is update_host_keys', and it reads the key off the host object
         itself when it runs -- see host_key_pins.note_key().
 
-        The key of a host we no longer hold a copy of goes: it would
-        otherwise be held against whatever host is given that uuid
-        next. Only when there is something to compare against, so a
-        backend that answers with nothing does not take every key with
-        it.
+        Nothing is taken away either, not even the key of a host that
+        is gone. Whoever controls a node could otherwise delete a host
+        and add it again with the same uuid and a key of their own.
+        Pins of hosts that are gone are removed by hand, with
+        update_host_keys.
         """
-        try:
-            hosts = backend.search(object_types=["host", "node"],
+        self.note_keys(host_key_pins, ["host", "node"], "public_key", "host")
+
+    def note_user_keys(self):
+        """ Write down the encrypt key of every user we hold a copy of.
+
+        The same as note_host_keys() for the keys otpme-pass encrypts
+        for, see user_key_pins.py. On hosts only: a node holds the tree
+        and is no place to open passwords.
+        """
+        self.note_keys(user_key_pins, ["user"], "encrypt_public_key", "user")
+
+    def remove_other_hosts(self, realm, site):
+        """ Remove the copies of other hosts, on a host without PIN_HOST_KEYS.
+
+        It gets its own host object only (see the sync server). The ones
+        it got before are in no sync list any more, so no sync removes
+        them, and a remote access session would still be checked against
+        what they said when they were last synced here.
+        """
+        result = backend.search(object_type="host",
                                 attribute="uuid",
                                 value="*",
-                                return_type="instance")
-        except Exception as e:
-            log_msg = _("Unable to look for host keys: {e}", log=True)[1]
-            log_msg = log_msg.format(e=e)
-            self.logger.warning(log_msg)
-            return
-        if not hosts:
-            return
-        known = set()
-        for x_host in hosts:
-            known.add(x_host.uuid)
+                                realm=realm,
+                                site=site,
+                                return_attributes=['uuid', 'full_oid'])
+        for x_uuid in result:
+            if x_uuid == config.uuid:
+                continue
+            x_oid = oid.get(object_id=result[x_uuid]['full_oid'])
             try:
-                said = host_key_pins.note_key(x_host.uuid, x_host.public_key)
+                backend.delete_object(x_oid)
             except Exception as e:
-                log_msg = _("Unable to note host key: {oid}: {e}", log=True)[1]
-                log_msg = log_msg.format(oid=x_host.oid, e=e)
-                self.logger.critical(log_msg)
-                continue
-            if said == "changed":
-                # Said out loud: nothing happens until somebody runs
-                # update_host_keys, and a session to that host does not
-                # open until they do.
-                log_msg = _("Host key changed, run update_host_keys to take it over: {oid}", log=True)[1]
-                log_msg = log_msg.format(oid=x_host.oid)
+                log_msg = _("Failed to remove copy of other host: {oid}: {error}", log=True)[1]
+                log_msg = log_msg.format(oid=x_oid, error=e)
                 self.logger.warning(log_msg)
-            elif said == "pinned":
-                log_msg = _("Host key written down: {oid}", log=True)[1]
-                log_msg = log_msg.format(oid=x_host.oid)
-                self.logger.info(log_msg)
-        for host_uuid in sorted(host_key_pins.all_pins()):
-            if host_uuid in known:
                 continue
-            log_msg = _("Host is gone, dropping its key: {uuid}", log=True)[1]
-            log_msg = log_msg.format(uuid=host_uuid)
+            log_msg = _("Removed copy of other host: {oid}", log=True)[1]
+            log_msg = log_msg.format(oid=x_oid)
             self.logger.info(log_msg)
-            try:
-                host_key_pins.del_pin(host_uuid)
-            except Exception as e:
-                log_msg = _("Unable to drop host key: {uuid}: {e}", log=True)[1]
-                log_msg = log_msg.format(uuid=host_uuid, e=e)
-                self.logger.warning(log_msg)
 
     def _sync_objects(self, realm, site, resync=False, max_tries=5,
         sync_older_objects=False, ignore_changed_objects=False,
-        skip_object_deletion=True, remove_orphan_objects=False):
-        """ Sync objects with peer. """
+        skip_object_deletion=True, remove_orphan_objects=False,
+        refetch_versions=None, site_versions=None):
+        """ Sync objects with peer.
+
+        <refetch_versions> are keys of config.get_config_versions() whose
+        objects are fetched again, see sync_objects(); <site_versions>
+        leaves out those already at the version of the site, see
+        get_refetch_list().
+        """
         exit_status = True
         received_objects = 0
         sync_success = False
@@ -756,6 +928,19 @@ class OTPmeSyncP1(OTPmeClient1):
         if resync:
             local_sync_list = []
             remote_sync_list_checksum = "RESYNC"
+        elif refetch_versions:
+            # Left out of what we hold, so they count as changed.
+            refetch = get_refetch_list(realm, site, refetch_versions,
+                                        local_sync_list,
+                                        site_versions=site_versions)
+            if refetch:
+                log_msg = _("Fetching objects again for newer config versions: {count}", log=True)[1]
+                log_msg = log_msg.format(count=len(refetch))
+                self.logger.info(log_msg)
+                local_sync_list = {x: local_sync_list[x]
+                                    for x in local_sync_list
+                                    if x not in refetch}
+                remote_sync_list_checksum = "REFETCH"
 
         # Do not enter while loop below if we are in sync with remote site.
         if local_sync_list_checksum == remote_sync_list_checksum:
@@ -1005,6 +1190,9 @@ class OTPmeSyncP1(OTPmeClient1):
                     response, \
                     binary_data = self.connection.send("get_object", command_args)
 
+                    # The peer went into maintenance while we were at it.
+                    if status_code == status_codes.SITE_MAINTENANCE:
+                        raise SiteMaintenance(response)
                     if not status:
                         log_msg = _("Error receiving object {object_id}: {response}", log=True)[1]
                         log_msg = log_msg.format(object_id=object_id, response=response)
@@ -1563,6 +1751,13 @@ class OTPmeSyncP1(OTPmeClient1):
             if config.host_data['type'] == "node":
                 if not config.realm_master_node:
                     update_realm_ca_data = False
+        # It writes the realm, which is refused in maintenance; every
+        # sync tried again. "otpme-site upgrade" does it when the site
+        # leaves the maintenance, see Site.upgrade_object_configs().
+        if update_realm_ca_data and maintenance.is_active():
+            log_msg = _("Site is in maintenance, realm CA data is updated after it.", log=True)[1]
+            self.logger.info(log_msg)
+            update_realm_ca_data = False
         if update_realm_ca_data:
             log_msg = _("Updating realm CA data...", log=True)[1]
             self.logger.info(log_msg)
@@ -2025,8 +2220,9 @@ class OTPmeSyncP1(OTPmeClient1):
                 # Update signers cache.
                 if object_type == "user":
                     sign_key_cache.del_cache(object_id)
-                # A host that is gone keeps its pin until note_host_keys()
-                # runs, which drops every pin that has no host left.
+                # A host or user that is gone keeps its pin until root
+                # removes it with update_host_keys or update_user_keys,
+                # see host_key_pins.py.
                 # Make sure we update LDIF/nsscache.
                 if object_type == "token":
                     x_object = backend.get_object(object_id)

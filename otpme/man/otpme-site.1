@@ -146,6 +146,9 @@ and
 .B enable_sync
 and
 .BR disable_sync .
+And
+.BR touch ,
+which changes nothing: it only builds the index of your copy anew.
 Everything else is refused there, because the next sync would bring the site's own values back.
 .PP
 The three commands that change how the site is reached ask first; the global option \fB\-f\fR skips the question.
@@ -808,6 +811,24 @@ Needs the ACL \fBdelete:fido2_ca_cert\fR.
 Print the subjects of the CA certificates of the site, one per line.
 .br
 Needs the ACL \fBview:fido2_ca_cert\fR.
+.SS Password Members
+The config parameter
+.B password_store_members
+of the site names who gets the keys of the passwords, where no unit sets
+it, see
+.BR otpme\-pass (1).
+The members count only when a user signed them.
+The commands are the same as for a unit, see
+.BR otpme\-unit (1).
+.TP
+.B sign_password_members \fIsite\fR
+Sign the members with your sign key.
+.TP
+.B show_password_members \fIsite\fR
+Show the members, the users they stand for, and each signature.
+.TP
+.B unsign_password_members \fR[\fB\-\-signer\fR \fIuser\fR] \fIsite\fR
+Remove your signature, or with \fB\-\-signer\fR the one of that user.
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
@@ -1172,6 +1193,7 @@ The certificate of a site, as each node and host keeps it. It is not replaced by
 .BR otpme\-policy (1),
 .BR otpme\-dictionary (1),
 .BR otpme\-unit (1),
+.BR otpme\-pass (1),
 .BR otpme\-trash (1)
 .SH AUTHOR
 the2nd <the2nd@otpme.org>

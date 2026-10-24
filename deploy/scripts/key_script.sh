@@ -425,6 +425,31 @@ get_key_algo () {
 	esac
 }
 
+get_piv_enc_algo () {
+	# The algorithm of the encrypt key on the YubiKey, read off its
+	# public key, as get_key_algo() does for a key we hold. The server
+	# is asked only when the card does not say: with no node reachable
+	# that fails, and the card is right here. Through otpme-agent when
+	# it holds the card ($USE_AGENT_OPT).
+	local PUBLIC_KEY=""
+	local KEY_TEXT=""
+	PUBLIC_KEY="$(otpme-yk-piv $USE_AGENT_OPT --public-key-out --slot KEY_MANAGEMENT 2>/dev/null)" || true
+	if [ -n "$PUBLIC_KEY" ] ; then
+		KEY_TEXT="$(echo "$PUBLIC_KEY" | openssl pkey -pubin -noout -text 2>/dev/null | head -n 1)" || true
+		case "$KEY_TEXT" in
+			X25519*)
+				echo "x25519"
+				return
+			;;
+			Public-Key*)
+				echo "rsa"
+				return
+			;;
+		esac
+	fi
+	otpme-user $OTPME_OPTS get_enc_key_type "$_OTPME_KEYSCRIPT_USER"
+}
+
 dump_private_key () {
 	# Role arg: "sign" or "encrypt". Picks the matching cache env var
 	# and otpme-user subcommand.
@@ -769,10 +794,10 @@ decrypt_file () {
 					fi
 					PIN_OPT="--pin env:PIN"
 				fi
-				# Fetch the user's encrypt key algo so we route to the
+				# The user's encrypt key algo, so we route to the
 				# right yk-piv subcommand: RSA-OAEP via --decrypt,
 				# X25519/HPKE via --hpke-decrypt.
-				if ! YKPIV_ENC_ALGO="$(otpme-user $OTPME_OPTS get_enc_key_type "$_OTPME_KEYSCRIPT_USER")" ; then
+				if ! YKPIV_ENC_ALGO="$(get_piv_enc_algo)" ; then
 					echo "decrypt_file: failed to fetch encrypt key algo" 1>&2
 					return 1
 				fi
@@ -1087,12 +1112,12 @@ case "$COMMAND" in
 				fi
 				PIN_OPT="--pin env:PIN"
 			fi
-			# Fetch the user's encrypt key algo so we route to the
+			# The user's encrypt key algo, so we route to the
 			# right yk-piv subcommand: RSA-OAEP via --decrypt,
 			# X25519/HPKE via --hpke-decrypt.
-			if ! YKPIV_ENC_ALGO="$(otpme-user $OTPME_OPTS get_enc_key_type "$_OTPME_KEYSCRIPT_USER")" ; then
+			if ! YKPIV_ENC_ALGO="$(get_piv_enc_algo)" ; then
 				echo "pkey_decrypt: failed to fetch encrypt key algo" 1>&2
-				return 1
+				exit 1
 			fi
 			if [ -z "$YKPIV_ENC_ALGO" ] ; then
 				YKPIV_ENC_ALGO="rsa"
@@ -1105,8 +1130,8 @@ case "$COMMAND" in
 					cat - | base64 -d | otpme-yk-piv $USE_AGENT_OPT --hpke-decrypt $PIN_OPT
 				;;
 				*)
-					echo "decrypt_file: unsupported yubikey-piv encrypt algo: $YKPIV_ENC_ALGO" 1>&2
-					return 1
+					echo "pkey_decrypt: unsupported yubikey-piv encrypt algo: $YKPIV_ENC_ALGO" 1>&2
+					exit 1
 				;;
 			esac
 		elif [ "$KEY_MODE" = "server" ] ; then

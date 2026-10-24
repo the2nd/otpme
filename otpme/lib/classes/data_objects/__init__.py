@@ -13,6 +13,7 @@ modules = [
 	'otpme.lib.classes.data_objects.conf_job',
 	'otpme.lib.classes.data_objects.conf_result',
 	'otpme.lib.classes.data_objects.host_inventory',
+	'otpme.lib.classes.data_objects.os_packages',
 	'otpme.lib.classes.data_objects.token_counter',
 	'otpme.lib.classes.data_objects.data_revision',
 	'otpme.lib.classes.data_objects.used_hash',

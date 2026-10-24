@@ -89,11 +89,17 @@ class _IdleDispatcher:
             return copy.deepcopy(self.host_data)
 
     def subscribe(self, username, host, login_data):
+        """ A user's agent that waits for events.
+
+        The login data is kept per connection: a user can wait from
+        two sessions on one host, and the end of one must not take the
+        host out of who while the other still waits.
+        """
         q = queue.Queue()
         with self.lock:
             self.subscribers.setdefault(username, []).append(q)
-            #self.login_data[username] = login_data
-            self.login_data.setdefault(username, {}).setdefault(host, login_data)
+            user_hosts = self.login_data.setdefault(username, {})
+            user_hosts.setdefault(host, {})[id(q)] = login_data
         return q
 
     def unsubscribe(self, username, q, host):
@@ -104,12 +110,15 @@ class _IdleDispatcher:
                     del self.subscribers[username]
             except (KeyError, ValueError):
                 pass
-            try:
-                self.login_data[username].pop(host)
-                if not self.login_data[username]:
-                    self.login_data[username].pop(username)
-            except (KeyError, ValueError):
-                pass
+            user_hosts = self.login_data.get(username, {})
+            host_connections = user_hosts.get(host, {})
+            host_connections.pop(id(q), None)
+            if not host_connections:
+                user_hosts.pop(host, None)
+            # The user, once no connection of it is left: message counts
+            # the users it finds here.
+            if not user_hosts:
+                self.login_data.pop(username, None)
 
     def publish(self, username, event):
         # Deep-copy per subscriber: publish puts a separate object into
@@ -127,8 +136,20 @@ class _IdleDispatcher:
                 pass
 
     def get_login_data(self):
+        """ {user: {host: login data}}, one entry per user and host.
+
+        Of a user waiting from several connections on one host the one
+        that came last, the way who shows it.
+        """
+        result = {}
         with self.lock:
-            return copy.deepcopy(self.login_data)
+            for username, user_hosts in self.login_data.items():
+                for host, host_connections in user_hosts.items():
+                    if not host_connections:
+                        continue
+                    last = list(host_connections.values())[-1]
+                    result.setdefault(username, {})[host] = copy.deepcopy(last)
+        return result
 
 class IdleDaemon(OTPmeDaemon):
     """ IdleDaemon """

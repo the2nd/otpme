@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import re
+import datetime
 
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -23,6 +25,9 @@ from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 
 from otpme.lib.exceptions import *
+
+PEM_CERT_RE = r"-----BEGIN CERTIFICATE-----.+?-----END CERTIFICATE-----"
+PEM_CRL_RE = r"-----BEGIN X509 CRL-----.+?-----END X509 CRL-----"
 
 class SSLCert(object):
     """ Class that represents a SSL certificate. """
@@ -289,3 +294,41 @@ class SSLCert(object):
         """ Return certificates serial number. """
         serial_number = self._cert.serial_number
         return serial_number
+
+    def verify_issued_by(self, ca_data, issuer_cn):
+        """ Check that the CA issuer_cn out of ca_data (PEM, the CRLs
+            in there included) issued this certificate, that it is valid
+            now and that its CA did not revoke it. """
+        if not self._cert:
+            raise Exception(_("No certificate loaded."))
+        ca_cert = None
+        for pem in re.findall(PEM_CERT_RE, ca_data, re.S):
+            x = x509.load_pem_x509_certificate(pem.encode(), default_backend())
+            if x.subject != self._cert.issuer:
+                continue
+            cn = x.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+            if not cn or cn[0].value != issuer_cn:
+                continue
+            try:
+                self._cert.verify_directly_issued_by(x)
+            except Exception:
+                continue
+            ca_cert = x
+            break
+        if ca_cert is None:
+            return False
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if now < self._cert.not_valid_before_utc:
+            return False
+        if now > self._cert.not_valid_after_utc:
+            return False
+        for pem in re.findall(PEM_CRL_RE, ca_data, re.S):
+            crl = x509.load_pem_x509_crl(pem.encode(), default_backend())
+            if crl.issuer != ca_cert.subject:
+                continue
+            if not crl.is_signature_valid(ca_cert.public_key()):
+                continue
+            serial = self._cert.serial_number
+            if crl.get_revoked_certificate_by_serial_number(serial):
+                return False
+        return True

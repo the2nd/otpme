@@ -723,6 +723,15 @@ class HostDaemon(OTPmeDaemon):
         # Set proctitle for new child process.
         self.set_proctitle(sync_type="sync_sites", resync=False)
 
+        # Not in maintenance. This writes realms, sites and CAs, and
+        # carries over settings of our own into them, which is refused
+        # then: nothing was stored, so every run tried again, every few
+        # seconds. The checksums still differ after the maintenance, so
+        # the first run after it does all of it, the CA data of the
+        # realm included.
+        if self.maintenance_paused():
+            return True
+
         #if config.host_data['type'] == "node":
         #    if not config.cluster_quorum:
         #        log_msg = ("Not starting sync of sites: No cluster quorum", log=True)[1]
@@ -858,7 +867,7 @@ class HostDaemon(OTPmeDaemon):
                             if object_type != "unit":
                                 if object_type != "node":
                                     if object_type != "ca":
-                                        log_msg = _("Rececived not permitted object from sites sync: {object_id}", log=True)[1]
+                                        log_msg = _("Received not permitted object from sites sync: {object_id}", log=True)[1]
                                         log_msg = log_msg.format(object_id=new_object.oid)
                                         self.logger.critical(log_msg)
                                         continue
@@ -1103,6 +1112,13 @@ class HostDaemon(OTPmeDaemon):
             except Exception:
                 sync_child = None
 
+            # A sites sync also waits for the objects sync.
+            if not sync_child and sync_type == "sites":
+                try:
+                    sync_child = self._sync_childs['objects']
+                except Exception:
+                    sync_child = None
+
             if not sync_child:
                 self.sync_jobs.remove(x)
                 sync_job = x
@@ -1149,6 +1165,8 @@ class HostDaemon(OTPmeDaemon):
             self.logger.warning(log_msg)
             return
 
+        request_site_cert = sync_job.get('request_site_cert', False)
+
         log_msg = _("Starting sync job from queue: {sync_type}", log=True)[1]
         log_msg = log_msg.format(sync_type=sync_type)
         self.logger.debug(log_msg)
@@ -1157,6 +1175,7 @@ class HostDaemon(OTPmeDaemon):
                         queue=False,
                         resync=resync,
                         offline=offline,
+                        request_site_cert=request_site_cert,
                         nsscache_resync=nsscache_resync,
                         realm=realm, site=site)
 
@@ -1167,14 +1186,25 @@ class HostDaemon(OTPmeDaemon):
         if self.host_type == "node":
             if not config.cluster_status:
                 return
-        if sync_type == "sites" and queue:
+        if sync_type == "sites":
             # Check for existing sync child.
             try:
                 sync_child = self._sync_childs[sync_type]
             except Exception:
                 sync_child = None
 
-            if sync_child:
+            try:
+                object_sync_child = self._sync_childs['objects']
+            except Exception:
+                object_sync_child = None
+
+            # A sites sync waits for a running one and for a running
+            # objects sync. It waits in the queue, which keeps what it
+            # was asked for: a request for the site certs was lost
+            # here, while the command had said "queued".
+            if sync_child or object_sync_child:
+                if not queue:
+                    return
                 sync_job = {
                             "site"              : site,
                             "realm"             : realm,
@@ -1182,17 +1212,10 @@ class HostDaemon(OTPmeDaemon):
                             "offline"           : False,
                             "sync_type"         : sync_type,
                             "nsscache_resync"   : nsscache_resync,
+                            "request_site_cert" : request_site_cert,
                             }
                 if sync_job not in self.sync_jobs:
                     self.sync_jobs.append(sync_job)
-                return
-
-            try:
-                object_sync_child = self._sync_childs['objects']
-            except Exception:
-                object_sync_child = None
-
-            if object_sync_child:
                 return
 
             # Create child process that will do the sync.
@@ -1493,6 +1516,13 @@ class HostDaemon(OTPmeDaemon):
                                             offline=offline,
                                             sync_last_used=sync_last_used,
                                             ignore_changed_objects=ignore_changed_objects)
+                except SiteMaintenance as e:
+                    # Not a failure, and over by itself: the next run
+                    # after the maintenance syncs.
+                    log_msg = _("Not syncing, peer site is in maintenance: {realm}/{site}: {error}", log=True)[1]
+                    log_msg = log_msg.format(realm=realm, site=site, error=e)
+                    self.logger.info(log_msg)
+                    return True
                 except SyncDisabled:
                     log_msg = _("Synchronization disabled by site: {realm}/{site}", log=True)[1]
                     log_msg = log_msg.format(realm=realm, site=site)
@@ -2413,8 +2443,11 @@ class HostDaemon(OTPmeDaemon):
                         if "notify" not in self.sync_by_command:
                             self.sync_by_command.append('notify')
                     if daemon_command == "sync_sites":
-                        if "notify" not in self.sync_by_command:
+                        if "sites" not in self.sync_by_command:
                             self.sync_by_command.append('sites')
+                        # A request for the site certs waits for the
+                        # sites sync that does it, and goes with it.
+                        if data and data.get('request_site_cert'):
                             self.sync_by_command_opts['sync_sites'] = data
                     if daemon_command == "sync_token_data":
                         if "used_otps" not in self.sync_by_command:
@@ -2442,7 +2475,7 @@ class HostDaemon(OTPmeDaemon):
                             self.sync_by_command.append('resync_nsscache')
                     if daemon_command == "sync_ssh_authorized_keys":
                         sync_sites_before = False
-                        if "sync_ssh_authorized_keys" not in self.sync_by_command:
+                        if "ssh_authorized_keys" not in self.sync_by_command:
                             self.sync_by_command.append('ssh_authorized_keys')
 
                 child_list = list(self.sync_childs)
@@ -2521,10 +2554,8 @@ class HostDaemon(OTPmeDaemon):
                         # For sites sync we need to handle special commands.
                         if sync_type == "sites":
                             start_sync = True
-                            try:
-                                request_site_cert = self.sync_by_command_opts['sync_sites']['request_site_cert']
-                            except KeyError:
-                                pass
+                            sync_sites_opts = self.sync_by_command_opts.pop('sync_sites', {})
+                            request_site_cert = sync_sites_opts.get('request_site_cert', False)
                         # For object sync we need to handle special commands.
                         if sync_type == "objects":
                             if "resync_objects" in self.sync_by_command:

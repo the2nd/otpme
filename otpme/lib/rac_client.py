@@ -338,7 +338,9 @@ def get_host_public_key(host):
     """
     host_uuid = get_host_uuid(host)
     public_key = read_host_public_key(host_uuid)
-    if not config.pin_host_keys:
+    # Keys are pinned on hosts only (see host_key_pins.py). A node holds
+    # the tree, so there the tree is the last word.
+    if not config.pin_host_keys or config.host_data['type'] == "node":
         if public_key:
             return public_key
         msg = _("Host has no public key: {host}")
@@ -376,22 +378,14 @@ def get_host_uuid(host):
     and not against the tree -- no object type is registered there and
     the index cannot be searched (lib/__init__.py, do_hostd_init) -- and
     stuff.resolve_oid() asks hostd where there is no backend. What it
-    needs is an OID, and the read OID of a host is realm, site and name
-    with no unit in it (classes/host.py, register_oid), which is all we
-    have here.
+    needs is an OID, and the read OID of a host is realm and name
+    (classes/host.py, register_oid): host and node names are unique in
+    the realm, so the name alone is no question of which site.
 
-    The realm and the site are the ones the command works against (-r
-    and -s, config.connect_realm and config.connect_site), which without
-    either of them given are our own. That is what makes a shell on a
-    host of another site work: the job is made by the management daemon
-    of that site, because that is where the connection goes, and only
-    the nodes of that site hand it to the host. So the host has to be
-    looked up there as well -- our own site does not have it.
-
-    Not searched for across the realm, because this is a resolution and
-    not a search: a name alone would be ambiguous (two sites may each
-    have a host of that name), and on a host there is no index to search
-    anyway.
+    The realm is the one the command works against (-r,
+    config.connect_realm), which without it given is our own. The site
+    of -s does not take part here; it says where the connection goes,
+    see connect_to_host().
     """
     from otpme.lib import oid
     from otpme.lib import stuff
@@ -404,7 +398,7 @@ def get_host_uuid(host):
     realm = config.connect_realm or config.realm
     site = config.connect_site or config.site
     for object_type in ["host", "node"]:
-        object_id = oid.get(object_id=f"{object_type}|{realm}/{site}/{host}")
+        object_id = oid.get(object_id=f"{object_type}|{realm}/{host}")
         try:
             return stuff.resolve_oid(object_id)
         except UnknownOID:

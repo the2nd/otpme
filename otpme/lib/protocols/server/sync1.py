@@ -18,8 +18,8 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import locking
 from otpme.lib import backend
+from otpme.lib import maintenance
 from otpme.lib.humanize import units
-from otpme.lib import multiprocessing
 from otpme.lib.protocols import status_codes
 from otpme.lib.classes.object_config import ObjectConfig
 from otpme.lib.protocols.otpme_server import OTPmeServer1
@@ -30,8 +30,13 @@ from otpme.lib.classes.data_objects.conf_result import CONF_RESULT_STATUS
 from otpme.lib.classes.data_objects.conf_result import CONF_RESULT_MAX_AGE
 from otpme.lib.classes.data_objects.host_inventory import HostInventory
 from otpme.lib.classes.data_objects.host_inventory import get_host_inventory
+from otpme.lib.classes.data_objects.os_packages import OsPackages
+from otpme.lib.classes.data_objects.os_packages import get_os_packages
+from otpme.lib.classes.data_objects.os_packages import is_reference_host
 from otpme.lib.confd.inventory import MAX_PACKAGES
+from otpme.lib.confd.inventory import MAX_AVAILABLE_PACKAGES
 from otpme.lib.confd.inventory import check_inventory
+from otpme.lib.confd.inventory import check_available_packages
 from otpme.lib.confd.inventory import get_packages_checksum
 from otpme.lib.confd.hardware import check_hardware
 from otpme.lib.confd.hardware import get_hardware_checksum
@@ -43,6 +48,13 @@ LOCK_TYPE = "sync.server"
 # The object types used on other sites than their own, whose last used
 # times their site gets from us (see get_peer_last_used_times()).
 PEER_LAST_USED_TYPES = ["user", "token", "host", "device"]
+# What we refuse while our site is in maintenance: the object sync.
+MAINTENANCE_REFUSED_COMMANDS = [
+                            "get_sync_list",
+                            "get_sync_list_checksum",
+                            "add_sync_list_checksum",
+                            "get_object",
+                            ]
 REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']
 PROTOCOL_VERSION = "OTPme-sync-1.0"
@@ -127,8 +139,9 @@ class OTPmeSyncP1(OTPmeServer1):
         self.require_cluster_status = False
         # Sync parameters of peer.
         self.peer_sync_params = {}
-        # Sync list of peer.
+        # Sync list of peer, and the realm and site it is of.
         self.sync_list = None
+        self.sync_list_of = None
         # The object config versions the code of the peer reads, as it
         # says them with the command. See get_peer_sync_config().
         self.peer_config_versions = {}
@@ -144,6 +157,8 @@ class OTPmeSyncP1(OTPmeServer1):
                                     "add_conf_result",
                                     "get_host_inventory",
                                     "update_host_inventory",
+                                    "get_os_packages",
+                                    "update_os_packages",
                                     ]
         # Call parent class init.
         OTPmeServer1.__init__(self, **kwargs)
@@ -152,8 +167,9 @@ class OTPmeSyncP1(OTPmeServer1):
         """ Init protocol handler. """
         # Our PID.
         self.pid = os.getpid()
-        # Do atfork stuff.
-        multiprocessing.atfork(quiet=True)
+        # No atfork here: the listen socket does it, in the process forked
+        # for the connection or in the worker when it starts. Here it
+        # would raise in a worker that serves its connections in threads.
 
     def get_peer_sync_config(self, o, object_config=None):
         """ The config of an object as it goes out to our peer.
@@ -372,6 +388,7 @@ class OTPmeSyncP1(OTPmeServer1):
             # Release sync lock.
             sync_lock.release_lock()
         self.sync_list = sync_list
+        self.sync_list_of = (realm, site)
         # Build response.
         _sync_params = dict(sync_params)
         _sync_params['skip_admin'] = skip_admin
@@ -410,11 +427,22 @@ class OTPmeSyncP1(OTPmeServer1):
         return response
 
     def get_last_used_times(self, object_types, realm=None, site=None):
-        """ The last used times of the objects of a site, ours by default. """
+        """ The last used times of the objects of a site, ours by default.
+
+        Only of the objects in the sync list of the peer, which it asks
+        for first: of the others it holds no copy (e.g. the realm admin,
+        which another site does not get), and their times are none of its
+        business.
+        """
+        if self.sync_list is None or self.sync_list_of != (realm, site):
+            response, log_msg = _("Send sync list command first", log=True)
+            self.logger.warning(log_msg)
+            return False, response
         try:
             response = backend.get_last_used_times(object_types=object_types,
                                                 realm=realm,
-                                                site=site)
+                                                site=site,
+                                                object_ids=self.sync_list)
             status = True
         except Exception as e:
             log_msg = _("Failed to get last used data from backend: {e}", log=True)[1]
@@ -992,6 +1020,7 @@ class OTPmeSyncP1(OTPmeServer1):
         hardware = {}
         os_name = None
         os_version = None
+        arch = None
         kernel = None
         reboot_required = None
         otpme_version = None
@@ -1000,6 +1029,7 @@ class OTPmeSyncP1(OTPmeServer1):
             hardware = inventory.hardware
             os_name = inventory.os
             os_version = inventory.os_version
+            arch = inventory.arch
             kernel = inventory.kernel
             reboot_required = inventory.reboot_required
             otpme_version = inventory.otpme_version
@@ -1007,12 +1037,17 @@ class OTPmeSyncP1(OTPmeServer1):
         response = {
                     'os'                : os_name,
                     'os_version'        : os_version,
+                    'arch'              : arch,
                     'kernel'            : kernel,
                     'reboot_required'   : reboot_required,
                     'otpme_version'     : otpme_version,
                     'packages_checksum' : checksum,
                     'packages'          : None,
                     'hardware_checksum' : get_hardware_checksum(hardware),
+                    # Whether it is to report what its system offers
+                    # as well. We say so, because our site says who
+                    # is one (reference_hosts, see os_packages.py).
+                    'reference_host'    : is_reference_host(self.peer.uuid),
                     }
         if checksum != packages_checksum:
             response['packages'] = packages
@@ -1020,7 +1055,7 @@ class OTPmeSyncP1(OTPmeServer1):
 
     def update_host_inventory(self, os_name, os_version,
         set_packages, del_packages, hardware=None, kernel=None,
-        reboot_required=None, otpme_version=None):
+        reboot_required=None, otpme_version=None, arch=None):
         """ Take what the asking host reports about itself.
 
         All of it goes to the inventory of the host and none of it to
@@ -1036,6 +1071,7 @@ class OTPmeSyncP1(OTPmeServer1):
         try:
             check_inventory(os_name=os_name,
                             os_version=os_version,
+                            arch=arch,
                             kernel=kernel,
                             reboot_required=reboot_required,
                             otpme_version=otpme_version,
@@ -1053,7 +1089,8 @@ class OTPmeSyncP1(OTPmeServer1):
         nothing_to_do = not set_packages and not del_packages
         if nothing_to_do and hardware is None:
             if os_name is None and os_version is None and kernel is None \
-            and reboot_required is None and otpme_version is None:
+            and reboot_required is None and otpme_version is None \
+            and arch is None:
                 return True, {'status':True}
         if not backend.get_object(uuid=self.peer.uuid):
             return False, "SYNC_UNKNOWN_HOST"
@@ -1066,6 +1103,7 @@ class OTPmeSyncP1(OTPmeServer1):
                                     host_uuid=self.peer.uuid)
         os_changed = inventory.update_os(os_name=os_name,
                                         os_version=os_version,
+                                        arch=arch,
                                         kernel=kernel,
                                         reboot_required=reboot_required,
                                         otpme_version=otpme_version)
@@ -1098,6 +1136,140 @@ class OTPmeSyncP1(OTPmeServer1):
                                 del_count=len(del_packages))
         self.logger.info(log_msg)
         return True, {'status':True}
+
+    def check_os_packages_peer(self, os_version, arch):
+        """ Whether the peer may report the packages of <os_version> and
+        <arch>: a host that may report its inventory here, that our site
+        names in reference_hosts, and whose inventory says it runs that
+        system. Answers the error, or None. """
+        if not self.peer_may_report_inventory():
+            return "SYNC_PERMISSION_DENIED"
+        if not backend.get_object(uuid=self.peer.uuid):
+            return "SYNC_UNKNOWN_HOST"
+        if not is_reference_host(self.peer.uuid):
+            return "SYNC_PERMISSION_DENIED"
+        # Only for the system it runs. Its inventory comes first in the
+        # same round (see daemon/confd.py), so a host without one has
+        # not reported anything yet.
+        inventory = get_host_inventory(self.peer.uuid)
+        if not inventory:
+            return "SYNC_UNKNOWN_HOST"
+        if inventory.os_version != os_version or inventory.arch != arch:
+            log_msg = _("Reference host '{host}' reports packages of another system: {os_version}/{arch}", log=True)[1]
+            log_msg = log_msg.format(host=self.peer.fqdn,
+                                    os_version=os_version,
+                                    arch=arch)
+            self.logger.warning(log_msg)
+            return "SYNC_INVALID_INVENTORY"
+        return None
+
+    def get_os_packages(self, os_version, arch, packages_checksum):
+        """ What we hold of the packages a system offers, for the
+        reference host that reports them (see os_packages.py).
+
+        Like get_host_inventory(): the whole list only when the
+        checksum the host sends is not ours. And when another reference
+        host keeps the object, only its name, so the host knows it has
+        nothing to send. """
+        try:
+            check_available_packages(os_version, arch, {}, [])
+        except Exception:
+            return False, "SYNC_INVALID_INVENTORY"
+        error = self.check_os_packages_peer(os_version, arch)
+        if error:
+            return False, error
+        os_packages = get_os_packages(os_version, arch)
+        packages = {}
+        if os_packages:
+            holder = os_packages.held_by_other(self.peer.uuid)
+            if holder:
+                return True, {'held_by': holder.name}
+            packages = os_packages.packages
+        checksum = get_packages_checksum(packages)
+        response = {
+                    'held_by'           : None,
+                    'packages_checksum' : checksum,
+                    'packages'          : None,
+                    }
+        if checksum != packages_checksum:
+            response['packages'] = packages
+            return True, response
+        # Nothing to send, and it says the host is still there: the
+        # object stays with it (REFERENCE_TAKEOVER_AGE). It asks once
+        # an hour when nothing changed. A stand-in with the same lists
+        # takes the object over here, there is nothing it would send.
+        if os_packages:
+            os_packages.touch_report(self.peer.uuid)
+            try:
+                os_packages._write()
+            except Exception as e:
+                log_msg = _("Failed to update packages of {os_version}/{arch}: {e}", log=True)[1]
+                log_msg = log_msg.format(os_version=os_version, arch=arch, e=e)
+                self.logger.critical(log_msg)
+        return True, response
+
+    def update_os_packages(self, os_version, arch, set_packages, del_packages):
+        """ Take what a reference host reports about the packages its
+        system offers. """
+        if set_packages is None:
+            set_packages = {}
+        if del_packages is None:
+            del_packages = []
+        try:
+            check_available_packages(os_version, arch,
+                                    set_packages, del_packages)
+        except Exception as e:
+            log_msg = _("Invalid package list from host '{host}': {e}", log=True)[1]
+            log_msg = log_msg.format(host=self.peer.fqdn, e=e)
+            self.logger.warning(log_msg)
+            return False, "SYNC_INVALID_INVENTORY"
+        error = self.check_os_packages_peer(os_version, arch)
+        if error:
+            return False, error
+        os_packages = get_os_packages(os_version, arch)
+        exists = True
+        if not os_packages:
+            exists = False
+            os_packages = OsPackages(realm=config.realm,
+                                    site=config.site,
+                                    os_version=os_version,
+                                    arch=arch)
+        holder = os_packages.held_by_other(self.peer.uuid)
+        if holder:
+            return True, {'held_by': holder.name}
+        packages_count = len(os_packages.packages) + len(set_packages)
+        if packages_count > MAX_AVAILABLE_PACKAGES:
+            log_msg = _("Host '{host}' reports too many packages.", log=True)[1]
+            log_msg = log_msg.format(host=self.peer.fqdn)
+            self.logger.warning(log_msg)
+            return False, "SYNC_INVALID_INVENTORY"
+        if os_packages.reference_host != self.peer.uuid:
+            log_msg = _("Reference host '{host}' writes the packages of {os_version}/{arch}.", log=True)[1]
+            log_msg = log_msg.format(host=self.peer.fqdn,
+                                    os_version=os_version,
+                                    arch=arch)
+            self.logger.info(log_msg)
+        os_packages.update_packages(set_packages=set_packages,
+                                    del_packages=del_packages)
+        os_packages.touch_report(self.peer.uuid)
+        try:
+            if exists:
+                os_packages._write()
+            else:
+                os_packages.add()
+        except Exception as e:
+            log_msg = _("Failed to update packages of {os_version}/{arch}: {e}", log=True)[1]
+            log_msg = log_msg.format(os_version=os_version, arch=arch, e=e)
+            self.logger.critical(log_msg)
+            return False, "SYNC_FAILED_TO_UPDATE_INVENTORY"
+        log_msg = _("Updated packages of {os_version}/{arch} from host '{host}': {set_count} new or changed, {del_count} removed.", log=True)[1]
+        log_msg = log_msg.format(os_version=os_version,
+                                arch=arch,
+                                host=self.peer.fqdn,
+                                set_count=len(set_packages),
+                                del_count=len(del_packages))
+        self.logger.info(log_msg)
+        return True, {'held_by': None}
 
     def sync_offline_token_data(self, data_type,
         object_id, session_uuid, remote_objects):
@@ -1436,6 +1608,8 @@ class OTPmeSyncP1(OTPmeServer1):
                         "add_conf_result",
                         "get_host_inventory",
                         "update_host_inventory",
+                        "get_os_packages",
+                        "update_os_packages",
                         ]
 
         # Indicates if the command was successful.
@@ -1454,9 +1628,11 @@ class OTPmeSyncP1(OTPmeServer1):
             status = status_codes.NEED_HOST_AUTH
             return self.build_response(status, message)
 
-        # Set proctitle to contain peer name.
-        new_proctitle = f"{self.proctitle} ({command})"
-        setproctitle.setproctitle(new_proctitle)
+        # Set proctitle to contain the command. Not with connections in
+        # threads: the title is the one of the whole process.
+        if config.proc_mode == "multiprocessing":
+            new_proctitle = f"{self.proctitle} ({command})"
+            setproctitle.setproctitle(new_proctitle)
 
         # What the code of the peer reads, said with get_sites and
         # get_object. A peer that says nothing runs code from before the
@@ -1497,6 +1673,27 @@ class OTPmeSyncP1(OTPmeServer1):
             status = status_codes.SYNC_DISABLED
             return self.build_response(status, message)
 
+        # No objects while our site is in maintenance: they are being
+        # brought up to new versions by "otpme-site upgrade", and a peer
+        # would fetch what is not done yet and then all of it again.
+        # Token data, last used times, inventories and conf jobs go on;
+        # they are no object sync, and the logins need the token data.
+        #
+        # Not for a node of our own site. It is of the cluster: the
+        # writes of the upgrade reach it through the cluster journal,
+        # which only a member gets, and it becomes one by this sync
+        # (clusterd, do_master_node_sync()). Refused, it would miss them
+        # and stay out of the cluster -- and a site with few nodes out of
+        # its quorum.
+        own_node = (self.peer.type == "node"
+                    and self.peer.site_uuid == config.site_uuid)
+        if command in MAINTENANCE_REFUSED_COMMANDS and not own_node:
+            if maintenance.is_active():
+                message = _("Site is in maintenance, no objects are handed out: {site}")
+                message = message.format(site=config.site)
+                status = status_codes.SITE_MAINTENANCE
+                return self.build_response(status, message)
+
         # The inventory commands, before the sync parameters below.
         #
         # Those describe an object sync: which object types this peer
@@ -1525,9 +1722,27 @@ class OTPmeSyncP1(OTPmeServer1):
                                     kernel=command_args.get('kernel'),
                                     reboot_required=command_args.get('reboot_required'),
                                     otpme_version=command_args.get('otpme_version'),
+                                    arch=command_args.get('arch'),
                                     set_packages=command_args.get('set_packages'),
                                     del_packages=command_args.get('del_packages'),
                                     hardware=command_args.get('hardware'))
+            return self.build_response(status, response)
+
+        # What a reference host reports, the same way and for the same
+        # reasons as the inventory (see os_packages.py).
+        if command == "get_os_packages":
+            status, response = self.get_os_packages(
+                                    os_version=command_args.get('os_version'),
+                                    arch=command_args.get('arch'),
+                                    packages_checksum=command_args.get('packages_checksum'))
+            return self.build_response(status, response)
+
+        if command == "update_os_packages":
+            status, response = self.update_os_packages(
+                                    os_version=command_args.get('os_version'),
+                                    arch=command_args.get('arch'),
+                                    set_packages=command_args.get('set_packages'),
+                                    del_packages=command_args.get('del_packages'))
             return self.build_response(status, response)
 
         # Before the sync parameters as well: the peer asks about objects
@@ -1637,6 +1852,18 @@ class OTPmeSyncP1(OTPmeServer1):
             if x in skip_list:
                 continue
             skip_list.append(x)
+        # A host gets its own host object and none of the others: it
+        # reads them only to check the key of a host it opens a remote
+        # access session (otpme-shell) to, and that it does against the
+        # keys it pins (PIN_HOST_KEYS), which it says with the command.
+        # The keys are public, so a host that says so gets no more than
+        # it got before.
+        if self.peer.type == "host" and "host" in sync_object_types:
+            if not command_args.get('pin_host_keys'):
+                sync_object_types.remove("host")
+                if include_uuids is None:
+                    include_uuids = {}
+                include_uuids['host'] = [self.peer.uuid]
 
         if command == "get_sites":
             try:

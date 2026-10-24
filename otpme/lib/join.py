@@ -288,7 +288,8 @@ class JoinHandler(object):
         return host_cert_req, host_key
 
     def handle_master_node_stuff(self, join_response, site_ca_key,
-        host_cert_req, password, jotp, conn_kwargs):
+        host_cert_req, password, jotp, conn_kwargs, site_key_len=None,
+        site_valid=None):
         """ Handle stuff only to do for master node join. """
         if not self._my_site_ca.cert or not self._my_site_ca.key:
             # Get CA cert from response.
@@ -302,7 +303,12 @@ class JoinHandler(object):
 
         # Create site certificate if needed.
         if not self._my_site.cert or not self._my_site.key:
-            self._my_site.renew_cert(force=True, verify_acls=False)
+            # Without a value renew_cert() takes the defaults of the
+            # config (default_site_key_len, default_site_validity).
+            self._my_site.renew_cert(force=True,
+                                    key_len=site_key_len,
+                                    valid=site_valid,
+                                    verify_acls=False)
             # Save changes.
             cache.flush()
             # Update site certificate on remote site.
@@ -518,6 +524,14 @@ class JoinHandler(object):
             msg = _("Error writing UUID file: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg) from e
+        # And whether we are a host or a node, for those who may not read
+        # our object (see host.load_data()).
+        try:
+            host.write_host_type(self.host_type)
+        except Exception as e:
+            msg = _("Error writing host type file: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg) from e
         # Return site certs to write to ssl dir.
         return site_certs
 
@@ -569,7 +583,8 @@ class JoinHandler(object):
         return join_response
 
     def send_final_join_request(self, force, conn_kwargs, jotp,
-        host_cert=None, host_cert_req=None, site_ca_cert_req=None):
+        host_cert=None, host_cert_req=None, site_ca_cert_req=None,
+        site_ca_valid=None):
         """ Send final join request. """
         # Build finish join request.
         join_request = {}
@@ -585,6 +600,9 @@ class JoinHandler(object):
         join_request['jotp'] = jotp
         # Add site CA CSR to request.
         join_request['site_cert_req'] = site_ca_cert_req
+        # Days the CA certificate is to be valid, None for the default
+        # of joind.
+        join_request['site_ca_valid'] = site_ca_valid
         join_request['host_cert'] = host_cert
         join_request['host_cert_req'] = host_cert_req
         # Add host auth key (public).
@@ -617,10 +635,20 @@ class JoinHandler(object):
 
     def join_realm(self, domain=None, realm=None, site=None, host_type="host",
         host_fqdn=None, username=None, password=None, jotp=None,
-        socket_uri=None, host_key_len=None, site_key_len=None, unit=None,
+        socket_uri=None, host_key_len=None, ca_key_len=None,
+        site_key_len=None, ca_valid=None, site_valid=None, unit=None,
         force=False, trust_site_cert=False, no_daemon_start=False,
         check_site_cert=None, fingerprint_digest=None, create_db_indexes=False):
-        """ Join this node/host to realm. """
+        """ Join this node/host to realm.
+
+        <host_key_len> is the key of the certificate of this host or
+        node. The first node of a site makes the CA of the site and the
+        site certificate as well: <ca_key_len>/<ca_valid> and
+        <site_key_len>/<site_valid> are for those, the way "otpme-realm
+        init" takes them. Without a value the defaults of the config
+        are taken. The parent CA signs the site CA, so <ca_valid> goes
+        to joind with the CSR.
+        """
         if jotp is not None:
             if not isinstance(jotp, str):
                 msg = _("JOTP needs to be of type str().")
@@ -714,7 +742,9 @@ class JoinHandler(object):
         if master_node_join:
             if not self._my_site_ca.cert or not self._my_site_ca.key:
                 # Create site CA CSR.
-                site_ca_cert_req, site_ca_key = self.gen_site_ca_req(site_key_len)
+                if ca_key_len is None:
+                    ca_key_len = config.default_ca_key_len
+                site_ca_cert_req, site_ca_key = self.gen_site_ca_req(ca_key_len)
             config.set_password_salt()
         else:
             self.set_password_salt(join_response)
@@ -750,6 +780,7 @@ class JoinHandler(object):
         # Send final join request.
         join_response = self.send_final_join_request(force, conn_kwargs,
                                     site_ca_cert_req=site_ca_cert_req,
+                                    site_ca_valid=ca_valid,
                                     host_cert_req=host_cert_req,
                                     host_cert=host_cert,
                                     jotp=finish_jotp)
@@ -763,7 +794,9 @@ class JoinHandler(object):
                                                     site_ca_key,
                                                     node_cert_req,
                                                     password, jotp,
-                                                    conn_kwargs)
+                                                    conn_kwargs,
+                                                    site_key_len=site_key_len,
+                                                    site_valid=site_valid)
 
         elif host_cert_req:
             host_cert = join_response['host_cert']
@@ -823,8 +856,7 @@ class JoinHandler(object):
 
     def leave_realm(self, domain=None, host_type="host", username=None,
         password=None, lotp=None, keep_host=False, keep_data=False,
-        keep_cache=None, keep_cert=None, keep_auth_key=None,
-        offline=False, socket_uri=None):
+        keep_cache=None, keep_cert=None, offline=False, socket_uri=None):
         """ Leave realm. """
         if not os.path.exists(config.uuid_file):
             msg = _("Host is not a realm member.")
@@ -862,8 +894,6 @@ class JoinHandler(object):
             keep_cert = False
         if keep_cache is None:
             keep_cache = False
-        if keep_auth_key is None:
-            keep_auth_key = False
 
         if not username:
             if config.login_user:
@@ -955,9 +985,10 @@ class JoinHandler(object):
                     config.ssl_ca_file,
                     ]
 
+        # The cache dir only without --keep-cache, see below: it holds
+        # the nsscache files that the symlinks in /etc point at.
         remove_dirs = [
                     config.data_dir,
-                    config.cache_dir,
                     config.spool_dir,
                     ]
 
@@ -971,8 +1002,10 @@ class JoinHandler(object):
                 remove_files.append(config.ssl_key_file)
                 remove_files.append(config.ssl_cert_file)
 
-            if not keep_auth_key:
-                remove_files.append(config.host_key_file)
+            # The auth key goes with the host: its public key is taken
+            # off the host object on leave, so a private key kept here
+            # would match nothing.
+            remove_files.append(config.host_key_file)
 
             # Remove data from backend.
             backend.drop()
@@ -1011,6 +1044,14 @@ class JoinHandler(object):
                 os.remove(config.uuid_file)
             except Exception as e:
                 msg = _("Error removing UUID file: {error}")
+                msg = msg.format(error=e)
+                raise OTPmeException(msg) from e
+
+        if os.path.exists(config.host_type_file):
+            try:
+                os.remove(config.host_type_file)
+            except Exception as e:
+                msg = _("Error removing host type file: {error}")
                 msg = msg.format(error=e)
                 raise OTPmeException(msg) from e
 

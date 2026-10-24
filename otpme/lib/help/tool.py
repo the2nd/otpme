@@ -82,6 +82,15 @@ cmd_help = {
                                 },
                 },
 
+    'update_user_keys'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-tool update_user_keys [--list] [user]'),
+                    'cmd'   :   '--list :list_only=True: [user_name]',
+                    '_help' :   {
+                                    'cmd'                   : _('Take over the encrypt keys of users that changed.'),
+                                    '--list'                : _('Only show what changed, change nothing.'),
+                                },
+                },
+
 
     'del_signer'    : {
                     '_cmd_usage_help' : _('Usage: otpme-tool del_signer [--private] {signer_uuid}'),
@@ -193,24 +202,24 @@ cmd_help = {
                 },
 
     'sync'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool sync --realm {realm} --site {site} [sites|objects|token_data|ssh_authorized_keys|nsscache]'),
+                    '_cmd_usage_help' : _('Usage: otpme-tool sync [--realm <realm>] [--site <site>] [--request-site-cert] [sites|objects|token_data|ssh_authorized_keys|nsscache]'),
                     'cmd'   :   '--realm :realm: --site :site: --request-site-cert :request_site_cert=True: [sync_type]',
                     '_help' :   {
-                                    'cmd'                   : _('tell OTPme daemon to start sync with master node.'),
-                                    '--realm'               : _('Realm to start object sync with.'),
-                                    '--site'                : _('Site to start object sync with.'),
-                                    '--request-site-cert'   : _('Request site cert from peer (e.g. after site cert renew).'),
+                                    'cmd'                   : _('Tell hostd to start a sync in the background.'),
+                                    '--realm <realm>'       : _('Sync the objects of this realm only (objects only).'),
+                                    '--site <site>'         : _('Sync the objects of this site only (objects only).'),
+                                    '--request-site-cert'   : _('Take the site certs from the peers, e.g. after a renew_cert of a site (sites only).'),
                                 },
                 },
 
 
     'resync'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool resync --realm {realm} --site {site} [objects|token_data|ssh_authorized_keys|nsscache]'),
+                    '_cmd_usage_help' : _('Usage: otpme-tool resync [--realm <realm>] [--site <site>] {objects|nsscache}'),
                     'cmd'   :   '--realm :realm: --site :site: <sync_type>',
                     '_help' :   {
-                                    'cmd'                   : _('Tell OTPme daemon to start resync the given data type.'),
-                                    '--realm'               : _('Realm to start object resync with.'),
-                                    '--site'                : _('Site to start object resync with.'),
+                                    'cmd'                   : _('Tell hostd to start a full sync in the background.'),
+                                    '--realm <realm>'       : _('Resync the objects of this realm only (objects only).'),
+                                    '--site <site>'         : _('Resync the objects of this site only (objects only).'),
                                 },
                 },
 
@@ -218,7 +227,7 @@ cmd_help = {
     'sync_status'    : {
                     '_cmd_usage_help' : _('Usage: otpme-tool sync_status [sync_type]'),
                     '_help' :   {
-                                    'cmd'                   : _('Get time of last successful sync.'),
+                                    'cmd'                   : _('Show the start of the last sync run of each sync type and its status.'),
                                 },
                 },
 
@@ -400,12 +409,12 @@ cmd_help = {
 
 
     'do_sync'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool do_sync [ --realm <realm> --site <site> --resync --ignore-changed-objects --remove-orphan-objects --offline] {objects|token_counters|used_otps|nsscache|ssh_authorized_keys}'),
+                    '_cmd_usage_help' : _('Usage: otpme-tool do_sync [--realm <realm>] [--site <site>] [--resync] [--offline] [--sync-older-objects] [--ignore-changed-objects] [--remove-orphan-objects] {objects|token_counters|used_otps|nsscache|ssh_authorized_keys}'),
                     'cmd'   :   '--realm :realm: --site :site: --resync :resync=True: --ignore-changed-objects :ignore_changed_objects=True: --sync-older-objects :sync_older_objects=True: --remove-orphan-objects :remove_orphan_objects=True: --offline :offline=True: <|object|>',
                     '_help' :   {
                                     'cmd'                       : _('Do a manual hostd sync.'),
                                     '--realm <realm>'           : _('Realm to sync.'),
-                                    '--host-type <host_type>'   : _('Site to sync.'),
+                                    '--site <site>'             : _('Site to sync.'),
                                     '--resync'                  : _('Do a complete resync.'),
                                     '--offline'                 : _('Do a sync of offline token data.'),
                                     '--sync-older-objects'      : _('Sync objects even if they are older than the local ones.'),
@@ -417,15 +426,18 @@ cmd_help = {
 
 
     'join'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool join [ --jotp <jotp> --host-type <node|host> --unit <unit> --trust-site-cert --check-site-cert <site_cert_fp> --joind-uri <joind_uri> --no-daemon-start] [domain]'),
-                    'cmd'   :   '--jotp :jotp: --host-type :host_type: --unit :unit: --trust-site-cert :trust_site_cert=True: --check-site-cert :site_cert_fingerprint: --host-key-len :host_key_len: --site-key-len :site_key_len: --joind-uri :joind_uri: --no-daemon-start :no_daemon_start=True: [|object|]',
+                    '_cmd_usage_help' : _('Usage: otpme-tool join [--jotp <jotp>] [--host-type <node|host>] [--unit <unit>] [--host-key-len <bits>] [--ca-key-len <bits>] [--ca-valid <days>] [--site-key-len <bits>] [--site-valid <days>] [--trust-site-cert|--check-site-cert <fp>] [--joind-uri <joind_uri>] [--no-daemon-start] [domain]'),
+                    'cmd'   :   '--jotp :jotp: --host-type :host_type: --unit :unit: --trust-site-cert :trust_site_cert=True: --check-site-cert :site_cert_fingerprint: --host-key-len :host_key_len: --node-key-len :host_key_len: --ca-key-len :ca_key_len: --ca-valid :ca_valid: --site-key-len :site_key_len: --site-valid :site_valid: --joind-uri :joind_uri: --no-daemon-start :no_daemon_start=True: [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('Join OTPme realm'),
                                     '--jotp <jotp>'             : _('Join using the given JOTP.'),
                                     '--host-type <host_type>'   : _('Join host as type <host_type>.'),
                                     '--unit <unit>'             : _('Join host to the given unit.'),
-                                    '--host-key-len <key_len>'  : _('Host/Node key length.'),
-                                    '--site-key-len <key_len>'  : _('Site key length.'),
+                                    '--host-key-len <key_len>'  : _('Key length of the certificate of this host or node (also --node-key-len).'),
+                                    '--ca-key-len <key_len>'    : _('First node of a site: key length of the site CA.'),
+                                    '--ca-valid <days>'         : _('First node of a site: validity of the site CA in days.'),
+                                    '--site-key-len <key_len>'  : _('First node of a site: key length of the site certificate.'),
+                                    '--site-valid <days>'       : _('First node of a site: validity of the site certificate in days.'),
                                     '--trust-site-cert'         : _('Trust any site certificate.'),
                                     '--check-site-cert <fp>'    : _('Check the site certificate fingerprint.'),
                                     '--joind-uri <joind_uri>'   : _('Joind URI e.g. tcp://login.otpme.org:2024'),
@@ -435,8 +447,8 @@ cmd_help = {
 
 
     'leave'     : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool leave [ --lotp <lotp> --offline --keep-host --no-keep-host --keep-data --keep-cache --keep-cert ] [domain]'),
-                    'cmd'   :   '--lotp :lotp: --offline :offline=True: --keep-host :keep_host=True: --no-keep-host :keep_host=False, --keep-data :keep_data=True: --keep-cache :keep_cache=True: --keep-cert :keep_cert=True: --keep-auth-key :keep_auth_key=True: [|object|]',
+                    '_cmd_usage_help' : _('Usage: otpme-tool leave [--lotp <lotp>] [--offline] [--keep-host|--no-keep-host] [--keep-data] [--keep-cache] [--keep-cert]'),
+                    'cmd'   :   '--lotp :lotp: --offline :offline=True: --keep-host :keep_host=True: --no-keep-host :keep_host=False: --keep-data :keep_data=True: --keep-cache :keep_cache=True: --keep-cert :keep_cert=True:',
                     '_help' :   {
                                     'cmd'                   : _('Leave OTPme realm'),
                                     '--lotp <lotp>'         : _('Leave using the given LOTP.'),
@@ -445,8 +457,7 @@ cmd_help = {
                                     '--no-keep-host'        : _('Delete node/host object on server side.'),
                                     '--keep-data'           : _('Keep all data (e.g realm data, certs, offline tokens...)'),
                                     '--keep-cache'          : _('Keep cached data (offline tokens, nsscache etc.)'),
-                                    '--keep-cert'           : _('Do not revoke host certficiate when leaving.'),
-                                    '--keep-auth-key'       : _('Do not revoke host auth key when leaving.'),
+                                    '--keep-cert'           : _('Do not revoke host certificate when leaving.'),
                                 },
                 },
 
@@ -457,7 +468,7 @@ cmd_help = {
                     '_help' :   {
                                     'cmd'                   : _('login to OTPme realm'),
                                     '--node <node>'         : _('Send login request to given node.'),
-                                    '--no-authorize-nost'   : _('Tell node not to authorize host on login.'),
+                                    '--no-authorize-host'   : _('Tell node not to authorize host on login.'),
                                 },
                 },
 
@@ -551,10 +562,11 @@ cmd_help = {
                 },
 
     'get_sotp'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool get_sotp --site {site}'),
+                    '_cmd_usage_help' : _('Usage: otpme-tool get_sotp [--site {site}]'),
                     'cmd'   :   '--site :site:',
                     '_help' :   {
                                     'cmd'                   : _('Get a SOTP for logged in user'),
+                                    '--site <site>'         : _('SOTP for a session at this site of the realm.'),
                                 },
                 },
 
@@ -598,7 +610,7 @@ cmd_help = {
     'get_jwt'    : {
                     '_cmd_usage_help' : _('Usage: otpme-tool get_jwt <challenge>'),
                     '_help' :   {
-                                    'cmd'                   : _('Request JWT from mgmtd'),
+                                    'cmd'                   : _('Request JWT from authd'),
                                 },
                 },
 
@@ -647,7 +659,6 @@ cmd_help = {
 
     'do_reauth'    : {
                     '_cmd_usage_help' : _('Usage: otpme-tool do_reauth'),
-                    'cmd'   :   'do_reauth',
                     '_help' :   {
                                     'cmd'                   : _('Do manual auth_on_action reauth.'),
                                 },
@@ -655,7 +666,6 @@ cmd_help = {
 
     'reset_reauth'    : {
                     '_cmd_usage_help' : _('Usage: otpme-tool reset_reauth'),
-                    'cmd'   :   'reset_reauth',
                     '_help' :   {
                                     'cmd'                   : _('Reset auth_on_action reauth.'),
                                 },

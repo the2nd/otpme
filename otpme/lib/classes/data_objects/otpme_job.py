@@ -67,23 +67,22 @@ def register_backend():
                             drop=True,
                             perms=0o770)
     def oid_getter(path):
+        # The job dir is <JOBS_DIR>/<realm>/<site>/<job uuid>, see
+        # path_getter() below.
         if not path.startswith(JOBS_DIR):
             return
-        x_dir_name = os.path.dirname(path)
-        x_dir_name = os.path.dirname(x_dir_name)
-        x_dir_name = os.path.dirname(x_dir_name)
-        x_dir_name = os.path.dirname(x_dir_name)
-        if x_dir_name != path_id:
+        path = path.rstrip("/")
+        if os.path.basename(path) == config.object_config_file_name:
+            path = os.path.dirname(path)
+        job_uuid = os.path.basename(path)
+        if not stuff.is_uuid(job_uuid):
             return
-        object_realm = os.path.dirname(path)
-        object_realm = os.path.dirname(object_realm)
-        object_realm = os.path.dirname(object_realm)
-        object_realm = os.path.basename(object_realm)
-        object_site = os.path.dirname(path)
-        object_site = os.path.dirname(object_site)
-        object_site = os.path.basename(object_site)
-        job_uuid = os.path.dirname(path)
-        job_uuid = os.path.basename(job_uuid)
+        site_dir = os.path.dirname(path)
+        object_site = os.path.basename(site_dir)
+        realm_dir = os.path.dirname(site_dir)
+        object_realm = os.path.basename(realm_dir)
+        if os.path.dirname(realm_dir) != JOBS_DIR.rstrip("/"):
+            return
         object_id = oid.OTPmeOid(object_type="job",
                                 realm=object_realm,
                                 site=object_site,
@@ -111,30 +110,29 @@ def register_backend():
             realm_dir = os.path.join(jobs_dir, realm_dir)
             for sites_dir in filetools.list_dir(realm_dir):
                 sites_dir = os.path.join(realm_dir, sites_dir)
-                for job_uuid in filetools.list_dir(sites_dir):
-                    if not stuff.is_uuid(job_uuid):
+                job_dirs = [x for x in filetools.list_dir(sites_dir)
+                            if stuff.is_uuid(x)]
+                counter = 0
+                files_count = len(job_dirs)
+                for x in job_dirs:
+                    counter += 1
+                    x_path = os.path.join(sites_dir, x)
+                    if object_dir:
+                        if x_path != object_dir:
+                            continue
+                    x_file = os.path.join(x_path, config.object_config_file_name)
+                    log_msg = _("Processing {path_id} ({counter}/{files_count}): {x_file}", log=True)[1]
+                    log_msg = log_msg.format(path_id=path_id,
+                                            counter=counter,
+                                            files_count=files_count,
+                                            x_file=x_file)
+                    logger.debug(log_msg)
+                    x_oid = oid_getter(x_path)
+                    if not x_oid:
                         continue
-                    job_dir = os.path.join(sites_dir, job_uuid)
-                    job_files = filetools.list_dir(job_dir)
-                    counter = 0
-                    files_count = len(job_files)
-                    for x in job_files:
-                        counter += 1
-                        x_path = os.path.join(job_dir, x)
-                        if object_dir:
-                            if x_path != x_path:
-                                continue
-                        x_file = os.path.join(x_path, config.object_config_file_name)
-                        log_msg = _("Processing {path_id} ({counter}/{files_count}): {x_file}", log=True)[1]
-                        log_msg = log_msg.format(path_id=path_id,
-                                                counter=counter,
-                                                files_count=files_count,
-                                                x_file=x_file)
-                        logger.debug(log_msg)
-                        x_oid = oid_getter(x_path)
-                        backend.index_add(object_id=x_oid,
-                                        object_config="auto",
-                                        full_index_update=True)
+                    backend.index_add(object_id=x_oid,
+                                    object_config="auto",
+                                    full_index_update=True)
     # Register object to config.
     config.register_object_type(object_type="job",
                             version=1,

@@ -868,7 +868,7 @@ class OTPmeHost(OTPmeClientObject):
         if public_key is None:
             public_key = callback.ask("Please enter/paste public key: ")
         if public_key:
-            self.public_key = public_key
+            self.set_public_key(public_key)
             try:
                 self._load_public_key()
             except Exception as e:
@@ -876,7 +876,7 @@ class OTPmeHost(OTPmeClientObject):
                 msg = msg.format(error=e)
                 return callback.error(msg)
         else:
-            self.public_key = None
+            self.set_public_key(None)
 
         return self._cache(callback=callback)
 
@@ -1065,12 +1065,44 @@ class OTPmeHost(OTPmeClientObject):
         jotp = stuff.gen_secret(jotp_len)
         return jotp
 
+    def set_public_key(self, public_key: Union[str,None]):
+        """ Set the public key, and put it into the index.
+
+        See host_key_pins.py. Every place that sets the public key does
+        it here, or the index says another key than the host has.
+        """
+        self.public_key = public_key
+        self.del_index("public_key")
+        if public_key:
+            self.add_index("public_key", public_key)
+
+    def upgrade_to_2(self, object_config):
+        """ Version 2: the public key is in the index.
+
+        Into the INDEX of the config, and not by a write: the sync
+        writes the config it brought up as it is. The version is what
+        makes "otpme-site upgrade" write every host and node once.
+        """
+        self.set_config_index(object_config, "public_key", "PUBLIC_KEY")
+
+    def downgrade_to_1(self, object_config):
+        """ A peer of version 1 does not know the index attribute. """
+        try:
+            index = object_config['INDEX']
+        except KeyError:
+            return
+        if not index or "public_key" not in index:
+            return
+        index = dict(index)
+        index.pop("public_key")
+        object_config['INDEX'] = index
+
     @object_lock(full_lock=True)
     @backend.transaction
     def gen_auth_key(self, callback: JobCallback=default_callback, **kwargs):
         """ Generate host auth key pair. """
         _host_key = RSAKey(bits=config.default_host_auth_key_len)
-        self.public_key = _host_key.public_key_base64
+        self.set_public_key(_host_key.public_key_base64)
         private_key = _host_key.private_key_base64
         self._cache(callback=callback)
         return private_key
@@ -1243,7 +1275,7 @@ class OTPmeHost(OTPmeClientObject):
             self.lotp = self.gen_jotp()
             # Set hosts public key.
             if public_key:
-                self.public_key = public_key
+                self.set_public_key(public_key)
             # Write changes.
             return self._write(callback=callback)
 
@@ -1300,7 +1332,7 @@ class OTPmeHost(OTPmeClientObject):
         # Remove LOTP.
         self.lotp = None
         # Remove host public key.
-        self.public_key = None
+        self.set_public_key(None)
 
         return self._write(callback=callback)
 
@@ -1371,7 +1403,7 @@ class OTPmeHost(OTPmeClientObject):
                     msg = msg.format(object_type=object_type, object_id=object_id)
                     return callback.error(msg)
         # Set host auth key.
-        self.public_key = public_key
+        self.set_public_key(public_key)
 
         # Gen JOTP.
         if gen_jotp:
@@ -1408,6 +1440,14 @@ class OTPmeHost(OTPmeClientObject):
                                 verbose_level=verbose_level,
                                 callback=callback, **kwargs)
 
+    def remove_references(self, callback: JobCallback=default_callback):
+        """ Take this object out of what refers to it, on its delete.
+
+        Called by delete() once it is allowed and confirmed. Nothing to
+        do here; a child class adds what it has.
+        """
+        return
+
     @object_lock(full_lock=True)
     @backend.transaction
     def delete(
@@ -1438,7 +1478,12 @@ class OTPmeHost(OTPmeClientObject):
                     msg = msg.format(name=self.name)
                     return callback.error(msg, exception=PermissionDenied)
 
-        if not self.ask_delete_confirmation(force=force, callback=callback):
+        exception = None
+        if not force:
+            exception = self.get_passwords_notice()
+        if not self.ask_delete_confirmation(force=force,
+                                            exception=exception,
+                                            callback=callback):
             return callback.abort()
 
         if run_policies:
@@ -1450,6 +1495,10 @@ class OTPmeHost(OTPmeClientObject):
         if config.get_master_node() == self.name:
             msg = "Cannot delete master node."
             return callback.error(msg)
+
+        # Not before here: the delete is allowed, confirmed and will
+        # happen. Done first, it stayed done when the delete did not.
+        self.remove_references(callback=callback)
 
         # Revoke host cert. The delete is already confirmed.
         if self.cert:

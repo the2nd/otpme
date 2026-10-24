@@ -35,8 +35,11 @@ class LoginHandler(object):
         try:
             agent_conn = connections.get("agent")
         except UnknownLoginSession as e:
-            msg = _("Unknown session: {session_id}")
-            msg = msg.format(session_id=agent_conn.login_session_id)
+            # From the exception: agent_conn is not set when get()
+            # raises, and asking it for the session ID failed with an
+            # UnboundLocalError.
+            msg = _("Unknown session: {error}")
+            msg = msg.format(error=e)
             raise UnknownLoginSession(msg) from e
         except Exception as e:
             msg = _("Unable to get agent connection: {error}")
@@ -256,8 +259,12 @@ class LoginHandler(object):
 
         return logout_message
 
-    def whoami(self, verify_server_session=True):
-        """ Check login status for user got from otpme-agent """
+    def whoami(self):
+        """ The user logged in to otpme-agent.
+
+        Not asked of a node: a check of the session with mgmtd stood
+        here, and no caller ever wanted it.
+        """
         msg = _("You are not logged in.")
 
         # Check if OTPme agent is running.
@@ -286,49 +293,4 @@ class LoginHandler(object):
                 msg = msg.format(username=agent_username)
             raise NotLoggedIn(msg)
 
-        # Get login session realm/site.
-        login_realm = agent_conn.get_realm()
-        login_site = agent_conn.get_site()
-
-        if not verify_server_session:
-            return agent_username
-
-        # Try to get connection to mgmtd.
-        mgmt_conn = None
-        try:
-            mgmt_conn = connections.get(daemon="mgmtd",
-                                        realm=login_realm,
-                                        site=login_site,
-                                        use_agent=True,
-                                        auto_auth=False,
-                                        username=agent_username,
-                                        autoconnect=True)
-        except AuthFailed as e:
-            msg = _("Authentication failed: {error}")
-            msg = msg.format(error=e)
-            status_message = _("{username} (online: {message})")
-            status_message = status_message.format(username=agent_username, message=msg)
-        except Exception as e:
-            status_message = _("{username} (offline)")
-            status_message = status_message.format(username=agent_username)
-
-        if mgmt_conn:
-            command_args = {}
-            try:
-                status, \
-                status_code, \
-                status_message, \
-                binary_data = mgmt_conn.send("status", command_args)
-                status_message = _("{username} (online)")
-                status_message = status_message.format(username=agent_username)
-            except AuthFailed as e:
-                msg = _("Authentication failed: {error}")
-                msg = msg.format(error=e)
-                status_message = _("{username} (online: {message})")
-                status_message = status_message.format(username=agent_username, message=msg)
-            except Exception as e:
-                msg = str(e)
-                status_message = _("{username} (online: {message})")
-            status_message = status_message.format(username=agent_username, message=msg)
-
-        return status_message
+        return agent_username

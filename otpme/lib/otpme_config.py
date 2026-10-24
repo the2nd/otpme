@@ -489,6 +489,11 @@ class OTPmeConfig(object):
                         config_file_parameter="AGENT_CONNECTION_IDLE_TIMEOUT")
         self.register_config_var("agent_keepalive_interval", int, 6,
                                 config_file_parameter="AGENT_KEEPALIVE_INTERVAL")
+        # How often otpme-agent fetches the passwords this host may keep
+        # for offline use, besides at login and when idled says one of
+        # them changed (see otpme.lib.pass_cache).
+        self.register_config_var("agent_pass_cache_interval", int, 3600,
+                                config_file_parameter="AGENT_PASS_CACHE_INTERVAL")
 
         # Use DNS to get OTPme login realm/site and socket URI.
         self.register_config_var("login_use_dns", bool, True,
@@ -641,6 +646,10 @@ class OTPmeConfig(object):
         # somebody changed the tree is a key that stops a session.
         self.register_config_var("pin_host_keys", bool, False,
                             config_file_parameter="PIN_HOST_KEYS")
+        # The same for the encrypt keys of users, which otpme-pass
+        # encrypts for (user_key_pins.py).
+        self.register_config_var("pin_user_keys", bool, False,
+                            config_file_parameter="PIN_USER_KEYS")
 
         # Object types that are in tree.
         # The order of this list is important (e.g. for signature tags)
@@ -700,6 +709,8 @@ class OTPmeConfig(object):
         self.config_file_name = f"{self.my_name.lower()}.conf"
         self.register_config_var("uuid_file_name", str, None)
         self.uuid_file_name = f"{self.my_name.lower()}.uuid"
+        self.register_config_var("host_type_file_name", str, None)
+        self.host_type_file_name = f"{self.my_name.lower()}.host_type"
         self.register_config_var("master_pass_salt_file_name", str, None)
         self.master_pass_salt_file_name = f"{self.my_name.lower()}.key_salt"
         self.register_config_var("password_hash_salt_file_name", str, None)
@@ -716,6 +727,11 @@ class OTPmeConfig(object):
         self.config_file = os.path.join(self.config_dir, self.config_file_name)
         self.register_config_var("uuid_file", str, None)
         self.uuid_file = os.path.join(self.config_dir, self.uuid_file_name)
+        # Whether we are a host or a node, next to our UUID. Out of our
+        # own object it is known only to whoever may read the tree, and a
+        # user may not (see host.load_data()).
+        self.register_config_var("host_type_file", str, None)
+        self.host_type_file = os.path.join(self.config_dir, self.host_type_file_name)
         self.register_config_var("master_pass_salt_file", str, None)
         self.master_pass_salt_file = os.path.join(self.config_dir, self.master_pass_salt_file_name)
         self.register_config_var("password_hash_salt_file", str, None)
@@ -789,6 +805,7 @@ class OTPmeConfig(object):
         self.register_config_var("nsscache_dir", str, None)
         self.register_config_var("sign_key_cache_dir", str, None)
         self.register_config_var("host_key_pin_dir", str, None)
+        self.register_config_var("user_key_pin_dir", str, None)
         self.register_config_var("ssh_deploy_dir", str, None)
         self.register_config_var("authorized_keys_dir", str, None)
         self.register_config_var("nsscache_spool_dir", str, None)
@@ -1435,6 +1452,7 @@ class OTPmeConfig(object):
         # In the spool and not in the cache: a cache may be thrown away,
         # and a pin that is thrown away is no pin.
         self.host_key_pin_dir = os.path.join(self.spool_dir, "host_keys")
+        self.user_key_pin_dir = os.path.join(self.spool_dir, "user_keys")
         self.reload_file_path = os.path.join(self.spool_dir, "reload")
         self.node_sync_file = os.path.join(self.spool_dir, "node_synced")
         self.node_sync_time_file = os.path.join(self.spool_dir, "node_sync_time")
@@ -1838,8 +1856,16 @@ class OTPmeConfig(object):
         default_value=None, valid_values=None, object_types=None,
         getter=None, setter=None, deller=None, warn_if_exists=False,
         default_genner=None, gen_default_on_create=False,
-        sensitive=False, admin_only=False, superuser_only=False):
+        sensitive=False, admin_only=False, superuser_only=False,
+        merging_setter=False):
         """ Register config parameter.
+
+        merging_setter: the setter builds the whole new value itself, also
+        when a value is added (-a) or removed (-d <value>). It gets the
+        object (config_object) and the append or delete flag, and what it
+        returns replaces the stored value. For a parameter whose stored
+        value is not a plain list, e.g. password_store_members, which keeps
+        the signatures of its members along with them.
 
         sensitive: the parameter value is a secret (e.g. a password) and must
         not be written to the object changelog in cleartext.
@@ -1885,6 +1911,7 @@ class OTPmeConfig(object):
                                             'sensitive'         : sensitive,
                                             'admin_only'        : admin_only,
                                             'superuser_only'    : superuser_only,
+                                            'merging_setter'    : merging_setter,
                                         }
     def get_config_parameter(self, name):
         try:
@@ -2120,8 +2147,15 @@ class OTPmeConfig(object):
 
     def register_base_object(self, object_type, name, stype=None,
         pos=None, template=False, call_methods=None, post_methods=None,
-        post_register_method=None, attributes=None, early=False):
-        """ Register base object. """
+        post_register_method=None, attributes=None, early=False,
+        no_acls=False):
+        """ Register base object.
+
+        <no_acls> is for a unit whose ACLs are set by hand and by nobody
+        else: it gets none when the site is added, neither the ones of
+        the site nor the ones the site hands to all of its units (see
+        Site.add_acls()). The unit of the password objects is one.
+        """
         if call_methods is None:
             call_methods = []
         if post_methods is None:
@@ -2153,6 +2187,7 @@ class OTPmeConfig(object):
                         'pos'                           : pos,
                         'type'                          : stype,
                         'early'                         : early,
+                        'no_acls'                       : no_acls,
                         'template'                      : template,
                         'attributes'                    : attributes,
                         'call_methods'                  : list(call_methods),
@@ -2719,6 +2754,19 @@ class OTPmeConfig(object):
                             line=caller_frame.f_lineno,
                             method=caller_frame.f_code.co_name)
             error_message(msg)
+        # What was raised. Without it the lines above say where, but
+        # not what, and the caller may catch it without a word.
+        exc_type, exc_value = sys.exc_info()[:2]
+        if exc_type is not None:
+            msg = _("Exception: {exc_type}: {exc_value}")
+            msg = msg.format(exc_type=exc_type.__name__, exc_value=exc_value)
+            error_message(msg)
+        # And how we got here: the line above names the method that
+        # caught it, and that one may be called from anywhere.
+        if caller_frame is not None:
+            import traceback
+            stack = "".join(traceback.format_stack(caller_frame))
+            error_message(stack.rstrip())
         if message is not None:
             error_message(message)
         #from otpme.lib import debug
@@ -3145,6 +3193,7 @@ class OTPmeConfig(object):
                     # wants to replace a pin is root's, and that is in
                     # the code (host_key_pins.py), not in these bits.
                     self.host_key_pin_dir : 0o775,
+                    self.user_key_pin_dir : 0o775,
                     self.nsscache_spool_dir : 0o770,
                     self.nsscache_objects_dir : 0o770,
                     self.authorized_keys_dir : 0o750,

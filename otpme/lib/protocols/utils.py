@@ -316,6 +316,15 @@ def reencrypt_share_key(message_id, share_user, share_key, key_mode):
             }
     return request
 
+def pass_crypt(message_id, pass_request):
+    """ Sends request to client to read or write password entries. """
+    request = {
+            'message_id'    : message_id,
+            'command'       : 'OTPME_PASS_CRYPT',
+            'pass_request'  : pass_request,
+            }
+    return request
+
 def move_objects(message_id, object_data):
     """ Sends request to client to move objects to other site. """
     request = {

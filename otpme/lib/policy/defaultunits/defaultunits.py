@@ -20,6 +20,7 @@ from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.policy import Policy
+from otpme.lib.classes import get_object_module_path
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.unit import register_subtype_add_acl
 from otpme.lib.classes.unit import register_subtype_del_acl
@@ -170,7 +171,7 @@ def register_policy_object():
     # Register base policy.
     post_methods = []
     for object_type in config.tree_object_types:
-        module_path = f"otpme.lib.classes.{object_type}"
+        module_path = get_object_module_path(object_type)
         module = importlib.import_module(module_path)
         try:
             default_unit = getattr(module, "DEFAULT_UNIT")

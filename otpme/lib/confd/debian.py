@@ -23,6 +23,7 @@ from otpme.lib import filetools
 from otpme.lib.confd.base import ConfJobHandler
 from otpme.lib.confd.base import REPO_NAME_RE
 from otpme.lib.confd.base import PACKAGE_NAME_RE
+from otpme.lib.confd.inventory import ARCH_RE
 from otpme.lib.confd.inventory import PACKAGE_VERSION_RE
 from otpme.lib.confd.inventory import PACKAGE_NAME_RE as INVENTORY_PACKAGE_NAME_RE
 
@@ -30,6 +31,10 @@ from otpme.lib.exceptions import *
 
 APT_SOURCES_DIR = "/etc/apt/sources.list.d"
 APT_KEYRING_DIR = "/etc/apt/keyrings"
+# What changes when the packages this system offers do: the lists an
+# "apt update" writes, and the pins that pick a version out of them.
+APT_STAMP_DIRS = ["/var/lib/apt/lists", "/etc/apt/preferences.d"]
+APT_STAMP_FILES = ["/etc/apt/preferences"]
 # The file a package writes when it needs the host to be rebooted: the
 # kernel, but libc and systemd as well. Written by
 # update-notifier-common or by needrestart, and a host that has neither
@@ -114,6 +119,103 @@ class DebianHandler(ConfJobHandler):
             if not re.match(PACKAGE_VERSION_RE, version):
                 continue
             packages[name] = version
+        return packages
+
+    def get_arch(self):
+        """ The architecture of this system the way its packages name
+        it ("amd64"), or None where dpkg does not say. """
+        command = ["dpkg", "--print-architecture"]
+        try:
+            proc = subprocess.run(command,
+                                check=False,
+                                capture_output=True,
+                                text=True)
+        except OSError:
+            return None
+        if proc.returncode != 0:
+            return None
+        arch = proc.stdout.strip()
+        if not re.match(ARCH_RE, arch):
+            return None
+        return arch
+
+    def get_available_stamp(self):
+        """ When the package lists last changed.
+
+        Asked every round instead of the lists themselves: reading them
+        is some 50 MB out of apt, and they only change with an "apt
+        update" -- or with a pin, which changes which version apt would
+        take. """
+        stamp = 0.0
+        for x_dir in APT_STAMP_DIRS:
+            try:
+                entries = os.scandir(x_dir)
+            except OSError:
+                continue
+            with entries:
+                for entry in entries:
+                    try:
+                        stamp = max(stamp, entry.stat().st_mtime)
+                    except OSError:
+                        continue
+        for x_file in APT_STAMP_FILES:
+            try:
+                stamp = max(stamp, os.stat(x_file).st_mtime)
+            except OSError:
+                continue
+        return stamp
+
+    def get_available_packages(self, arch=None):
+        """ The packages this system offers: {name: version}.
+
+        The version apt would install (the candidate), one per package,
+        for the architecture of the system and for "all". Out of the
+        package lists as they are: we do not run "apt update", that is
+        what apt-daily on the host is for. """
+        if arch is None:
+            arch = self.get_arch()
+        command = ["apt-cache", "dumpavail"]
+        try:
+            proc = subprocess.Popen(command,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL,
+                                    text=True)
+        except OSError as e:
+            msg = _("Failed to run apt-cache: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg) from e
+        packages = {}
+        name = None
+        version = None
+        package_arch = None
+        def add_package():
+            if not name or not version:
+                return
+            if package_arch not in (arch, "all"):
+                return
+            if not re.match(INVENTORY_PACKAGE_NAME_RE, name):
+                return
+            if not re.match(PACKAGE_VERSION_RE, version):
+                return
+            packages[name] = version
+        with proc.stdout:
+            for line in proc.stdout:
+                if line == "\n":
+                    add_package()
+                    name = None
+                    version = None
+                    package_arch = None
+                    continue
+                if line.startswith("Package: "):
+                    name = line[9:].strip()
+                elif line.startswith("Version: "):
+                    version = line[9:].strip()
+                elif line.startswith("Architecture: "):
+                    package_arch = line[14:].strip()
+            add_package()
+        if proc.wait() != 0:
+            msg = _("apt-cache dumpavail failed.")
+            raise OTPmeException(msg)
         return packages
 
     def get_reboot_required(self, packages=None):

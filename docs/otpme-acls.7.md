@@ -131,9 +131,6 @@ Delete the object.
 **disable:acl_inheritance**  
 Stop the object from taking the default ACLs of its unit.
 
-**disable:object**  
-Disable the object.
-
 **edit:attribute**  
 Change an LDIF attribute.
 
@@ -148,9 +145,6 @@ Change the free text info of the object.
 
 **enable:acl_inheritance**  
 Let the object take the default ACLs of its unit again.
-
-**enable:object**  
-Enable the object.
 
 **remove:extension**  
 Remove an extension.
@@ -236,9 +230,6 @@ See the checksum of the resolver data.
 **view:resolver_key**  
 See the key the resolver knows it by.
 
-**view:status**  
-See whether the object is enabled.
-
 **view:sync_checksum**  
 See the checksum the sync works with.
 
@@ -253,14 +244,14 @@ See the UUID.
 child_group, child_session, device, host, role, token
 
 **disable**  
-force_sotp_signing, sessions, sotp_signing, timeout_pass_on
+force_sotp_signing, object, sessions, sotp_signing, timeout_pass_on
 
 **edit**  
 max_fail, max_fail_reset, max_sessions, relogin_timeout,
 session_timeout, sign_public_keys, unused_session_timeout
 
 **enable**  
-force_sotp_signing, sessions, sotp_signing, timeout_pass_on
+force_sotp_signing, object, sessions, sotp_signing, timeout_pass_on
 
 **join**  
 host, node
@@ -274,8 +265,8 @@ child_group, child_session, device, host, role, token
 **view**  
 child_groups, child_sessions, devices, force_sotp_signing, hosts,
 max_fail, max_fail_reset, max_sessions, relogin_timeout, roles,
-session_timeout, sessions_enabled, sotp_signing, timeout_pass_on,
-tokens, unused_session_timeout
+session_timeout, sessions_enabled, sotp_signing, status,
+timeout_pass_on, tokens, unused_session_timeout
 
 ## ca
 
@@ -283,8 +274,14 @@ tokens, unused_session_timeout
 create_ca_cert, create_cert, create_client_cert, create_host_cert,
 create_node_cert, create_server_cert, renew, revoke, update_crl
 
+**disable**  
+object
+
 **edit**  
 crl_validity
+
+**enable**  
+object
 
 **renew**  
 cert
@@ -293,7 +290,8 @@ cert
 cert
 
 **view**  
-cert, country, crl, email, key, locality, organization, ou, state
+cert, country, crl, email, key, locality, organization, ou, state,
+status
 
 ## client
 
@@ -309,7 +307,7 @@ address, oidc_grant_type, oidc_logout_redirect_uri, oidc_redirect_uri,
 oidc_response_type, sso_logo
 
 **disable**  
-auth_cache, dot1x_auth, oidc_auth, oidc_backchannel_tls_verify,
+auth_cache, dot1x_auth, object, oidc_auth, oidc_backchannel_tls_verify,
 oidc_force_backchannel_logout, sso, sso_popup
 
 **dump**  
@@ -322,7 +320,7 @@ oidc_id_token_alg, oidc_sector_identifier_uri, oidc_subject_type,
 secret, sso_name
 
 **enable**  
-auth_cache, dot1x_auth, oidc_auth, oidc_backchannel_tls_verify,
+auth_cache, dot1x_auth, object, oidc_auth, oidc_backchannel_tls_verify,
 oidc_force_backchannel_logout, sso, sso_popup
 
 **find**  
@@ -333,24 +331,30 @@ role, token
 
 **view**  
 accessgroups, address, auth_cache, auth_cache_timeout, dot1x_auth,
-helper_url, login_url, oidc_auth, oidc_auth_method,
+helper_url, login_url, logins_limited, oidc_auth, oidc_auth_method,
 oidc_backchannel_ca_cert, oidc_backchannel_logout_uri,
 oidc_backchannel_tls_verify, oidc_force_backchannel_logout,
 oidc_grant_types, oidc_id_token_alg, oidc_logout_redirect_uris,
 oidc_redirect_uris, oidc_response_types, oidc_sector_identifier_uri,
 oidc_subject_type, roles, scopes, secret, sso_enabled, sso_name,
-sso_popup, tokens
+sso_popup, status, tokens
 
 ## device
 
+**disable**  
+object
+
 **edit**  
 auto_disable, mac_address
+
+**enable**  
+object
 
 **find**  
 accessgroups, roles
 
 **view**  
-accessgroups, auto_disable, mac_address, roles
+accessgroups, auto_disable, mac_address, roles, status
 
 ## dictionary
 
@@ -363,28 +367,40 @@ dictionary, words
 **delete**  
 dictionary, words
 
+**disable**  
+object
+
+**enable**  
+object
+
 **view**  
-dictionaries
+dictionaries, status
 
 ## group
 
 **add**  
-attribute:\<name\>, default_group_user, host, role, token, user
+attribute:\<name\>, default_group_user, host, role, sync_user, token
 
 **delete**  
 attribute:\<name\>
 
+**disable**  
+object
+
 **edit**  
 attribute:\<name\>
+
+**enable**  
+object
 
 **find**  
 scopes, shares
 
 **remove**  
-default_group_user, host, role, token, user
+default_group_user, host, role, sync_user, token
 
 **view**  
-attribute:\<name\>, hosts, roles, tokens
+attribute:\<name\>, hosts, roles, status, sync_users, tokens
 
 ## host
 
@@ -392,25 +408,26 @@ attribute:\<name\>, hosts, roles, tokens
 join, leave, limit_logins, unlimit_logins
 
 **add**  
-attribute:\<name\>, dynamic_group, group, role, sync_group, token
+attribute:\<name\>, dynamic_group, group, role, sync_group, sync_user,
+token
 
 **delete**  
 attribute:\<name\>
 
 **disable**  
-jotp, jotp_rejoin, lotp, sync_by_login_token, sync_groups
+jotp, jotp_rejoin, lotp, object, sync_by_login_token, sync_groups
 
 **edit**  
 attribute:\<name\>, auto_disable, mac, public_key
 
 **enable**  
-jotp, jotp_rejoin, lotp, sync_by_login_token, sync_groups
+jotp, jotp_rejoin, lotp, object, sync_by_login_token, sync_groups
 
 **find**  
 accessgroups, groups, roles, shares
 
 **remove**  
-dynamic_group, group, role, sync_group, token
+dynamic_group, group, role, sync_group, sync_user, token
 
 **renew**  
 cert
@@ -420,8 +437,8 @@ cert
 
 **view**  
 accessgroups, attribute:\<name\>, auto_disable, cert, dynamic_groups,
-groups, jotp, jotp_rejoin, key, lotp, mac, roles, sync_groups,
-sync_users, tokens
+groups, jotp, jotp_rejoin, key, logins_limited, lotp, mac, roles,
+status, sync_groups, sync_users, tokens
 
 ## node
 
@@ -435,13 +452,13 @@ attribute:\<name\>, dynamic_group, group, role, token
 attribute:\<name\>
 
 **disable**  
-jotp, jotp_rejoin, lotp, vote_script
+jotp, jotp_rejoin, lotp, object, vote_script
 
 **edit**  
 attribute:\<name\>, public_key, vote_script
 
 **enable**  
-jotp, jotp_rejoin, lotp, vote_script
+jotp, jotp_rejoin, lotp, object, vote_script
 
 **find**  
 pools, shares
@@ -457,12 +474,35 @@ cert
 
 **view**  
 attribute:\<name\>, cert, dynamic_groups, groups, jotp, jotp_rejoin,
-key, lotp, roles, tokens, vote_script
+key, logins_limited, lotp, roles, status, tokens, vote_script
+
+## pass
+
+**add**  
+client, device, entry, host, node
+
+**delete**  
+entry
+
+**edit**  
+entry, keys
+
+**remove**  
+client, device, host, node
+
+**view**  
+clients, devices, entries, hosts, nodes
 
 ## policy
 
+**disable**  
+object
+
+**enable**  
+object
+
 **view**  
-policy_type
+policy_type, status
 
 **Default ACLs**  
 Written **+\<acl\>** for every object below it, whatever its type:
@@ -473,11 +513,17 @@ add:policy, del:policy.
 **add**  
 node
 
+**disable**  
+object
+
+**enable**  
+object
+
 **remove**  
 node
 
 **view**  
-dynamic_groups, nodes
+dynamic_groups, nodes, status
 
 ## realm
 
@@ -491,16 +537,16 @@ attribute:\<name\>, realm
 attribute:\<name\>
 
 **disable**  
-auth, sync
+auth, object, sync
 
 **edit**  
 attribute:\<name\>, secret
 
 **enable**  
-auth, sync
+auth, object, sync
 
 **view**  
-attribute:\<name\>, auth, ca, ca_data, master, secret, sync
+attribute:\<name\>, auth, ca, ca_data, master, secret, status, sync
 
 ## resolver
 
@@ -511,37 +557,43 @@ get_objects, run, test
 objects
 
 **disable**  
-deletions, sync_units
+deletions, object, sync_units
 
 **edit**  
 key_attribute, sync_interval
 
 **enable**  
-deletions, sync_units
+deletions, object, sync_units
 
 **view**  
-deletions, key_attribute, resolver_type, sync_interval
+deletions, key_attribute, resolver_type, status, sync_interval
 
 ## role
 
 **add**  
-attribute:\<name\>, device, dynamic_group, host, role, token, user
+attribute:\<name\>, device, dynamic_group, host, role, sync_user, token
 
 **delete**  
 attribute:\<name\>
 
+**disable**  
+object
+
 **edit**  
 attribute:\<name\>
 
+**enable**  
+object
+
 **find**  
-accessgroups, clients, groups, scopes, shares
+accessgroups, clients, groups, roles, scopes, shares
 
 **remove**  
-device, dynamic_group, host, role, token, user
+device, dynamic_group, host, role, sync_user, token
 
 **view**  
 accessgroups, attribute:\<name\>, devices, dynamic_groups, groups,
-hosts, roles, scopes, shares, tokens, user
+hosts, roles, scopes, shares, status, sync_users, tokens
 
 ## scope
 
@@ -549,19 +601,19 @@ hosts, roles, scopes, shares, tokens, user
 client, group, role, token
 
 **disable**  
-auto_member
+object
 
 **edit**  
 name, scope_id
 
 **enable**  
-auto_member
+object
 
 **remove**  
 client, group, role, token
 
 **view**  
-auto_member, clients, groups, roles, scope_id, tokens
+clients, groups, roles, scope_id, status, tokens
 
 ## script
 
@@ -574,14 +626,20 @@ signature
 **delete**  
 signature
 
+**disable**  
+object
+
 **edit**  
 script
+
+**enable**  
+object
 
 **verify**  
 signature
 
 **view**  
-script, signature
+script, signatures, status
 
 ## share
 
@@ -596,7 +654,7 @@ root_mount_token, share_key, token
 share_key
 
 **disable**  
-add_script, mount_script, read_only, sotp_signing
+add_script, mount_script, object, read_only, sotp_signing
 
 **edit**  
 add_script, force_create_mode, force_directory_mode, force_group,
@@ -604,7 +662,7 @@ home_share_permissions, mount_script, mount_timeout, root_dir,
 sign_public_keys
 
 **enable**  
-add_script, mount_script, read_only, sotp_signing
+add_script, mount_script, object, read_only, sotp_signing
 
 **remove**  
 group, host, master_password_token, no_mount_token, node, pool, role,
@@ -616,7 +674,7 @@ force_directory_mode, force_group, groups, home_share,
 home_share_permissions, hosts, limit_hosts, master_password_hash_params,
 master_password_tokens, mount_script, mount_script_enabled,
 mount_timeout, no_mount_tokens, nodes, pools, read_only, roles,
-root_dir, root_mount_tokens, share_key, sotp_signing, tokens
+root_dir, root_mount_tokens, share_key, sotp_signing, status, tokens
 
 ## site
 
@@ -627,7 +685,7 @@ attribute:\<name\>, fido2_ca_cert, sso_host, sso_logo, trust, unit
 attribute:\<name\>, fido2_ca_cert, sso_logo, trust, unit
 
 **disable**  
-audit_log, auth, oidc, sync, syslog
+audit_log, auth, maintenance, object, oidc, sync, syslog
 
 **dump**  
 sso_logo
@@ -639,7 +697,7 @@ site_cert, sso_cert, sso_csrf_secret, sso_fqdn, sso_key, sso_secret,
 tiqr_secret
 
 **enable**  
-audit_log, auth, oidc, sync, syslog
+audit_log, auth, maintenance, object, oidc, sync, syslog
 
 **remove**  
 sso_host
@@ -652,10 +710,11 @@ cert, oidc_key
 
 **view**  
 address, admin_role, admin_token, attribute:\<name\>, auth, auth_fqdn,
-ca, cert, cert_key, cluster_key, fido2_ca_cert, mgmt_cert, mgmt_fqdn,
-mgmt_key, oidc, oidc_keys, oidc_pairwise_secret, radius_ca_cert,
-radius_cert, radius_key, site_cert, sso_cert, sso_csrf_secret, sso_fqdn,
-sso_hosts, sso_key, sso_secret, sync, tiqr_secret, trusts, user_role
+ca, cert, cert_key, cluster_key, fido2_ca_cert, maintenance, mgmt_cert,
+mgmt_fqdn, mgmt_key, oidc, oidc_keys, oidc_pairwise_secret,
+radius_ca_cert, radius_cert, radius_key, site_cert, sso_cert,
+sso_csrf_secret, sso_fqdn, sso_hosts, sso_key, sso_secret, status, sync,
+tiqr_secret, trusts, user_role
 
 **Default ACLs**  
 Written **+\<type\>:\<acl\>** (for example **+unit:edit**) for the type
@@ -679,8 +738,14 @@ force_password, set_temp_password, upgrade_pass_hash
 **add**  
 dynamic_group
 
+**disable**  
+object
+
 **edit**  
 auto_disable, device_name, password, pin, token_data
+
+**enable**  
+object
 
 **find**  
 accessgroups, groups, hosts, nodes, roles, scopes, shares
@@ -690,48 +755,56 @@ dynamic_group
 
 **view**  
 accessgroups, auth_script, auto_disable, device_name, dynamic_groups,
-groups, hosts, nodes, pin, pin_status, roles, scopes, shares,
+groups, hosts, nodes, pin, pin_status, roles, scopes, shares, status,
 token_data, token_type, used_otp_salt
 
 ## unit
 
 **add**  
-accessgroup, attribute:\<name\>, ca, client, group, host, node, policy,
-policy:authonaction, policy:autodisable, policy:defaultgroups,
-policy:defaultpolicies, policy:defaultroles, policy:defaultunits,
-policy:forcetoken, policy:idrange, policy:logintimes,
-policy:objecttemplates, policy:password, policy:tokenacls, resolver,
-resolver:ldap, role, script, unit, user
+accessgroup, attribute:\<name\>, ca, client, device, dictionary, group,
+host, node, pass, policy, policy:authonaction, policy:autodisable,
+policy:defaultgroups, policy:defaultpolicies, policy:defaultroles,
+policy:defaultunits, policy:forcetoken, policy:idrange,
+policy:logintimes, policy:objecttemplates, policy:password,
+policy:tokenacls, pool, resolver, resolver:ldap, role, scope, script,
+share, unit, user, vlan
 
 **delete**  
-accessgroup, attribute:\<name\>, ca, client, group, host, node, policy,
-policy:authonaction, policy:autodisable, policy:defaultgroups,
-policy:defaultpolicies, policy:defaultroles, policy:defaultunits,
-policy:forcetoken, policy:idrange, policy:logintimes,
-policy:objecttemplates, policy:password, policy:tokenacls, resolver,
-resolver:ldap, role, script, unit, user
+accessgroup, attribute:\<name\>, ca, client, device, dictionary, group,
+host, node, pass, policy, policy:authonaction, policy:autodisable,
+policy:defaultgroups, policy:defaultpolicies, policy:defaultroles,
+policy:defaultunits, policy:forcetoken, policy:idrange,
+policy:logintimes, policy:objecttemplates, policy:password,
+policy:tokenacls, pool, resolver, resolver:ldap, role, scope, script,
+share, unit, user, vlan
+
+**disable**  
+object
 
 **edit**  
 attribute:\<name\>
 
+**enable**  
+object
+
 **view**  
-attribute:\<name\>
+attribute:\<name\>, status
 
 **Default ACLs**  
 Written **+\<type\>:\<acl\>** (for example **+accessgroup:edit**) for
 the types accessgroup, ca, client, device, dictionary, group, host,
-node, policy, pool, resolver, role, scope, script, share, token, unit,
-user, vlan. Written **+\<acl\>** for every object below it, whatever its
-type: add, all, delete, disable, edit, enable, export, import, remove,
-rename, view, view_all, view_public.
+node, pass, policy, pool, resolver, role, scope, script, share, token,
+unit, user, vlan. Written **+\<acl\>** for every object below it,
+whatever its type: add, all, delete, disable, edit, enable, export,
+import, remove, rename, view, view_all, view_public.
 
 **Recursive default ACLs**  
 Written **++\<type\>:\<acl\>** (for example **++accessgroup:edit**) for
 the types accessgroup, ca, client, device, dictionary, group, host,
-node, policy, pool, resolver, role, scope, script, share, token, unit,
-user, vlan. Written **++\<acl\>** for every object below it, whatever
-its type: add, all, delete, disable, edit, enable, export, import,
-remove, rename, view, view_all, view_public.
+node, pass, policy, pool, resolver, role, scope, script, share, token,
+unit, user, vlan. Written **++\<acl\>** for every object below it,
+whatever its type: add, all, delete, disable, edit, enable, export,
+import, remove, rename, view, view_all, view_public.
 
 ## user
 
@@ -750,7 +823,7 @@ token
 
 **disable**  
 admin_access, auth_script, auto_mount, autosign, disabled_login,
-key_caching, login_script, token
+key_caching, login_script, object, token
 
 **dump**  
 encrypt_private_key, encrypt_public_key, photo, sign_private_key,
@@ -764,7 +837,7 @@ sign_private_key, sign_public_key
 
 **enable**  
 admin_access, auth_script, auto_mount, autosign, disabled_login,
-key_caching, login_script, token
+key_caching, login_script, object, token
 
 **find**  
 groups, roles, signatures
@@ -774,7 +847,7 @@ token
 
 **view**  
 attribute:\<name\>, auto_disable, auto_mount, failcount, group,
-key_cache_time, key_caching, session, tokens
+key_cache_time, key_caching, session, status, tokens
 
 **view_all**  
 agent_script, auth_script, key_script, login_script, used_pass_salt
@@ -791,14 +864,20 @@ assign
 **add**  
 device, host, role, token
 
+**disable**  
+object
+
 **edit**  
 vlan_id
+
+**enable**  
+object
 
 **remove**  
 device, host, role, token
 
 **view**  
-devices, hosts, roles, tokens, vlan_id
+devices, hosts, roles, status, tokens, vlan_id
 
 # THE ACLS PER POLICY TYPE
 
@@ -941,6 +1020,24 @@ creator_acl, token_acl, user_acl
 
 **view**  
 creator_acl, token_acl, user_acl
+
+# THE ACLS PER RESOLVER TYPE
+
+A resolver of that type has the ACLs of **resolver** above and these:
+
+## ldap
+
+**add**  
+attribute_mapping, ldap_filter, ldap_server
+
+**del**  
+attribute_mapping, ldap_filter, ldap_server
+
+**edit**  
+ca_data, ldap_base, login_dn, login_password
+
+**view**  
+ca_data, ldap_base, ldap_server, login_dn, login_password
 
 # THE ACLS PER TOKEN TYPE
 
@@ -1111,7 +1208,7 @@ signature
 
 **view**  
 2ftoken, 2ftoken_status, card_type, key_type, offline_expiry,
-offline_status, offline_unused_expiry, session_keep, signature,
+offline_status, offline_unused_expiry, session_keep, signatures,
 ssh_private_key, ssh_public_key
 
 ## tiqr
@@ -1214,17 +1311,18 @@ signature
 dot1x_secret, encrypt_key_type, encrypt_public_key, key_type,
 offline_expiry, offline_status, offline_unused_expiry,
 private_key_backup, session_keep, sign_key_type, sign_public_key,
-signature, ssh_public_key
+signatures, ssh_public_key
 
 # SEE ALSO
 
 **otpme**(1), **otpme**(7), **otpme-accessgroup**(1), **otpme-ca**(1),
 **otpme-client**(1), **otpme-device**(1), **otpme-dictionary**(1),
 **otpme-group**(1), **otpme-host**(1), **otpme-node**(1),
-**otpme-policy**(1), **otpme-pool**(1), **otpme-realm**(1),
-**otpme-resolver**(1), **otpme-role**(1), **otpme-script**(1),
-**otpme-share**(1), **otpme-site**(1), **otpme-token**(1),
-**otpme-unit**(1), **otpme-user**(1), **otpme-vlan**(1)
+**otpme-pass**(1), **otpme-policy**(1), **otpme-pool**(1),
+**otpme-realm**(1), **otpme-resolver**(1), **otpme-role**(1),
+**otpme-scope**(1), **otpme-script**(1), **otpme-share**(1),
+**otpme-site**(1), **otpme-token**(1), **otpme-unit**(1),
+**otpme-user**(1), **otpme-vlan**(1)
 
 # AUTHOR
 

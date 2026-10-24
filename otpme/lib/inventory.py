@@ -8,6 +8,13 @@ daemon/confd.py, confd/inventory.py and confd/hardware.py). This is the
 side that reads them. Only hosts of our own site: the inventory of a
 host is kept on the nodes of its site.
 
+What a system offers -- the packages that can be installed on a host
+that runs it -- is in an os_packages object per OS version and
+architecture, which a reference host reports (see os_packages.py). It
+belongs to no host, so who may read it follows the hosts: whoever may
+read the inventory of a host that runs a system may read what that
+system offers (system_visible()).
+
 Reading the inventory of a host needs the token to be named in the
 allow_inventory of that host -- see inventory_read_allowed(). A host the
 caller may not see is left out of a search, the same way it would be if
@@ -47,6 +54,9 @@ from otpme.lib.classes.data_objects.host_inventory import HARDWARE_CONTROLLER_AT
 from otpme.lib.classes.data_objects.host_inventory import HARDWARE_CONTROLLER_FIELDS
 from otpme.lib.classes.data_objects.host_inventory import HARDWARE_NIC_ATTRIBUTE
 from otpme.lib.classes.data_objects.host_inventory import HARDWARE_NIC_FIELDS
+from otpme.lib.classes.data_objects.os_packages import get_os_packages
+from otpme.lib.confd.inventory import compare_versions
+from otpme.lib.confd.inventory import native_package_name
 
 from otpme.lib.exceptions import *
 
@@ -54,7 +64,10 @@ logger = config.logger
 default_callback = config.get_callback()
 
 REGISTER_BEFORE = []
-REGISTER_AFTER = ["otpme.lib.classes.host"]
+REGISTER_AFTER = [
+                "otpme.lib.classes.host",
+                "otpme.lib.classes.data_objects.os_packages",
+                ]
 
 # What may be searched by, and how the value is read. A name here is
 # the field without its "hw_" prefix, which is how it is shown.
@@ -129,7 +142,24 @@ commands = {
                     'oargs'             : ['package', 'os_version',
                                             'kernel', 'reboot_required',
                                             'otpme_version',
-                                            'hardware', 'host'],
+                                            'hardware', 'host',
+                                            'upgradable'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'systems'   : {
+            'default'    : {
+                'exists'    : {
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'available'   : {
+            'default'    : {
+                'exists'    : {
+                    'oargs'             : ['package', 'os_version',
+                                            'arch', 'host'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -424,12 +454,14 @@ def show_inventory(host, _caller="API", callback=default_callback, **kwargs):
                             time.localtime(inventory.last_inventory_update))
     os_name = "-"
     os_version = "-"
+    arch = "-"
     kernel = "-"
     reboot_required = "-"
     otpme_version = "-"
     if inventory:
         os_name = inventory.os or "-"
         os_version = inventory.os_version or "-"
+        arch = inventory.arch or "-"
         kernel = inventory.kernel or "-"
         otpme_version = inventory.otpme_version or "-"
         # A no is an answer, so it is not "or '-'": that is for a host
@@ -440,6 +472,7 @@ def show_inventory(host, _caller="API", callback=default_callback, **kwargs):
             f"host: {host_object.name}",
             f"os: {os_name}",
             f"os_version: {os_version}",
+            f"arch: {arch}",
             f"kernel: {kernel}",
             f"reboot_required: {reboot_required}",
             f"otpme_version: {otpme_version}",
@@ -534,7 +567,7 @@ def list_packages(host, package_filter=None, _caller="API",
 
 def search_inventory(package=None, os_version=None, kernel=None,
     reboot_required=None, otpme_version=None, hardware=None, host=None,
-    _caller="API", callback=default_callback, **kwargs):
+    upgradable=None, _caller="API", callback=default_callback, **kwargs):
     """ The hosts that have a package, run a system version, a kernel
     or an OTPme version, wait for a reboot, or are built a certain way.
 
@@ -558,11 +591,15 @@ def search_inventory(package=None, os_version=None, kernel=None,
     <host> limits all of it to one host, which is how the packages of
     one host are searched without listing them all.
 
+    <upgradable> is a yes or nothing: the installed packages of which
+    the system of the host offers a newer version, see
+    search_upgradable(). <package> then says which packages.
+
     Whatever is given has to match, so they narrow each other down.
     """
     if not package and not os_version and not kernel \
     and not reboot_required and not otpme_version \
-    and not hardware and not host:
+    and not hardware and not host and not upgradable:
         msg = _("Need a package, an OS version, a kernel, a reboot, an OTPme version, a hardware field or a host.")
         return callback.error(msg)
     # The hosts still in the running. None means every host of our
@@ -642,6 +679,10 @@ def search_inventory(package=None, os_version=None, kernel=None,
         else:
             host_uuids &= hw_uuids
 
+    if upgradable:
+        return search_upgradable(host_uuids, package=package,
+                                callback=callback)
+
     if not package:
         return show_search_hosts(host_uuids,
                                 os_version=os_version,
@@ -679,6 +720,289 @@ def search_inventory(package=None, os_version=None, kernel=None,
             if not fnmatch.fnmatchcase(packages[name], version_pattern):
                 continue
             lines.append(f"{x_host.name} {name}={packages[name]}")
+    if not lines:
+        return callback.ok(_("No hosts found."))
+    return callback.ok("\n".join(sorted(lines)))
+
+def split_package_pattern(package):
+    """ "<name>=<version>" taken apart, each part a pattern. """
+    if not package:
+        return "*", "*"
+    if "=" in package:
+        name_pattern, version_pattern = package.split("=", 1)
+        return name_pattern or "*", version_pattern or "*"
+    return package, "*"
+
+def first_value(value):
+    """ One value out of what a search with return_attributes gives:
+    a list for every attribute that is no base attribute. """
+    if isinstance(value, list):
+        if not value:
+            return None
+        return value[0]
+    return value
+
+def get_inventory_systems():
+    """ {host_uuid: (os_version, arch)} of every inventory we keep.
+
+    Out of the index alone: an inventory holds the packages of its
+    host, and loading all of them to read two values would be the
+    packages of every host. """
+    result = backend.search(object_type="host_inventory",
+                            attribute="host_uuid",
+                            value="*",
+                            return_attributes=["host_uuid",
+                                                "os_version",
+                                                "arch"])
+    systems = {}
+    for x_data in result.values():
+        host_uuid = first_value(x_data.get('host_uuid'))
+        if not host_uuid:
+            continue
+        os_version = first_value(x_data.get('os_version'))
+        if not os_version:
+            continue
+        arch = first_value(x_data.get('arch'))
+        systems[host_uuid] = (os_version, arch)
+    return systems
+
+def get_visible_systems(token=None):
+    """ The systems the caller may see what they offer, and how many of
+    their hosts the caller may see: {(os_version, arch): count}.
+
+    A system is seen through its hosts: a token that may read the
+    inventory of a host may read what the system of that host offers.
+    The data belongs to no host, so no allow_inventory names it; this
+    asks the one of every host that runs it. A host that did not say
+    its architecture counts with None, see system_matches(). """
+    visible = {}
+    for host_uuid, system in get_inventory_systems().items():
+        x_host = backend.get_object(uuid=host_uuid)
+        if not x_host:
+            continue
+        if not inventory_read_allowed(x_host, token=token):
+            continue
+        visible[system] = visible.get(system, 0) + 1
+    return visible
+
+def system_matches(system, os_version, arch):
+    """ Whether a system of a host is <os_version> and <arch>.
+
+    A host that did not say its architecture runs code from before it
+    was reported. Its system is taken for every architecture of its OS
+    version: what it lacks is a name, not a reason to see less. """
+    x_os_version, x_arch = system
+    if x_os_version != os_version:
+        return False
+    if x_arch is None:
+        return True
+    return x_arch == arch
+
+def system_visible(os_version, arch, visible_systems):
+    """ Whether the caller may see what <os_version>/<arch> offers. """
+    for x_system in visible_systems:
+        if system_matches(x_system, os_version, arch):
+            return True
+    return False
+
+def get_all_os_packages(os_version=None, arch=None):
+    """ The os_packages objects we keep, of an OS version and an
+    architecture (patterns) if given. """
+    result = backend.search(object_type="os_packages",
+                            attribute="os_version",
+                            value=os_version or "*",
+                            return_type="instance")
+    os_packages_list = []
+    for x in result:
+        if os_version and not fnmatch.fnmatchcase(x.os_version, os_version):
+            continue
+        if arch and not fnmatch.fnmatchcase(x.arch, arch):
+            continue
+        os_packages_list.append(x)
+    return sorted(os_packages_list, key=lambda x: (x.os_version, x.arch))
+
+def show_systems(_caller="API", callback=default_callback, **kwargs):
+    """ The systems our hosts run, and what we know they offer.
+
+    One line per OS version and architecture: how many hosts run it,
+    the reference host that reports what it offers, how many packages
+    that is, and when it last reported. Only systems with a host the
+    caller may see, and only those hosts are counted. """
+    visible = get_visible_systems()
+    os_packages_map = {}
+    for x in get_all_os_packages():
+        os_packages_map[(x.os_version, x.arch)] = x
+    # A host that did not say its architecture is counted with every
+    # system of its OS version that is known, or on its own where none
+    # is.
+    rows = {}
+    for (os_version, arch), count in visible.items():
+        if arch is None:
+            matches = [x for x in os_packages_map if x[0] == os_version]
+            if not matches:
+                matches = [(os_version, None)]
+        else:
+            matches = [(os_version, arch)]
+        for x_system in matches:
+            rows[x_system] = rows.get(x_system, 0) + count
+    lines = []
+    for x_system in sorted(rows, key=lambda x: (x[0], x[1] or "")):
+        os_version, arch = x_system
+        line = f"{os_version} {arch or '-'} hosts={rows[x_system]}"
+        x_packages = os_packages_map.get(x_system)
+        reference_host = "-"
+        packages_count = "-"
+        last_report = "-"
+        if x_packages:
+            packages_count = str(len(x_packages.packages))
+            if x_packages.reference_host:
+                x_host = backend.get_object(uuid=x_packages.reference_host)
+                reference_host = x_host.name if x_host else x_packages.reference_host
+            if x_packages.last_report:
+                last_report = time.strftime("%Y-%m-%d %H:%M",
+                                time.localtime(x_packages.last_report))
+        line = (f"{line} reference_host={reference_host}"
+                f" packages={packages_count} last_report={last_report}")
+        lines.append(line)
+    if not lines:
+        return callback.ok(_("No systems found."))
+    return callback.ok("\n".join(lines))
+
+def list_available(package=None, os_version=None, arch=None, host=None,
+    _caller="API", callback=default_callback, **kwargs):
+    """ The packages a system offers: what can be installed.
+
+    <package> is a name or "<name>=<version>", with wildcards. With
+    <host> the system is the one of that host, and each package says
+    the version installed there, if it is. Else <os_version> and <arch>
+    say which systems, with wildcards, and each line says its system.
+    """
+    if not package:
+        msg = _("Need a package.")
+        return callback.error(msg)
+    name_pattern, version_pattern = split_package_pattern(package)
+    installed = None
+    if host:
+        if os_version or arch:
+            msg = _("--host takes the OS version and the architecture of the host.")
+            return callback.error(msg)
+        host_object = get_host(host, callback=callback)
+        if not host_object:
+            return host_object
+        inventory = get_host_inventory(host_object.uuid)
+        if not inventory or not inventory.os_version:
+            msg = _("No inventory for host: {host}")
+            msg = msg.format(host=host)
+            return callback.error(msg)
+        host_system = (inventory.os_version, inventory.arch)
+        os_packages_list = [x for x in get_all_os_packages(inventory.os_version)
+                            if system_matches(host_system, x.os_version, x.arch)]
+        installed = {}
+        for x_name, x_version in inventory.packages.items():
+            x_name = native_package_name(x_name, inventory.arch)
+            if x_name is None:
+                continue
+            installed[x_name] = x_version
+    else:
+        visible = get_visible_systems()
+        os_packages_list = [x for x in get_all_os_packages(os_version, arch)
+                            if system_visible(x.os_version, x.arch, visible)]
+    if not os_packages_list:
+        msg = _("No reference host reported the packages of this system.")
+        return callback.error(msg)
+    lines = []
+    for x_packages in os_packages_list:
+        packages = x_packages.packages
+        for name in sorted(packages):
+            if not fnmatch.fnmatchcase(name, name_pattern):
+                continue
+            version = packages[name]
+            if not fnmatch.fnmatchcase(version, version_pattern):
+                continue
+            if installed is None:
+                lines.append(f"{x_packages.os_version} {x_packages.arch} {name}={version}")
+                continue
+            line = f"{name}={version}"
+            if name in installed:
+                line = f"{line} installed={installed[name]}"
+            lines.append(line)
+    if not lines:
+        return callback.ok(_("No packages."))
+    return callback.ok("\n".join(lines))
+
+def search_upgradable(host_uuids, package=None, callback=default_callback):
+    """ The hosts with installed packages of which their system offers a
+    newer version, one line per package: the host, the package, the
+    version installed and the one offered.
+
+    Against the os_packages of the system of each host. A host whose
+    system no reference host reports is left out: we cannot say. So is
+    a package the system does not offer, which came from elsewhere. """
+    name_pattern, version_pattern = split_package_pattern(package)
+    if package:
+        # The hosts that have it at all, out of the index. With a "*"
+        # behind the name: dpkg names some packages with their
+        # architecture (libc6:amd64), and the name is matched without
+        # it below.
+        inventories = backend.search(object_type="host_inventory",
+                                    attribute="package",
+                                    value=f"{name_pattern}*={version_pattern}",
+                                    return_type="instance")
+    else:
+        inventories = backend.search(object_type="host_inventory",
+                                    attribute="host_uuid",
+                                    value="*",
+                                    return_type="instance")
+    os_packages_cache = {}
+    def get_offered(os_version, arch):
+        key = (os_version, arch)
+        if key in os_packages_cache:
+            return os_packages_cache[key]
+        offered = None
+        if arch is None:
+            # A host that did not say its architecture: when its OS
+            # version is reported for one architecture only, that is
+            # the one.
+            matches = get_all_os_packages(os_version)
+            matches = [x for x in matches if x.os_version == os_version]
+            if len(matches) == 1:
+                offered = matches[0].packages
+        else:
+            x_packages = get_os_packages(os_version, arch)
+            if x_packages:
+                offered = x_packages.packages
+        os_packages_cache[key] = offered
+        return offered
+    lines = []
+    for inventory in inventories:
+        if host_uuids is not None and inventory.host_uuid not in host_uuids:
+            continue
+        if not inventory.os_version:
+            continue
+        x_host = backend.get_object(uuid=inventory.host_uuid)
+        if not x_host:
+            continue
+        if not inventory_read_allowed(x_host):
+            continue
+        offered = get_offered(inventory.os_version, inventory.arch)
+        if not offered:
+            continue
+        packages = inventory.packages
+        for x_name in sorted(packages):
+            installed_version = packages[x_name]
+            name = native_package_name(x_name, inventory.arch)
+            if name is None:
+                continue
+            if not fnmatch.fnmatchcase(name, name_pattern):
+                continue
+            if not fnmatch.fnmatchcase(installed_version, version_pattern):
+                continue
+            offered_version = offered.get(name)
+            if offered_version is None:
+                continue
+            if compare_versions(offered_version, installed_version) <= 0:
+                continue
+            lines.append(f"{x_host.name} {name}={installed_version} -> {offered_version}")
     if not lines:
         return callback.ok(_("No hosts found."))
     return callback.ok("\n".join(sorted(lines)))

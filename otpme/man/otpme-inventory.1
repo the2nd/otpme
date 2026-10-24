@@ -1,6 +1,6 @@
-.TH OTPME-INVENTORY 1 "2026-10-17" "OTPme 0.3.0a283" "OTPme Manual"
+.TH OTPME-INVENTORY 1 "2026-10-24" "OTPme 0.3.0a283" "OTPme Manual"
 .SH NAME
-otpme-inventory \- show the system, the packages and the hardware of hosts
+otpme-inventory \- show the system, the packages and the hardware of hosts, and what their systems offer
 .SH SYNOPSIS
 .B otpme-inventory
 .I command
@@ -16,6 +16,7 @@ See
 Use it to find a machine by its serial number, or to see how much memory and disk a host has.
 Use it to find the hosts that still have to be rebooted, see \fBWHEN A HOST HAS TO BE REBOOTED\fR.
 Use it to find the hosts that still run an old OTPme, see \fBOTPME VERSION\fR.
+Use it to see which packages a system offers and which hosts have a package that can be updated, see \fBREFERENCE HOSTS\fR.
 .PP
 The \fBconfd\fR daemon on each host (and node) reports this data to the nodes of its site.
 It checks the host every 60 seconds and only sends what changed.
@@ -42,7 +43,7 @@ A host without one still reports its system, its kernel, its OTPme version and i
 .SH COMMANDS
 .TP
 .B show \fIhost\fR
-Show the OS, the OS version, the running kernel, whether the host has to be rebooted, the OTPme version, the number of packages, the vendor, the model, the serial number and the time of the last update.
+Show the OS, the OS version, the architecture, the running kernel, whether the host has to be rebooted, the OTPme version, the number of packages, the vendor, the model, the serial number and the time of the last update.
 .TP
 .B packages \fR[\fB\-\-filter\fR \fIpattern\fR] \fIhost\fR
 List the packages of a host, one per line with name and version.
@@ -52,8 +53,8 @@ Show what a host is made of: CPU, memory, disks, serial number and so on.
 Sizes are shown in human form, for example \fB9.7G\fR.
 Says so if the host has not reported its hardware yet.
 .TP
-.B search \fR[\fB\-\-host\fR \fIhost\fR] [\fB\-\-os\-version\fR \fIversion\fR] [\fB\-\-kernel\fR \fIkernel\fR] [\fB\-\-otpme\-version\fR \fIversion\fR] [\fB\-\-reboot\-required\fR] [\fB\-\-hardware\fR \fIexpression\fR] [\fIpackage\fR]
-Find hosts by package, by OS version, by kernel, by OTPme version, by a waiting reboot, or by hardware.
+.B search \fR[\fB\-\-host\fR \fIhost\fR] [\fB\-\-os\-version\fR \fIversion\fR] [\fB\-\-kernel\fR \fIkernel\fR] [\fB\-\-otpme\-version\fR \fIversion\fR] [\fB\-\-reboot\-required\fR] [\fB\-\-hardware\fR \fIexpression\fR] [\fB\-\-upgradable\fR] [\fIpackage\fR]
+Find hosts by package, by OS version, by kernel, by OTPme version, by a waiting reboot, by hardware, or by packages that can be updated.
 \fIpackage\fR is a package name, or a name and a version in the form \fIname\fB=\fIversion\fR.
 Both can contain wildcards (\fB*\fR).
 Every option you give has to match, so they narrow the result down.
@@ -66,18 +67,50 @@ With \fB\-\-reboot\-required\fR it is the host name alone, because the answer is
 A host has several disks, and then only the disks that match are shown, with their name.
 So a search for \fB'disk_size>=100G'\fR shows \fBsdb=150.0G\fR and not all disks of the host.
 Behind the size comes what says which disk it is, the vendor, the model and the serial, where the host knows them: \fBsdb=150.0G(SEAGATE ST1000NM0055 ZA12345)\fR.
+With \fB\-\-upgradable\fR it is the package, the version installed and the version the system offers: \fBopenssl=3.0.15\-1~deb12u1 \-> 3.0.17\-1~deb12u1\fR.
+.TP
+.B systems
+List the systems the hosts run, one line per OS version and architecture: how many hosts run it, the reference host that reports what it offers, how many packages that is, and when it last reported.
+A system nobody reports shows \fB\-\fR there.
+Only systems with a host you may see are listed, and only those hosts are counted.
+See \fBREFERENCE HOSTS\fR.
+.TP
+.B available \fR[\fB\-\-host\fR \fIhost\fR] [\fB\-\-os\-version\fR \fIversion\fR] [\fB\-\-arch\fR \fIarch\fR] \fIpackage\fR
+List the packages a system offers: what can be installed on a host that runs it.
+\fIpackage\fR works as with \fBsearch\fR, a name or \fIname\fB=\fIversion\fR, with wildcards.
+The version is the one apt would install.
+.IP
+With \fB\-\-host\fR it is the system of that host.
+Each line is a package, and behind it the version installed on the host, if it is: \fBopenssl=3.0.17\-1~deb12u1 installed=3.0.15\-1~deb12u1\fR.
+.IP
+Without it, \fB\-\-os\-version\fR and \fB\-\-arch\fR say which systems, with wildcards, and each line starts with its system: \fBdebian\-12 amd64 openssl=3.0.17\-1~deb12u1\fR.
+Without them it is every system you may see.
+.IP
+It needs a reference host for the system, see \fBREFERENCE HOSTS\fR.
 .SH OPTIONS
 .TP
 .B \-\-filter \fIpattern\fR
 Only list packages whose name matches the pattern, for example \fB'python3\-*'\fR.
 .TP
 .B \-\-host \fIhost\fR
-Only this host.
+For \fBsearch\fR: only this host.
 Use it to search the packages of one host instead of listing all of them.
+For \fBavailable\fR: the system of this host, see there.
 .TP
 .B \-\-os\-version \fIversion\fR
-Only hosts with this OS version, for example \fBdebian\-12\fR.
+Only hosts with this OS version, for example \fBdebian\-12\fR, or for \fBavailable\fR only this system.
 Wildcards are allowed, for example \fB'debian\-*'\fR.
+.TP
+.B \-\-arch \fIarch\fR
+For \fBavailable\fR: only this architecture, for example \fBamd64\fR.
+Wildcards are allowed.
+.TP
+.B \-\-upgradable
+For \fBsearch\fR: only installed packages of which the system of the host offers a newer version.
+Takes no value.
+With a \fIpackage\fR only that package.
+A host whose system no reference host reports is left out, and so is a package its system does not offer.
+See \fBREFERENCE HOSTS\fR.
 .TP
 .B \-\-kernel \fIkernel\fR
 Only hosts running this kernel, for example \fB6.1.0\-37\-amd64\fR.
@@ -138,6 +171,9 @@ Example:
 otpme\-host config client1 allow_inventory 'role|example.org/berlin/it\-support'
 .RE
 .PP
+What a system offers (\fBsystems\fR, \fBavailable\fR) belongs to no host, so no \fBallow_inventory\fR names it.
+It follows the hosts: you may read what a system offers when you may read the inventory of at least one host that runs it.
+.PP
 For a host of another site that reports here, see \fBA CENTRAL INVENTORY\fR, there is a second parameter:
 .TP
 .B allow_foreign_inventory \fR(list)
@@ -195,6 +231,9 @@ It is not moved and not deleted, and it stops being updated.
 \fBos_version\fR is the ID and the version from \fI/etc/os\-release\fR, for example \fBdebian\-13\fR or \fBubuntu\-24.04\fR.
 A system without a version number uses its code name, for example \fBdebian\-trixie\fR.
 .PP
+\fBarch\fR is the architecture the way the packages name it, for example \fBamd64\fR or \fBarm64\fR, from \fBdpkg \-\-print\-architecture\fR.
+A host without dpkg does not report one.
+.PP
 \fBkernel\fR is the kernel the host is running, the way \fBuname \-r\fR says it, for example \fB6.1.0\-37\-amd64\fR.
 .PP
 Running, not installed.
@@ -214,6 +253,7 @@ $ otpme\-inventory show server1
 host: server1
 os: Linux
 os_version: debian\-12
+arch: amd64
 kernel: 6.1.0\-37\-amd64
 \&...
 .fi
@@ -266,10 +306,60 @@ A host that got a new OTPme and was not restarted still runs the old one, and th
 .PP
 \fB\-\fR means the host has not reported a version yet.
 An OTPme older than this field sends none.
+.SH REFERENCE HOSTS
+A reference host reports the packages its system offers: what can be installed on a host with the same OS version and architecture.
+With that,
+.B available
+shows what can be installed, and
+.B search \-\-upgradable
+finds the hosts that have a package in an older version than their system offers.
+.PP
+Set them on the site that keeps the inventory of the hosts.
+That is the site they belong to, or their \fBinventory_site\fR, see \fBA CENTRAL INVENTORY\fR.
+The site that keeps the data decides, like with \fBinventory_trusts\fR:
+.TP
+.B reference_hosts \fR(list)
+The hosts that report to this site the packages their system offers.
+One per OS version and architecture is enough.
+.br
+Object types: site
+.PP
+The host does not read the parameter.
+The site tells it with every answer about its inventory.
+So a host learns that it is a reference host, or is no longer one, the next time it reports its inventory, at the latest after an hour.
+.PP
+Example, with one Debian 12 and one Debian 13 host:
+.PP
+.RS
+.nf
+otpme\-site config berlin reference_hosts refhost12,refhost13
+.fi
+.RE
+.PP
+The \fBconfd\fR daemon on a reference host reads its package lists and sends what changed, the same way every host sends its own packages.
+It reads them when they changed or once an hour.
+It does not run \fBapt update\fR itself.
+That is the job of the \fBapt\-daily\fR timer of the host, so what is offered is as new as the last \fBapt update\fR there.
+The version is the one apt would install, so pins count.
+Packages for the architecture of the host and for \fBall\fR are reported, packages of a foreign architecture are not.
+.PP
+The packages go where the host sends its inventory, and the reference host has to be one that site takes the inventory of.
+The site takes them for the OS version and architecture that the inventory of the host says, and for no other.
+They are kept in one object per OS version and architecture, on the nodes of that site.
+.PP
+One reference host writes an object.
+A second one with the same system waits.
+It takes over when the first one has not reported for three days, is deleted, or is no longer in \fBreference_hosts\fR.
+So a second reference host is a stand\-in, and two with different repositories do not take turns.
+.PP
+Who may read what a system offers follows the hosts: a token that may read the inventory of a host that runs the system may read what it offers, see \fBPERMISSIONS\fR.
 .SH PACKAGE NAMES
 Package names are the names dpkg uses.
 A multi-arch package has its architecture in the name, for example \fBlibc6:amd64\fR.
 Only fully installed packages are listed.
+.PP
+The packages a system offers are named without the architecture.
+\fBsearch \-\-upgradable\fR and \fBavailable \-\-host\fR compare \fBlibc6:amd64\fR on a host with \fBlibc6\fR of its system.
 .SH HARDWARE FIELDS
 The host reads all of this from files, so nothing has to be installed for it.
 A field that a host cannot read is left out.
@@ -366,6 +456,7 @@ $ otpme\-inventory show client1
 host: client1
 os: Linux
 os_version: debian\-13
+arch: amd64
 kernel: 6.12.43\-amd64
 reboot_required: no
 otpme_version: 0.3.0a283
@@ -606,6 +697,32 @@ The Debian 12 hosts that still run this kernel.
 .TP
 .B otpme-inventory search \-\-reboot\-required \-\-os\-version debian\-12
 The Debian 12 hosts that have to be rebooted.
+.SS What can be installed and updated
+These need a reference host, see \fBREFERENCE HOSTS\fR.
+.PP
+.RS
+.nf
+$ otpme\-inventory systems
+debian\-12 amd64 hosts=14 reference_host=refhost12 packages=63644 last_report=2026\-10\-24 09:12
+debian\-13 amd64 hosts=3 reference_host=refhost13 packages=65102 last_report=2026\-10\-24 09:15
+ubuntu\-24.04 amd64 hosts=1 reference_host=\- packages=\- last_report=\-
+.fi
+.RE
+.TP
+.B otpme-inventory available \-\-os\-version debian\-13 'python3\-django*'
+The Django packages Debian 13 offers.
+.TP
+.B otpme-inventory available \-\-host client1 openssl
+The openssl that can be installed on client1, and the one installed there.
+.TP
+.B otpme-inventory search \-\-upgradable openssl
+The hosts with an openssl older than their system offers.
+.TP
+.B otpme-inventory search \-\-upgradable \-\-host server1
+Every package of server1 that can be updated.
+.TP
+.B otpme-inventory search \-\-upgradable \-\-os\-version debian\-12 'linux\-image\-*'
+The Debian 12 hosts with a kernel package that can be updated.
 .SH SEE ALSO
 .BR otpme (7),
 .BR otpme\-deploy (1),

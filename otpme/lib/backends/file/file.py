@@ -2621,6 +2621,10 @@ def index_add(object_id, object_paths=None, object_config=None,
         raise OTPmeException(msg)
 
     if object_config == "auto":
+        # SYNC_CHECKSUMS too: the checksum of each view goes into the
+        # index from there (see below). Without it a rebuilt index gives
+        # every host and every node of another site no checksum at all,
+        # and they fetch every object again on every sync.
         try:
             object_config = filetools.read_data_file(config_file,
                                                     ['UUID',
@@ -2630,6 +2634,7 @@ def index_add(object_id, object_paths=None, object_config=None,
                                                     'TEMPLATE',
                                                     'CHECKSUM',
                                                     'SYNC_CHECKSUM',
+                                                    'SYNC_CHECKSUMS',
                                                     'LAST_MODIFIED'])
         except Exception as e:
             msg, log_msg = _("Error reading object config: {e}", log=True)
@@ -2797,15 +2802,20 @@ def index_add(object_id, object_paths=None, object_config=None,
         #    session.commit()
 
     if use_index_journal and index_journal:
-        # Get existing attributes.
-        existing_attrs = []
+        # Get existing attributes. As a set of plain tuples: each "add"
+        # of the journal is looked up in here, and in a list of rows
+        # that was a search through all of them, a row compared in
+        # Python at a time -- for an object with tens of thousands of
+        # values (os_packages) hundreds of millions of comparisons per
+        # write.
+        existing_attrs = set()
         if index_object:
             sql_stmt = select(IndexObjectAttribute.name, IndexObjectAttribute.value)
             sql_stmt = sql_stmt.where(IndexObjectAttribute.ioid == index_object.id)
             existing_attrs = session.execute(sql_stmt)
-            existing_attrs = existing_attrs.all()
+            existing_attrs = {(row[0], row[1]) for row in existing_attrs.all()}
         # Handle index journal.
-        deleted_attrs = []
+        deleted_attrs = set()
         for x_entry in index_journal:
             x_entry_type = x_entry[1]
             x_attribute = x_entry[2]
@@ -2826,9 +2836,9 @@ def index_add(object_id, object_paths=None, object_config=None,
                 result = list(q.all())
                 if result:
                     if x_value:
-                        deleted_attrs.append((x_attribute, x_value))
+                        deleted_attrs.add((x_attribute, x_value))
                     else:
-                        deleted_attrs.append(x_attribute)
+                        deleted_attrs.add(x_attribute)
                 for a in result:
                     session.delete(a)
 
@@ -3592,12 +3602,20 @@ def set_last_used(object_id, uuid, timestamp, cluster=True,
 #                        object_data=timestamp,
 #                        wait_for_write=False)
 
-def get_last_used_times(object_types, realm=None, site=None):
-    """ The last used times of the objects of a site, our own by default. """
+def get_last_used_times(object_types, realm=None, site=None,
+    object_ids=None):
+    """ The last used times of the objects of a site, our own by default.
+
+    With <object_ids> (full OIDs) only of those: the objects a peer is
+    handed, see the sync server.
+    """
     if realm is None:
         realm = config.realm
     if site is None:
         site = config.site
+    return_attributes = ["uuid", "last_used"]
+    if object_ids is not None:
+        return_attributes.append("full_oid")
     last_used_data = {}
     for object_type in object_types:
         result = index_search(realm=realm,
@@ -3605,7 +3623,7 @@ def get_last_used_times(object_types, realm=None, site=None):
                             attribute="uuid",
                             value="*",
                             object_type=object_type,
-                            return_attributes=["uuid", "last_used"])
+                            return_attributes=return_attributes)
         if not result:
             continue
         if object_type not in last_used_data:
@@ -3614,6 +3632,9 @@ def get_last_used_times(object_types, realm=None, site=None):
             x_last_used = result[x_uuid]['last_used']
             if x_last_used is None:
                 continue
+            if object_ids is not None:
+                if result[x_uuid]['full_oid'] not in object_ids:
+                    continue
             last_used_data[object_type][x_uuid] = x_last_used
     return last_used_data
 

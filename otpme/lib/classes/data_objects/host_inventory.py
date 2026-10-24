@@ -391,6 +391,11 @@ def register_backend():
                                     object_types=inventory_types)
     config.register_index_attribute('os_version', sync=[],
                                     object_types=inventory_types)
+    # The architecture of the system, the way its packages name it
+    # (amd64). With the OS version it says which list of packages the
+    # system can take, see os_packages.py.
+    config.register_index_attribute('arch', sync=[],
+                                    object_types=inventory_types)
     # The kernel the host is running, which is not what its packages
     # say: a host that took a kernel update and was not rebooted has
     # the new one installed and the old one running. Searchable,
@@ -536,6 +541,11 @@ class HostInventory(OTPmeDataObject):
         return self._get_index_value("os_version")
 
     @property
+    def arch(self):
+        """ The architecture of the system (e.g. amd64). """
+        return self._get_index_value("arch")
+
+    @property
     def kernel(self):
         """ The kernel the host is running (e.g. 6.1.0-37-amd64). """
         return self._get_index_value("kernel")
@@ -552,7 +562,7 @@ class HostInventory(OTPmeDataObject):
         return self._get_index_value("reboot_required")
 
     def update_os(self, os_name=None, os_version=None, kernel=None,
-        reboot_required=None, otpme_version=None):
+        reboot_required=None, otpme_version=None, arch=None):
         """ Take what the host reported about its system.
 
         Answers whether anything changed, so the caller only writes
@@ -564,6 +574,9 @@ class HostInventory(OTPmeDataObject):
             changed = True
         if os_version is not None and os_version != self.os_version:
             self.update_index("os_version", os_version)
+            changed = True
+        if arch is not None and arch != self.arch:
+            self.update_index("arch", arch)
             changed = True
         if kernel is not None and kernel != self.kernel:
             self.update_index("kernel", kernel)

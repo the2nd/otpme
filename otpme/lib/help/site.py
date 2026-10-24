@@ -269,6 +269,31 @@ cmd_help = {
                                 },
                 },
 
+    'sign_password_members'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-site sign_password_members {site}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Sign password_store_members of this site.'),
+                                },
+                },
+
+    'unsign_password_members'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-site unsign_password_members [--signer <user>] {site}'),
+                    'cmd'   :   '--signer :signer: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove your signature of password_store_members of this site.'),
+                                    '--signer <user>'       : _('Remove the signature of this user instead.'),
+                                },
+                },
+
+    'show_password_members'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-site show_password_members {site}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show password_store_members of this site and their signatures.'),
+                                },
+                },
+
 
     'remove_orphans'   : {
                     '_cmd_usage_help' : _('Usage: otpme-site remove_orphans {site}'),
