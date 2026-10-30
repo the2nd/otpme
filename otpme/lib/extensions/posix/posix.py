@@ -127,23 +127,19 @@ class OTPmeExtension(OTPmeLDIFHandler):
         """ Preload extension """
         return
 
-    def get_idrange_policies(self, o):
-        """ Get the IDRange policies that apply to the given object.
+    def get_idrange_policy(self, o, attribute):
+        """ Get the IDRange policy that numbers <attribute> of <o>.
 
-        The unit first, then the site. The realm was asked after that
-        and cannot be: it carries no policy but auth on action (see
-        Realm.add_policy()).
+        The one of the unit if it has a range for the attribute, then the
+        one of the site. The realm was asked after that and cannot be: it
+        carries no policy but auth on action (see Realm.add_policy()).
         """
-        policies = None
+        from otpme.lib.policy.idrange.idrange import get_policy_for
+        unit = None
         if o.unit_uuid:
             unit = backend.get_object(object_type="unit", uuid=o.unit_uuid)
-            policies = unit.get_policies(policy_type="idrange",
-                                        return_type="instance")
-        if not policies:
-            site = backend.get_object(object_type="site", uuid=o.site_uuid)
-            policies = site.get_policies(policy_type="idrange",
-                                        return_type="instance")
-        return policies
+        site = backend.get_object(object_type="site", uuid=o.site_uuid)
+        return get_policy_for(attribute, unit=unit, site=site)
 
     def verify_id_range(self, o, attribute, value, callback=default_callback):
         """ Make sure a hand written uid/gid falls into the configured range.
@@ -166,18 +162,11 @@ class OTPmeExtension(OTPmeLDIFHandler):
             return
         if attribute not in object_id_attributes:
             return
-        policies = self.get_idrange_policies(o)
-        if not policies:
+        policy = self.get_idrange_policy(o, attribute)
+        # No range for this attribute: nothing to enforce.
+        if not policy:
             return
-        in_range = None
-        for policy in policies:
-            in_range = policy.id_in_range(attribute, value)
-            # No range for this attribute: nothing to enforce.
-            if in_range is None:
-                continue
-            if in_range:
-                return
-        if in_range is None:
+        if policy.id_in_range(attribute, value):
             return
         msg = _("{attribute} outside of the configured ID range: {value}")
         msg = msg.format(attribute=attribute, value=value)
@@ -185,15 +174,14 @@ class OTPmeExtension(OTPmeLDIFHandler):
 
     def get_free_id(self, o, attribute, assign=True, callback=default_callback):
         """ Get free ID for the given attribute via policy. """
-        policies = self.get_idrange_policies(o)
-        if not policies:
+        idrange_policy = self.get_idrange_policy(o, attribute)
+        if not idrange_policy:
             msg = _("No IDRange policy found to get {}.")
             msg = msg.format(attribute)
             raise OTPmeExtension(msg)
 
         # Get new free ID.
         lock_caller = "posix"
-        idrange_policy = policies[0]
         idrange_policy.acquire_lock(lock_caller=lock_caller,
                                     write=True,
                                     full=True,
@@ -298,6 +286,10 @@ class OTPmeExtension(OTPmeLDIFHandler):
                         ignore_deps=True,
                         ignore_missing=True,
                         callback=callback)
+        # A template can be without a group, and then has no gidNumber
+        # (see User.change_group()).
+        if gid_number is None:
+            return
         # Add new attribute.
         self.add_attribute(o=o,
                         a=attribute,

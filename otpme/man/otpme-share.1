@@ -184,6 +184,21 @@ A token or a role that is disabled has a \fB(D)\fR behind it.
 .br
 With a share named, this prints the object itself instead of a table row: one value per line.
 That is where the home share settings, the scripts, and the master password, root mount and no mount tokens are, which the table does not show.
+.na
+.nh
+.TP
+.B show_oid \fR[\fB\-\-full\fR] \fIshare\fR
+Show the OID of the share: \fB\%share|<realm>/<site>/<name>\fR.
+With \fB\-\-full\fR the full OID, which names the unit as well: \fB\%share|<realm>/<site>/<unit_path>/<name>\fR.
+.br
+Needs the ACL \fBview_public:object\fR.
+.TP
+.B show_uuid \fIshare\fR
+Show the UUID of the share.
+.br
+Needs the ACL \fBview_public:object\fR.
+.hy
+.ad
 .TP
 .B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
 List the share names, and with a regex only those that match it.
@@ -238,6 +253,19 @@ Needs the ACL \fBmove\fR on the share and \fBadd:share\fR on the new unit.
 Re-index the object to fix potential index problems.
 .br
 Needs the ACL \fBtouch\fR.
+.TP
+.B auto_disable \fR[\fB\-u\fR] \fIshare\fR \fItime\fR
+Set auto\-disable time.
+It is either a relative time with a leading \fB+\fR, e.g. \fB+30D\fR, or an absolute one, e.g. \fB"09:53 13.06.2023"\fR.
+The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
+.BR otpme (7).
+A relative time counts from when it is set, and again from when the share is enabled.
+\fB0\fR removes it.
+It is refused for an object the realm or a site comes with, e.g. the admin user; a time set on one before does nothing.
+Use \fB\-u\fR to disable the share once it was unused for the given time.
+That takes a relative time; a share that was never used counts from when this was set.
+.br
+Needs the ACL \fBedit:auto_disable\fR.
 .SS Share Configuration
 .TP
 .B root_dir \fIshare\fR \fIpath\fR
@@ -749,7 +777,7 @@ Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR d
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
 .B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIshare\fR
-List the policies attached to the share.
+List the policies attached to the share, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
 .br
@@ -766,8 +794,10 @@ A command that changes something asks first; the global option \fB\-f\fR skips t
 .B add_acl \fIshare\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
 Give a role or a token one or more ACLs on this share.
 .br
-\fIowner_type\fR is \fBrole\fR or \fBtoken\fR, and \fIowner\fR the path of that role or token.
-An ACL may carry a value, for example \fBview:tokens\fR, and several are separated by commas.
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
+\fIowner\fR is the path of that role or token.
+An ACL can carry a value, for example \fBview:tokens\fR.
+To give several ACLs at once, separate them with commas: \fB\%view:tokens,view:status\fR.
 .br
 Needs the ACL \fBadd:acl\fR.
 .TP
@@ -783,22 +813,23 @@ Show the ACLs that lie on this share, i.e. who may do what with it.
 Needs the ACL \fBview:acl\fR.
 .TP
 .B enable_acl_inheritance \fIshare\fR
-Let the share inherit the default ACLs of the unit above it.
-It does not by default.
+Let a move of the share swap its default ACLs: what the old unit handed down is taken away, and what the new unit hands down is given.
+It does not by default; a move then leaves the ACLs of the share as they are.
 .RS
 .PP
-Only default ACLs are inherited.
-An ordinary ACL on the unit never is.
+Only a move asks this.
+A new share gets the default ACLs of its unit, and \fBadd_acl \-a\fR or \fB\-r\fR on a unit reach it either way.
+A move with \fB\-\-keep\-acls\fR leaves its ACLs alone all the same.
 .PP
-Moving the share into another unit then takes away the default ACLs of the old unit and applies those of the new one.
-While inheritance is off, a move leaves the ACLs of the share as they are.
+A move by somebody who does not hold \fBadd:acl\fR and \fBdelete:acl\fR on the share leaves its ACLs alone as well, and says so.
+Otherwise moving an object into a unit would be a way of handing yourself the default ACLs of that unit.
 .PP
 Needs the ACL \fBenable:acl_inheritance\fR.
 .RE
 .TP
 .B disable_acl_inheritance \fIshare\fR
-Stop inheriting them.
-Only the ACLs on the share itself count from then on.
+A move leaves the ACLs of the share as they are again.
+.br
 Needs the ACL \fBdisable:acl_inheritance\fR.
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
@@ -831,7 +862,8 @@ This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
 has to allow it (see \fBotpme\fR(7)).
 It is true by default, but where no value is found at all, clearing is refused.
-OTPme asks the token you are signed in with first, then the object.
+A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 .SS Export and Cleanup
 Both write to stdout.
 There is no import on this page: reading an export back in is
@@ -976,6 +1008,25 @@ Let the token "backup/login" mount the share root and reach all home dirs
 .TP
 .B otpme-share add \-\-restore myshare \-\-restore\-token alice/login myshare-backups
 A restore share that shows the backups of "myshare"; alice/login may mount it
+.\" BEGIN AUTH ON ACTION HOOKS
+.\" Generated by update_hooks_man.py. Do not edit, the next run
+.\" overwrites it.
+.SH AUTH ON ACTION HOOKS
+An auth on action policy can ask for a login again before these actions.
+See
+.B Auth On Action Policy
+in
+.BR otpme\-policy (1).
+A share has the hooks every object type has, and these:
+.RS
+.PP
+.na
+.nh
+add_group, add_host, add_master_password_token, add_no_mount_token, add_pool, add_root_mount_token, add_share_key, change_add_script, change_mount_script, change_mount_timeout, del_share_key, disable_mount_script, disable_ro, disable_sotp_signing, enable_mount_script, enable_ro, enable_sotp_signing, force_create_mode, force_directory_mode, force_group, get_share_key, limit_hosts, remove_group, remove_host, remove_master_password_token, remove_no_mount_token, remove_pool, remove_root_mount_token, set_config_parameter, set_home_share_permissions, set_root_dir, show_config_parameters, unlimit_hosts, update_sign_public_keys.
+.hy
+.ad
+.RE
+.\" END AUTH ON ACTION HOOKS
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),

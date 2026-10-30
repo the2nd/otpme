@@ -15,6 +15,7 @@ except Exception:
 from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
@@ -55,6 +56,11 @@ read_value_acls = {
                             "push_token",
                             "phone_number",
                             "auth_script",
+                            "mschap",
+                            "nt_hash",
+                            # The password we made up, shown once,
+                            # when the token is added.
+                            "initial_secret",
                             ],
             }
 
@@ -68,9 +74,11 @@ write_value_acls = {
                             ],
                 "enable"    : [
                             "auth_script",
+                            "mschap",
                             ],
                 "disable"   : [
                             "auth_script",
+                            "mschap",
                             ],
                 "remove"   : [
                             "nt_hash",
@@ -697,8 +705,13 @@ class OtppushToken(Token):
                             weak_password=True,
                             callback=callback)
 
-        msg = _("Push password: {password}")
-        return_message = msg.format(password=new_pass)
+        # Shown to who may see it now, when the token is made. Nobody can
+        # see it later, only its hash is kept.
+        if self.verify_acl("view_all:initial_secret"):
+            msg = _("Push password: {password}")
+            return_message = msg.format(password=new_pass)
+        else:
+            return_message = _("Push password not shown. This needs the ACL view:initial_secret.")
 
         # Set default push script.
         default_push_script = self.get_config_parameter("default_otp_push_script")
@@ -718,7 +731,7 @@ class OtppushToken(Token):
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         ptoken_name = ""
@@ -736,7 +749,8 @@ class OtppushToken(Token):
         lines.append(f'PUSH_TOKEN="{ptoken_name}"')
 
         push_script = ""
-        if self.verify_acl("view_all:push_script"):
+        # Which script a token has is no secret: "view" shows it.
+        if self.verify_acl("view:push_script"):
             if self.push_script:
                 x = backend.get_object(object_type="script",
                                         uuid=self.push_script)
@@ -744,7 +758,7 @@ class OtppushToken(Token):
         lines.append(f'PUSH_SCRIPT="{push_script}"')
 
         push_script_options = ""
-        if self.verify_acl("view_all:push_script"):
+        if self.verify_acl("view:push_script"):
             if self.push_script_options:
                 push_script_options = " ".join(self.push_script_options)
         lines.append(f'PUSH_SCRIPT_OPTIONS="{push_script_options}"')

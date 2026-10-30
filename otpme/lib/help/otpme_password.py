@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-pass show [--offline] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [password]'),
-                    'cmd'   :   '--offline :offline=True: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: --policy-limit :max_policies: --limit :limit: [|object|]',
+                    'cmd'   :   '--offline :offline=True: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": --policy-limit :max_policies: --limit :limit: [|object|]',
                     '_help' :   {
                                     'cmd'                           : _('Show password object(s)'),
                                     '--offline'                     : _('Use the passwords kept on this host, without asking a node.'),
@@ -33,7 +33,7 @@ cmd_help = {
                                     '--sort-by <attribute>'         : _('Sort output by <attribute>.'),
                                     '--raw'                         : _('Output table without any headers/borders.'),
                                     '--csv'                         : _('Output table as CSV.'),
-                                    '--csv-sep <separator>'         : _('Output table as CSV.'),
+                                    '--csv-sep <separator>'         : _('Separator between the CSV columns.'),
                                     '--policy-limit <limit>'        : _('Output <limit> assigned policies.'),
                                     '--limit <limit>'               : _('Limit number of items shown per object.'),
                                 },
@@ -41,18 +41,18 @@ cmd_help = {
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass list [--offline] [--attribute attribute] [-a] [regex]'),
-                    'cmd'   :   '--offline :offline=True: --attribute :attribute: -a :show_all=True: [search_regex]',
+                    'cmd'   :   '--offline :offline=True: --attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List password objects.'),
                                     '--offline'                 : _('Use the passwords kept on this host, without asking a node.'),
                                     '-a'                        : _('List all password objects.'),
-                                    '--attribute <attribute>'   : _('Output given attribute.')
+                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
                                 },
                 },
 
     'add'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass add [--node <node>] [--host <host>] [--device <device>] [--client <client>] [--username <username>] [--url <url>] [--notes <notes>] {password} [entry]'),
-                    'cmd'   :   '--node :node: --host :host: --device :device: --client :client: --username :username: --url :url: --notes :notes: <|object|> [entry_name]',
+                    'cmd'   :   '--node :"node": --host :"host": --device :"device": --client :"client": --username :"username": --url :"url": --notes :"notes": <|object|> ["entry_name"]',
                     '_help' :   {
                                     'cmd'                   : _('Add new password object, or add an entry to it.'),
                                     '--node <node>'         : _('The password belongs to this node.'),
@@ -67,7 +67,7 @@ cmd_help = {
 
     'change_entry'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass change_entry [--username <username>] [--url <url>] [--notes <notes>] [--password] {password} {entry}'),
-                    'cmd'   :   '--username :username: --url :url: --notes :notes: --password :new_password=True: <|object|> <entry_name>',
+                    'cmd'   :   '--username :"username": --url :"url": --notes :"notes": --password :new_password=True: <|object|> <"entry_name">',
                     '_help' :   {
                                     'cmd'                   : _('Change entry of password object.'),
                                     '--username <username>' : _('New username of the entry.'),
@@ -79,7 +79,7 @@ cmd_help = {
 
     'del_entry'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass del_entry {password} {entry}'),
-                    'cmd'   :   '<|object|> <entry_name>',
+                    'cmd'   :   '<|object|> <"entry_name">',
                     '_help' :   {
                                     'cmd'                   : _('Delete entry of password object.'),
                                 },
@@ -87,7 +87,7 @@ cmd_help = {
 
     'show_password'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass show_password [--offline] {password} [entry]'),
-                    'cmd'   :   '--offline :offline=True: <|object|> [entry_name]',
+                    'cmd'   :   '--offline :offline=True: <|object|> ["entry_name"]',
                     '_help' :   {
                                     'cmd'                   : _('Show entries of password object with their passwords.'),
                                     '--offline'             : _('Use the passwords kept on this host, without asking a node.'),
@@ -105,7 +105,7 @@ cmd_help = {
 
     'update_keys'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass update_keys {password} | --all [--unit <unit>]'),
-                    'cmd'   :   '--all :all_passwords=True: --unit :unit: [|object|]',
+                    'cmd'   :   '--all :all_passwords=True: --unit :"unit": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Give the members of password_store_members the key and take it from the others.'),
                                     '--all'                 : _('All passwords you may give keys of (edit:keys).'),
@@ -124,7 +124,7 @@ cmd_help = {
 
     'add_node'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass add_node {password} {node}'),
-                    'cmd'   :   '<|object|> <node_name>',
+                    'cmd'   :   '<|object|> <"node_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add node to password object.'),
                                 },
@@ -132,7 +132,7 @@ cmd_help = {
 
     'remove_node'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass remove_node {password} {node}'),
-                    'cmd'   :   '<|object|> <node_name>',
+                    'cmd'   :   '<|object|> <"node_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove node from password object.'),
                                 },
@@ -140,7 +140,7 @@ cmd_help = {
 
     'add_host'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass add_host {password} {host}'),
-                    'cmd'   :   '<|object|> <host_name>',
+                    'cmd'   :   '<|object|> <"host_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add host to password object.'),
                                 },
@@ -148,7 +148,7 @@ cmd_help = {
 
     'remove_host'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass remove_host {password} {host}'),
-                    'cmd'   :   '<|object|> <host_name>',
+                    'cmd'   :   '<|object|> <"host_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove host from password object.'),
                                 },
@@ -156,7 +156,7 @@ cmd_help = {
 
     'add_device'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass add_device {password} {device}'),
-                    'cmd'   :   '<|object|> <device_name>',
+                    'cmd'   :   '<|object|> <"device_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add device to password object.'),
                                 },
@@ -164,7 +164,7 @@ cmd_help = {
 
     'remove_device'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass remove_device {password} {device}'),
-                    'cmd'   :   '<|object|> <device_name>',
+                    'cmd'   :   '<|object|> <"device_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove device from password object.'),
                                 },
@@ -172,7 +172,7 @@ cmd_help = {
 
     'add_client'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass add_client {password} {client}'),
-                    'cmd'   :   '<|object|> <client_name>',
+                    'cmd'   :   '<|object|> <"client_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add client to password object.'),
                                 },
@@ -180,7 +180,7 @@ cmd_help = {
 
     'remove_client'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass remove_client {password} {client}'),
-                    'cmd'   :   '<|object|> <client_name>',
+                    'cmd'   :   '<|object|> <"client_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove client from password object.'),
                                 },
@@ -188,7 +188,7 @@ cmd_help = {
 
     'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass config -d -a {password} {param} [value]'),
-                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to password object.'),
                                     '-a'                    : _('Append value to config parameter.'),
@@ -198,19 +198,34 @@ cmd_help = {
 
     'get_config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass get_config {password} {parameter}'),
-                    'cmd'   :   '<|object|> <parameter>',
+                    'cmd'   :   '<|object|> <"parameter">',
                     '_help' :   {
                                     'cmd'                   : _('Get config parameter.'),
                                 },
                 },
     'show_config'      : {
                     '_cmd_usage_help' : _('Usage: otpme-pass show_config {password} [parameter]'),
-                    'cmd'   :   '<|object|> [parameter]',
+                    'cmd'   :   '<|object|> ["parameter"]',
                     '_help' :   {
                                     'cmd'                   : _('Show password object config parameters'),
                                 },
                 },
 
+    'show_oid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-pass show_oid [--full] {password}'),
+                    'cmd'   :   '--full :full=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the OID of the object.'),
+                                    '--full'                : _('Show the full OID.'),
+                                },
+                },
+    'show_uuid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-pass show_uuid {password}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the UUID of the object.'),
+                                },
+                },
     'changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass changelog {password}'),
                     'cmd'   :   '<|object|>',
@@ -221,7 +236,7 @@ cmd_help = {
 
     'edit_changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass edit_changelog {password} {entry_id} {comment}'),
-                    'cmd'   :   '<|object|> <entry_id> <comment>',
+                    'cmd'   :   '<|object|> <entry_id> <"comment">',
                     '_help' :   {
                                     'cmd'                   : _('Edit changelog entry comment.'),
                                 },
@@ -251,9 +266,17 @@ cmd_help = {
                                 },
                 },
 
+    'auto_disable'          : {
+                    '_cmd_usage_help' : _('Usage: otpme-pass auto_disable {password} {time}'),
+                    'cmd'   :   '<|object|> <auto_disable>',
+                    '_help' :   {
+                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023", 0 removes it).'),
+                                },
+                },
+
     'rename'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass rename {password} {new_name}'),
-                    'cmd'   :   '<|object|> <new_name>',
+                    'cmd'   :   '<|object|> <"new_name">',
                     '_help' :   {
                                     'cmd'                   : _('Rename password object.'),
                                 },
@@ -261,7 +284,7 @@ cmd_help = {
 
     'add_acl'   : {
                     '_cmd_usage_help' : _('Usage: otpme-pass add_acl {password} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
+                    'cmd'   :   '<|object|> <"owner_type"> <"owner_name"> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to password object.'),
                                 },
@@ -301,7 +324,7 @@ cmd_help = {
 
     'move'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass move [--keep-acls] {password} {unit}'),
-                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <new_unit>',
+                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <"new_unit">',
                     '_help' :   {
                                     'cmd'                   : _('Change password object unit.'),
                                     '--keep-acls'           : _('Keep object ACLs.')
@@ -318,7 +341,7 @@ cmd_help = {
 
     'description'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass description {password} [description]'),
-                    'cmd'   :   '<|object|> [description]',
+                    'cmd'   :   '<|object|> ["description"]',
                     '_help' :   {
                                     'cmd'                   : _('Set password object description.'),
                                 },
@@ -326,7 +349,7 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass info {password} [info]'),
-                    'cmd'   :   '--language :language: <|object|> [info]',
+                    'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set password object info'),
                                     '--language <lang>'     : _('Change info for language.'),
@@ -335,7 +358,7 @@ cmd_help = {
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass dump_info {password}'),
-                    'cmd'   :   '--language :language: <|object|>',
+                    'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump password object info'),
                                     '--language <lang>'     : _('Dump info for language.'),
@@ -360,7 +383,7 @@ cmd_help = {
 
     'export'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass export --password <password> {password}'),
-                    'cmd'   :   '--password :password: <|object|>',
+                    'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export password object config to stdout.'),
                                     '--password <password>' : _('Encrypt object config with password.'),
@@ -369,7 +392,7 @@ cmd_help = {
 
     'add_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass add_policy {password} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add policy to password object.'),
                                 },
@@ -377,15 +400,15 @@ cmd_help = {
 
     'remove_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass remove_policy {password} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove policy from password object.'),
                                 },
                 },
 
     'list_policies'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-pass list_policies {password}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-pass list_policies [--return-type <type>] [--policy-types <type1,type2>] {password}'),
+                    'cmd'   :   '--return-type :"return_type": --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

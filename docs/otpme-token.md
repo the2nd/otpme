@@ -131,6 +131,16 @@ Add a token to a user.
 which arguments and options **add** takes, and OTPme reads it before it
 parses the rest of the line. **-r** replaces a token of that name and
 keeps its UUID, which is what a setup run does when it runs again.  
+An **hotp**, **totp** or **motp** token shows its new secret and PIN, a
+**password** or **otp_push** token the password it made up. You only see
+them with the right ACLs on the new token. The secret and the password
+need **view:initial_secret**, the PIN needs **view:initial_pin**. These
+two only count now, when the token is added, and not later.
+**view:secret** and **view:pin** show them as well. To give them for
+every new token of a unit, add them to the unit as
+**++token:view:initial_secret** and **++token:view:initial_pin**, see
+**otpme-unit**(1). Without them you get a note instead, and the token is
+added all the same.  
 What each type adds to the line:
 
 **link**  
@@ -196,6 +206,20 @@ get 5 of each, or 30 of each when you asked for one token by name.
 **--role-limit *N*, **--scope-limit** *N*, **--policy-limit** *N***  
 The same for one of the three, where the others should stay as they are.
 
+<!-- -->
+
+**show_oid \[**--full**\] *token***  
+Show the OID of the token: **token\|\<realm\>/\<user\>/\<name\>**. With
+**--full** the full OID, which names the site as well:
+**token\|\<realm\>/\<site\>/\<user\>/\<name\>**.  
+Needs the ACL **view_public:object**.
+
+**show_uuid *token***  
+Show the UUID of the token.  
+Needs the ACL **view_public:object**.
+
+<!-- -->
+
 **list \[**-a**\] \[*regex*\]**  
 List the token paths, and with a regex only those that match it, e.g.
 **alice/\*** for the tokens of one user.  
@@ -232,12 +256,19 @@ Rename a token.
 The default token of a user is only renamed where the config parameter
 **allow_default_token_rename** says so, see **otpme**(7).
 
-**move \[**-r**\] *token* *dst_user*\[**/***name*\]**  
+**move \[**-r**\] \[**--keep-acls**\] *token* *dst_user*\[**/***name*\]**  
 Move a token to another user. The user has to be on the same site;
 moving a token to another site does not work.  
 **-r** replaces a token of that name at the destination and keeps its
 UUID. Without it OTPme asks, and it says so when the token it would
 replace is the default token of that user.  
+The default ACLs of the old user are taken away and those of the new one
+are applied, as ACL inheritance is on for a token, see
+**enable_acl_inheritance**. **--keep-acls** keeps those default ACLs.  
+What the token ACLs policy of a user gives its tokens always follows the
+token: the ACLs on the old user and those of its default token go, and
+the policy of the new user gives its own, see **otpme-policy**(1). The
+ACLs of whoever created the token stay.  
 Moving into the **TOKENSTORE** gives the token a name of its own,
 *old_owner***:***name*, with a number appended where that is taken
 already. A name of your own is refused there. Moving it back out again
@@ -268,8 +299,12 @@ what applies, while **show_config** answers what was set here.
 Set auto-disable time. It is either a relative time with a leading
 **+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
 The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
-**otpme**(7). Use **-u** to disable the token if it was unused for the
-given time.
+**otpme**(7). A relative time counts from when it is set, and again from
+when the token is enabled. **0** removes it. It is refused for a token
+of a user the realm or a site comes with, e.g. the admin; a time set on
+one before does nothing. Use **-u** to disable the token once it was
+unused for the given time. That takes a relative time; a token that was
+never used counts from when this was set.
 
 **description *token* \[*description*\]**  
 Set the description of the token. Without one OTPme asks and offers the
@@ -716,8 +751,8 @@ Remove every entry of the changelog.
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
-refused. OTPme asks the token you are signed in with first, then the
-object.
+refused. A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 
 ## Policy Management
 
@@ -742,10 +777,11 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *token***  
-List the policies attached to the token. Use **--return-type** to select
-the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
-Use **--policy-types** to list only policies of the given types; these
-are policy types, not policy names.  
+List the policies attached to the token, the disabled ones too, marked
+**(disabled)**. Use **--return-type** to select the attribute returned
+(**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
+to list only policies of the given types; these are policy types, not
+policy names.  
 Needs the ACL **view:policies**.
 
 ## ACL Management
@@ -759,10 +795,12 @@ ACLs exist, is under **ACLs** in **otpme**(7).
 A command that changes something asks first; the global option **-f**
 skips the question.
 
-**add_acl *token* *owner_type* *owner* *acl*\[**:***value*\]**  
-Give a role or a token an ACL on this token.  
-*owner_type* is **role** or **token**, and *owner* the path of that role
-or token. An ACL may carry a value, for example **view:token_type**.  
+**add_acl *token* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
+Give a role or a token one or more ACLs on this token.  
+*owner_type* is **role** or **token**. *owner* is the path of that role
+or token. An ACL can carry a value, for example **view:token_type**. To
+give several ACLs at once, separate them with commas:
+**view:token_type,view:status**.  
 Needs the ACL **add:acl**.
 
 **del_acl *token* *acl***  
@@ -780,24 +818,25 @@ The other direction: the ACLs this token holds on other objects.
 Admin only. This one cannot be given away.
 
 **enable_acl_inheritance *token***  
-Let the token take the ACLs that reach it from elsewhere. It does by
-default.
+Let a move of the token to another user swap its default ACLs: what the
+old user handed down is taken away, and what the new user hands down is
+given. It does by default.
 
-Two things reach it: a default ACL of the unit the token sits in, and an
-ACL added to its user with **-r** (see **otpme-user**(1)). A token that
-does not inherit is passed over by both.
+Only a move asks this. A new token gets the default ACLs of its user,
+and **add_acl -a** or **-r** on its user or unit reach it either way. A
+move with **--keep-acls** leaves its ACLs alone all the same, and so
+does a move of an admin token. That is the admin token of the site and
+every token in the site admin role **SITE_ADMIN**.
 
-Only default ACLs are inherited. An ordinary ACL on the unit never is.
-
-Moving a token into another unit is the one place that asks something
-else as well: an admin token gets neither the default ACLs of the new
-unit nor loses those of the old one. That is the admin token of the site
-and every token in the site admin role **SITE_ADMIN**.
+A move by somebody who does not hold **add:acl** and **delete:acl** on
+the token leaves its ACLs alone as well, and says so. Otherwise moving a
+token to a user would be a way of handing yourself the default ACLs of
+that user.
 
 Needs the ACL **enable:acl_inheritance**.
 
 **disable_acl_inheritance *token***  
-Stop that. Only the ACLs on the token itself count from then on.  
+A move leaves the ACLs of the token as they are.  
 Needs the ACL **disable:acl_inheritance**.
 
 ## Export and Cleanup
@@ -1287,18 +1326,41 @@ the old one. Deleting it and adding it again would give it a new UUID,
 and every assignment would be gone.  
 alice has to scan the new QR code.
 
+# AUTH ON ACTION HOOKS
+
+An auth on action policy can ask for a login again before these actions.
+See **Auth On Action Policy** in **otpme-policy**(1). A token has the
+hooks every object type has, and these:
+
+> add_dynamic_group, add_sign, change_2f_token, change_auth_script,
+> change_counter_check_range, change_encrypt_public_key,
+> change_key_type, change_mode, change_offline_expiry,
+> change_offline_unused_expiry, change_password, change_phone_number,
+> change_pin, change_push_script, change_push_token,
+> change_sign_public_key, change_ssh_public_key,
+> change_timedrift_tolerance, change_validity_time, del_sign, deploy,
+> disable_2f_token, disable_auth_script, disable_mschap,
+> disable_offline, disable_pin, disable_session_keep,
+> disable_sso_deploy, dump_token_data, enable_2f_token,
+> enable_auth_script, enable_mschap, enable_offline, enable_pin,
+> enable_session_keep, enable_sso_deploy, encrypt_public_key,
+> gen_mschap, gen_qrcode, get_otp, key_type, move, remove_dynamic_group,
+> resync, set_config_parameter, set_temp_password, set_token_data,
+> show_config_parameters, show_pin, show_secret, sign_public_key,
+> ssh_public_key.
+
 # FILES
 
 */var/lib/otpme/*  
 The objects of the realm, on a node. A token lives under the user it
 belongs to.
 
-*/var/cache/otpme/offline/*user_uuid/**  
+*/var/cache/otpme/offline/\<user_uuid\>/*  
 The tokens a host can check while it cannot reach the realm, one
 directory per user. Written at login, and only for a token that allows
 it — see **Offline Configuration** above.
 
-*/var/cache/otpme/ssh/authorized_keys/*user/authorized_keys**  
+*/var/cache/otpme/ssh/authorized_keys/\<user\>/authorized_keys*  
 The keys of the SSH tokens of that user, on a host, as sshd reads them.
 Written by **hostd** from the tokens of the realm.
 

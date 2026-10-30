@@ -20,6 +20,7 @@ try:
 except Exception:
     pass
 
+from otpme.lib import json
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
@@ -97,7 +98,8 @@ commands = {
     'results'   : {
             'default'    : {
                 'exists'    : {
-                    'oargs'             : ['conf_job', 'host'],
+                    'oargs'             : ['conf_job', 'host', 'failed',
+                                            'watch', 'seen'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -1020,18 +1022,30 @@ def show_job(conf_job, _caller="API", callback=default_callback, **kwargs):
         lines.append(f"deleted: {', '.join(gone)}")
     return callback.ok("\n".join(lines), return_value=True)
 
-def show_results(conf_job=None, host=None,
-    _caller="API", callback=default_callback, **kwargs):
-    """ What the hosts made of a job. """
+def show_results(conf_job=None, host=None, failed=None, watch=None,
+    seen=None, _caller="API", callback=default_callback, **kwargs):
+    """ What the hosts made of a job.
+
+    <failed> leaves the runs that failed and nothing else: among a few
+    hundred hosts the ones to look at are what is wanted, not every
+    "ok" in between. A refusal is not a run that failed (see
+    conf_result.py), and is left out as well.
+
+    <watch> is the client asking again and again while the hosts come
+    in (otpme-deploy results --watch). It answers with JSON: the output
+    of the results that are not in <seen> yet, the UUIDs of all results
+    shown so far, and whether anything is still to come -- hosts that
+    have not reported, of a job that was not taken back.
+    """
     if not conf_job and not host:
         msg = _("Need a job or a host.")
         return callback.error(msg)
-    if conf_job:
-        results = backend.search(object_type="conf_result",
-                                attribute="job_uuid",
-                                value=conf_job,
-                                return_type="instance")
-    else:
+    if watch and not conf_job:
+        msg = _("--watch needs a job.")
+        return callback.error(msg)
+    seen = set(seen or [])
+    host_uuid = None
+    if host:
         host_result = backend.search(object_types=["host", "node"],
                                     attribute="name",
                                     value=host,
@@ -1042,12 +1056,27 @@ def show_results(conf_job=None, host=None,
             msg = _("Unknown host: {host}")
             msg = msg.format(host=host)
             return callback.error(msg)
+        host_uuid = host_result[0]
+    if conf_job:
+        results = backend.search(object_type="conf_result",
+                                attribute="job_uuid",
+                                value=conf_job,
+                                return_type="instance")
+        # With a host as well: the results of that host. --host was
+        # taken only without a job, and with one every host was shown.
+        if host_uuid:
+            results = [x for x in results if x.host_uuid == host_uuid]
+    else:
         results = backend.search(object_type="conf_result",
                                 attribute="host_uuid",
-                                value=host_result[0],
+                                value=host_uuid,
                                 return_type="instance")
+    if failed:
+        results = [x for x in results if x.status == "failed"]
+    results = [x for x in results if x.uuid not in seen]
     results = sorted(results, key=lambda x: x.finished or 0)
     lines = []
+    shown = []
     # The arguments belong to the job, not to its result, and several
     # results of one job would ask for the same job again and again.
     job_args = {}
@@ -1070,6 +1099,7 @@ def show_results(conf_job=None, host=None,
         job_hosts = visible_hosts[result.job_uuid]
         if job_hosts is not None and result.host_uuid not in job_hosts:
             continue
+        shown.append(result.uuid)
         host_name = backend.get_oid(uuid=result.host_uuid, full=False)
         host_name = host_name or result.host_uuid
         finished = time.strftime("%Y-%m-%d %H:%M",
@@ -1112,9 +1142,44 @@ def show_results(conf_job=None, host=None,
             hint = hint.format(log_path=result.log_path,
                             log_size=result.log_size)
             lines.append(hint)
+    if watch:
+        return watch_answer(conf_job, lines, seen | set(shown),
+                            host_uuid=host_uuid, callback=callback)
     if not lines:
+        if failed:
+            return callback.ok(_("No failed results."))
         return callback.ok(_("No results."))
     return callback.ok("\n".join(lines), return_value=True)
+
+def watch_answer(conf_job, lines, seen, host_uuid=None,
+    callback=default_callback):
+    """ What results --watch gets each time it asks, see show_results().
+    With <host_uuid> it waits for that host only. """
+    job = get_visible_job(conf_job, callback=callback)
+    if not job:
+        return job
+    visible_hosts = get_visible_hosts(job)
+    if host_uuid:
+        if visible_hosts is None or host_uuid in visible_hosts:
+            visible_hosts = [host_uuid]
+        else:
+            visible_hosts = []
+    ok, failed, refused, pending, gone = get_job_status(job,
+                                                    host_uuids=visible_hosts)
+    # A job that was taken back is not offered to the hosts that have
+    # not run it: they will never report, and waiting for them would
+    # never end.
+    done = not pending or bool(job.cancel_time)
+    summary = _("{ok} ok, {failed} failed, {refused} refused, {pending} pending")
+    summary = summary.format(ok=len(ok), failed=len(failed),
+                            refused=len(refused), pending=len(pending))
+    answer = {
+            'output'    : "\n".join(lines),
+            'seen'      : sorted(seen),
+            'done'      : done,
+            'summary'   : summary,
+            }
+    return callback.ok(json.encode(answer), return_value=True)
 
 def ack_job(conf_job, _caller="API", callback=default_callback, **kwargs):
     """ Note that somebody has seen how a job went.

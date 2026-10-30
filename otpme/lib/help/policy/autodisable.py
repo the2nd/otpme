@@ -26,10 +26,10 @@ cmd_help = {
                 },
 
     'auto_disable'          : {
-                    '_cmd_usage_help' : _('Usage: otpme-policy auto_disable {policy} {time}'),
+                    '_cmd_usage_help' : _('Usage: otpme-policy auto_disable [-u] {policy} {time}'),
                     'cmd'   :   '<|object|> <auto_disable> -u :unused=True:',
                     '_help' :   {
-                                    'cmd'                   : _('Change auto disable value (e.g "1d" or "09:53 13.06.2023").'),
+                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023").'),
                                     '-u'                    : _('Disable object if it was unused for the given time.'),
                                 },
                 },

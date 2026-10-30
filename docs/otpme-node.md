@@ -90,6 +90,20 @@ For reading with something other than your eyes: **--raw** leaves the
 header and the borders out, **--csv** prints one row per line with **;**
 between the columns, and **--csv-sep** uses another separator.
 
+<!-- -->
+
+**show_oid \[**--full**\] *node***  
+Show the OID of the node: **node\|\<realm\>/\<name\>**. With **--full**
+the full OID, which names the site and unit as well:
+**node\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
+Needs the ACL **view_public:object**.
+
+**show_uuid *node***  
+Show the UUID of the node.  
+Needs the ACL **view_public:object**.
+
+<!-- -->
+
 **list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
 List the node names, and with a regex only those that match it. You get
 the nodes you may change; **-a** adds those you may only look at.  
@@ -132,6 +146,17 @@ of the old unit are taken away and those of the new one are applied.
 
 **touch *node***  
 Re-index the object to fix potential index problems.
+
+**auto_disable \[**-u**\] *node* *time***  
+Set auto-disable time. It is either a relative time with a leading
+**+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
+The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
+**otpme**(7). A relative time counts from when it is set, and again from
+when the node is enabled. **0** removes it. It is refused for an object
+the realm or a site comes with, e.g. the admin user; a time set on one
+before does nothing. Use **-u** to disable the node once it was unused
+for the given time. That takes a relative time; a node that was never
+used counts from when this was set.
 
 ## Token and Role Assignment
 
@@ -499,8 +524,8 @@ Remove every entry of the changelog.
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
-refused. OTPme asks the token you are signed in with first, then the
-object.
+refused. A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 
 ## Policy Management
 
@@ -539,10 +564,11 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *node***  
-List the policies attached to the node. Use **--return-type** to select
-the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
-Use **--policy-types** to list only policies of the given types; these
-are policy types, not policy names.  
+List the policies attached to the node, the disabled ones too, marked
+**(disabled)**. Use **--return-type** to select the attribute returned
+(**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
+to list only policies of the given types; these are policy types, not
+policy names.  
 Needs the ACL **view:policies**.
 
 ## ACL Management
@@ -558,9 +584,10 @@ skips the question.
 
 **add_acl *node* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this node.  
-*owner_type* is **role** or **token**, and *owner* the path of that role
-or token. An ACL may carry a value, for example **view:tokens**, and
-several are separated by commas.  
+*owner_type* is **role** or **token**. *owner* is the path of that role
+or token. An ACL can carry a value, for example **view:tokens**. To give
+several ACLs at once, separate them with commas:
+**view:tokens,view:status**.  
 Needs the ACL **add:acl**.
 
 **del_acl *node* *acl*\[,*acl*\]**  
@@ -574,14 +601,13 @@ Show the ACLs that lie on this node, i.e. who may do what with it. Needs
 the ACL **view:acl**.
 
 **enable_acl_inheritance *node***  
-Let the node inherit the default ACLs of the unit above it. It does not
-by default.
+Let a move of the node swap its default ACLs: what the old unit handed
+down is taken away, and what the new unit hands down is given. It does
+not by default; a move then leaves the ACLs of the node as they are.
 
-Only default ACLs are inherited. An ordinary ACL on the unit never is.
-
-Moving the node into another unit then takes away the default ACLs of
-the old unit and applies those of the new one. While inheritance is off,
-a move leaves the ACLs of the node as they are.
+Only a move asks this. A new node gets the default ACLs of its unit, and
+**add_acl -a** or **-r** on a unit reach it either way. A move with
+**--keep-acls** leaves its ACLs alone all the same.
 
 A move by somebody who does not hold **add:acl** and **delete:acl** on
 the node leaves its ACLs alone as well, and says so. Otherwise moving an
@@ -591,8 +617,8 @@ of that unit.
 Needs the ACL **enable:acl_inheritance**.
 
 **disable_acl_inheritance *node***  
-Stop inheriting them. Only the ACLs on the node itself count from then
-on. Needs the ACL **disable:acl_inheritance**.
+A move leaves the ACLs of the node as they are again.  
+Needs the ACL **disable:acl_inheritance**.
 
 ## Configuration
 
@@ -793,6 +819,18 @@ made, so it can come back.
 **otpme-node del node2**  
 Delete the object. The node that holds the master role is refused.
 
+# AUTH ON ACTION HOOKS
+
+An auth on action policy can ask for a login again before these actions.
+See **Auth On Action Policy** in **otpme-policy**(1). A node has the
+hooks every object type has, and these:
+
+> add_dynamic_group, add_token, change_public_key, change_vote_script,
+> disable_jotp_rejoin, disable_vote_script, enable_jotp_rejoin,
+> enable_vote_script, join, leave, limit_logins, remove_dynamic_group,
+> remove_token, renew_cert, revoke_cert, set_config_parameter,
+> unlimit_logins.
+
 # FILES
 
 On the node:
@@ -820,7 +858,7 @@ Says that the next sync has to be the one of a node that joined, which
 deletes what was removed while the node was away. Written by a join and
 by an enable.
 
-*/var/spool/otpme/cluster_out_journal/, */var/spool/otpme/cluster_in_journal/**  
+*/var/spool/otpme/cluster_out_journal/*, */var/spool/otpme/cluster_in_journal/*  
 What still has to go to the peers of this node, and what came from them
 and is not written yet.
 
@@ -832,9 +870,9 @@ nowhere else, see **otpme.conf**(5).
 */etc/otpme/ssl/*  
 Its certificate and keys: **cert.pem** with **key.pem** for TLS,
 **hostkey.pem** for the key pair the realm holds the public half of,
-**ca.pem** for the chain and *realm***-***site***.pem** for the site.
+**ca.pem** for the chain and **\<realm\>-\<site\>.pem** for the site.
 
-*/var/cache/otpme/ssh/authorized_keys/*user/authorized_keys**  
+*/var/cache/otpme/ssh/authorized_keys/\<user\>/authorized_keys*  
 The SSH keys of that user, as sshd gets them through
 **otpme-get-authorized-keys**.
 

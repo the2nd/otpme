@@ -19,6 +19,7 @@ from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.otpme_object import OTPmeObject
@@ -221,6 +222,23 @@ commands = {
                     },
                 },
             },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'edit_changelog'   : {
             'default'    : {
                 'exists'    : {
@@ -251,6 +269,15 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'auto_disable'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1028,7 +1055,8 @@ class Vlan(OTPmeObject):
         return super().add_token(token_path=token_path,
                                 callback=callback, **kwargs)
 
-    def add_role(self, role_name: str=None, role_uuid: str=None,
+    def add_role(self, role_name: Union[str,None]=None,
+        role_uuid: Union[str,None]=None,
         callback: JobCallback=default_callback, **kwargs):
         """ Add role to VLAN. """
         if role_name:
@@ -1044,7 +1072,8 @@ class Vlan(OTPmeObject):
                                 role_uuid=role_uuid,
                                 callback=callback, **kwargs)
 
-    def add_host(self, host_name: str=None, host_uuid: str=None,
+    def add_host(self, host_name: Union[str,None]=None,
+        host_uuid: Union[str,None]=None,
         callback: JobCallback=default_callback, **kwargs):
         """ Add host to VLAN. """
         if not host_uuid:
@@ -1061,7 +1090,8 @@ class Vlan(OTPmeObject):
                                 host_uuid=host_uuid,
                                 callback=callback, **kwargs)
 
-    def add_device(self, device_name: str=None, device_uuid: str=None,
+    def add_device(self, device_name: Union[str,None]=None,
+        device_uuid: Union[str,None]=None,
         callback: JobCallback=default_callback, **kwargs):
         """ Add device to VLAN. """
         if not device_uuid:
@@ -1179,8 +1209,8 @@ class Vlan(OTPmeObject):
             if not self.verify_acl("delete:object"):
                 del_acl = f"delete:{self.type}"
                 if not parent_object.verify_acl(del_acl):
-                    msg = _("Permission denied: {vlan_name}")
-                    msg = msg.format(vlan_name=self.name)
+                    msg = denied_msg(self, "delete:object",
+                                    others=[(parent_object, del_acl)])
                     return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:
@@ -1241,7 +1271,7 @@ class Vlan(OTPmeObject):
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show VLAN config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

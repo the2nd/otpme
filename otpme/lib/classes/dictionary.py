@@ -22,6 +22,7 @@ from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.protocols.utils import register_commands
@@ -104,6 +105,23 @@ commands = {
                     },
                 },
             },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'edit_changelog'   : {
             'default'    : {
                 'exists'    : {
@@ -134,6 +152,15 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'auto_disable'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
                     'job_type'          : 'process',
                     },
                 },
@@ -935,7 +962,7 @@ class Dictionary(OTPmeObject):
         ):
         """ Show dictionary config. """
         if not self.verify_acl("view_public:object"):
-            msg = ("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
         lines = []
         lines.append(f'DICTIONARY_TYPE="{self.dictionary_type}"')

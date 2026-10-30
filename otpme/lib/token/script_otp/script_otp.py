@@ -13,6 +13,7 @@ except Exception:
 
 from otpme.lib import oid
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import otpme_acl
 from otpme.lib.classes.token import Token
 from otpme.lib.daemon.scriptd import run_script
@@ -295,7 +296,7 @@ class ScriptToken(Token):
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
         lines = []
         return Token.show_config(self,

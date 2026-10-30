@@ -196,6 +196,9 @@ class LoginHandler(object):
                 'ssh_agent_script_signs'    : auth_conn.ssh_agent_script_signs,
                 'auth_response'             : auth_conn.auth_response,
                 'rsp'                       : auth_conn.rsp,
+                # Where the session is, to log it out without the agent.
+                'realm'                     : auth_conn.realm,
+                'site'                      : auth_conn.site,
         }
 
         # Raise exception if there was one.

@@ -24,6 +24,7 @@ from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.otpme_object import OTPmeObject
@@ -71,6 +72,7 @@ write_value_acls = {
                                 "resolver",
                                 "pass",
                                 "vlan",
+                                "aclgroup",
                                 "device",
                                 "pool",
                                 "share",
@@ -95,6 +97,7 @@ write_value_acls = {
                                 "resolver",
                                 "pass",
                                 "vlan",
+                                "aclgroup",
                                 "device",
                                 "pool",
                                 "share",
@@ -115,7 +118,6 @@ default_acls = [
                     "view_all",
                     "view_public",
                     "view",
-                    "import",
                     "export",
                     "+unit",
                     ]
@@ -132,7 +134,6 @@ recursive_default_acls = [
                     "view_all",
                     "view_public",
                     "view",
-                    "import",
                     "export",
                     "+unit",
                     ]
@@ -167,6 +168,23 @@ commands = {
                     },
                 },
             },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'edit_changelog'   : {
             'default'    : {
                 'exists'    : {
@@ -197,6 +215,15 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'auto_disable'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
                     'job_type'          : 'process',
                     },
                 },
@@ -480,6 +507,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'remove_orphans',
+                    'oargs'             : ['recursive'],
                     'job_type'          : 'process',
                     },
                 },
@@ -504,14 +532,6 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_attributes',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_attributes'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'show_attributes',
                     'job_type'          : 'thread',
                     },
                 },
@@ -763,7 +783,7 @@ def register_backend():
         return backend.rebuild_object_index("unit", objects, after)
     # Register object to config.
     config.register_object_type(object_type="unit",
-                            version=1,
+                            version=2,
                             tree_object=True,
                             uniq_name=False,
                             add_after=["site"],
@@ -883,6 +903,20 @@ class Unit(OTPmeObject):
         """ Get object config dict. """
         object_config = {}
         return object_config
+
+    def upgrade_to_2(self, object_config):
+        """ Version 2: ACL inheritance is off.
+
+        It says whether a moved unit swaps the default ACLs of its old
+        parent for those of the new one (see get_move_acl_inheritance()),
+        and on is a decision now. It was on for every unit, and it did
+        nothing: every way a unit took default ACLs went past it.
+        """
+        self.set_config_acl_inheritance_off(object_config)
+
+    def downgrade_to_1(self, object_config):
+        """ Off is a value version 1 knows, and there it does nothing. """
+        pass
 
     def set_variables(self):
         """ Set instance variables. """
@@ -1228,29 +1262,28 @@ class Unit(OTPmeObject):
         if not recursive:
             return members
 
-        # Get recursive members.
-        x_members = dict(members)
-        while True:
-            try:
-                child_units = x_members['unit']
-            except Exception:
-                child_units = []
+        # Get recursive members. Every unit below is walked, each once,
+        # whether units were asked for or not: with object_types without
+        # "unit" this did not go down at all. With units it found them
+        # all only because it appended to the list it was walking.
+        def get_child_units(unit, unit_members):
+            if "unit" in object_types:
+                return list(unit_members.get('unit', []))
+            x_units = unit.get_members(object_types=["unit"],
+                                        return_type="instance")
+            return list(x_units.get('unit', []))
 
-            if not child_units:
-                break
-
-            for o in child_units:
-                x_members = o.get_members(object_types=object_types,
-                                            return_type="instance",
-                                            recursive=False)
-                if not x_members:
-                    continue
-
-                for t in x_members:
-                    for xo in x_members[t]:
-                        if t not in members:
-                            members[t] = []
-                        members[t].append(xo)
+        child_units = get_child_units(self, members)
+        while child_units:
+            o = child_units.pop()
+            x_members = o.get_members(object_types=object_types,
+                                        return_type="instance",
+                                        recursive=False)
+            for t in x_members:
+                if t not in members:
+                    members[t] = []
+                members[t].extend(x_members[t])
+            child_units.extend(get_child_units(o, x_members))
 
         recursive_members = {}
         for t in members:
@@ -1276,6 +1309,20 @@ class Unit(OTPmeObject):
 
         return recursive_members
 
+    def comes_with_site(self) -> bool:
+        """ True for a unit the site was added with.
+
+        Some of them are registered early (nodes, cas, policies,
+        dictionaries, templates), because the site needs them before the
+        others, and get_base_objects() hands those out only with early=True.
+        Asking without it left these five free to delete and move.
+        """
+        if self.unit:
+            return False
+        base_units = list(config.get_base_objects("unit"))
+        base_units += list(config.get_base_objects("unit", early=True))
+        return self.rel_path in base_units
+
     def rename(
         self,
         callback: JobCallback=default_callback,
@@ -1283,7 +1330,7 @@ class Unit(OTPmeObject):
         **kwargs,
         ):
         """ Rename unit. """
-        msg = "Please use move to rename a unit."
+        msg = _("A unit cannot be renamed. Use move with the full new path, e.g. move linux/users linux/staff.")
         return callback.error(msg)
 
     @check_acls(acls=['move'])
@@ -1312,9 +1359,8 @@ class Unit(OTPmeObject):
         has its own skip_ca.
         """
         if not keep_old_unit:
-            base_units = config.get_base_objects("unit")
-            if not self.unit and self.rel_path in base_units:
-                return callback.error("Cannot move base unit.")
+            if self.comes_with_site():
+                return callback.error(_("Cannot move a unit the site comes with."))
 
         # Remove tailing slash.
         if new_unit.endswith("/"):
@@ -1352,11 +1398,27 @@ class Unit(OTPmeObject):
                 if skip_ca:
                     keep_old_unit = True
                     break
-                msg = _("Unit has CA as a child: {ca_name}")
+                # Raised and not answered: a unit below is moved by the
+                # move of the unit above, which does not look at what it
+                # answers and would delete it, CA and all.
+                msg = _("Unit has a CA in it, which cannot be moved: {ca_name}. With --skip-ca everything else is moved and the unit is kept.")
                 msg = msg.format(ca_name=x)
-                callback.error(msg)
-                msg = "Use <skip_ca> to move objects other than CAs and keep unit."
                 raise OTPmeException(msg)
+
+        # Get new unit. Checked before the question: it is for a move
+        # that can be made.
+        from otpme.lib.classes.unit import Unit
+        try:
+            _new_unit = Unit(path=new_unit)
+        except Exception as e:
+            msg = _("Invalid unit: {error}")
+            msg = msg.format(error=e)
+            return callback.error(msg)
+        new_unit_exists = _new_unit.exists()
+        if new_unit_exists and not merge:
+            msg = _("Unit exists: {unit_path}")
+            msg = msg.format(unit_path=_new_unit.path)
+            return callback.error(msg)
 
         msg = _("Move unit '{unit_path}' to '{new_unit}'? All its members are moved with it.: ")
         msg = msg.format(unit_path=self.rel_path, new_unit=new_unit)
@@ -1367,39 +1429,74 @@ class Unit(OTPmeObject):
         msg = msg.format(old_path=self.path, new_path=new_unit)
         callback.send(msg)
 
-        # Get new unit.
-        from otpme.lib.classes.unit import Unit
-        try:
-            _new_unit = Unit(path=new_unit)
-        except Exception as e:
-            msg = _("Invalid unit: {error}")
-            msg = msg.format(error=e)
-            return callback.error(msg)
-
-        _keep_acls = True
-        if _new_unit.exists():
-            _keep_acls = False
-            if not merge:
-                msg = _("Unit exists: {unit_path}")
-                msg = msg.format(unit_path=_new_unit.path)
-                return callback.error(msg)
-        else:
-            inherit_acls = False
-            if keep_acls is False:
-                inherit_acls = True
-            _new_unit.add(inherit_acls=inherit_acls,
-                        callback=callback,
-                        verbose_level=verbose_level,
-                        _caller=_caller)
-            if keep_acls is not False:
-                _new_unit.acls = self.acls
+        # Whether the unit gives up what its old parent handed down and
+        # takes what the new one hands down: ACL inheritance, see
+        # get_move_acl_inheritance(). For the whole of it, members and
+        # units below included -- their own units do not change, the
+        # parent above does. A merge does not move this unit: its
+        # members change their unit and each of them asks itself.
+        swap_acls = False
+        old_parent = None
+        if not new_unit_exists:
+            swap_acls, swap_message = self.get_move_acl_inheritance(keep_acls)
+            if swap_acls:
+                old_parent = self.get_parent_object()
+            elif swap_message:
+                msg = _("* NOT applying/removing default ACLs of new/old unit: {inherit_acls_message}")
+                msg = msg.format(inherit_acls_message=swap_message)
+                callback.send(msg)
+            # Nothing is moved yet, so a unit that cannot be added there
+            # (e.g. no add:unit) ends the move here. It takes the ACLs
+            # of this one, and what changes with the parent is done
+            # once everything is in it (swap_inherited_acls()).
+            if not _new_unit.add(inherit_acls=False,
+                                callback=callback,
+                                verbose_level=verbose_level,
+                                _caller=_caller):
+                return callback.error()
+            # Through the ACL methods and not by assignment: the index
+            # is written from their journal, so an assigned list went
+            # to the object file while the index kept the ACLs that
+            # add() gave the unit -- and the other nodes, which build
+            # their index from the file, had others.
+            del_acls = [x for x in _new_unit.acls if x not in self.acls]
+            add_acls = [x for x in self.acls if x not in _new_unit.acls]
+            # No changelog entries: the unit is made by the move, its
+            # ACLs are taken over, nobody changed them.
+            if del_acls:
+                _new_unit.del_acl(raw_acls=del_acls,
+                                force=True,
+                                verify_acls=False,
+                                changelog=False,
+                                callback=callback)
+            if add_acls:
+                # Taken over as they are, as the assignment did: an
+                # ACL of an owner that is gone does not stop the move.
+                _new_unit.add_acl(raw_acls=add_acls,
+                                ignore_unknown_owner=True,
+                                force=True,
+                                verify_acls=False,
+                                changelog=False,
+                                callback=callback)
             _new_unit.policies = self.policies
             _new_unit.policy_options = self.policy_options
             _new_unit.description = self.description
+            # One text per language, put in one by one the way
+            # change_info() does: the field may be an incremental dict.
+            for language, text in self.info.items():
+                _new_unit.info[language] = text
+            self.take_over_to(_new_unit, callback=callback)
             _new_unit._write(callback=callback)
 
-        if keep_acls is None:
-            keep_acls = _keep_acls
+        # What is moved along keeps its ACLs: the parent of a member is
+        # the unit it was in, and the new one has the same ACLs. What
+        # changed above is done by swap_inherited_acls() below. In a
+        # merge their unit is another one, and each of them asks its
+        # own ACL inheritance.
+        if not new_unit_exists:
+            keep_acls = True
+        elif keep_acls is None:
+            keep_acls = False
 
         # Get all child units.
         if move_child_units:
@@ -1464,10 +1561,127 @@ class Unit(OTPmeObject):
             # Reset unit members to initiate re-check.
             unit_members = None
 
+        if swap_acls:
+            new_parent = _new_unit.get_parent_object()
+        # A new name under the same parent changes nothing above.
+        if swap_acls and new_parent.uuid != old_parent.uuid:
+            if not _new_unit.swap_inherited_acls(old_parent, new_parent,
+                                        verbose_level=verbose_level,
+                                        callback=callback):
+                return callback.error()
+
         if keep_old_unit:
             return callback.ok()
 
+        # The unit it went to has another UUID. A defaultunits policy
+        # that named this one would fall back to the usual unit.
+        self.replace_in_default_units(_new_unit, callback=callback)
+
         return self.delete(add_to_trash=False, force=True, callback=callback)
+
+    def swap_inherited_acls(self, old_parent, new_parent, verbose_level=0,
+        callback=default_callback):
+        """ After a move: give up what the old parent handed down, and
+        take what the new one hands down.
+
+        This unit itself, as inherit_acls() does it for any object that
+        changes its parent. And what went further down: the recursive
+        default ACLs of a parent reach everything below this unit, the
+        way add_acl -a -r hands them down -- and the same way they are
+        taken back and given now. A default ACL that is not recursive
+        reaches this unit and stops there.
+
+        As add_acl -a, OTPme does not keep where an ACL came from: one
+        given by hand that is the same as one handed down goes with it.
+        """
+        steps = (
+                (old_parent, "del", _("* Removing default ACLs of old unit...")),
+                (new_parent, "add", _("* Applying default ACLs of new unit...")),
+                )
+        for parent, action, msg in steps:
+            if parent is None:
+                continue
+            callback.send(msg)
+            if not self.inherit_acls(parent_object=parent,
+                                    remove=action == "del",
+                                    force=True,
+                                    verbose_level=verbose_level,
+                                    callback=callback):
+                return callback.error()
+            recursive_acls = []
+            for x in parent.acls:
+                try:
+                    x_acl = otpme_acl.decode(x)
+                except Exception as e:
+                    msg = _("Error decoding ACL: {acl}: {exception}")
+                    msg = msg.format(acl=x, exception=e)
+                    return callback.error(msg)
+                if not x_acl.recursive:
+                    continue
+                recursive_acls.append(x_acl)
+            if not recursive_acls:
+                continue
+            # The members of this unit and the units below, without
+            # this unit: inherit_acls() did that.
+            if not self._handle_acl(action, recursive_acls,
+                                    recursive_acls=True,
+                                    apply_default_acls=True,
+                                    force=True,
+                                    verbose_level=verbose_level,
+                                    callback=callback):
+                return callback.error()
+        return self._write(callback=callback)
+
+    def take_over_to(self, new_unit, callback=default_callback):
+        """ Give the unit a move makes what this one has besides members.
+
+        Its config parameters (which count for everything below), ACL
+        inheritance, extensions, object classes and attributes. Without
+        it they went with this unit when the move deleted it. No ACL is
+        asked: the move is the confirmed action.
+        """
+        # Put in one by one: the field may be an incremental dict.
+        for parameter, value in self.config_params.items():
+            new_unit.config_params[parameter] = value
+        # As disable_acl_inheritance() sets it, which would ask for an
+        # ACL of whoever moves.
+        if new_unit.acl_inheritance_enabled != self.acl_inheritance_enabled:
+            new_unit.acl_inheritance_enabled = self.acl_inheritance_enabled
+            new_unit.update_index('acl_inheritance_enabled',
+                                new_unit.acl_inheritance_enabled)
+        for extension in self.extensions:
+            if extension in new_unit.extensions:
+                continue
+            new_unit.add_extension(extension=extension,
+                                force=True,
+                                verify_acls=False,
+                                callback=callback)
+        new_unit.take_over_ldif(self, verify_acls=False, callback=callback)
+
+    def replace_in_default_units(self, new_unit, callback=default_callback):
+        """ Let every defaultunits policy name new_unit instead of us. """
+        new_uuid = new_unit.uuid
+        if not new_uuid:
+            new_uuid = backend.get_uuid(new_unit.oid)
+        if not new_uuid:
+            return
+        # Only the policies of our site: set_default_unit() takes a unit
+        # of the site the policy is in, and no other.
+        policies = backend.search(object_type="policy",
+                                attribute="policy_type",
+                                value="defaultunits",
+                                realm=self.realm,
+                                site=self.site,
+                                return_type="instance")
+        for x_policy in policies:
+            if self.uuid not in x_policy.default_units.values():
+                continue
+            if x_policy.replace_unit(self.uuid, new_uuid, callback=callback):
+                msg = _("Policy {policy_name}: {old_path} > {new_path}")
+                msg = msg.format(policy_name=x_policy.name,
+                                old_path=self.rel_path,
+                                new_path=new_unit.rel_path)
+                callback.send(msg)
 
     @object_lock(full_lock=True)
     @run_pre_post_add_policies()
@@ -1500,7 +1714,13 @@ class Unit(OTPmeObject):
             return callback.error(msg)
 
         # Add ACLs to new unit. We only add ACLs for the current login user.
-        for acl in parent_object.acls:
+        # Not where the unit takes nothing from its parent: the unit of the
+        # password objects (no_acls) got the ACLs of the site the token
+        # adding it had.
+        parent_acls = parent_object.acls
+        if not inherit_acls:
+            parent_acls = []
+        for acl in parent_acls:
             # Cannot inherit user ACLs without auth token.
             if not config.auth_token:
                 break
@@ -1549,8 +1769,10 @@ class Unit(OTPmeObject):
                 logger.critical(log_msg)
                 return callback.error(msg)
 
-        # Units should inherit ACLs by default.
-        self.acl_inheritance_enabled = True
+        # ACL inheritance is about a move (see get_move_acl_inheritance()),
+        # and a unit that is moved keeps its ACLs unless it is switched
+        # on for it.
+        self.acl_inheritance_enabled = False
         # Add object using parent class.
         return OTPmeObject.add(self, inherit_acls=inherit_acls,
                                 verbose_level=verbose_level,
@@ -1580,21 +1802,34 @@ class Unit(OTPmeObject):
             parent_object = backend.get_object(object_type="site",
                                             uuid=config.site_uuid)
             if not parent_object:
-                msg = _("Uuhhh site does not exist: {site_uuid}")
+                msg = _("Site does not exist: {site_uuid}")
                 msg = msg.format(site_uuid=config.site_uuid)
                 return callback.error(msg)
 
         if not parent_object.verify_acl("delete:unit"):
             if not self.verify_acl("delete:object"):
-                msg = ("Permission denied.")
+                msg = denied_msg(self, "delete:object",
+                                others=[(parent_object, "delete:unit")])
                 return callback.error(msg, exception=PermissionDenied)
 
         if not backend.object_exists(object_id=self.oid):
-            return callback.error("Unit does not exist.")
+            return callback.error(_("Unit does not exist."))
 
-        base_units = config.get_base_objects("unit")
-        if not self.unit and self.rel_path in base_units:
-            return callback.error("Cannot delete base unit.")
+        if self.comes_with_site():
+            return callback.error(_("Cannot delete a unit the site comes with."))
+
+        # Everything in it is deleted one by one, each with its own
+        # permission check and its own transaction. One that may not be
+        # deleted stopped the delete halfway, with all before it gone.
+        # So all of them are asked first.
+        if kwargs.get("verify_acls", True):
+            undeletable = self.get_undeletable_member()
+            if undeletable:
+                # What get_undeletable_member() asks.
+                msg = _("Permission denied: {object_type} {object_path}: needs delete:object, or delete:{object_type} on its unit; nothing is deleted.")
+                msg = msg.format(object_type=undeletable.object_type,
+                                object_path=undeletable.rel_path)
+                return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:
             try:
@@ -1643,6 +1878,62 @@ class Unit(OTPmeObject):
 
         return del_result
 
+    def get_undeletable_member(self):
+        """ The OID of an object in this unit or below that we may not delete.
+
+        Asked the way the delete() of the objects asks: delete:object on
+        the object, or delete:<type> on its unit. None where all of them
+        may go.
+
+        The ACLs of the members are asked of the index, the way the
+        tables of the CLI do (backend.search() with verify_acls), and
+        not of the objects: a unit can hold thousands of them, and each
+        one loaded is a read and a decrypt. Loaded are only the units,
+        to ask them for delete:<type>.
+        """
+        need_acls, access_granted = otpme_acl.check_access()
+        if not need_acls:
+            if access_granted:
+                return None
+            return self.oid
+
+        def search(unit_uuid, object_type, verify_acls=None):
+            return backend.search(realm=self.realm,
+                                site=self.site,
+                                attribute="unit",
+                                value=unit_uuid,
+                                object_type=object_type,
+                                verify_acls=verify_acls,
+                                return_type="uuid")
+
+        units = [self]
+        while units:
+            x_unit = units.pop()
+            for object_type in config.tree_object_types:
+                members = search(x_unit.uuid, object_type)
+                if not members:
+                    continue
+                if object_type == "unit":
+                    for x_uuid in members:
+                        child_unit = backend.get_object(object_type="unit",
+                                                        uuid=x_uuid)
+                        if child_unit:
+                            units.append(child_unit)
+                # The ones that may go by their own ACL.
+                allowed = set(search(x_unit.uuid, object_type,
+                                    verify_acls=["delete:object"]))
+                rest = [x for x in members if x not in allowed]
+                if not rest:
+                    continue
+                # The others by delete:<type> on the unit. A user takes
+                # their tokens with them, as User.delete() does.
+                if x_unit.verify_acl(f"delete:{object_type}"):
+                    continue
+                return backend.get_oid(uuid=rest[0],
+                                    object_type=object_type,
+                                    instance=True)
+        return None
+
     def remove_orphans(
         self,
         force: bool=False,
@@ -1668,7 +1959,6 @@ class Unit(OTPmeObject):
     def _remove_orphans_recursive(self, force=False, verbose_level=0,
         recursive=False, callback=default_callback, **kwargs):
         """ Recurse into the unit's member objects. """
-        object_changed = False
         members = self.get_members(return_type="uuid")
         for object_type in members:
             for x_uuid in members[object_type]:
@@ -1677,15 +1967,14 @@ class Unit(OTPmeObject):
                     continue
                 if verbose_level > 1:
                     callback.send(_("Processing {oid}").format(oid=o.oid))
-                if o.remove_orphans(force=force, verbose_level=verbose_level,
-                                    recursive=recursive, callback=callback):
-                    object_changed = True
-        return object_changed
+                o.remove_orphans(force=force, verbose_level=verbose_level,
+                                recursive=recursive, report_nothing=False,
+                                callback=callback)
 
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show unit config. """
         if not self.verify_acl("view_public:object"):
-            msg = ("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
         lines = []
 
@@ -1698,7 +1987,7 @@ class Unit(OTPmeObject):
     def show(self, callback: JobCallback=default_callback, **kwargs):
         """ Show unit members. """
         if not self.verify_acl("view_public:object"):
-            msg = ("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

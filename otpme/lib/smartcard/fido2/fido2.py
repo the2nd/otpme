@@ -292,7 +292,15 @@ class Fido2(object):
             print(msg)
 
         if dev is None and CtapPcscDevice:
-            for dev in CtapPcscDevice.list_devices():
+            # Without pcscd there is nothing to find this way.
+            try:
+                pcsc_devices = list(CtapPcscDevice.list_devices())
+            except Exception as e:
+                pcsc_devices = []
+                log_msg = _("fido2 smartcard: pcscd search error: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                logger.warning(log_msg)
+            for x_dev in pcsc_devices:
                 if dev is None:
                     dev = x_dev
                 if not print_devices:
@@ -301,8 +309,9 @@ class Fido2(object):
                 msg = msg.format(device=x_dev)
                 print(msg)
 
+        # NoSmartcardFound: detect_smartcard() goes on with the next type.
         if dev is None:
-            raise ValueError("No suitable fido2 smartcard found!")
+            raise NoSmartcardFound(_("No suitable fido2 smartcard found!"))
 
         self.dev = dev
         self.ctap = Ctap2(self.dev)

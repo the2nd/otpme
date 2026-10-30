@@ -304,6 +304,8 @@ class OTPmeSyncP1(OTPmeClient1):
 
             if status_code == status_codes.SITE_MAINTENANCE:
                 raise SiteMaintenance(response)
+            if status_code == status_codes.NO_MASTER_NODE:
+                raise NoMasterNode(response)
             if status_code == status_codes.PERMISSION_DENIED:
                 msg = _("Permission denied: {realm}/{site}")
                 msg = msg.format(realm=realm, site=site)
@@ -347,6 +349,8 @@ class OTPmeSyncP1(OTPmeClient1):
             binary_data = self.connection.send("get_sync_list", command_args)
             if status_code == status_codes.SITE_MAINTENANCE:
                 raise SiteMaintenance(response)
+            if status_code == status_codes.NO_MASTER_NODE:
+                raise NoMasterNode(response)
             if status_code == status_codes.PERMISSION_DENIED:
                 msg = _("Permission denied: {realm}/{site}")
                 msg = msg.format(realm=realm, site=site)
@@ -389,6 +393,8 @@ class OTPmeSyncP1(OTPmeClient1):
             status_code, \
             response, \
             binary_data = self.connection.send("get_last_used", command_args)
+            if status_code == status_codes.NO_MASTER_NODE:
+                raise NoMasterNode(response)
             if status_code == status_codes.PERMISSION_DENIED:
                 msg = _("Permission denied.")
                 raise PermissionDenied(msg)
@@ -537,6 +543,8 @@ class OTPmeSyncP1(OTPmeClient1):
         status_code, \
         remote_last_used, \
         binary_data = self.connection.send("get_peer_last_used", {})
+        if status_code == status_codes.NO_MASTER_NODE:
+            raise NoMasterNode(remote_last_used)
         if status_code == status_codes.PERMISSION_DENIED:
             msg = _("Permission denied.")
             raise PermissionDenied(msg)
@@ -620,13 +628,14 @@ class OTPmeSyncP1(OTPmeClient1):
                 refetch_versions, \
                 site_versions = taken_down_versions(realm, site,
                                                     noted_versions, raised)
-                if refetch_versions:
-                    log_msg = _("Our code reads newer object config versions than at the last sync, fetching their objects again: {realm}/{site}: {versions}", log=True)[1]
-                else:
+                # Said at info level where objects are fetched, and that
+                # is known once _sync_objects() has left out those that
+                # are at the version already (get_refetch_list()).
+                if not refetch_versions:
                     log_msg = _("Our code reads newer object config versions, but nothing was taken down for us: {realm}/{site}: {versions}", log=True)[1]
-                log_msg = log_msg.format(realm=realm, site=site,
-                                        versions=", ".join(raised))
-                self.logger.info(log_msg)
+                    log_msg = log_msg.format(realm=realm, site=site,
+                                            versions=", ".join(raised))
+                    self.logger.debug(log_msg)
         # Acquire sync lock.
         lock_id = f"sync_objects:{realm}/{site}"
         sync_lock = locking.acquire_lock(lock_type=LOCK_TYPE, lock_id=lock_id)
@@ -933,9 +942,17 @@ class OTPmeSyncP1(OTPmeClient1):
             refetch = get_refetch_list(realm, site, refetch_versions,
                                         local_sync_list,
                                         site_versions=site_versions)
+            if not refetch:
+                log_msg = _("Objects of newer config versions are at that version already: {realm}/{site}: {versions}", log=True)[1]
+                log_msg = log_msg.format(realm=realm, site=site,
+                                        versions=", ".join(refetch_versions))
+                self.logger.debug(log_msg)
             if refetch:
-                log_msg = _("Fetching objects again for newer config versions: {count}", log=True)[1]
-                log_msg = log_msg.format(count=len(refetch))
+                log_msg = _("Fetching {count} objects again for newer config versions: {realm}/{site}: {versions}", log=True)[1]
+                log_msg = log_msg.format(count=len(refetch),
+                                        realm=realm,
+                                        site=site,
+                                        versions=", ".join(refetch_versions))
                 self.logger.info(log_msg)
                 local_sync_list = {x: local_sync_list[x]
                                     for x in local_sync_list
@@ -1193,6 +1210,9 @@ class OTPmeSyncP1(OTPmeClient1):
                     # The peer went into maintenance while we were at it.
                     if status_code == status_codes.SITE_MAINTENANCE:
                         raise SiteMaintenance(response)
+                    # Or into a master node election.
+                    if status_code == status_codes.NO_MASTER_NODE:
+                        raise NoMasterNode(response)
                     if not status:
                         log_msg = _("Error receiving object {object_id}: {response}", log=True)[1]
                         log_msg = log_msg.format(object_id=object_id, response=response)
@@ -1688,7 +1708,20 @@ class OTPmeSyncP1(OTPmeClient1):
 
                 x_sort = lambda x: x_add_order[x]['path_len']
                 x_add_order_sorted = sorted(x_add_order, key=x_sort)
+                prev_path_len = None
                 for object_id in x_add_order_sorted:
+                    # Barrier: one level of the tree done before the next
+                    # starts. Sorted is not enough, the workers run side
+                    # by side: one still wrote a new unit while another
+                    # took the unit below it and found no parent ("missing
+                    # parent object") -- what a unit move makes, a whole
+                    # tree of new units at once.
+                    path_len = x_add_order[object_id]['path_len']
+                    if prev_path_len is not None and path_len != prev_path_len:
+                        if not _wait_until_drained(pushed):
+                            merge_aborted = True
+                            break
+                    prev_path_len = path_len
                     # Increase progress.
                     self.update_sync_progress(realm=realm,
                                             site=site,
@@ -1710,6 +1743,10 @@ class OTPmeSyncP1(OTPmeClient1):
 
                     if object_id.object_type == "ca":
                         update_realm_ca_data = True
+                # The levels still to come are never pushed, nor are
+                # the types after them.
+                if merge_aborted:
+                    break
 
             # All work queued — wait for the rest to finish.
             if not _wait_until_drained(pushed):
@@ -2040,24 +2077,37 @@ class OTPmeSyncP1(OTPmeClient1):
         # different site because this may be used to do some privilege
         # escalation (e.g. add a token with the same UUID as the realm
         # admin token).
-        current_uuid_object = backend.get_object(uuid=new_object.uuid)
+        #
+        # What we have of it is asked of the index and the object file,
+        # and not loaded: the copy here may name a unit that the sync
+        # replaced already (a unit moved away and back while this node
+        # was disabled), and loading it says so as a warning -- for an
+        # object that is about to be written anew, which is no error.
+        current_uuid_oid = backend.get_oid(new_object.uuid, instance=True)
+        current_uuid_config = None
+        if current_uuid_oid:
+            current_uuid_config = backend.read_config(current_uuid_oid,
+                                                    decrypt=False)
+        if not current_uuid_config:
+            current_uuid_oid = None
         # Check if the object is from an other site.
-        if current_uuid_object:
-            if current_uuid_object.site != new_object.site:
+        if current_uuid_oid:
+            if current_uuid_config.get('SITE') != new_object.site_uuid:
                 log_msg = _("Ignoring duplicate UUID: {new_object_uuid}: {current_uuid_object} <> {object_id}", log=True)[1]
-                log_msg = log_msg.format(new_object_uuid=new_object.uuid, current_uuid_object=current_uuid_object, object_id=object_id)
+                log_msg = log_msg.format(new_object_uuid=new_object.uuid, current_uuid_object=current_uuid_oid, object_id=object_id)
                 self.logger.warning(log_msg)
                 return "failed"
 
         # Skip new object that is older than the current one.
-        if current_uuid_object is not None:
+        if current_uuid_oid:
             if config.host_data['type'] == "node":
                 # Allow older object if its the own node. This is required
                 # because clusterd en-/disables the own node object.
                 if not sync_older_objects:
                     if realm == own_realm and site == own_site:
-                        if current_uuid_object.uuid != config.uuid:
-                            if current_uuid_object.last_modified > new_object.last_modified:
+                        if new_object.uuid != config.uuid:
+                            current_last_modified = current_uuid_config.get('LAST_MODIFIED') or 0
+                            if float(current_last_modified) > float(new_object.last_modified or 0):
                                 log_msg = _("Ignoring older object from peer: {object_id}", log=True)[1]
                                 log_msg = log_msg.format(object_id=object_id)
                                 self.logger.warning(log_msg)
@@ -2065,20 +2115,33 @@ class OTPmeSyncP1(OTPmeClient1):
 
         # Removed old object with different OID (e.g. object was
         # moved).
-        if current_uuid_object is not None:
-            if new_object.oid.full_oid != current_uuid_object.oid.full_oid:
-                # Make sure we update LDIF/nsscache.
+        if current_uuid_oid:
+            if new_object.oid.full_oid != current_uuid_oid.full_oid:
+                # Make sure we update LDIF/nsscache. A token has no unit,
+                # so loading it says nothing about one.
                 if new_object.type == "token":
-                    self.update_nsscache(current_uuid_object)
+                    current_token = backend.get_object(uuid=new_object.uuid)
+                    if current_token:
+                        self.update_nsscache(current_token)
                 # Delete old object.
-                backend.delete_object(current_uuid_object.oid)
+                backend.delete_object(current_uuid_oid)
 
-        # Get current object by OID.
-        current_oid_object = backend.get_object(object_id)
-
-        # Make sure we update LDIF/nsscache.
-        if current_oid_object and current_oid_object.type == "token":
-            self.update_nsscache(current_oid_object)
+        # Make sure we update LDIF/nsscache for the token that is here
+        # now. Only tokens are loaded for that: what sits at this OID may
+        # be another object of the same name that is replaced now -- a
+        # unit moved away and back while this node was disabled leaves
+        # the old units below with an old parent that the new one at its
+        # OID has replaced, and they cannot be loaded any more.
+        if object_id.object_type == "token":
+            try:
+                current_oid_object = backend.get_object(object_id)
+            except Exception as e:
+                current_oid_object = None
+                log_msg = _("Unable to load the object to be replaced: {object_id}: {e}", log=True)[1]
+                log_msg = log_msg.format(object_id=object_id, e=e)
+                self.logger.warning(log_msg)
+            if current_oid_object:
+                self.update_nsscache(current_oid_object)
 
         # Write object to backend.
         cluster = False
@@ -2143,7 +2206,7 @@ class OTPmeSyncP1(OTPmeClient1):
                         log_msg = _("Unable to add signer cache: {object_id}: {e}", log=True)[1]
                         log_msg = log_msg.format(object_id=object_id, e=e)
                         self.logger.critical(log_msg)
-        if current_uuid_object is None:
+        if current_uuid_oid is None:
             return "added"
         return "updated"
 

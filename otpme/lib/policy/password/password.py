@@ -13,6 +13,7 @@ except Exception:
 
 from otpme.lib import stuff
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib.spsc import SPSC
 from otpme.lib import otpme_acl
@@ -50,6 +51,9 @@ default_callback = config.get_callback()
 
 POLICY_TYPE = "password"
 BASE_POLICY_NAME = "password_strength"
+# The strength score a password needs when the policy names none. The
+# base policy of a site is created with the same.
+DEFAULT_MIN_SCORE = 2
 REGISTER_BEFORE = ['otpme.lib.policy.defaultpolicies.defaultpolicies']
 REGISTER_AFTER = []
 
@@ -367,7 +371,7 @@ class PasswordPolicy(Policy):
         self.require_uppercase = True
         self.strength_checker = config.default_pass_strength_checker
         self.strength_checker_enabled = True
-        #self.strength_checker_opts = {}
+        self.strength_checker_opts = {}
 
         self._sub_sync_fields = {
                     'host'  : {
@@ -606,20 +610,24 @@ class PasswordPolicy(Policy):
                 return callback.ok()
 
         if self.strength_checker == "spsc":
-            if "dict_order" not in self.strength_checker_opts:
-                return callback.error(_("Missing option 'dict_order'."))
-            if "min_score" not in self.strength_checker_opts:
-                return callback.error(_("Missing option 'min_score'."))
+            # A policy nobody set options on scores without dictionaries
+            # and wants the score the base policy of a site gets.
+            strength_checker_opts = dict(self.strength_checker_opts or {})
             # Get dictionaries in configured order.
             dict_order = []
             dictionaries = {}
-            for x in self.strength_checker_opts['dict_order']:
+            for x in strength_checker_opts.get('dict_order', []):
+                dict_name = x[0]
                 dict_uuid = x[1]
                 dict_obj = backend.get_object(uuid=dict_uuid)
                 if not dict_obj:
-                    msg = _("Unknown dictionary: {dict_uuid}")
-                    msg = msg.format(dict_uuid=dict_uuid)
-                    return callback.error(msg)
+                    # Deleted. Like a disabled one it is skipped, else no
+                    # password could be set until remove_orphans ran.
+                    log_msg = _("Policy {policy_name}: dictionary is gone, skipped: {dict_name}", log=True)[1]
+                    log_msg = log_msg.format(policy_name=self.name,
+                                            dict_name=dict_name)
+                    logger.warning(log_msg)
+                    continue
                 if not dict_obj.enabled:
                     continue
                 dictionaries[dict_obj.name] = {
@@ -627,12 +635,10 @@ class PasswordPolicy(Policy):
                                         'dict_type' : dict_obj.dictionary_type,
                                         }
                 dict_order.append(dict_obj.name)
-            # Get strength checker options.
-            strength_checker_opts = dict(self.strength_checker_opts)
             # Update dict order.
             strength_checker_opts['dict_order'] = dict_order
             # Get min score.
-            min_score = strength_checker_opts.pop('min_score')
+            min_score = strength_checker_opts.pop('min_score', DEFAULT_MIN_SCORE)
             # Check password strength.
             try:
                 spsc = SPSC(dictionaries=dictionaries,
@@ -641,10 +647,13 @@ class PasswordPolicy(Policy):
             except Exception as e:
                 return callback.error(str(e))
 
+            score = result['score']
             if return_result:
+                # test: the score alone does not say whether it is enough.
+                result['min_score'] = min_score
+                result['strong_enough'] = score >= min_score
                 return callback.ok(result)
 
-            score = result['score']
             if score_only:
                 return callback.ok(score)
 
@@ -1137,7 +1146,7 @@ class PasswordPolicy(Policy):
     def show_config(self, callback=default_callback, **kwargs):
         """ Show policy config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []
@@ -1186,7 +1195,7 @@ class PasswordPolicy(Policy):
         strength_checker_opts = []
         if self.verify_acl("view:strength_checker_opts") \
         or self.verify_acl("edit:strength_checker_opts"):
-            for o in self.strength_checker_opts:
+            for o in (self.strength_checker_opts or {}):
                 if o == "dict_order":
                     dict_order = []
                     for x in self.strength_checker_opts[o]:

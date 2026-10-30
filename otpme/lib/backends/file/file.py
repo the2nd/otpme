@@ -1726,7 +1726,9 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                         sql_like = sql_like.replace("_", "!_")
                     x_tuple.append(IndexObjectACL.value.like(sql_like, escape="!"))
                 else:
-                    x_tuple.append(IndexObjectACL.value.is_(x_val))
+                    # "=" and not is_(): "IS 'text'" is SQLite only,
+                    # PostgreSQL refuses it as a syntax error.
+                    x_tuple.append(IndexObjectACL.value == x_val)
             if x_tuple:
                 q = q.filter(IndexObject.acls.any(or_(*x_tuple)))
             else:
@@ -2143,20 +2145,25 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             all_acl_q = session.query(IndexObject)
             all_acl_q = all_acl_q.filter(IndexObject.uuid == x_uuid)
             all_acl_q = all_acl_q.join(IndexObjectACL, IndexObjectACL.ioid == IndexObject.id)
-            all_acl_q = all_acl_q.with_entities(IndexObjectACL.value)
+            all_acl_q = all_acl_q.with_entities(IndexObjectACL.value,
+                                                IndexObject.object_type)
             for x in all_acl_q.all():
                 x_raw_acl = x[0]
                 if x_raw_acl not in return_acls:
                     continue
                 # Decode ACL to get ACL ID.
                 _acl = otpme_acl.decode(x_raw_acl)
-                acl_id = _acl.apply_id
+                acl_ids = [_acl.apply_id]
+                # An ACL group: what it grants on an object of this type.
+                if _acl.aclgroup_uuid:
+                    acl_ids = otpme_acl.get_aclgroup_acls(_acl.aclgroup_uuid,
+                                                        x[1])
                 # Build list with ACLs.
                 try:
                     x_acls = matching_acls[x_uuid]
                 except Exception:
                     x_acls = []
-                x_acls.append(acl_id)
+                x_acls += acl_ids
                 matching_acls[x_uuid] = list(set(x_acls))
     else:
         # Query only requested attributes.
@@ -2422,7 +2429,7 @@ def index_dump(object_id=None, uuid=None, session=None, checksum_ready=False, **
         IndexObjectACL = get_class(object_id.object_type)
     except UnknownClass as err:
         msg = _("Unknown object class: {object_type}")
-        msg = msg.format(object_type=object_type)
+        msg = msg.format(object_type=object_id.object_type)
         raise OTPmeException(msg) from err
     result = {'read_oid':object_id.read_oid}
     q = session.query(IndexObject)
@@ -2528,7 +2535,7 @@ def index_restore(index_data, session=None, **kwargs):
         IndexObjectACL = get_class(object_id.object_type)
     except UnknownClass as err:
         msg = _("Unknown object class: {object_type}")
-        msg = msg.format(object_type=object_type)
+        msg = msg.format(object_type=object_id.object_type)
         raise OTPmeException(msg) from err
     # Build attributes.
     attributes = []

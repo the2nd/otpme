@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-scope show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [scope]'),
-                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show scope(s)'),
                                     '-a'                    : _('Show all scopes.'),
@@ -34,23 +34,23 @@ cmd_help = {
                                     '--sort-by <attribute>' : _('Sort output by <attribute>.'),
                                     '--raw'                 : _('Output table without any headers/borders.'),
                                     '--csv'                 : _('Output table as CSV.'),
-                                    '--csv-sep <separator>' : _('Output table as CSV.'),
+                                    '--csv-sep <separator>' : _('Separator between the CSV columns.'),
                                 },
                 },
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-scope list [--attribute attribute] [-a] [regex]'),
-                    'cmd'   :   '--attribute :attribute: -a :show_all=True: [search_regex]',
+                    'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List scopes'),
                                     '-a'                        : _('List all scopes.'),
-                                    '--attribute <attribute>'   : _('Output given attribute.'),
+                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.'),
                                 },
                 },
 
     'add'    : {
                     '_cmd_usage_help' : _('Usage: otpme-scope add {scope} [scope_id]'),
-                    'cmd'   :   '<|object|> [scope_id]',
+                    'cmd'   :   '<|object|> ["scope_id"]',
                     '_help' :   {
                                     'cmd'                   : _('Add new scope'),
                                 },
@@ -67,7 +67,7 @@ cmd_help = {
 
     'scope_id'    : {
                     '_cmd_usage_help' : _('Usage: otpme-scope scope_id {scope} {scope_id}'),
-                    'cmd'   :   '<|object|> <scope_id>',
+                    'cmd'   :   '<|object|> <"scope_id">',
                     '_help' :   {
                                     'cmd'                   : _('Change scope ID.'),
                                 },
@@ -76,9 +76,24 @@ cmd_help = {
 
     'get_config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-scope get_config {scope} {parameter}'),
-                    'cmd'   :   '<|object|> <parameter>',
+                    'cmd'   :   '<|object|> <"parameter">',
                     '_help' :   {
                                     'cmd'                   : _('Get config parameter.'),
+                                },
+                },
+    'show_oid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-scope show_oid [--full] {scope}'),
+                    'cmd'   :   '--full :full=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the OID of the object.'),
+                                    '--full'                : _('Show the full OID.'),
+                                },
+                },
+    'show_uuid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-scope show_uuid {scope}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the UUID of the object.'),
                                 },
                 },
     'changelog'    : {
@@ -90,7 +105,7 @@ cmd_help = {
                 },
     'edit_changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-scope edit_changelog {scope} {entry_id} {comment}'),
-                    'cmd'   :   '<|object|> <entry_id> <comment>',
+                    'cmd'   :   '<|object|> <entry_id> <"comment">',
                     '_help' :   {
                                     'cmd'                   : _('Edit changelog entry comment.'),
                                 },
@@ -118,6 +133,14 @@ cmd_help = {
                                 },
                 },
 
+    'auto_disable'          : {
+                    '_cmd_usage_help' : _('Usage: otpme-scope auto_disable {scope} {time}'),
+                    'cmd'   :   '<|object|> <auto_disable>',
+                    '_help' :   {
+                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023", 0 removes it).'),
+                                },
+                },
+
     'enable'    : {
                     '_cmd_usage_help' : _('Usage: otpme-scope enable {scope}'),
                     'cmd'   :   '<|object|>',
@@ -136,7 +159,7 @@ cmd_help = {
 
     'rename'    : {
                     '_cmd_usage_help' : _('Usage: otpme-scope rename {scope} {new_name}'),
-                    'cmd'   :   '<|object|> <new_name>',
+                    'cmd'   :   '<|object|> <"new_name">',
                     '_help' :   {
                                     'cmd'                   : _('Rename scope'),
                                 },
@@ -144,7 +167,7 @@ cmd_help = {
 
      'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-scope config -d -a {scope} {param} [value]'),
-                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to scope.'),
                                     '-a'                    : _('Append value to config parameter.'),
@@ -154,7 +177,7 @@ cmd_help = {
 
     'show_config'      : {
                     '_cmd_usage_help' : _('Usage: otpme-scope show_config {scope} [parameter]'),
-                    'cmd'   :   '<|object|> [parameter]',
+                    'cmd'   :   '<|object|> ["parameter"]',
                     '_help' :   {
                                     'cmd'                   : _('Show scope config parameters'),
                                 },
@@ -218,7 +241,7 @@ cmd_help = {
 
     'add_acl'   : {
                     '_cmd_usage_help' : _('Usage: otpme-scope add_acl {scope} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
+                    'cmd'   :   '<|object|> <"owner_type"> <"owner_name"> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to scope'),
                                 },
@@ -259,7 +282,7 @@ cmd_help = {
 
     'move'    : {
                     '_cmd_usage_help' : _('Usage: otpme-scope move [--keep-acls] {scope} {unit}'),
-                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <new_unit>',
+                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <"new_unit">',
                     '_help' :   {
                                     'cmd'                   : _('Change scope\'s unit'),
                                     '--keep-acls'           : _('Keep object ACLs.'),
@@ -278,7 +301,7 @@ cmd_help = {
 
     'description'    : {
                     '_cmd_usage_help' : _('Usage: otpme-scope description {scope} [description]'),
-                    'cmd'   :   '<|object|> [description]',
+                    'cmd'   :   '<|object|> ["description"]',
                     '_help' :   {
                                     'cmd'                   : _('Set scope description'),
                                 },
@@ -286,7 +309,7 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-scope info {scope} [info]'),
-                    'cmd'   :   '--language :language: <|object|> [info]',
+                    'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set scope info'),
                                     '--language <lang>'     : _('Change info for language.'),
@@ -295,7 +318,7 @@ cmd_help = {
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-scope dump_info {scope}'),
-                    'cmd'   :   '--language :language: <|object|>',
+                    'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump scope info'),
                                     '--language <lang>'     : _('Dump info for language.'),
@@ -307,10 +330,6 @@ cmd_help = {
     #            },
 
     #'_list_valid_attributes'    : {
-    #                'cmd'   :   '<|object|>',
-    #            },
-
-    #'_show_attributes'    : {
     #                'cmd'   :   '<|object|>',
     #            },
 
@@ -336,7 +355,7 @@ cmd_help = {
 
     'export'    : {
                     '_cmd_usage_help' : _('Usage: otpme-scope export --password <password> {scope}'),
-                    'cmd'   :   '--password :password: <|object|>',
+                    'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export scope config to stdout'),
                                     '--password <password>' : _('Encrypt object config with password.'),
@@ -345,7 +364,7 @@ cmd_help = {
 
     'add_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-scope add_policy {scope} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add policy to scope'),
                                 },
@@ -353,7 +372,7 @@ cmd_help = {
 
     'remove_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-scope remove_policy {scope} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove policy from scope'),
                                 },
@@ -361,7 +380,7 @@ cmd_help = {
 
     'list_tokens'   : {
                     '_cmd_usage_help' : _('Usage: otpme-scope list_tokens {scope}'),
-                    'cmd'   :   '--return-type :return_type: --token-types :[token_types]: [|object|]',
+                    'cmd'   :   '--return-type :"return_type": --token-types :[token_types]: [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List assigned tokens.'),
                                     '--return-type'             : _('Attribute to return.'),
@@ -376,8 +395,8 @@ cmd_help = {
                                 },
                 },
     'list_policies'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-scope list_policies {scope}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-scope list_policies [--return-type <type>] [--policy-types <type1,type2>] {scope}'),
+                    'cmd'   :   '--return-type :"return_type": --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -398,7 +417,7 @@ cmd_help = {
 
     'add_role'   : {
                     '_cmd_usage_help' : _('Usage: otpme-scope add_role {scope} {role}'),
-                    'cmd'   :   '<|object|> <role_name>',
+                    'cmd'   :   '<|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add role to scope.'),
                                 },
@@ -406,7 +425,7 @@ cmd_help = {
 
     'remove_role'   : {
                     '_cmd_usage_help' : _('Usage: otpme-scope remove_role {scope} {role}'),
-                    'cmd'   :   '<|object|> <role_name>',
+                    'cmd'   :   '<|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove role from scope.'),
                                 },
@@ -414,7 +433,7 @@ cmd_help = {
 
     'add_token'   : {
                     '_cmd_usage_help' : _('Usage: otpme-scope add_token {scope} {token}'),
-                    'cmd'   :   '<|object|> <token_path>',
+                    'cmd'   :   '<|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Add token to scope.'),
                                 },
@@ -422,7 +441,7 @@ cmd_help = {
 
     'remove_token'   : {
                     '_cmd_usage_help' : _('Usage: otpme-scope remove_token {scope} {token}'),
-                    'cmd'   :   '<|object|> <token_path>',
+                    'cmd'   :   '<|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Remove token from scope.'),
                                 },
@@ -430,7 +449,7 @@ cmd_help = {
 
     'add_client'   : {
                     '_cmd_usage_help' : _('Usage: otpme-scope add_client {scope} {client}'),
-                    'cmd'   :   '<|object|> <client_name>',
+                    'cmd'   :   '<|object|> <"client_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add client to scope.'),
                                 },
@@ -438,7 +457,7 @@ cmd_help = {
 
     'remove_client'   : {
                     '_cmd_usage_help' : _('Usage: otpme-scope remove_client {scope} {client}'),
-                    'cmd'   :   '<|object|> <client_name>',
+                    'cmd'   :   '<|object|> <"client_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove client from scope.'),
                                 },
@@ -454,7 +473,7 @@ cmd_help = {
 
     'add_group'   : {
                     '_cmd_usage_help' : _('Usage: otpme-scope add_group {scope} {group}'),
-                    'cmd'   :   '<|object|> <group_name>',
+                    'cmd'   :   '<|object|> <"group_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add group to scope (whitelist for OIDC groups claim).'),
                                 },
@@ -462,7 +481,7 @@ cmd_help = {
 
     'remove_group'   : {
                     '_cmd_usage_help' : _('Usage: otpme-scope remove_group {scope} {group}'),
-                    'cmd'   :   '<|object|> <group_name>',
+                    'cmd'   :   '<|object|> <"group_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove group from scope.'),
                                 },

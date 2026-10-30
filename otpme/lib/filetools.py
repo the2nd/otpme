@@ -370,7 +370,15 @@ def create_dir(path, user=None, group=True,
     for i in path.split("/"):
         directory = f'/{"/".join(path.split("/")[1:count])}'
         if not os.path.exists(directory):
-            os.mkdir(directory)
+            # Another process may create it between the check and here,
+            # e.g. sync workers writing objects into the same new
+            # directory. That is what we wanted, so on with the next part.
+            # Raised, the rest of the path was never created.
+            try:
+                os.mkdir(directory)
+            except FileExistsError:
+                count += 1
+                continue
             # Set ownership.
             set_fs_ownership(path=directory,
                             user=user,

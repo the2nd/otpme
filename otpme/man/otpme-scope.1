@@ -95,6 +95,21 @@ With a scope named, this prints the object itself instead of a table row: its sc
 A reference to an object that is gone is printed as the bare UUID, which is how
 .B remove_orphans
 has something to find.
+.na
+.nh
+.TP
+.B show_oid \fR[\fB\-\-full\fR] \fIscope\fR
+Show the OID of the scope: \fB\%scope|<realm>/<site>/<name>\fR.
+With \fB\-\-full\fR the full OID, which names the unit as well: \fB\%scope|<realm>/<site>/<unit_path>/<name>\fR.
+.br
+Needs the ACL \fBview_public:object\fR.
+.TP
+.B show_uuid \fIscope\fR
+Show the UUID of the scope.
+.br
+Needs the ACL \fBview_public:object\fR.
+.hy
+.ad
 .TP
 .B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
 List the scope names, and with a regex only those that match it.
@@ -127,12 +142,10 @@ Needs the ACL \fBrename:object\fR.
 .TP
 .B move \fR[\fB\-\-keep\-acls\fR] \fIscope\fR \fIunit\fR
 Move the scope into another unit.
-Its ACLs move with it: the default ACLs of the old unit are taken away and those of the new one are applied.
-\fB\-\-keep\-acls\fR leaves the ACLs of the scope as they are.
-.br
-A scope does not inherit ACLs by default, see
+Its ACLs stay as they are, unless
 .B enable_acl_inheritance
-below.
+(below) was switched on for it: then the default ACLs of the old unit are taken away and those of the new one are applied.
+\fB\-\-keep\-acls\fR leaves the ACLs of the scope as they are in any case.
 .TP
 .B scope_id \fIscope\fR \fIscope_id\fR
 Set the name the application sends for this scope, see \fBTHE SCOPE ID\fR.
@@ -143,6 +156,17 @@ Needs the ACL \fBedit:scope_id\fR.
 Re-index the object to fix potential index problems.
 .br
 Needs the ACL \fBtouch\fR.
+.TP
+.B auto_disable \fIscope\fR \fItime\fR
+Set auto\-disable time.
+It is either a relative time with a leading \fB+\fR, e.g. \fB+30D\fR, or an absolute one, e.g. \fB"09:53 13.06.2023"\fR.
+The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
+.BR otpme (7).
+A relative time counts from when it is set, and again from when the scope is enabled.
+\fB0\fR removes it.
+It is refused for an object the realm or a site comes with, e.g. the admin user; a time set on one before does nothing.
+.br
+Needs the ACL \fBedit:auto_disable\fR.
 .SS Who May Hand the Scope Out
 A token is named by its path, \fIuser\fB/\fItoken\fR.
 A role is named by its name, which is looked for in the site of the scope, or as \fIsite\fB/\fIrole\fR to take one from another site of the realm.
@@ -258,7 +282,8 @@ This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
 has to allow it (see \fBotpme\fR(7)).
 It is true by default, but where no value is found at all, clearing is refused.
-OTPme asks the token you are signed in with first, then the object.
+A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 .SS Policy Management
 A \fIpolicy\fR is the name of a policy, not a path.
 It is looked for in the site of the scope.
@@ -280,7 +305,7 @@ Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR d
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
 .B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIscope\fR
-List the policies attached to the scope.
+List the policies attached to the scope, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
 .br
@@ -295,8 +320,10 @@ What the three forms \fBacl\fR, \fB+acl\fR and \fB++acl\fR mean, and which ACLs 
 .B add_acl \fIscope\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
 Give a role or a token one or more ACLs on this scope.
 .br
-\fIowner_type\fR is \fBrole\fR or \fBtoken\fR, and \fIowner\fR the path of that role or token.
-An ACL may carry a value, for example \fBview:clients\fR, and several are separated by commas.
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
+\fIowner\fR is the path of that role or token.
+An ACL can carry a value, for example \fBview:clients\fR.
+To give several ACLs at once, separate them with commas: \fB\%view:clients,view:status\fR.
 .br
 Needs the ACL \fBadd:acl\fR.
 .TP
@@ -312,23 +339,23 @@ Show the ACLs that lie on this scope, i.e. who may do what with it.
 Needs the ACL \fBview:acl\fR.
 .TP
 .B enable_acl_inheritance \fIscope\fR
-Let the scope inherit the default ACLs of the unit above it.
+Let a move of the scope swap its default ACLs: what the old unit handed down is taken away, and what the new unit hands down is given.
+It does not by default; a move then leaves the ACLs of the scope as they are.
 .RS
 .PP
-A scope does not, and that is on purpose: whoever may change a unit full of other objects should not get a say over who may hand out a scope by that alone.
+Only a move asks this.
+A new scope gets the default ACLs of its unit, and \fBadd_acl \-a\fR or \fB\-r\fR on a unit reach it either way.
+A move with \fB\-\-keep\-acls\fR leaves its ACLs alone all the same.
 .PP
-Only default ACLs are inherited.
-An ordinary ACL on the unit never is.
-.PP
-Moving the scope into another unit then takes away the default ACLs of the old unit and applies those of the new one.
-While inheritance is off, a move leaves the ACLs of the scope as they are.
+A move by somebody who does not hold \fBadd:acl\fR and \fBdelete:acl\fR on the scope leaves its ACLs alone as well, and says so.
+Otherwise moving an object into a unit would be a way of handing yourself the default ACLs of that unit.
 .PP
 Needs the ACL \fBenable:acl_inheritance\fR.
 .RE
 .TP
 .B disable_acl_inheritance \fIscope\fR
-Stop inheriting them.
-Only the ACLs on the scope itself count from then on.
+A move leaves the ACLs of the scope as they are again.
+.br
 Needs the ACL \fBdisable:acl_inheritance\fR.
 .SS Configuration
 A config parameter is looked for on the scope, then on the units above it, then on the site.
@@ -607,6 +634,25 @@ The service desk may change the group list of this one scope, and nothing else a
 .TP
 .B otpme-scope remove_orphans profile
 Clear out the applications and tokens that were deleted since.
+.\" BEGIN AUTH ON ACTION HOOKS
+.\" Generated by update_hooks_man.py. Do not edit, the next run
+.\" overwrites it.
+.SH AUTH ON ACTION HOOKS
+An auth on action policy can ask for a login again before these actions.
+See
+.B Auth On Action Policy
+in
+.BR otpme\-policy (1).
+A scope has the hooks every object type has, and these:
+.RS
+.PP
+.na
+.nh
+add_client, add_group, add_role, add_token, remove_client, remove_group, remove_role, remove_token, set_config_parameter.
+.hy
+.ad
+.RE
+.\" END AUTH ON ACTION HOOKS
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),

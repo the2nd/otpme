@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-policy show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [policy]'),
-                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :output_fields: -z :max_len: -a :show_all=True: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: -a :show_all=True: [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show policies.'),
                                     '-a'                    : _('Show all policies.'),
@@ -35,7 +35,7 @@ cmd_help = {
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-policy list [regex]'),
-                    'cmd'   :   '[search_regex]',
+                    'cmd'   :   '["search_regex"]',
                     '_help' :   {
                                     'cmd'                   : _('List policies.'),
                                 },
@@ -75,7 +75,7 @@ cmd_help = {
 
     'rename'    : {
                     '_cmd_usage_help' : _('Usage: otpme-policy rename {policy} {new_name}'),
-                    'cmd'   :   '<|object|> <new_name>',
+                    'cmd'   :   '<|object|> <"new_name">',
                     '_help' :   {
                                     'cmd'                   : _('Rename policy.'),
                                 },
@@ -83,9 +83,24 @@ cmd_help = {
 
     'get_config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-policy get_config {policy} {parameter}'),
-                    'cmd'   :   '<|object|> <parameter>',
+                    'cmd'   :   '<|object|> <"parameter">',
                     '_help' :   {
                                     'cmd'                   : _('Get config parameter.'),
+                                },
+                },
+    'show_oid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy show_oid [--full] {policy}'),
+                    'cmd'   :   '--full :full=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the OID of the object.'),
+                                    '--full'                : _('Show the full OID.'),
+                                },
+                },
+    'show_uuid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy show_uuid {policy}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the UUID of the object.'),
                                 },
                 },
     'changelog'    : {
@@ -97,7 +112,7 @@ cmd_help = {
                 },
     'edit_changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-policy edit_changelog {policy} {entry_id} {comment}'),
-                    'cmd'   :   '<|object|> <entry_id> <comment>',
+                    'cmd'   :   '<|object|> <entry_id> <"comment">',
                     '_help' :   {
                                     'cmd'                   : _('Edit changelog entry comment.'),
                                 },
@@ -119,7 +134,7 @@ cmd_help = {
 
     'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-policy config -d -a {policy} {param} [value]'),
-                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to policy.'),
                                     '-a'                    : _('Append value to config parameter.'),
@@ -129,7 +144,7 @@ cmd_help = {
 
     'show_config'      : {
                     '_cmd_usage_help' : _('Usage: otpme-policy show_config {policy} [parameter]'),
-                    'cmd'   :   '<|object|> [parameter]',
+                    'cmd'   :   '<|object|> ["parameter"]',
                     '_help' :   {
                                     'cmd'                   : _('Show policy config parameters.'),
                                 },
@@ -137,7 +152,7 @@ cmd_help = {
 
     'add_acl'   : {
                     '_cmd_usage_help' : _('Usage: otpme-policy add_acl {policy} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
+                    'cmd'   :   '<|object|> <"owner_type"> <"owner_name"> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to policy.'),
                                 },
@@ -178,7 +193,7 @@ cmd_help = {
 
     'move'    : {
                     '_cmd_usage_help' : _('Usage: otpme-policy move [--keep-acls] {policy} {unit}'),
-                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <new_unit>',
+                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <"new_unit">',
                     '_help' :   {
                                     'cmd'                   : _('Change policy\'s unit.'),
                                     '--keep-acls'           : _('Keep object ACLs.')
@@ -188,7 +203,7 @@ cmd_help = {
 
     'description'    : {
                     '_cmd_usage_help' : _('Usage: otpme-policy description {policy} [description]'),
-                    'cmd'   :   '<|object|> [description]',
+                    'cmd'   :   '<|object|> ["description"]',
                     '_help' :   {
                                     'cmd'                   : _('Set policy description.'),
                                 },
@@ -196,7 +211,7 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-policy info {policy} [info]'),
-                    'cmd'   :   '--language :language: <|object|> [info]',
+                    'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set policy info'),
                                     '--language <lang>'     : _('Change info for language.'),
@@ -205,7 +220,7 @@ cmd_help = {
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-policy dump_info {policy}'),
-                    'cmd'   :   '--language :language: <|object|>',
+                    'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump policy info'),
                                     '--language <lang>'     : _('Dump info for language.'),
@@ -217,10 +232,6 @@ cmd_help = {
                 },
 
     '_list_valid_attributes'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_attributes'    : {
                     'cmd'   :   '<|object|>',
                 },
 
@@ -246,16 +257,24 @@ cmd_help = {
 
     'export'    : {
                     '_cmd_usage_help' : _('Usage: otpme-policy export --password <password> {policy}'),
-                    'cmd'   :   '--password :password: <|object|>',
+                    'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export policy config to stdout.'),
                                     '--password <password>' : _('Encrypt object config with password.'),
                                 },
                 },
 
+    'remove_orphans'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy remove_orphans {policy}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove orphan UUIDs'),
+                                },
+                },
+
     'add_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-policy add_policy {policy} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add policy to policy.'),
                                 },
@@ -263,14 +282,14 @@ cmd_help = {
 
     'remove_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-policy remove_policy {policy} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove policy from policy.'),
                                 },
                 },
     'list_policies'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-policy list_policies {policy}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-policy list_policies [--return-type <type>] [--policy-types <type1,type2>] {policy}'),
+                    'cmd'   :   '--return-type :"return_type": --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

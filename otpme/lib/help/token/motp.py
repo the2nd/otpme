@@ -28,7 +28,7 @@ cmd_help = {
 
     'secret'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token secret {token} [secret]'),
-                    'cmd'   :   '<|object|> [secret]',
+                    'cmd'   :   '<|object|> ["secret"]',
                     '_help' :   {
                                     'cmd'                   : _('Change token secret.'),
                                 },
@@ -100,10 +100,6 @@ cmd_help = {
                 },
 
     '_list_card_types'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_list_otp_formats'    : {
                     'cmd'   :   '<|object|>',
                 },
     }

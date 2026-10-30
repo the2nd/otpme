@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'    : {
                     '_cmd_usage_help' : _('Usage: otpme-inventory show {host}'),
-                    'cmd'   :   '<host>',
+                    'cmd'   :   '<"host">',
                     '_help' :   {
                                     'cmd'                       : _('Show the system, kernel and OTPme version of a host, whether it waits for a reboot and how many packages it has.'),
                                 },
@@ -30,7 +30,7 @@ cmd_help = {
 
     'packages'    : {
                     '_cmd_usage_help' : _('Usage: otpme-inventory packages [--filter <pattern>] {host}'),
-                    'cmd'   :   '--filter :package_filter: <host>',
+                    'cmd'   :   '--filter :"package_filter": <"host">',
                     '_help' :   {
                                     'cmd'                       : _('List the packages of a host.'),
                                     '--filter <pattern>'        : _('Only packages whose name matches (e.g. "python3-*").'),
@@ -39,7 +39,7 @@ cmd_help = {
 
     'hardware'    : {
                     '_cmd_usage_help' : _('Usage: otpme-inventory hardware {host}'),
-                    'cmd'   :   '<host>',
+                    'cmd'   :   '<"host">',
                     '_help' :   {
                                     'cmd'                       : _('Show the hardware of a host.'),
                                 },
@@ -47,7 +47,7 @@ cmd_help = {
 
     'search'    : {
                     '_cmd_usage_help' : _('Usage: otpme-inventory search [--host <host>] [--os-version <version>] [--kernel <kernel>] [--otpme-version <version>] [--reboot-required] [--hardware <expression>] [--upgradable] [package]'),
-                    'cmd'   :   '--host :host: --os-version :os_version: --kernel :kernel: --otpme-version :otpme_version: --reboot-required :reboot_required=True: --hardware :hardware: --upgradable :upgradable=True: [package]',
+                    'cmd'   :   '--host :"host": --os-version :"os_version": --kernel :"kernel": --otpme-version :"otpme_version": --reboot-required :reboot_required=True: --hardware :"hardware": --upgradable :upgradable=True: ["package"]',
                     '_help' :   {
                                     'cmd'                       : _('Search hosts by package (e.g. openssl, "openssl=3.0.*"), OS version, kernel, OTPme version, reboot or hardware.'),
                                     '--upgradable'              : _('Only packages of which the system of the host offers a newer version.'),
@@ -70,7 +70,7 @@ cmd_help = {
 
     'available'    : {
                     '_cmd_usage_help' : _('Usage: otpme-inventory available [--host <host>] [--os-version <version>] [--arch <arch>] {package}'),
-                    'cmd'   :   '--host :host: --os-version :os_version: --arch :arch: <package>',
+                    'cmd'   :   '--host :"host": --os-version :"os_version": --arch :"arch": <"package">',
                     '_help' :   {
                                     'cmd'                       : _('List the packages a system offers (e.g. openssl, "python3-*").'),
                                     '--host <host>'             : _('The system of this host, with the version installed there.'),

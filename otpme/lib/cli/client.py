@@ -211,7 +211,7 @@ def row_getter(realm, site, client_order, client_data, acls,
                 role_status_string = ""
                 if not role_enabled:
                     role_status_string = " (D)"
-                role_string = f"{role_name} ({role_site}) {role_status_string}"
+                role_string = f"{role_name} ({role_site}){role_status_string}"
                 member_roles.append(role_string)
 
                 processed_roles = len(member_roles)
@@ -300,7 +300,7 @@ def row_getter(realm, site, client_order, client_data, acls,
                 scope_status_string = ""
                 if not scope_enabled:
                     scope_status_string = " (D)"
-                scope_string = f"{scope_name} {scope_status_string}"
+                scope_string = f"{scope_name}{scope_status_string}"
                 member_scopes.append(scope_string)
 
                 processed_scopes = len(member_scopes)

@@ -24,7 +24,21 @@ hierarchy (e.g., alice, bob, it/admin_user).
 Create a new user account. It gets a default token, whose name and type
 come from **default_token_name** and **default_token_type** (see
 **otpme**(7)) unless **--default-token** or **--default-token-type**
-says otherwise. **--no-default-token** creates the user without one.
+says otherwise. **--no-default-token** creates the user without one.  
+The secret and the PIN of the new default token, or the password it made
+up, are shown only with the right ACLs on that token:
+**view:initial_secret** and **view:initial_pin**. Who may add users does
+not get them by that alone. To let the role **helpdesk** see them for
+new users of the unit **linux/users**, add the ACLs to that unit:
+
+    otpme-unit add_acl linux/users role helpdesk ++token:view:initial_secret
+    otpme-unit add_acl linux/users role helpdesk ++token:view:initial_pin
+
+They only count when the token is added, so the role does not see the
+secret later. The ACL group **usermanager** holds both, see
+**otpme-aclgroup**(1). Without them, give the user a way in with a
+temporary password, see **temp_password** in **otpme-token**(1). More in
+**otpme-token**(1) under **add**.
 
 **del \[**--no-trash**\] *user* \[*user* ...\]**  
 Delete one or more user accounts. The user and their tokens go to the
@@ -32,12 +46,33 @@ trash, from where **otpme-trash**(1) can bring them back. **--no-trash**
 deletes them right away instead.
 
 **show \[*user*\]**  
-Display user information. Without arguments, shows all users.
+Display user information. Without arguments, shows all users.  
+With a user it shows the fields of the user and a table of its tokens. A
+field you may not see shows **-**. The tokens are shown as with
+**otpme-token show**: what you see of each token depends on your ACLs on
+it, and a token you have no ACL on is left out.
 
-**list \[**-a**\] \[**--attribute** *ATTR*\] \[*regex*\]**  
+<!-- -->
+
+**show_oid \[**--full**\] *user***  
+Show the OID of the user: **user\|\<realm\>/\<name\>**. With **--full**
+the full OID, which names the site and unit as well:
+**user\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
+Needs the ACL **view_public:object**.
+
+**show_uuid *user***  
+Show the UUID of the user.  
+Needs the ACL **view_public:object**.
+
+<!-- -->
+
+**list \[**-a**\] \[**-t**\] \[**--attribute** *ATTR*\] \[*regex*\]**  
 List the users, and with a regex only those whose name matches it.  
 You get the users you may change; **-a** adds those you may only look
-at. **--attribute** shows the given attribute instead of the name.
+at. **-t** lists the user templates instead. Without **-a** these are
+the templates you may change or have **use** on, i.e. the ones you may
+give to **add --template**. **--attribute** shows the given attribute
+instead of the name.
 
 **enable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *user***  
 Enable a disabled user account.
@@ -78,8 +113,12 @@ Re-index the object to fix potential index problems.
 Set auto-disable time. It is either a relative time with a leading
 **+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
 The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
-**otpme**(7). Use **-u** to disable the user if they were not used for
-the given time.
+**otpme**(7). A relative time counts from when it is set, and again from
+when the user is enabled. **0** removes it. It is refused for a user the
+realm or a site comes with, e.g. the admin; a time set on one before
+does nothing. Use **-u** to disable the user once they were unused for
+the given time. That takes a relative time; a user who was never used
+counts from when this was set.
 
 **enable_auto_mount *user***  
 Enable auto-mount for user.
@@ -115,7 +154,10 @@ Tokens are managed from the token side; see **otpme-token**(1).
 
 **group *user* *group***  
 Change the user's default group. (A user is added to further groups from
-the group side; see **otpme-group**(1).)
+the group side; see **otpme-group**(1).)  
+For a template, **""** takes its group away: a user made from it then
+gets the group a policy or the site gives. A user that is no template
+always has a group.
 
 **find_groups \[**--return-type** *TYPE*\] \[*user*\]**  
 Find groups the user belongs to. Use **--return-type** to select the
@@ -152,10 +194,11 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *user***  
-List the policies attached to the user. Use **--return-type** to select
-the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
-Use **--policy-types** to list only policies of the given types; these
-are policy types, not policy names.  
+List the policies attached to the user, the disabled ones too, marked
+**(disabled)**. Use **--return-type** to select the attribute returned
+(**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
+to list only policies of the given types; these are policy types, not
+policy names.  
 Needs the ACL **view:policies**.
 
 ## User Configuration
@@ -500,11 +543,11 @@ first, which asks the client for the key password; without **-n** you
 get the stored, still encrypted form. In client key mode you get what
 the client put there.  
 Dumping the private key needs the ACL **dump:sign_private_key**, the
-public one **dump:sign_public_key**. The user themselves needs neither.
+user themselves does not need it. The public key needs no ACL.
 
 **dump_encrypt_key \[**-p**\] \[**-n**\] \[**--stdin-pass**\] *user***  
-The same for the encrypt key, with the ACLs **dump:encrypt_private_key**
-and **dump:encrypt_public_key**. Options as for **dump_sign_key**.
+The same for the encrypt key, with the ACL **dump:encrypt_private_key**.
+Options as for **dump_sign_key**.
 
 **find_signatures \[**--return-type** *TYPE*\] \[**--object-types** *t1,t2*\] \[*user*\]**  
 Find the objects the user has signed. Signing writes the signer into the
@@ -546,8 +589,8 @@ Remove every entry of the changelog.
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
-refused. OTPme asks the token you are signed in with first, then the
-object.
+refused. A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 
 ## ACL Management
 
@@ -563,10 +606,12 @@ skips the question.
 A user holds no ACLs of their own, so there is no **find_acls** here.
 Their tokens do; see **otpme-token**(1).
 
-**add_acl \[**-r**\] \[**-a**\] *user* *owner_type* *owner* *acl*\[**:***value*\]**  
-Give a role or a token an ACL on this user.  
-*owner_type* is **role** or **token**, and *owner* the path of that role
-or token. An ACL may carry a value, e.g. **edit:password**.  
+**add_acl \[**-r**\] \[**-a**\] *user* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
+Give a role or a token one or more ACLs on this user.  
+*owner_type* is **role** or **token**. *owner* is the path of that role
+or token. An ACL can carry a value, for example **edit:password**. To
+give several ACLs at once, separate them with commas:
+**edit:password,view:status**.  
 **-r** adds the ACL to the tokens of the user as well. **-a** applies
 the default ACLs of the user to the tokens it already has.  
 Needs the ACL **add:acl**.
@@ -584,22 +629,26 @@ Show the ACLs that lie on this user, i.e. who may do what with them.
 Needs the ACL **view:acl**.
 
 **enable_acl_inheritance *user***  
-Let the user inherit the default ACLs of the unit above them. They do
-not by default.
+Let a move of the user swap their default ACLs: what the old unit handed
+down is taken away, and what the new unit hands down is given. They do
+not by default; a move then leaves the ACLs of the user as they are.
 
-Only default ACLs are inherited. An ordinary ACL on the unit never is.
-
-Moving a user into another unit is the one place that asks something
-else as well: an admin user gets neither the default ACLs of the new
-unit nor loses those of the old one. A user counts as admin when one of
-their tokens is the admin token of the site or is in the site admin role
+Only a move asks this. A new user gets the default ACLs of their unit,
+and **add_acl -a** or **-r** on a unit reach them either way. A move
+with **--keep-acls** leaves their ACLs alone all the same, and so does a
+move of an admin user. A user counts as admin when one of their tokens
+is the admin token of the site or is in the site admin role
 **SITE_ADMIN**.
+
+A move by somebody who does not hold **add:acl** and **delete:acl** on
+the user leaves their ACLs alone as well, and says so. Otherwise moving
+an object into a unit would be a way of handing yourself the default
+ACLs of that unit.
 
 Needs the ACL **enable:acl_inheritance**.
 
 **disable_acl_inheritance *user***  
-Stop inheriting them. Only the ACLs on the user itself count from then
-on.  
+A move leaves the ACLs of the user as they are again.  
 Needs the ACL **disable:acl_inheritance**.
 
 ## LDAP Integration
@@ -730,8 +779,16 @@ Make the new user a template, i.e. an object to create other users from.
 A template gets no default token.
 
 **--template *NAME***  
-Create the user from that template. It cannot be used together with
-**-t**: a template is not made from a template.
+Create the user from that template. Needs **use** on the template. The
+user then gets the group of the template without
+**add:default_group_user** on the group. It cannot be used together with
+**-t**: a template is not made from a template. Without it, the user is
+created from the template an **objecttemplates** policy of the unit
+names, if there is one (see **otpme-policy**(1)).
+
+**--no-template**  
+Create the user without a template, also where an **objecttemplates**
+policy names one. It cannot be used together with **--template**.
 
 **--attributes *ATTR1=VAL1,ATTR2=VAL2***  
 Give the new user these LDAP attributes right away, instead of setting
@@ -825,9 +882,10 @@ as in **list --attribute enabled True**.
 **--keep-acls**  
 Of **move**: leave the ACLs of the user alone.  
 Without it a move removes the default ACLs of the old unit and applies
-those of the new one. That does not happen for a user who inherits no
-ACLs, for an admin user, or where you may not add and remove ACLs on the
-user.
+those of the new one, if ACL inheritance is on for the user, see
+**enable_acl_inheritance**. It is off by default. That does not happen
+for an admin user either, or where you may not add and remove ACLs on
+the user.
 
 **--password *PASS***  
 Of **export**: the password the exported object is encrypted with. With
@@ -1004,6 +1062,30 @@ Create a user template for developers
 
 **otpme-user add --template developer_template bob**  
 Create bob using the developer template
+
+**otpme-user add_acl developer_template role helpdesk use**  
+Let the role **helpdesk** create users from the developer template. They
+get its group, also where the role may not put users into that group
+itself.
+
+# AUTH ON ACTION HOOKS
+
+An auth on action policy can ask for a login again before these actions.
+See **Auth On Action Policy** in **otpme-policy**(1). A user has the
+hooks every object type has, and these:
+
+> add_photo, add_token, change_agent_script, change_auth_script,
+> change_encrypt_private_key, change_encrypt_public_key, change_group,
+> change_key_cache_time, change_key_pass, change_key_script,
+> change_login_script, change_sign_private_key, change_sign_public_key,
+> decrypt, del_keys, del_photo, del_token, deploy_token,
+> disable_admin_access, disable_auth_script, disable_auto_mount,
+> disable_autosign, disable_disabled_login, disable_key_caching,
+> disable_login_script, dump_photo, enable_admin_access,
+> enable_auth_script, enable_auto_mount, enable_autosign,
+> enable_disabled_login, enable_key_caching, enable_login_script,
+> encrypt, gen_keys, move, pre_add_token, set_config_parameter, sign,
+> unblock, verify.
 
 # SEE ALSO
 

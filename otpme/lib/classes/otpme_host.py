@@ -25,6 +25,7 @@ from otpme.lib.changelog import object_changelog
 from otpme.lib.pki.cert import SSLCert
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 from otpme.lib.encryption.rsa import RSAKey
@@ -1359,6 +1360,8 @@ class OTPmeHost(OTPmeClientObject):
         cert_valid: Union[int,None]=None,
         public_key: Union[str,None]=None,
         enabled: bool=False,
+        template_name: Union[str,None]=None,
+        no_template: bool=False,
         force: bool=False,
         callback: JobCallback=default_callback,
         verbose_level: int=0,
@@ -1378,8 +1381,38 @@ class OTPmeHost(OTPmeClientObject):
             msg = msg.format(fqdn=self.fqdn, e=e)
             return callback.error(msg)
 
+        # A template the caller names needs "use" on it. The one of the
+        # objecttemplates policy does not: who set it there had to have
+        # it, see ObjecttemplatesPolicy.check_permissions().
+        check_template_use = template_name is not None
+
+        # Get template set by policy (objecttemplates). With no_template
+        # run_pre_post_add_policies() kept the policy from setting one.
+        if no_template:
+            if template_name:
+                msg = _("Use either --template or --no-template.")
+                return callback.error(msg)
+        elif template_name is None:
+            template_name = self.template_name
+
+        template = None
+        if template_name:
+            template = backend.get_object(object_type=self.type,
+                                        realm=self.realm,
+                                        site=self.site,
+                                        name=template_name)
+            if not template:
+                msg = _("Unknown template: {template_name}")
+                msg = msg.format(template_name=template_name)
+                return callback.error(msg)
+            if kwargs.get('verify_acls', True) and check_template_use:
+                if not template.verify_acl("use"):
+                    msg = denied_msg(template, "use")
+                    return callback.error(msg, exception=PermissionDenied)
+
         # Run parent class stuff e.g. verify ACLs.
         result = self._prepare_add(check_exists=False,
+                                    template=template,
                                     callback=callback,
                                     **kwargs)
         if result is False:
@@ -1437,6 +1470,7 @@ class OTPmeHost(OTPmeClientObject):
 
         # Add object using parent class.
         return super().add(enabled=enabled,
+                                template=template,
                                 verbose_level=verbose_level,
                                 callback=callback, **kwargs)
 
@@ -1474,8 +1508,8 @@ class OTPmeHost(OTPmeClientObject):
             if not self.verify_acl("delete:object"):
                 del_acl = f"delete:{self.type}"
                 if not parent_object.verify_acl(del_acl):
-                    msg = _("Permission denied: {name}")
-                    msg = msg.format(name=self.name)
+                    msg = denied_msg(self, "delete:object",
+                                    others=[(parent_object, del_acl)])
                     return callback.error(msg, exception=PermissionDenied)
 
         exception = None
@@ -1571,7 +1605,7 @@ class OTPmeHost(OTPmeClientObject):
 
     def show_config(
         self,
-        config_lines: List=None,
+        config_lines: Union[List,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):

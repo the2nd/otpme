@@ -161,9 +161,9 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                     if not x_role_enabled:
                         role_status_string = " (D)"
                     if x_role_site == config.site:
-                        role_string = f"{x_role_name} {role_status_string}"
+                        role_string = f"{x_role_name}{role_status_string}"
                     else:
-                        role_string = f"{x_role_name} ({x_role_site}) {role_status_string}"
+                        role_string = f"{x_role_name} ({x_role_site}){role_status_string}"
                     role_roles.append(role_string)
                     processed_roles = len(role_roles)
                     if processed_roles == max_roles:
@@ -323,9 +323,9 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
 
                     if scope_uuid in role_scopes_result:
                         if scope_site != config.site:
-                            scope_string = f"({scope_site}/{scope_name}) {scope_status_string}"
+                            scope_string = f"({scope_site}/{scope_name}){scope_status_string}"
                         else:
-                            scope_string = f"({scope_name}) {scope_status_string}"
+                            scope_string = f"({scope_name}){scope_status_string}"
                     else:
                         scope_string = f"{scope_name}{scope_status_string}"
                     processed_scopes = len(scope_strings)

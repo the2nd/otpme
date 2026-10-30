@@ -11,6 +11,7 @@ except Exception:
     pass
 
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
@@ -44,6 +45,38 @@ default_callback = config.get_callback()
 POLICY_TYPE = "forcetoken"
 REGISTER_BEFORE = ['otpme.lib.policy.defaultpolicies.defaultpolicies']
 REGISTER_AFTER = []
+
+# The pass types of the token types (self.pass_type of each token class,
+# kept in step by tests/unit/test_forcetoken_types.py). A script token
+# has its token type as pass type. A link token is checked as the token
+# it points to, so "link" is never looked at.
+PASS_TYPES = [
+            'otp',
+            'otp_push',
+            'tiqr',
+            'smartcard',
+            'ssh_key',
+            'static',
+            'script_otp',
+            'script_static',
+            ]
+# What a new policy lets in: every pass type but a static password.
+DEFAULT_PASS_TYPES = ['otp', 'otp_push', 'tiqr', 'ssh_key', 'smartcard']
+
+def parse_types(types_string, valid_types):
+    """ A comma separated list of types: the list, or the first one that
+    is not in <valid_types>. "" is the empty list. """
+    types_list = []
+    for x in types_string.split(","):
+        x = x.strip()
+        if not x:
+            continue
+        if x not in valid_types:
+            return None, x
+        if x in types_list:
+            continue
+        types_list.append(x)
+    return types_list, None
 
 read_acls =  []
 write_acls =  []
@@ -245,10 +278,7 @@ class ForcetokenPolicy(Policy):
             'FORCE_PASS_TYPES'              : {
                                             'var_name'      : 'force_pass_types',
                                             'type'          : list,
-                                            'default'       : ['otp',
-                                                            'ssh_key',
-                                                            'smartcard',
-                                                            'tiqr'],
+                                            'default'       : list(DEFAULT_PASS_TYPES),
                                             'required'      : False,
                                         },
             }
@@ -304,11 +334,13 @@ class ForcetokenPolicy(Policy):
     def change_force_token_types(self, token_types, force=False,
         run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Change list of allowed forced token types. """
-        try:
-            force_token_types = token_types.split(",")
-        except Exception:
-            msg = _("Invalid token types: {}")
-            msg = msg.format(token_types)
+        # A type nobody has would let nobody in, and "" would have been
+        # [""], which is no type either.
+        valid_types = config.get_sub_object_types("token")
+        force_token_types, unknown = parse_types(str(token_types), valid_types)
+        if unknown is not None:
+            msg = _("Unknown token type: {token_type}")
+            msg = msg.format(token_type=unknown)
             return callback.error(msg)
 
         msg = _("Change forced token types of policy '{policy_name}' to '{token_types}'?: ")
@@ -339,11 +371,10 @@ class ForcetokenPolicy(Policy):
     def change_force_pass_types(self, pass_types, force=False,
         run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Change list of allowed pass types. """
-        try:
-            force_pass_types = pass_types.split(",")
-        except Exception:
-            msg = _("Invalid password types: {}")
-            msg = msg.format(pass_types)
+        force_pass_types, unknown = parse_types(str(pass_types), PASS_TYPES)
+        if unknown is not None:
+            msg = _("Unknown pass type: {pass_type}")
+            msg = msg.format(pass_type=unknown)
             return callback.error(msg)
 
         msg = _("Change forced pass types of policy '{policy_name}' to '{pass_types}'?: ")
@@ -374,7 +405,7 @@ class ForcetokenPolicy(Policy):
     def show_config(self, callback=default_callback, **kwargs):
         """ Show policy config. """
         if not self.verify_acl("view_public:object"):
-            msg = ("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

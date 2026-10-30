@@ -22,7 +22,7 @@ cmd_help = {
 
     'start'    : {
                     '_cmd_usage_help' : _('Usage: otpme-backup start [--dry-run] [--skip-special] [--exclude <path>] [--include <path>] [--apply-retention] {backup_object}'),
-                    'cmd'   :   '--exclude :+exclude+: --include :+include+: --skip-special :skip_special=True: --apply-retention :apply_retention=True: --dry-run :dry_run=True: <backup_object>',
+                    'cmd'   :   '--exclude :+"exclude"+: --include :+"include"+: --skip-special :skip_special=True: --apply-retention :apply_retention=True: --dry-run :dry_run=True: <"backup_object">',
                     '_help' :   {
                                     'cmd'                           : _('Start backup for object <backup_object>.'),
                                     '--dry-run'                     : _('Just print what would be backed-up.'),
@@ -35,7 +35,7 @@ cmd_help = {
 
     'restore'    : {
                     '_cmd_usage_help' : _('Usage: otpme-backup restore [--dry-run] --snapshot <snapshot> [--path <path>] --destination <destination_dir> {backup_object}'),
-                    'cmd'   :   '--path :path: --destination :destination_dir: --snapshot :snap_name: --dry-run :dry_run=True: <backup_object>',
+                    'cmd'   :   '--path :"path": --destination :"destination_dir": --snapshot :"snap_name": --dry-run :dry_run=True: <"backup_object">',
                     '_help' :   {
                                     'cmd'                               : _('Restore from backup repository.'),
                                     '--dry-run'                         : _('Just print what would be restored.'),
@@ -55,7 +55,7 @@ cmd_help = {
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-backup list {backup_object}'),
-                    'cmd'   :   '<backup_object>',
+                    'cmd'   :   '<"backup_object">',
                     '_help' :   {
                                     'cmd'                           : _('List backup snapshots.'),
                                 },
@@ -63,7 +63,7 @@ cmd_help = {
 
     'ls'    : {
                     '_cmd_usage_help' : _('Usage: otpme-backup ls [--full-path] [--recursive] {backup_object} {snapshot} [path]'),
-                    'cmd'   :   '--full-path :full_path=True: --recursive :recursive=True: <backup_object> <snap_name> [path]',
+                    'cmd'   :   '--full-path :full_path=True: --recursive :recursive=True: <"backup_object"> <"snap_name"> ["path"]',
                     '_help' :   {
                                     'cmd'                           : _('List backup snapshots.'),
                                     '--full-path'                   : _('Output full path.'),

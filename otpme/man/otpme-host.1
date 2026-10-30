@@ -22,11 +22,13 @@ before the machine joins, or by the join itself, which adds the host when it is 
 .SH COMMANDS
 .SS Host Management
 .TP
-.B add \fIhost\fR
+.B add \fR[\fB\-\-template \fItemplate\fR] [\fB\-\-no\-template\fR] \fIhost\fR
 Create a host.
 The machine itself need not exist yet: this is the object a join with a JOTP looks for.
 The name has to be unique in the realm: no host and no node of any site may have it already.
 Where an \fBobjecttemplates\fR policy names a host template, the new host is built from it (see \fBotpme\-policy\fR(1)).
+\fB\-\-template\fR builds it from the given template instead, and needs \fBuse\fR on the template.
+\fB\-\-no\-template\fR creates it without one.
 .br
 There is no \fBrename\fR.
 A host is found by the name it joined with, which is also the name in its certificate, so a machine that is renamed leaves the realm and joins again.
@@ -69,10 +71,27 @@ Which column to sort by, and the other way round.
 .B \-\-raw\fR, \fB\-\-csv\fR, \fB\-\-csv\-sep\fR \fIsep\fR
 For reading with something other than your eyes: \fB\-\-raw\fR leaves the header and the borders out, \fB\-\-csv\fR prints one row per line with \fB;\fR between the columns, and \fB\-\-csv\-sep\fR uses another separator.
 .RE
+.na
+.nh
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
+.B show_oid \fR[\fB\-\-full\fR] \fIhost\fR
+Show the OID of the host: \fB\%host|<realm>/<name>\fR.
+With \fB\-\-full\fR the full OID, which names the site and unit as well: \fB\%host|<realm>/<site>/<unit_path>/<name>\fR.
+.br
+Needs the ACL \fBview_public:object\fR.
+.TP
+.B show_uuid \fIhost\fR
+Show the UUID of the host.
+.br
+Needs the ACL \fBview_public:object\fR.
+.hy
+.ad
+.TP
+.B list \fR[\fB\-a\fR] [\fB\-t\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
 List the host names, and with a regex only those that match it.
 You get the hosts you may change; \fB\-a\fR adds those you may only look at.
+\fB\-t\fR lists the host templates instead.
+Without \fB\-a\fR these are the templates you may change or have \fBuse\fR on, i.e. the ones you may give to \fBadd \-\-template\fR.
 .br
 \fB\-\-attribute\fR matches the regex against that attribute instead of the name: \fBlist \-\-attribute enabled True\fR lists the hosts that are enabled.
 A value that is not text has to be spelled out \(em \fB*\fR matches none of it.
@@ -97,7 +116,11 @@ Set auto\-disable time.
 It is either a relative time with a leading \fB+\fR, e.g. \fB+30D\fR, or an absolute one, e.g. \fB"09:53 13.06.2023"\fR.
 The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
 .BR otpme (7).
-Use \fB\-u\fR to disable the object if it was unused for the given time.
+A relative time counts from when it is set, and again from when the host is enabled.
+\fB0\fR removes it.
+It is refused for an object the realm or a site comes with, e.g. the admin user; a time set on one before does nothing.
+Use \fB\-u\fR to disable the host once it was unused for the given time.
+That takes a relative time; a host that was never used counts from when this was set.
 .TP
 .B mac \fIhost\fR \fImac_address\fR
 Set the host's MAC address.
@@ -186,7 +209,7 @@ A signature is checked on the host, so which signatures count is configured ther
 .B otpme-tool add_signer \-\-signer\-type token \fIuser|role\fR
 .RE
 .PP
-The signer is named by its OID, \fBuser|\fIrealm\fB/\fIname\fR or \fBrole|\fIrealm\fB/\fIsite\fB/\fIname\fR, and stored by UUID, so a rename keeps the signer.
+The signer is named by its OID, \fB\%user|<realm>/<name>\fR or \fB\%role|<realm>/<site>/<name>\fR, and stored by UUID, so a rename keeps the signer.
 It is added for one type of thing.
 With a signer of type
 .B token
@@ -514,7 +537,7 @@ above.
 The tokens and roles that may send a job to this host.
 Unset means nobody.
 .br
-Both are named by their OID, \fBtoken|\fIrealm\fB/\fIuser\fB/\fIname\fR and \fBrole|\fIrealm\fB/\fIsite\fB/\fIname\fR, and stored by UUID: a rename keeps the permission, and a new object of the same name does not inherit it.
+Both are named by their OID, \fB\%token|<realm>/<user>/<name>\fR and \fB\%role|<realm>/<site>/<name>\fR, and stored by UUID: a rename keeps the permission, and a new object of the same name does not inherit it.
 A token counts as named when it is in a named role, however deep the nesting goes.
 .PP
 A host also reports what it runs: its system, its installed packages and its hardware.
@@ -567,7 +590,8 @@ This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
 has to allow it (see \fBotpme\fR(7)).
 It is true by default, but where no value is found at all, clearing is refused.
-OTPme asks the token you are signed in with first, then the object.
+A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 .SS Policy Management
 A \fIpolicy\fR is the name of a policy, not a path.
 It is looked for in the site of the host.
@@ -608,7 +632,7 @@ Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR d
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
 .B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIhost\fR
-List the policies attached to the host.
+List the policies attached to the host, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
 .br
@@ -625,8 +649,10 @@ A command that changes something asks first; the global option \fB\-f\fR skips t
 .B add_acl \fIhost\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
 Give a role or a token one or more ACLs on this host.
 .br
-\fIowner_type\fR is \fBrole\fR or \fBtoken\fR, and \fIowner\fR the path of that role or token.
-An ACL may carry a value, for example \fBview:tokens\fR, and several are separated by commas.
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
+\fIowner\fR is the path of that role or token.
+An ACL can carry a value, for example \fBview:tokens\fR.
+To give several ACLs at once, separate them with commas: \fB\%view:tokens,view:status\fR.
 .br
 Needs the ACL \fBadd:acl\fR.
 .TP
@@ -642,15 +668,13 @@ Show the ACLs that lie on this host, i.e. who may do what with it.
 Needs the ACL \fBview:acl\fR.
 .TP
 .B enable_acl_inheritance \fIhost\fR
-Let the host inherit the default ACLs of the unit above it.
-It does not by default.
+Let a move of the host swap its default ACLs: what the old unit handed down is taken away, and what the new unit hands down is given.
+It does not by default; a move then leaves the ACLs of the host as they are.
 .RS
 .PP
-Only default ACLs are inherited.
-An ordinary ACL on the unit never is.
-.PP
-Moving the host into another unit then takes away the default ACLs of the old unit and applies those of the new one.
-While inheritance is off, a move leaves the ACLs of the host as they are.
+Only a move asks this.
+A new host gets the default ACLs of its unit, and \fBadd_acl \-a\fR or \fB\-r\fR on a unit reach it either way.
+A move with \fB\-\-keep\-acls\fR leaves its ACLs alone all the same.
 .PP
 A move by somebody who does not hold \fBadd:acl\fR and \fBdelete:acl\fR on the host leaves its ACLs alone as well, and says so.
 Otherwise moving an object into a unit would be a way of handing yourself the default ACLs of that unit.
@@ -659,8 +683,8 @@ Needs the ACL \fBenable:acl_inheritance\fR.
 .RE
 .TP
 .B disable_acl_inheritance \fIhost\fR
-Stop inheriting them.
-Only the ACLs on the host itself count from then on.
+A move leaves the ACLs of the host as they are again.
+.br
 Needs the ACL \fBdisable:acl_inheritance\fR.
 .SS Configuration
 A config parameter is looked for on the host, then on the units above it, then on the site.
@@ -867,6 +891,25 @@ Print the new JOTP to whoever leaves the realm, so the machine can come back wit
 .B otpme-host del notebook1
 Delete the object.
 The certificate is revoked, the roles and access groups that name the host let it go, and the object goes to the trash.
+.\" BEGIN AUTH ON ACTION HOOKS
+.\" Generated by update_hooks_man.py. Do not edit, the next run
+.\" overwrites it.
+.SH AUTH ON ACTION HOOKS
+An auth on action policy can ask for a login again before these actions.
+See
+.B Auth On Action Policy
+in
+.BR otpme\-policy (1).
+A host has the hooks every object type has, and these:
+.RS
+.PP
+.na
+.nh
+add_dynamic_group, add_role, add_sync_group, add_token, change_public_key, disable_jotp_rejoin, disable_sync_by_login_token, disable_sync_groups, enable_jotp_rejoin, enable_sync_by_login_token, enable_sync_groups, join, leave, limit_logins, remove_dynamic_group, remove_role, remove_sync_group, remove_token, renew_cert, revoke_cert, set_config_parameter, unlimit_logins.
+.hy
+.ad
+.RE
+.\" END AUTH ON ACTION HOOKS
 .SH FILES
 On a node:
 .TP
@@ -882,17 +925,17 @@ Its own config file.
 .BR otpme.conf (5).
 .TP
 .I /etc/otpme/ssl/
-Its certificate and keys: \fBcert.pem\fR with \fBkey.pem\fR for TLS, \fBhostkey.pem\fR for the key pair the realm holds the public half of, \fBca.pem\fR for the chain and \fIrealm\fB\-\fIsite\fB.pem\fR for the site.
+Its certificate and keys: \fBcert.pem\fR with \fBkey.pem\fR for TLS, \fBhostkey.pem\fR for the key pair the realm holds the public half of, \fBca.pem\fR for the chain and \fB<realm>\-<site>.pem\fR for the site.
 .TP
-.I /etc/otpme/signers/\fItype\fI/
+\fI/etc/otpme/signers/<type>/\fR
 The signers of the machine, one directory per signer type, as \fBotpme-tool add_signer\fR writes them.
 The ones a user added for themselves are in \fI~/.otpme/signers/\fR.
 .TP
-.I /var/cache/otpme/ssh/authorized_keys/\fIuser\fI/authorized_keys
+\fI/var/cache/otpme/ssh/authorized_keys/<user>/authorized_keys\fR
 The SSH keys of that user, as sshd gets them through \fBotpme-get-authorized-keys\fR.
 Written by \fBhostd\fR from the tokens the host holds.
 .TP
-.I /var/cache/otpme/offline/\fIuser_uuid\fI/
+\fI/var/cache/otpme/offline/<user_uuid>/\fR
 The tokens the machine can check while it cannot reach the realm, one directory per user.
 .TP
 .I /var/cache/otpme/nsscache/

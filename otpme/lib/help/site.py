@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-site show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [site]'),
-                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show site(s)'),
                                     '-a'                    : _('Show all sites.'),
@@ -34,23 +34,23 @@ cmd_help = {
                                     '--sort-by <attribute>' : _('Sort output by <attribute>.'),
                                     '--raw'                 : _('Output table without any headers/borders.'),
                                     '--csv'                 : _('Output table as CSV.'),
-                                    '--csv-sep <separator>' : _('Output table as CSV.'),
+                                    '--csv-sep <separator>' : _('Separator between the CSV columns.'),
                                 },
                 },
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site list [--attribute attribute] [-a] [regex]'),
-                    'cmd'   :   '--attribute :attribute: -a :show_all=True: [search_regex]',
+                    'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List sites.'),
                                     '-a'                        : _('List all sites.'),
-                                    '--attribute <attribute>'   : _('Output given attribute.')
+                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
                                 },
                 },
 
     'show_config'      : {
                     '_cmd_usage_help' : _('Usage: otpme-site show_config {site} [parameter]'),
-                    'cmd'   :   '<|object|> [parameter]',
+                    'cmd'   :   '<|object|> ["parameter"]',
                     '_help' :   {
                                     'cmd'                   : _('Show site\'s config parameters'),
                                 },
@@ -58,7 +58,7 @@ cmd_help = {
 
     'add'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site add {site} {node_name} {site_fqdn} [site_address]'),
-                    'cmd'   :   '--country :ca_country: --state :ca_state: --locality :ca_locality: --organization :ca_organization: --ou :ca_ou: --email :ca_email: --no-dicts :no_dicts=True: --dicts :[dictionaries]: --id-ranges ::id_ranges:: --trust :[trusted_sites]: <|object|> <node_name> <site_fqdn> [site_address]',
+                    'cmd'   :   '--country :"ca_country": --state :"ca_state": --locality :"ca_locality": --organization :"ca_organization": --ou :"ca_ou": --email :"ca_email": --no-dicts :no_dicts=True: --dicts :[dictionaries]: --id-ranges ::id_ranges:: --trust :[trusted_sites]: <|object|> <"node_name"> <"site_fqdn"> ["site_address"]',
                     '_help' :   {
                                     'cmd'                               : _('Add new site.'),
                                     '--country'                         : _('Set CA certificate <country> field.'),
@@ -85,9 +85,24 @@ cmd_help = {
 
     'get_config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site get_config {site} {parameter}'),
-                    'cmd'   :   '<|object|> <parameter>',
+                    'cmd'   :   '<|object|> <"parameter">',
                     '_help' :   {
                                     'cmd'                   : _('Get config parameter.'),
+                                },
+                },
+    'show_oid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-site show_oid [--full] {site}'),
+                    'cmd'   :   '--full :full=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the OID of the object.'),
+                                    '--full'                : _('Show the full OID.'),
+                                },
+                },
+    'show_uuid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-site show_uuid {site}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the UUID of the object.'),
                                 },
                 },
     'changelog'    : {
@@ -99,7 +114,7 @@ cmd_help = {
                 },
     'edit_changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site edit_changelog {site} {entry_id} {comment}'),
-                    'cmd'   :   '<|object|> <entry_id> <comment>',
+                    'cmd'   :   '<|object|> <entry_id> <"comment">',
                     '_help' :   {
                                     'cmd'                   : _('Edit changelog entry comment.'),
                                 },
@@ -127,6 +142,14 @@ cmd_help = {
                                 },
                 },
 
+    'auto_disable'          : {
+                    '_cmd_usage_help' : _('Usage: otpme-site auto_disable {site} {time}'),
+                    'cmd'   :   '<|object|> <auto_disable>',
+                    '_help' :   {
+                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023", 0 removes it).'),
+                                },
+                },
+
     # FIXME: do we need this anymore?
     'enable'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site enable {site}'),
@@ -146,7 +169,7 @@ cmd_help = {
 
      'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site config -d -a {site} {param} [value]'),
-                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to site.'),
                                     '-a'                    : _('Append value to config parameter.'),
@@ -166,7 +189,7 @@ cmd_help = {
 
      'maintenance'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site maintenance {site} [on|off|status]'),
-                    'cmd'   :   '<|object|> [state]',
+                    'cmd'   :   '<|object|> ["state"]',
                     '_help' :   {
                                     'cmd'                   : _('Switch maintenance of a site on or off, or show why it is on (default: status). In maintenance no object of the tree is written.'),
                                 },
@@ -174,7 +197,7 @@ cmd_help = {
 
      'add_extension'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site add_extension {site} {extension}'),
-                    'cmd'   :   '<|object|> <extension>',
+                    'cmd'   :   '<|object|> <"extension">',
                     '_help' :   {
                                     'cmd'                   : _('Add extension to site'),
                                 },
@@ -182,7 +205,7 @@ cmd_help = {
 
      'remove_extension'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site remove_extension {site} {extension}'),
-                    'cmd'   :   '<|object|> <extension>',
+                    'cmd'   :   '<|object|> <"extension">',
                     '_help' :   {
                                     'cmd'                   : _('Remove extension from site'),
                                 },
@@ -198,7 +221,7 @@ cmd_help = {
 
      'modify_attribute'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site modify_attribute {site} {attribute} {old_value} {new_value}'),
-                    'cmd'   :   '<|object|> <attribute> <old_value> <new_value>',
+                    'cmd'   :   '<|object|> <"attribute"> <old_value> <new_value>',
                     '_help' :   {
                                     'cmd'                   : _('Modify (LDAP) attribute of site'),
                                 },
@@ -214,7 +237,7 @@ cmd_help = {
 
      'add_object_class'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site add_object_class {site} {object_class}'),
-                    'cmd'   :   '<|object|> <object_class>',
+                    'cmd'   :   '<|object|> <"object_class">',
                     '_help' :   {
                                     'cmd'                   : _('Add (LDAP) object class to site'),
                                 },
@@ -222,7 +245,7 @@ cmd_help = {
 
      'del_object_class'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site del_object_class {site} {object_class}'),
-                    'cmd'   :   '<|object|> <object_class>',
+                    'cmd'   :   '<|object|> <"object_class">',
                     '_help' :   {
                                     'cmd'                   : _('Delete (LDAP) object class from site'),
                                 },
@@ -239,7 +262,7 @@ cmd_help = {
 
     'add_acl'   : {
                     '_cmd_usage_help' : _('Usage: otpme-site add_acl [-r -a --objects <user,group,token> --procs <num>] {site} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
-                    'cmd'   :   '-r :recursive_acls=True: -a :apply_default_acls=True: --objects :[object_types]: --procs :procs: <|object|> <owner_type> <owner_name> <[acls]>',
+                    'cmd'   :   '-r :recursive_acls=True: -a :apply_default_acls=True: --objects :[object_types]: --procs :procs: <|object|> <"owner_type"> <"owner_name"> <[acls]>',
                     '_help' :   {
                                     'cmd'                           : _('Add ACL to site'),
                                     '-r'                            : _('Set ACL recursive'),
@@ -279,7 +302,7 @@ cmd_help = {
 
     'unsign_password_members'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site unsign_password_members [--signer <user>] {site}'),
-                    'cmd'   :   '--signer :signer: <|object|>',
+                    'cmd'   :   '--signer :"signer": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Remove your signature of password_store_members of this site.'),
                                     '--signer <user>'       : _('Remove the signature of this user instead.'),
@@ -296,7 +319,7 @@ cmd_help = {
 
 
     'remove_orphans'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-site remove_orphans {site}'),
+                    '_cmd_usage_help' : _('Usage: otpme-site remove_orphans [-r] {site}'),
                     'cmd'   :   '-r :recursive=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Remove orphan UUIDs'),
@@ -307,7 +330,7 @@ cmd_help = {
 
     'description'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site description {site} [description]'),
-                    'cmd'   :   '<|object|> [description]',
+                    'cmd'   :   '<|object|> ["description"]',
                     '_help' :   {
                                     'cmd'                   : _('Set site description'),
                                 },
@@ -315,7 +338,7 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site info {site} [info]'),
-                    'cmd'   :   '--language :language: <|object|> [info]',
+                    'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set site info'),
                                     '--language <lang>'     : _('Change info for language.'),
@@ -324,7 +347,7 @@ cmd_help = {
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site dump_info {site}'),
-                    'cmd'   :   '--language :language: <|object|>',
+                    'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump site info'),
                                     '--language <lang>'     : _('Dump info for language.'),
@@ -336,10 +359,6 @@ cmd_help = {
                 },
 
     '_list_valid_attributes'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_attributes'    : {
                     'cmd'   :   '<|object|>',
                 },
 
@@ -364,8 +383,8 @@ cmd_help = {
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-site export --password <password> {site}'),
-                    'cmd'   :   '--password :password: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-site export [--password <password>] {site}'),
+                    'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export site config to stdout'),
                                     '--password <password>' : _('Encrypt object config with password.'),
@@ -374,7 +393,7 @@ cmd_help = {
 
     'add_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site add_policy {site} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('add policy to site'),
                                 },
@@ -382,15 +401,15 @@ cmd_help = {
 
     'remove_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site remove_policy {site} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('remove policy from site'),
                                 },
                 },
 
     'list_policies'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-site list_policies {site}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-site list_policies [--return-type <type>] [--policy-types <type1,type2>] {site}'),
+                    'cmd'   :   '--return-type :"return_type": --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -411,7 +430,7 @@ cmd_help = {
 
     'dump_key'   : {
                     '_cmd_usage_help' : _('Usage: otpme-site dump_key [-p passphrase] {site}'),
-                    'cmd'   :   '<|object|> -p :passphrase:',
+                    'cmd'   :   '<|object|> -p :"passphrase":',
                     '_help' :   {
                                     'cmd'                   : _('Dump site\'s private key to stdout'),
                                     '-p <passphrase>'       : _('Export private key encrypted with "passphrase"'),
@@ -468,7 +487,7 @@ cmd_help = {
 
     'sso_secret'   : {
                     '_cmd_usage_help' : _('Usage: otpme-site sso_secret {site} {sso_secret}'),
-                    'cmd'   :   '<|object|> <secret>',
+                    'cmd'   :   '<|object|> <"secret">',
                     '_help' :   {
                                     'cmd'                   : _('Change SSO secret.'),
                                 },
@@ -476,7 +495,7 @@ cmd_help = {
 
     'sso_csrf_secret'   : {
                     '_cmd_usage_help' : _('Usage: otpme-site sso_csrf_secret {site} {sso_csrf_secret}'),
-                    'cmd'   :   '<|object|> <secret>',
+                    'cmd'   :   '<|object|> <"secret">',
                     '_help' :   {
                                     'cmd'                   : _('Change SSO CSRF secret.'),
                                 },
@@ -484,7 +503,7 @@ cmd_help = {
 
     'oidc_pairwise_secret'   : {
                     '_cmd_usage_help' : _('Usage: otpme-site oidc_pairwise_secret {site} [secret]'),
-                    'cmd'   :   '<|object|> [secret]',
+                    'cmd'   :   '<|object|> ["secret"]',
                     '_help' :   {
                                     'cmd'                   : _('Rotate OIDC pairwise sub HMAC secret. Auto-generates if no secret given. WARNING: invalidates every existing pairwise sub on RPs.'),
                                 },
@@ -492,7 +511,7 @@ cmd_help = {
 
     'tiqr_secret'   : {
                     '_cmd_usage_help' : _('Usage: otpme-site tiqr_secret {site} [secret]'),
-                    'cmd'   :   '<|object|> [secret]',
+                    'cmd'   :   '<|object|> ["secret"]',
                     '_help' :   {
                                     'cmd'                   : _('Rotate tiqr HMAC secret. Auto-generates if no secret given. Only affects tiqr logins currently in progress.'),
                                 },
@@ -500,7 +519,7 @@ cmd_help = {
 
     'cluster_key'   : {
                     '_cmd_usage_help' : _('Usage: otpme-site cluster_key {site} {cluster_key}'),
-                    'cmd'   :   '<|object|> <cluster_key>',
+                    'cmd'   :   '<|object|> <"cluster_key">',
                     '_help' :   {
                                     'cmd'                   : _('Change cluster key.'),
                                 },
@@ -516,7 +535,7 @@ cmd_help = {
 
     'del_fido2_ca_cert'   : {
                     '_cmd_usage_help' : _('Usage: otpme-site del_fido2_ca_cert {site} {ca_subject}'),
-                    'cmd'   :   '<|object|> <subject>',
+                    'cmd'   :   '<|object|> <"subject">',
                     '_help' :   {
                                     'cmd'                   : _('Delete fido2 CA cert.'),
                                 },
@@ -549,7 +568,7 @@ cmd_help = {
 
     #'secret'    : {
     #                '_cmd_usage_help' : 'Usage: otpme-site secret {site} [secret]'),
-    #                'cmd'   :   '<|object|> [secret]',
+    #                'cmd'   :   '<|object|> ["secret"]',
     #                '_help' :   {
     #                                'cmd'                   : _('Change realms secret'),
     #                            },
@@ -567,7 +586,7 @@ cmd_help = {
 
     'add_trust'   : {
                     '_cmd_usage_help' : _('Usage: otpme-site add_trust {site} {trusted_site}'),
-                    'cmd'   :   '<|object|> <site_name>',
+                    'cmd'   :   '<|object|> <"site_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add trust relationship'),
                                 },
@@ -575,7 +594,7 @@ cmd_help = {
 
     'del_trust'   : {
                     '_cmd_usage_help' : _('Usage: otpme-site del_trust {site} {trusted_site}'),
-                    'cmd'   :   '<|object|> <site_name>',
+                    'cmd'   :   '<|object|> <"site_name">',
                     '_help' :   {
                                     'cmd'                   : _('Delete trust relationship'),
                                 },
@@ -583,7 +602,7 @@ cmd_help = {
 
     'address'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site address {site} {ip_address}'),
-                    'cmd'   :   '<|object|> <address>',
+                    'cmd'   :   '<|object|> <"address">',
                     '_help' :   {
                                     'cmd'                   : _('Change site\'s IP address'),
                                 },
@@ -591,7 +610,7 @@ cmd_help = {
 
     'auth_fqdn'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site auth_fqdn {site} {fqdn}'),
-                    'cmd'   :   '<|object|> <fqdn>',
+                    'cmd'   :   '<|object|> <"fqdn">',
                     '_help' :   {
                                     'cmd'                   : _('Change site\'s auth fqdn.'),
                                 },
@@ -599,7 +618,7 @@ cmd_help = {
 
     'mgmt_fqdn'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site mgmt_fqdn {site} {fqdn}'),
-                    'cmd'   :   '<|object|> <fqdn>',
+                    'cmd'   :   '<|object|> <"fqdn">',
                     '_help' :   {
                                     'cmd'                   : _('Change site\'s mgmt fqdn.'),
                                 },
@@ -607,7 +626,7 @@ cmd_help = {
 
     'sso_fqdn'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site sso_fqdn {site} {fqdn}'),
-                    'cmd'   :   '<|object|> <fqdn>',
+                    'cmd'   :   '<|object|> <"fqdn">',
                     '_help' :   {
                                     'cmd'                   : _('Change site\'s SSO fqdn.'),
                                 },
@@ -663,7 +682,7 @@ cmd_help = {
 
     'renew_oidc_key'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site renew_oidc_key [--key-type rsa|rsa-3072|rsa-4096|ec|ec-p256|ec-p384|ec-p521|ed25519] [--kty RSA|EC|OKP] [--size <int|curve>] [--alg RS256|ES256|EdDSA|...] {site}'),
-                    'cmd'   :   '--key-type :key_type: --kty :kty: --size :size: --alg :alg: <|object|>',
+                    'cmd'   :   '--key-type :"key_type": --kty :"kty": --size :size: --alg :"alg": <|object|>',
                     '_help' :   {
                                     'cmd'                       : _('Rotate OIDC keys for site (default: rsa-2048/RS256).'),
                                     '--key-type <preset>'       : _('High-level preset (rsa, rsa-3072, rsa-4096, ec, ec-p256, ec-p384, ec-p521, ed25519). Mutually exclusive with --kty/--size/--alg.'),
@@ -675,7 +694,7 @@ cmd_help = {
 
     'revoke_oidc_key'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site revoke_oidc_key {site} {kid}'),
-                    'cmd'   :   '<|object|> <kid>',
+                    'cmd'   :   '<|object|> <"kid">',
                     '_help' :   {
                                     'cmd'                   : _('Revoke OIDC key (compromise scenario; if active a replacement is generated)'),
                                 },
@@ -715,7 +734,7 @@ cmd_help = {
 
     'add_sso_host'   : {
                     '_cmd_usage_help' : _('Usage: otpme-site add_sso_host {site} {host_name}'),
-                    'cmd'   :   '<|object|> <host_name>',
+                    'cmd'   :   '<|object|> <"host_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add SSO host.'),
                                 },
@@ -723,7 +742,7 @@ cmd_help = {
 
     'remove_sso_host'   : {
                     '_cmd_usage_help' : _('Usage: otpme-site remove_sso_host {site} {host_name}'),
-                    'cmd'   :   '<|object|> <host_name>',
+                    'cmd'   :   '<|object|> <"host_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove SSO host.'),
                                 },

@@ -311,5 +311,9 @@ def register_modules():
     config.handle_post_base_object_registration()
     # Remember register status.
     register_done = True
+    # The backend may be up already, with index classes only for the
+    # object types known then.
+    from otpme.lib.backends.file import index
+    index.add_classes()
     # Init cache.
     cache.init()

@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-device show [--policy-limit <limit>] [--token-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-t] [-a] [device]'),
-                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: -t :show_templates=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: -t :show_templates=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show device(s)'),
                                     '-a'                    : _('Show all devices.'),
@@ -34,17 +34,17 @@ cmd_help = {
                                     '--sort-by <attribute>' : _('Sort output by <attribute>.'),
                                     '--raw'                 : _('Output table without any headers/borders.'),
                                     '--csv'                 : _('Output table as CSV.'),
-                                    '--csv-sep <separator>' : _('Output table as CSV.'),
+                                    '--csv-sep <separator>' : _('Separator between the CSV columns.'),
                                 },
                 },
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-device list [--attribute attribute] [-a] [regex]'),
-                    'cmd'   :   '--attribute :attribute: -a :show_all=True: [search_regex]',
+                    'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List devices.'),
                                     '-a'                        : _('List all devices.'),
-                                    '--attribute <attribute>'   : _('Output given attribute.')
+                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
                                 },
                 },
 
@@ -67,9 +67,24 @@ cmd_help = {
 
     'get_config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-device get_config {device} {parameter}'),
-                    'cmd'   :   '<|object|> <parameter>',
+                    'cmd'   :   '<|object|> <"parameter">',
                     '_help' :   {
                                     'cmd'                   : _('Get config parameter.'),
+                                },
+                },
+    'show_oid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-device show_oid [--full] {device}'),
+                    'cmd'   :   '--full :full=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the OID of the object.'),
+                                    '--full'                : _('Show the full OID.'),
+                                },
+                },
+    'show_uuid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-device show_uuid {device}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the UUID of the object.'),
                                 },
                 },
     'changelog'    : {
@@ -81,7 +96,7 @@ cmd_help = {
                 },
     'edit_changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-device edit_changelog {device} {entry_id} {comment}'),
-                    'cmd'   :   '<|object|> <entry_id> <comment>',
+                    'cmd'   :   '<|object|> <entry_id> <"comment">',
                     '_help' :   {
                                     'cmd'                   : _('Edit changelog entry comment.'),
                                 },
@@ -126,17 +141,17 @@ cmd_help = {
                 },
 
     'auto_disable'          : {
-                    '_cmd_usage_help' : _('Usage: otpme-device auto_disable -u {device} {time}'),
+                    '_cmd_usage_help' : _('Usage: otpme-device auto_disable [-u] {device} {time}'),
                     'cmd'   :   '-u :unused=True: <|object|> <auto_disable>',
                     '_help' :   {
-                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023").'),
+                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023", 0 removes it).'),
                                     '-u'                    : _('Disable object if it was unused for the given time.'),
                                 },
                 },
 
     'mac'       : {
                     '_cmd_usage_help' : _('Usage: otpme-device mac {device} {mac_address}'),
-                    'cmd'   :   '<|object|> <mac_address>',
+                    'cmd'   :   '<|object|> <"mac_address">',
                     '_help' :   {
                                     'cmd'                   : _('Set devices MAC address.'),
                                 },
@@ -144,7 +159,7 @@ cmd_help = {
 
     'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-device config -d -a {device} {param} [value]'),
-                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to device.'),
                                     '-a'                    : _('Append value to config parameter.'),
@@ -154,7 +169,7 @@ cmd_help = {
 
     'show_config'      : {
                     '_cmd_usage_help' : _('Usage: otpme-device show_config {device} [parameter]'),
-                    'cmd'   :   '<|object|> [parameter]',
+                    'cmd'   :   '<|object|> ["parameter"]',
                     '_help' :   {
                                     'cmd'                   : _('Show device config parameters'),
                                 },
@@ -219,7 +234,7 @@ cmd_help = {
 
     'add_acl'   : {
                     '_cmd_usage_help' : _('Usage: otpme-device add_acl {device} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
+                    'cmd'   :   '<|object|> <"owner_type"> <"owner_name"> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to device'),
                                 },
@@ -262,7 +277,7 @@ cmd_help = {
 
     'move'    : {
                     '_cmd_usage_help' : _('Usage: otpme-device move [--keep-acls] {device} {unit}'),
-                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <new_unit>',
+                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <"new_unit">',
                     '_help' :   {
                                     'cmd'                   : _('Change device\'s unit'),
                                     '--keep-acls'           : _('Keep object ACLs.')
@@ -281,7 +296,7 @@ cmd_help = {
 
     'description'    : {
                     '_cmd_usage_help' : _('Usage: otpme-device description {device} [description]'),
-                    'cmd'   :   '<|object|> [description]',
+                    'cmd'   :   '<|object|> ["description"]',
                     '_help' :   {
                                     'cmd'                   : _('Set device description'),
                                 },
@@ -289,7 +304,7 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-device info {device} [info]'),
-                    'cmd'   :   '--language :language: <|object|> [info]',
+                    'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set device info'),
                                     '--language <lang>'     : _('Change info for language.'),
@@ -298,7 +313,7 @@ cmd_help = {
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-device dump_info {device}'),
-                    'cmd'   :   '--language :language: <|object|>',
+                    'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump device info'),
                                     '--language <lang>'     : _('Dump info for language.'),
@@ -310,10 +325,6 @@ cmd_help = {
                 },
 
     '_list_valid_attributes'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_attributes'    : {
                     'cmd'   :   '<|object|>',
                 },
 
@@ -339,7 +350,7 @@ cmd_help = {
 
     'export'    : {
                     '_cmd_usage_help' : _('Usage: otpme-device export --password <password> {device}'),
-                    'cmd'   :   '--password :password: <|object|>',
+                    'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export device config to stdout'),
                                     '--password <password>' : _('Encrypt object config with password.'),
@@ -348,7 +359,7 @@ cmd_help = {
 
     'add_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-device add_policy {device} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add policy to device'),
                                 },
@@ -356,15 +367,15 @@ cmd_help = {
 
     'remove_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-device remove_policy {device} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove policy from device'),
                                 },
                 },
 
     'list_policies'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-device list_policies {device}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-device list_policies [--return-type <type>] [--policy-types <type1,type2>] {device}'),
+                    'cmd'   :   '--return-type :"return_type": --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -376,7 +387,7 @@ cmd_help = {
                 },
     'find_roles'   : {
                     '_cmd_usage_help' : _('Usage: otpme-device find_roles [--return-type <return_type>] {device}'),
-                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'cmd'   :   '--return-type :"return_type": <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -387,7 +398,7 @@ cmd_help = {
                 },
     'find_accessgroups'   : {
                     '_cmd_usage_help' : _('Usage: otpme-device find_accessgroups [--return-type <return_type>] {device}'),
-                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'cmd'   :   '--return-type :"return_type": <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -398,7 +409,7 @@ cmd_help = {
                 },
     'find_passwords'   : {
                     '_cmd_usage_help' : _('Usage: otpme-device find_passwords [--return-type <return_type>] {device}'),
-                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'cmd'   :   '--return-type :"return_type": <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -409,7 +420,7 @@ cmd_help = {
                 },
     'show_password'   : {
                     '_cmd_usage_help' : _('Usage: otpme-device show_password {device} [entry]'),
-                    'cmd'   :   '<|object|> [entry_name]',
+                    'cmd'   :   '<|object|> ["entry_name"]',
                     '_help' :   {
                                     'cmd'                   : _('Show the passwords of this device, see otpme-pass.'),
                                 },

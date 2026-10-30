@@ -31,12 +31,14 @@ join itself, which adds the host when it is not there yet (see
 
 ## Host Management
 
-**add *host***  
+**add \[**--template** *template*\] \[**--no-template**\] *host***  
 Create a host. The machine itself need not exist yet: this is the object
 a join with a JOTP looks for. The name has to be unique in the realm: no
 host and no node of any site may have it already. Where an
 **objecttemplates** policy names a host template, the new host is built
-from it (see **otpme-policy**(1)).  
+from it (see **otpme-policy**(1)). **--template** builds it from the
+given template instead, and needs **use** on the template.
+**--no-template** creates it without one.  
 There is no **rename**. A host is found by the name it joined with,
 which is also the name in its certificate, so a machine that is renamed
 leaves the realm and joins again.
@@ -81,9 +83,26 @@ For reading with something other than your eyes: **--raw** leaves the
 header and the borders out, **--csv** prints one row per line with **;**
 between the columns, and **--csv-sep** uses another separator.
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
+<!-- -->
+
+**show_oid \[**--full**\] *host***  
+Show the OID of the host: **host\|\<realm\>/\<name\>**. With **--full**
+the full OID, which names the site and unit as well:
+**host\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
+Needs the ACL **view_public:object**.
+
+**show_uuid *host***  
+Show the UUID of the host.  
+Needs the ACL **view_public:object**.
+
+<!-- -->
+
+**list \[**-a**\] \[**-t**\] \[**--attribute** *attribute*\] \[*regex*\]**  
 List the host names, and with a regex only those that match it. You get
-the hosts you may change; **-a** adds those you may only look at.  
+the hosts you may change; **-a** adds those you may only look at. **-t**
+lists the host templates instead. Without **-a** these are the templates
+you may change or have **use** on, i.e. the ones you may give to **add
+--template**.  
 **--attribute** matches the regex against that attribute instead of the
 name: **list --attribute enabled True** lists the hosts that are
 enabled. A value that is not text has to be spelled out — **\*** matches
@@ -108,8 +127,12 @@ Re-index the object to fix potential index problems.
 Set auto-disable time. It is either a relative time with a leading
 **+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
 The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
-**otpme**(7). Use **-u** to disable the object if it was unused for the
-given time.
+**otpme**(7). A relative time counts from when it is set, and again from
+when the host is enabled. **0** removes it. It is refused for an object
+the realm or a site comes with, e.g. the admin user; a time set on one
+before does nothing. Use **-u** to disable the host once it was unused
+for the given time. That takes a relative time; a host that was never
+used counts from when this was set.
 
 **mac *host* *mac_address***  
 Set the host's MAC address. It is what the realm recognises the machine
@@ -213,8 +236,8 @@ configured there and not in the realm:
 
 > **otpme-tool add_signer --signer-type token *user\|role***
 
-The signer is named by its OID, **user\|***realm***/***name* or
-**role\|***realm***/***site***/***name*, and stored by UUID, so a rename
+The signer is named by its OID, **user\|\<realm\>/\<name\>** or
+**role\|\<realm\>/\<site\>/\<name\>**, and stored by UUID, so a rename
 keeps the signer. It is added for one type of thing. With a signer of
 type **token** the host only lets an SSH key log in that carries a
 signature of that signer; a key without one is ignored. Who signs a
@@ -525,11 +548,11 @@ carries a signature of a signer of its own type, see **Signers** above.
 **config *host* allow_confd_jobs *token\|role***  
 The tokens and roles that may send a job to this host. Unset means
 nobody.  
-Both are named by their OID, **token\|***realm***/***user***/***name*
-and **role\|***realm***/***site***/***name*, and stored by UUID: a
-rename keeps the permission, and a new object of the same name does not
-inherit it. A token counts as named when it is in a named role, however
-deep the nesting goes.
+Both are named by their OID, **token\|\<realm\>/\<user\>/\<name\>** and
+**role\|\<realm\>/\<site\>/\<name\>**, and stored by UUID: a rename
+keeps the permission, and a new object of the same name does not inherit
+it. A token counts as named when it is in a named role, however deep the
+nesting goes.
 
 A host also reports what it runs: its system, its installed packages and
 its hardware. It does that by itself; what is configured is who reads it
@@ -581,8 +604,8 @@ Remove every entry of the changelog.
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
-refused. OTPme asks the token you are signed in with first, then the
-object.
+refused. A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 
 ## Policy Management
 
@@ -621,10 +644,11 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *host***  
-List the policies attached to the host. Use **--return-type** to select
-the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
-Use **--policy-types** to list only policies of the given types; these
-are policy types, not policy names.  
+List the policies attached to the host, the disabled ones too, marked
+**(disabled)**. Use **--return-type** to select the attribute returned
+(**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
+to list only policies of the given types; these are policy types, not
+policy names.  
 Needs the ACL **view:policies**.
 
 ## ACL Management
@@ -640,9 +664,10 @@ skips the question.
 
 **add_acl *host* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this host.  
-*owner_type* is **role** or **token**, and *owner* the path of that role
-or token. An ACL may carry a value, for example **view:tokens**, and
-several are separated by commas.  
+*owner_type* is **role** or **token**. *owner* is the path of that role
+or token. An ACL can carry a value, for example **view:tokens**. To give
+several ACLs at once, separate them with commas:
+**view:tokens,view:status**.  
 Needs the ACL **add:acl**.
 
 **del_acl *host* *acl*\[,*acl*\]**  
@@ -656,14 +681,13 @@ Show the ACLs that lie on this host, i.e. who may do what with it. Needs
 the ACL **view:acl**.
 
 **enable_acl_inheritance *host***  
-Let the host inherit the default ACLs of the unit above it. It does not
-by default.
+Let a move of the host swap its default ACLs: what the old unit handed
+down is taken away, and what the new unit hands down is given. It does
+not by default; a move then leaves the ACLs of the host as they are.
 
-Only default ACLs are inherited. An ordinary ACL on the unit never is.
-
-Moving the host into another unit then takes away the default ACLs of
-the old unit and applies those of the new one. While inheritance is off,
-a move leaves the ACLs of the host as they are.
+Only a move asks this. A new host gets the default ACLs of its unit, and
+**add_acl -a** or **-r** on a unit reach it either way. A move with
+**--keep-acls** leaves its ACLs alone all the same.
 
 A move by somebody who does not hold **add:acl** and **delete:acl** on
 the host leaves its ACLs alone as well, and says so. Otherwise moving an
@@ -673,8 +697,8 @@ of that unit.
 Needs the ACL **enable:acl_inheritance**.
 
 **disable_acl_inheritance *host***  
-Stop inheriting them. Only the ACLs on the host itself count from then
-on. Needs the ACL **disable:acl_inheritance**.
+A move leaves the ACLs of the host as they are again.  
+Needs the ACL **disable:acl_inheritance**.
 
 ## Configuration
 
@@ -884,6 +908,19 @@ back without an admin login.
 Delete the object. The certificate is revoked, the roles and access
 groups that name the host let it go, and the object goes to the trash.
 
+# AUTH ON ACTION HOOKS
+
+An auth on action policy can ask for a login again before these actions.
+See **Auth On Action Policy** in **otpme-policy**(1). A host has the
+hooks every object type has, and these:
+
+> add_dynamic_group, add_role, add_sync_group, add_token,
+> change_public_key, disable_jotp_rejoin, disable_sync_by_login_token,
+> disable_sync_groups, enable_jotp_rejoin, enable_sync_by_login_token,
+> enable_sync_groups, join, leave, limit_logins, remove_dynamic_group,
+> remove_role, remove_sync_group, remove_token, renew_cert, revoke_cert,
+> set_config_parameter, unlimit_logins.
+
 # FILES
 
 On a node:
@@ -903,19 +940,19 @@ Its own config file. **VALID_LOGIN_USERS**, **DENY_LOGIN_USERS**,
 */etc/otpme/ssl/*  
 Its certificate and keys: **cert.pem** with **key.pem** for TLS,
 **hostkey.pem** for the key pair the realm holds the public half of,
-**ca.pem** for the chain and *realm***-***site***.pem** for the site.
+**ca.pem** for the chain and **\<realm\>-\<site\>.pem** for the site.
 
-*/etc/otpme/signers/*type/**  
+*/etc/otpme/signers/\<type\>/*  
 The signers of the machine, one directory per signer type, as
 **otpme-tool add_signer** writes them. The ones a user added for
 themselves are in *\~/.otpme/signers/*.
 
-*/var/cache/otpme/ssh/authorized_keys/*user/authorized_keys**  
+*/var/cache/otpme/ssh/authorized_keys/\<user\>/authorized_keys*  
 The SSH keys of that user, as sshd gets them through
 **otpme-get-authorized-keys**. Written by **hostd** from the tokens the
 host holds.
 
-*/var/cache/otpme/offline/*user_uuid/**  
+*/var/cache/otpme/offline/\<user_uuid\>/*  
 The tokens the machine can check while it cannot reach the realm, one
 directory per user.
 

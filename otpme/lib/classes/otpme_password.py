@@ -20,6 +20,7 @@ from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.otpme_object import OTPmeObject
@@ -266,6 +267,23 @@ commands = {
                     },
                 },
             },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'edit_changelog'   : {
             'default'    : {
                 'exists'    : {
@@ -296,6 +314,15 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'auto_disable'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1154,8 +1181,7 @@ def sign_members_of(o, force=False, callback=default_callback):
     pass_crypt.verify_members().
     """
     if not o.verify_acl(f"set:config:{MEMBERS_PARAMETER}"):
-        msg = _("Permission denied: {object_path}")
-        msg = msg.format(object_path=o.path)
+        msg = denied_msg(o, f"set:config:{MEMBERS_PARAMETER}")
         return callback.error(msg, exception=PermissionDenied)
     if MEMBERS_PARAMETER not in o.config_params:
         msg = _("password_store_members is not set on {object_type} {object_name}.")
@@ -1240,8 +1266,7 @@ def sign_members_of(o, force=False, callback=default_callback):
 def show_members_of(o, callback=default_callback, **kwargs):
     """ The members, and what each signature says about them. """
     if not o.verify_acl(f"view:config:{MEMBERS_PARAMETER}"):
-        msg = _("Permission denied: {object_path}")
-        msg = msg.format(object_path=o.path)
+        msg = denied_msg(o, f"view:config:{MEMBERS_PARAMETER}")
         return callback.error(msg, exception=PermissionDenied)
     if MEMBERS_PARAMETER not in o.config_params:
         msg = _("password_store_members is not set on {object_type} {object_name}.")
@@ -1284,8 +1309,7 @@ def unsign_members_of(o, signer=None, force=False, callback=default_callback):
     needs what signing needs, the right to set the parameter.
     """
     if not o.verify_acl(f"set:config:{MEMBERS_PARAMETER}"):
-        msg = _("Permission denied: {object_path}")
-        msg = msg.format(object_path=o.path)
+        msg = denied_msg(o, f"set:config:{MEMBERS_PARAMETER}")
         return callback.error(msg, exception=PermissionDenied)
     if MEMBERS_PARAMETER not in o.config_params:
         msg = _("password_store_members is not set on {object_type} {object_name}.")
@@ -1609,8 +1633,8 @@ class OTPmePassword(OTPmeObject):
     @object_changelog("add client {client_name}")
     def add_client(
         self,
-        client_name: str=None,
-        client_uuid: str=None,
+        client_name: Union[str,None]=None,
+        client_uuid: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -1660,8 +1684,8 @@ class OTPmePassword(OTPmeObject):
     @object_changelog("remove client {client_name}")
     def remove_client(
         self,
-        client_name: str=None,
-        client_uuid: str=None,
+        client_name: Union[str,None]=None,
+        client_uuid: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -2027,8 +2051,8 @@ class OTPmePassword(OTPmeObject):
             if not self.verify_acl("delete:object"):
                 del_acl = f"delete:{self.type}"
                 if not parent_object.verify_acl(del_acl):
-                    msg = _("Permission denied: {pass_name}")
-                    msg = msg.format(pass_name=self.name)
+                    msg = denied_msg(self, "delete:object",
+                                    others=[(parent_object, del_acl)])
                     return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:
@@ -2124,7 +2148,7 @@ class OTPmePassword(OTPmeObject):
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show password config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

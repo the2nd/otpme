@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-client show [--policy-limit <limit>] [--scope-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [client]'),
-                    'cmd'   :   '--policy-limit :max_policies: --scope-limit :max_scopes: --limit :limit: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --scope-limit :max_scopes: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show client(s)'),
                                     '-a'                    : _('Show all clients.'),
@@ -35,23 +35,23 @@ cmd_help = {
                                     '--sort-by <attribute>' : _('Sort output by <attribute>.'),
                                     '--raw'                 : _('Output table without any headers/borders.'),
                                     '--csv'                 : _('Output table as CSV.'),
-                                    '--csv-sep <separator>' : _('Output table as CSV.'),
+                                    '--csv-sep <separator>' : _('Separator between the CSV columns.'),
                                 },
                 },
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client list [--attribute attribute] [-a] [regex]'),
-                    'cmd'   :   '--attribute :attribute: -a :show_all=True: [search_regex]',
+                    'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List clients'),
                                     '-a'                        : _('List all clients.'),
-                                    '--attribute <attribute>'   : _('Output given attribute.'),
+                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.'),
                                 },
                 },
 
     'add'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client add [--enable-oidc] [--scopes <scope1,scope2>] [--add-scopes <scope1,scope2>] [--no-default-scopes] {client} [address]'),
-                    'cmd'   :   '<|object|> --enable-oidc :enable_oidc=True: --scopes :[scopes]: --add-scopes :[add_scopes]: --no-default-scopes :no_default_scopes=True: [address]',
+                    'cmd'   :   '<|object|> --enable-oidc :enable_oidc=True: --scopes :[scopes]: --add-scopes :[add_scopes]: --no-default-scopes :no_default_scopes=True: ["address"]',
                     '_help' :   {
                                     'cmd'                           : _('Add new client'),
                                     '--enable-oidc'                 : _('Enable OIDC for client.'),
@@ -72,9 +72,24 @@ cmd_help = {
 
     'get_config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client get_config {client} {parameter}'),
-                    'cmd'   :   '<|object|> <parameter>',
+                    'cmd'   :   '<|object|> <"parameter">',
                     '_help' :   {
                                     'cmd'                   : _('Get config parameter.'),
+                                },
+                },
+    'show_oid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-client show_oid [--full] {client}'),
+                    'cmd'   :   '--full :full=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the OID of the object.'),
+                                    '--full'                : _('Show the full OID.'),
+                                },
+                },
+    'show_uuid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-client show_uuid {client}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the UUID of the object.'),
                                 },
                 },
     'changelog'    : {
@@ -86,7 +101,7 @@ cmd_help = {
                 },
     'edit_changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client edit_changelog {client} {entry_id} {comment}'),
-                    'cmd'   :   '<|object|> <entry_id> <comment>',
+                    'cmd'   :   '<|object|> <entry_id> <"comment">',
                     '_help' :   {
                                     'cmd'                   : _('Edit changelog entry comment.'),
                                 },
@@ -114,6 +129,15 @@ cmd_help = {
                                 },
                 },
 
+    'auto_disable'          : {
+                    '_cmd_usage_help' : _('Usage: otpme-client auto_disable [-u] {client} {time}'),
+                    'cmd'   :   '-u :unused=True: <|object|> <auto_disable>',
+                    '_help' :   {
+                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023", 0 removes it).'),
+                                    '-u'                    : _('Disable object if it was unused for the given time.'),
+                                },
+                },
+
     'enable'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client enable {client}'),
                     'cmd'   :   '<|object|>',
@@ -132,7 +156,7 @@ cmd_help = {
 
     'rename'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client rename {client} {new_name}'),
-                    'cmd'   :   '<|object|> <new_name>',
+                    'cmd'   :   '<|object|> <"new_name">',
                     '_help' :   {
                                     'cmd'                   : _('Rename client'),
                                 },
@@ -140,7 +164,7 @@ cmd_help = {
 
      'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client config -d -a {client} {param} [value]'),
-                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to client.'),
                                     '-a'                    : _('Append value to config parameter.'),
@@ -150,7 +174,7 @@ cmd_help = {
 
     'show_config'      : {
                     '_cmd_usage_help' : _('Usage: otpme-client show_config {client} [parameter]'),
-                    'cmd'   :   '<|object|> [parameter]',
+                    'cmd'   :   '<|object|> ["parameter"]',
                     '_help' :   {
                                     'cmd'                   : _('Show client config parameters'),
                                 },
@@ -172,7 +196,7 @@ cmd_help = {
 
     'add_acl'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client add_acl {client} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
+                    'cmd'   :   '<|object|> <"owner_type"> <"owner_name"> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to client'),
                                 },
@@ -215,7 +239,7 @@ cmd_help = {
 
     'move'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client move [--keep-acls] {client} {unit}'),
-                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <new_unit>',
+                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <"new_unit">',
                     '_help' :   {
                                     'cmd'                   : _('Change client\'s unit'),
                                     '--keep-acls'           : _('Keep object ACLs.'),
@@ -234,7 +258,7 @@ cmd_help = {
 
     'description'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client description {client} [description]'),
-                    'cmd'   :   '<|object|> [description]',
+                    'cmd'   :   '<|object|> ["description"]',
                     '_help' :   {
                                     'cmd'                   : _('Set client description'),
                                 },
@@ -242,7 +266,7 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client info {client} [info]'),
-                    'cmd'   :   '--language :language: <|object|> [info]',
+                    'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set client info'),
                                     '--language <lang>'     : _('Change info for language.'),
@@ -251,7 +275,7 @@ cmd_help = {
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client dump_info {client}'),
-                    'cmd'   :   '--language :language: <|object|>',
+                    'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump client info'),
                                     '--language <lang>'     : _('Dump info for language.'),
@@ -263,10 +287,6 @@ cmd_help = {
                 },
 
     '_list_valid_attributes'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_attributes'    : {
                     'cmd'   :   '<|object|>',
                 },
 
@@ -292,7 +312,7 @@ cmd_help = {
 
     'export'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client export --password <password> {client}'),
-                    'cmd'   :   '--password :password: <|object|>',
+                    'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export client config to stdout'),
                                     '--password <password>' : _('Encrypt object config with password.'),
@@ -301,7 +321,7 @@ cmd_help = {
 
     'add_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client add_policy {client} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add policy to client'),
                                 },
@@ -309,7 +329,7 @@ cmd_help = {
 
     'remove_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client remove_policy {client} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove policy from client'),
                                 },
@@ -317,7 +337,7 @@ cmd_help = {
 
     'list_tokens'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client list_tokens {client}'),
-                    'cmd'   :   '--return-type :return_type: --token-types :[token_types]: [|object|]',
+                    'cmd'   :   '--return-type :"return_type": --token-types :[token_types]: [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List assigned tokens.'),
                                     '--return-type'             : _('Attribute to return.'),
@@ -333,7 +353,7 @@ cmd_help = {
                 },
     'find_scopes'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client find_scopes [--return-type <return_type>] {client}'),
-                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    'cmd'   :   '--return-type :"return_type": [|object|]',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -344,7 +364,7 @@ cmd_help = {
                 },
     'find_passwords'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client find_passwords [--return-type <return_type>] {client}'),
-                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'cmd'   :   '--return-type :"return_type": <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -355,14 +375,14 @@ cmd_help = {
                 },
     'show_password'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client show_password {client} [entry]'),
-                    'cmd'   :   '<|object|> [entry_name]',
+                    'cmd'   :   '<|object|> ["entry_name"]',
                     '_help' :   {
                                     'cmd'                   : _('Show the passwords of this client, see otpme-pass.'),
                                 },
                 },
     'list_policies'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-client list_policies {client}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-client list_policies [--return-type <type>] [--policy-types <type1,type2>] {client}'),
+                    'cmd'   :   '--return-type :"return_type": --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -375,7 +395,7 @@ cmd_help = {
 
     'add_role'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client add_role {client} {role}'),
-                    'cmd'   :   '<|object|> <role_name>',
+                    'cmd'   :   '<|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add role to client.'),
                                 },
@@ -383,7 +403,7 @@ cmd_help = {
 
     'remove_role'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client remove_role {client} {role}'),
-                    'cmd'   :   '<|object|> <role_name>',
+                    'cmd'   :   '<|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove role from client.'),
                                 },
@@ -391,7 +411,7 @@ cmd_help = {
 
     'add_token'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client add_token [--skip-portal-token] {client} {token} [token_options]'),
-                    'cmd'   :   '--skip-portal-token :skip_portal_token=True: <|object|> <token_path> [token_options]',
+                    'cmd'   :   '--skip-portal-token :skip_portal_token=True: <|object|> <"token_path"> ["token_options"]',
                     '_help' :   {
                                     'cmd'                   : _('Add token to client.'),
                                     '--skip-portal-token'   : _('Do not add the tokens the SSO portal manages along with an SSO token.'),
@@ -400,7 +420,7 @@ cmd_help = {
 
     'remove_token'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client remove_token [--skip-portal-token] {client} {token}'),
-                    'cmd'   :   '--skip-portal-token :skip_portal_token=True: <|object|> <token_path>',
+                    'cmd'   :   '--skip-portal-token :skip_portal_token=True: <|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Remove token from client.'),
                                     '--skip-portal-token'   : _('Do not remove the tokens the SSO portal manages along with an SSO token.'),
@@ -425,7 +445,7 @@ cmd_help = {
 
     'secret'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client secret {client} [secret]'),
-                    'cmd'   :   '<|object|> [secret]',
+                    'cmd'   :   '<|object|> ["secret"]',
                     '_help' :   {
                                     'cmd'                   : _('Change client\'s secret'),
                                 },
@@ -514,7 +534,7 @@ cmd_help = {
 
     'sso_name'      : {
                     '_cmd_usage_help' : _('Usage: otpme-client sso_name {client} {sso_name}'),
-                    'cmd'   :   '<|object|> <sso_name>',
+                    'cmd'   :   '<|object|> <"sso_name">',
                     '_help' :   {
                                     'cmd'                   : _('Change client\'s SSO name.'),
                                 },
@@ -546,7 +566,7 @@ cmd_help = {
 
     'login_url'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client login_url {client} {login_url}'),
-                    'cmd'   :   '<|object|> <login_url>',
+                    'cmd'   :   '<|object|> <"login_url">',
                     '_help' :   {
                                     'cmd'                   : _('Change client\'s login URL.'),
                                 },
@@ -554,7 +574,7 @@ cmd_help = {
 
     'helper_url'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client helper_url {client} {helper_url}'),
-                    'cmd'   :   '<|object|> <helper_url>',
+                    'cmd'   :   '<|object|> <"helper_url">',
                     '_help' :   {
                                     'cmd'                   : _('Change client\'s SSO helper URL.'),
                                 },
@@ -578,7 +598,7 @@ cmd_help = {
 
     'add_address'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client add_address {client} {address}'),
-                    'cmd'   :   '<|object|> <address>',
+                    'cmd'   :   '<|object|> <"address">',
                     '_help' :   {
                                     'cmd'                   : _('Add address to client'),
                                 },
@@ -586,7 +606,7 @@ cmd_help = {
 
     'del_address'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client del_address {client} {address}'),
-                    'cmd'   :   '<|object|> <address>',
+                    'cmd'   :   '<|object|> <"address">',
                     '_help' :   {
                                     'cmd'                   : _('Delete address from client'),
                                 },
@@ -594,7 +614,7 @@ cmd_help = {
 
     'add_oidc_redirect_uri'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client add_oidc_redirect_uri {client} {uri}'),
-                    'cmd'   :   '<|object|> <uri>',
+                    'cmd'   :   '<|object|> <"uri">',
                     '_help' :   {
                                     'cmd'                   : _('Add OIDC redirect URI to client.'),
                                 },
@@ -602,7 +622,7 @@ cmd_help = {
 
     'del_oidc_redirect_uri'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client del_oidc_redirect_uri {client} {uri}'),
-                    'cmd'   :   '<|object|> <uri>',
+                    'cmd'   :   '<|object|> <"uri">',
                     '_help' :   {
                                     'cmd'                   : _('Remove OIDC redirect URI from client.'),
                                 },
@@ -618,7 +638,7 @@ cmd_help = {
 
     'add_oidc_logout_redirect_uri'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client add_oidc_logout_redirect_uri {client} {uri}'),
-                    'cmd'   :   '<|object|> <uri>',
+                    'cmd'   :   '<|object|> <"uri">',
                     '_help' :   {
                                     'cmd'                   : _('Add OIDC post-logout redirect URI to client.'),
                                 },
@@ -626,7 +646,7 @@ cmd_help = {
 
     'del_oidc_logout_redirect_uri'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client del_oidc_logout_redirect_uri {client} {uri}'),
-                    'cmd'   :   '<|object|> <uri>',
+                    'cmd'   :   '<|object|> <"uri">',
                     '_help' :   {
                                     'cmd'                   : _('Remove OIDC post-logout redirect URI from client.'),
                                 },
@@ -650,7 +670,7 @@ cmd_help = {
 
     'oidc_id_token_alg'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client oidc_id_token_alg {client} {alg}'),
-                    'cmd'   :   '<|object|> <alg>',
+                    'cmd'   :   '<|object|> <"alg">',
                     '_help' :   {
                                     'cmd'                   : _('Set OIDC ID token signing alg (RS256, RS384, RS512, ES256, ES384, ES512, EdDSA).'),
                                 },
@@ -658,7 +678,7 @@ cmd_help = {
 
     'oidc_subject_type'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client oidc_subject_type {client} {subject_type}'),
-                    'cmd'   :   '<|object|> <subject_type>',
+                    'cmd'   :   '<|object|> <"subject_type">',
                     '_help' :   {
                                     'cmd'                   : _('Set OIDC subject type (public or pairwise).'),
                                 },
@@ -666,7 +686,7 @@ cmd_help = {
 
     'oidc_sector_identifier_uri'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client oidc_sector_identifier_uri [--validate] [--clear] {client} [uri]'),
-                    'cmd'   :   '--validate :validate=True: --clear :clear=True: <|object|> [uri]',
+                    'cmd'   :   '--validate :validate=True: --clear :clear=True: <|object|> ["uri"]',
                     '_help' :   {
                                     'cmd'                   : _('Set or clear the OIDC sector identifier URI (only relevant for pairwise subjects).'),
                                     '--validate'            : _('Fetch URI and verify all registered redirect URIs are listed (default: lazy, deferred to sign-time).'),
@@ -676,7 +696,7 @@ cmd_help = {
 
     'oidc_backchannel_logout_uri'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client oidc_backchannel_logout_uri [--clear] {client} [uri]'),
-                    'cmd'   :   '--clear :clear=True: <|object|> [uri]',
+                    'cmd'   :   '--clear :clear=True: <|object|> ["uri"]',
                     '_help' :   {
                                     'cmd'                   : _('Set or clear the OIDC backchannel logout URI (server-to-server logout notification).'),
                                     '--clear'               : _('Remove the backchannel logout URI.'),
@@ -726,7 +746,7 @@ cmd_help = {
 
     'add_oidc_grant_type'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client add_oidc_grant_type {client} {grant_type}'),
-                    'cmd'   :   '<|object|> <grant_type>',
+                    'cmd'   :   '<|object|> <"grant_type">',
                     '_help' :   {
                                     'cmd'                   : _('Allow OIDC grant type (authorization_code, refresh_token, client_credentials, urn:ietf:params:oauth:grant-type:device_code).'),
                                 },
@@ -734,7 +754,7 @@ cmd_help = {
 
     'del_oidc_grant_type'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client del_oidc_grant_type {client} {grant_type}'),
-                    'cmd'   :   '<|object|> <grant_type>',
+                    'cmd'   :   '<|object|> <"grant_type">',
                     '_help' :   {
                                     'cmd'                   : _('Disable OIDC grant type for client.'),
                                 },
@@ -750,7 +770,7 @@ cmd_help = {
 
     'add_oidc_response_type'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client add_oidc_response_type {client} {response_type}'),
-                    'cmd'   :   '<|object|> <response_type>',
+                    'cmd'   :   '<|object|> <"response_type">',
                     '_help' :   {
                                     'cmd'                   : _('Allow OIDC response type (code, "code id_token").'),
                                 },
@@ -758,7 +778,7 @@ cmd_help = {
 
     'del_oidc_response_type'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client del_oidc_response_type {client} {response_type}'),
-                    'cmd'   :   '<|object|> <response_type>',
+                    'cmd'   :   '<|object|> <"response_type">',
                     '_help' :   {
                                     'cmd'                   : _('Disable OIDC response type for client.'),
                                 },
@@ -774,7 +794,7 @@ cmd_help = {
 
     'access_group'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client access_group {client} [access_group]'),
-                    'cmd'   :   '<|object|> [access_group]',
+                    'cmd'   :   '<|object|> ["access_group"]',
                     '_help' :   {
                                     'cmd'                   : _('Change client\'s accessgroup'),
                                 },

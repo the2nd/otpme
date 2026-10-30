@@ -1,111 +1,256 @@
-.TH OTPME-POLICY 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.TH OTPME-POLICY 1 "2026-10-26" "OTPme 0.3.0a287" "OTPme Manual"
 .SH NAME
-otpme-policy \- manage OTPme security and business policies
+otpme-policy \- manage policies: password rules, login times, defaults for new objects and more
 .SH SYNOPSIS
 .B otpme-policy
 [\fB\-\-type\fR \fIpolicy_type\fR]
 .I command
 [\fIoptions\fR] [\fIpolicy\fR]
 .SH DESCRIPTION
+.na
+.nh
 .B otpme-policy
-manages policies in the OTPme system. Policies are objects that can be attached to other OTPme objects (users, tokens, hosts, nodes, groups, units, roles, etc.) and are triggered via hooks when actions are performed on those objects. Each policy type defines which hooks it handles (e.g. check_password, check_pin, authenticate) and which object types it applies to. When an action is performed on an object, all assigned policies are evaluated through the run_policies() mechanism.
+adds, configures and removes policies.
+A policy is an object in a unit.
+It does nothing until it is assigned to another object, with \fBadd_policy\fR of that object's command, e.g. \fBotpme\-user add_policy\fR.
+Then it acts at its moments: when a password is set, at a login, when an object is added to a unit, before an action.
+.PP
+What a policy does depends on its type, see \fBPOLICY TYPES\fR.
+An object takes one policy of each type.
+A new site comes with a set of them, see \fBWhat a new site has\fR.
+.hy
+.ad
 .SH POLICY TYPES
-OTPme supports the following policy types:
+The type is chosen when the policy is added (\fB\-\-type\fR) and cannot be changed.
+An object takes one policy of each type; a second one of the same type is refused.
+What the settings of a type are is under \fBPOLICY TYPE DETAILS\fR.
 .TP
 .B password
-Password and PIN complexity requirements. Controls minimum length, character requirements, and strength checking.
+How good a password or PIN has to be.
+For user, token, host, node; a token without one is checked with the one of its user.
 .TP
 .B logintimes
-Time-based access control. Restricts authentication to specific time windows.
+When a login is allowed.
+For user, token, role, host, node, client, accessgroup.
 .TP
 .B autodisable
-Automatic account or token disabling. Disables objects after a specified time or after a period of inactivity.
+Disable the object it is assigned to after a time, or after it was unused for that long.
+For every object type except the realm and policies, and not for an object the realm or a site comes with, e.g. the admin user.
+"Unused for" only where the object keeps its last use: user, token, host, node, client, device, resolver, share.
 .TP
 .B forcetoken
-Token enforcement policy. Requires specific token types or pass types for authentication.
+Which token types or pass types a login there must use.
+For role, host, node, client, accessgroup.
 .TP
 .B authonaction
-Authentication on action. Requires re-authentication before performing sensitive operations (hooks).
+Log in again before an action, e.g. changing a PIN.
+For every object type.
 .TP
 .B defaultunits
-Default organizational units. Specifies default units for creating new objects of specific types.
+Which unit a new object goes to, for the objects a user adds.
+For user.
 .TP
 .B defaultgroups
-Default group assignments. Automatically adds new users to specified groups and sets the user's default (primary) group.
+Which groups a new user joins, and their default group.
+For unit.
 .TP
 .B defaultroles
-Default role assignments. Automatically adds a new user's default token to the specified roles.
+Which roles the default token of a new user joins.
+For unit.
 .TP
 .B defaultpolicies
-Default policy assignments. Automatically applies policies to new objects of a given type.
+Which policies a new object gets, per object type.
+For site, unit: the unit or site the object is added to.
 .TP
 .B idrange
-ID range management. Controls uidNumber and gidNumber ranges for users and groups.
+Which uidNumber and gidNumber a new user or group gets.
+For site, unit.
 .TP
 .B tokenacls
-Token ACL policy. Assigns ACLs to newly created tokens and to the user/token that created them.
+Which ACLs a new token gets, and the user and token that added it.
+For user.
 .TP
 .B objecttemplates
-Object templates. Provides templates for creating new objects with predefined configurations.
+Which template a new user or host is made from.
+For unit.
+.SS What a new site has
+A site is created with these policies:
+.TP
+.B auth_on_action
+authonaction, on every object.
+.TP
+.B password_strength
+password, on every user, token, host and node.
+.TP
+.B token_acls
+tokenacls, on every user.
+.TP
+.B default_units
+defaultunits, on every user.
+.TP
+.B id_range
+idrange, on the site.
+.TP
+.B default_policies
+defaultpolicies, on the site and on every unit.
+It is what hands the ones above to new objects.
+.TP
+\fBdefault_groups\fR, \fBdefault_roles\fR
+defaultgroups and defaultroles, on the unit \fBusers\fR.
+.TP
+.B object_templates
+objecttemplates, on every unit.
+.TP
+\fBauto_disable_hour\fR, \fB_day\fR, \fB_week\fR, \fB_month\fR, \fB_year\fR
+autodisable, assigned to nothing.
+.TP
+\fBworkhours_login\fR, \fBweekend_login\fR
+logintimes, assigned to nothing.
+.TP
+\fBforce_token_otp\fR, \fBforce_token_non_static\fR
+forcetoken, assigned to nothing.
 .SH COMMANDS
 .SS Policy Management
 .TP
-.B add \fIpolicy_name\fR
-Create a new policy.
+.B add \fIpolicy\fR
+Create a policy.
+The type is given with \fB\-\-type\fR, e.g. \fBotpme-policy \-\-type password add pw\-default\fR.
+See \fBPOLICY TYPES\fR for the types.
+.br
+A policy goes to the unit \fBpolicies\fR, or to the one a \fBdefaultunits\fR policy of your user names.
+Name another unit as \fIunit\fR/\fIpolicy\fR.
+Needs \fBadd:policy\fR, or \fBadd:policy:<type>\fR, on that unit.
+.br
+A new policy does nothing until it is assigned to an object, see \fBPolicy Assignment\fR.
 .TP
-.B del \fIpolicy\fR
+.B del \fR[\fB\-\-no\-trash\fR] \fIpolicy\fR
 Delete a policy.
+It goes to the trash, from where \fBotpme-trash\fR(1) can bring it back with its assignments; \fB\-\-no\-trash\fR deletes it right away.
+.br
+The question names every object the policy is assigned to; \fB\-f\fR deletes without asking.
+Needs \fBdelete:object\fR on the policy, or \fBdelete:policy\fR (or \fBdelete:policy:<type>\fR) on its unit.
 .TP
-.B show \fR[\fIpolicy\fR]
-Display policy information. Without arguments, shows all policies.
+.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fIpolicy\fR]
+Without a policy, a table of all of them with their unit, type and status; the options below are for that table.
+With a policy, its settings: what the commands of its type set, see \fBPOLICY TYPE DETAILS\fR.
+.RS
+.TP
+.B \-a
+Also the policies you may only look at, not just the ones you may change.
+.TP
+.B \-z \fIN\fR
+How many policies to print.
+.TP
+.B \-\-fields \fIF1,F2\fR
+Print these columns and no others.
+The names are the ones in the header of the table: \fBpolicy\fR, \fBunit\fR, \fBtype\fR, \fBstatus\fR, \fBpolicies\fR, \fBinherit\fR, \fBdescription\fR.
+.TP
+.B \-\-limit \fIN\fR, \fB\-\-policy\-limit\fR \fIN\fR
+How many entries to print in the column \fBpolicies\fR, the policies assigned to the policy itself.
+5 by default, 30 when you show one policy.
+.RE
+.na
+.nh
+.TP
+.B show_oid \fR[\fB\-\-full\fR] \fIpolicy\fR
+Show the OID of the policy: \fB\%policy|<realm>/<site>/<name>\fR.
+With \fB\-\-full\fR the full OID, which names the unit as well: \fB\%policy|<realm>/<site>/<unit_path>/<name>\fR.
+.br
+Needs the ACL \fBview_public:object\fR.
+.TP
+.B show_uuid \fIpolicy\fR
+Show the UUID of the policy.
+.br
+Needs the ACL \fBview_public:object\fR.
+.hy
+.ad
 .TP
 .B list \fR[\fIregex\fR]
-List policies, optionally filtered by regex pattern.
+List the policy names, and with a regex only those that match it.
 .TP
 .B enable \fIpolicy\fR
 Enable a disabled policy.
 .TP
 .B disable \fIpolicy\fR
 Disable a policy without deleting it.
+A disabled policy does nothing: it stays assigned, but no check, default or ID range comes from it.
+.br
+A policy is never disabled by a time: it has no \fBauto_disable\fR, and an auto-disable policy is not for policies.
 .TP
 .B rename \fIpolicy\fR \fInew_name\fR
 Rename a policy.
+It asks first; \fB\-f\fR does not.
+The assignments stay, they hold the UUID.
 .TP
 .B move \fR[\fB\-\-keep\-acls\fR] \fIpolicy\fR \fIunit\fR
-Move policy to a different unit.
+Move the policy into another unit.
+Needs \fBadd:policy\fR on the new unit.
+Its ACLs move with it: the default ACLs of the old unit are taken away and those of the new one are applied.
+\fB\-\-keep\-acls\fR leaves them as they are.
 .SS Policy Configuration
-.TP
-.B show_config \fIpolicy\fR [\fIparameter\fR]
-Show all policy configuration parameters.
-.TP
-.B get_config \fIpolicy\fR \fIparameter\fR
-Show the value of a single configuration parameter.
+What a policy does is set with the commands of its type, see \fBPOLICY TYPE DETAILS\fR.
+\fBconfig\fR sets the parameters every object has; for a policy these are \fBchangelog\fR and \fBallow_changelog_clearing\fR, see \fBObject Changelog\fR.
 .TP
 .B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIpolicy\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
+Set a parameter on the policy.
+.RS
+.TP
+.B \-d
+Remove the parameter from the policy, or with a value only that one value from a list.
+It is not set back to a default: what applies afterwards is whatever the unit or the site says.
+.TP
+.B \-a
+Append the value to a parameter that holds a list, instead of replacing what is there.
+.RE
+.IP
+The ACL is per parameter, \fBset:config:<parameter>\fR.
+.TP
+.B show_config \fIpolicy\fR \fR[\fIparameter\fR]
+The parameters set on the policy itself, or only the one named.
+Nothing is shown for a parameter that the policy gets from a unit or from the site.
+.TP
+.B get_config \fIpolicy\fR \fIparameter\fR
+What the parameter comes to for this policy, once the policy, its units and its site have been looked at.
+So this answers what applies, where \fBshow_config\fR answers what was set here.
 .TP
 .B description \fIpolicy\fR \fR[\fIdescription\fR]
-Set policy description.
+Set the description.
+Without one OTPme asks and offers the current text for editing.
+Needs \fBedit:description\fR.
 .TP
 .B info \fR[\fB\-\-language\fR \fILANG\fR] \fIpolicy\fR \fR[\fIinfo\fR]
-Set free-form info text. If \fIinfo\fR is omitted, the current info text is
-opened in the editor specified by the \fBEDITOR\fR environment variable.
+Set free-form info text.
+If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
+Needs \fBedit:info\fR.
+.br
+Without
+.B \-\-language
+the text is the administrator's own note.
+Nothing shows the info of a policy to a user, so a text for a language stays a note as well.
 .TP
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIpolicy\fR
-Dump the info text to stdout.
+Write one of those texts to stdout.
+\fB\-\-language\fR picks which one; without it you get the note of the administrator.
+Needs \fBview:info\fR.
 .SS Policy Assignment
-A policy can carry policies of its own (policy chaining).
+A policy can have policies assigned to it like any other object.
+They act on the policy itself, not on the objects it is assigned to.
+Two types can be assigned to a policy:
+.RS
+.IP \(bu 3
+\fBauthonaction\fR: who changes the policy has to log in again first.
+.IP \(bu 3
+\fBautodisable\fR: the policy is disabled after the time set there, and from then on does nothing.
+.RE
 .PP
 A \fIchild_policy\fR is the name of a policy, not a path.
-It is looked for in the site of the policy it is attached to.
+It is looked for in the site of the policy it is assigned to.
 .PP
-Attaching and detaching ask before they change anything; the global option \fB\-f\fR skips the question.
+Assigning and removing ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
 .B add_policy \fIpolicy\fR \fIchild_policy\fR
-Attach a policy to this policy.
-.br
-A policy has a list of object types it is for; one that does not name \fBpolicy\fR is refused.
-So is a second policy of a type that allows only one per object.
+Assign a policy to this policy.
+A type that is not for policies is refused, and so is a second policy of a type that allows only one per object.
 .br
 Needs the ACL \fBassign:policy\fR.
 .TP
@@ -113,33 +258,72 @@ Needs the ACL \fBassign:policy\fR.
 Remove a policy from this policy.
 .br
 Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
-Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
+Removing a policy takes away what it enforces, so it must not be cheaper than assigning one.
 .TP
 .B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIpolicy\fR
-List the policies attached to this policy.
-Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
-Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
+List the policies assigned to this policy, disabled ones too, marked \fB(disabled)\fR.
+\fB\-\-return\-type\fR picks what is printed: \fBname\fR (the default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
+\fB\-\-policy\-types\fR lists only policies of these types; they are policy types, not policy names.
 .br
 Needs the ACL \fBview:policies\fR.
 .SS ACL Management
+An ACL says what somebody may do with this policy.
+The somebody is a role or a token, never a user.
+.PP
+What the three forms \fBacl\fR, \fB+acl\fR and \fB++acl\fR mean is under \fBACLs\fR in
+.BR otpme (7).
+Which ACLs a policy knows, those of \fBpolicy\fR and those of its type, is in
+.BR otpme\-acls (7).
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
-.B add_acl \fIpolicy\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
-Add an access control entry. Owner type can be 'role' or 'token'.
+.B add_acl \fIpolicy\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
+Give a role or a token one or more ACLs on this policy.
+.br
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
+\fIowner\fR is the path of that role or token.
+An ACL can carry a value, for example \fBview:policy_type\fR.
+To give several ACLs at once, separate them with commas: \fB\%view:policy_type,view:status\fR.
+.br
+Needs the ACL \fBadd:acl\fR.
 .TP
-.B del_acl \fIpolicy\fR \fIacl\fR
-Remove an access control entry.
+.B del_acl \fIpolicy\fR \fIacl\fR[,\fIacl\fR]
+Take those ACLs away again.
+.br
+Here an \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fBrole:berlin/pw\-admins:view:policy_type\fR.
+.br
+Needs the ACL \fBdelete:acl\fR.
 .TP
 .B list_acls \fIpolicy\fR
-Display all ACLs for the policy.
+Show the ACLs that lie on this policy, i.e. who may do what with it.
+Needs the ACL \fBview:acl\fR.
 .TP
 .B enable_acl_inheritance \fIpolicy\fR
-Enable ACL inheritance from parent objects.
+Let a move of the policy swap its default ACLs: what the old unit handed down is taken away, and what the new unit hands down is given.
+It does not by default; a move then leaves the ACLs of the policy as they are.
+.RS
+.PP
+Only a move asks this.
+A new policy gets the default ACLs of its unit, and \fBadd_acl \-a\fR or \fB\-r\fR on a unit reach it either way.
+A move with \fB\-\-keep\-acls\fR leaves its ACLs alone all the same.
+.PP
+A move by somebody who does not hold \fBadd:acl\fR and \fBdelete:acl\fR on the policy leaves its ACLs alone as well, and says so.
+Otherwise moving an object into a unit would be a way of handing yourself the default ACLs of that unit.
+.PP
+Needs the ACL \fBenable:acl_inheritance\fR.
+.RE
 .TP
 .B disable_acl_inheritance \fIpolicy\fR
-Disable ACL inheritance.
+A move leaves the ACLs of the policy as they are again.
+.br
+Needs the ACL \fBdisable:acl_inheritance\fR.
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
+.PP
+Unless the \fBchangelog\fR config parameter says otherwise.
+It is read along the cascade of the policy, and nothing is written where it is off \(em not for that policy, and not for the ones below a unit that switched it off.
+Without any value anywhere it is on.
 .PP
 An \fIentry_id\fR is the number the listing shows in front of an entry, counted from 0.
 .PP
@@ -168,380 +352,659 @@ This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
 has to allow it (see \fBotpme\fR(7)).
 It is true by default, but where no value is found at all, clearing is refused.
-OTPme asks the token you are signed in with first, then the object.
-.SS Import/Export
+A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
+.SS Export and Cleanup
+Both write to stdout.
+There is no import on this page: reading an export back in is
+.B otpme\-tool import\fR,
+see
+.BR otpme\-tool (1).
+.PP
+.B remove_orphans
+asks before it changes anything; the global option \fB\-f\fR skips the question.
 .TP
-.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIpolicy\fR
-Export policy configuration to stdout, as JSON.
-Without \fB\-\-password\fR it is written in clear; with one it is encrypted with a key derived from that password.
-Reading it back in is
-.BR otpme\-tool " " import .
+.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIpolicy\fR
+Write the whole object of the policy to stdout, as JSON.
+.RS
+.PP
+Without \fB\-\-password\fR it is written as it is, in clear.
+With one, a key is derived from that password and the object is encrypted with it; the salt goes into the output, so the password is all you need to read it back.
+.PP
+What a policy names, the groups, roles, units, policies or templates of its type, it names by UUID, so an export says something only in the realm it came from.
+.PP
+Needs the ACL \fBexport\fR.
+.RE
+.TP
+.B remove_orphans \fIpolicy\fR
+Remove what the policy still points at although it is gone.
+.RS
+.PP
+On every policy that is its ACLs and the policies assigned to it.
+Its type adds its own lists: the units of \fBdefaultunits\fR, the roles of \fBdefaultroles\fR, the groups of \fBdefaultgroups\fR, the policies of \fBdefaultpolicies\fR, the whitelist of \fBauthonaction\fR, the templates of \fBobjecttemplates\fR and the dictionaries of \fBpassword\fR.
+.PP
+It shows everything it found and asks once for all of it.
+It asks nothing and changes nothing when it finds nothing.
+.PP
+Needs the ACL \fBremove:orphans\fR.
+.RE
 .SH POLICY TYPE DETAILS
 .SS Password Policy
-Controls password and PIN requirements.
+Checks a password or a PIN when it is set: on a token, on a user, on a host or node.
+A token without a password policy of its own is checked with the one of its user.
 .PP
-Commands:
+A new policy asks for at least 8 characters with a number, an upper- and a lowercase letter and a special character, a PIN of at least 4 digits, and a strength score of at least 2 from the checker \fBspsc\fR.
+A PIN is digits only.
+Which characters a password may contain at all is the config parameter \fBpassword_allowed_chars\fR of the site, unit or user.
+.PP
+The \fBenable_\fR and \fBdisable_\fR commands change at once; the others ask first, and \fB\-f\fR skips the question.
 .RS
 .TP
 .B password_min_len \fIpolicy\fR \fIlength\fR
-Set minimum password length.
-.TP
+.TQ
 .B pin_min_len \fIpolicy\fR \fIlength\fR
-Set minimum PIN length.
+The shortest password, the shortest PIN.
+Needs \fB\%edit:password_min_len\fR, \fB\%edit:pin_min_len\fR.
 .TP
-.B enable_require_number \fIpolicy\fR
-Require at least one number in password.
-.TP
-.B disable_require_number \fIpolicy\fR
-Disable number requirement.
-.TP
-.B enable_require_upper \fIpolicy\fR
-Require at least one uppercase character.
-.TP
-.B disable_require_upper \fIpolicy\fR
-Disable uppercase requirement.
-.TP
-.B enable_require_lower \fIpolicy\fR
-Require at least one lowercase character.
-.TP
-.B disable_require_lower \fIpolicy\fR
-Disable lowercase requirement.
-.TP
-.B enable_require_special \fIpolicy\fR
-Require at least one special character.
-.TP
-.B disable_require_special \fIpolicy\fR
-Disable special character requirement.
-.TP
-.B strength_checker \fIpolicy\fR \fIchecker\fR
-Set the password strength checker to use.
+\fBenable_require_number\fR|\fB_upper\fR|\fB_lower\fR|\fB_special\fR \fIpolicy\fR
+.TQ
+\fBdisable_require_number\fR|\fB_upper\fR|\fB_lower\fR|\fB_special\fR \fIpolicy\fR
+Whether a password needs a number, an uppercase letter, a lowercase letter, a special character.
+Needs \fB\%enable:number\fR, \fB\%disable:number\fR, and the same with \fBuppercase\fR, \fBlowercase\fR, \fBspecial\fR.
 .TP
 .B enable_strength_checker \fIpolicy\fR
-Enable the strength checker.
-.TP
+.TQ
 .B disable_strength_checker \fIpolicy\fR
-Disable the strength checker.
+Whether the strength of a password is scored on top of the rules above.
+Needs \fB\%enable:strength_checker\fR, \fB\%disable:strength_checker\fR.
+.TP
+.B strength_checker \fIpolicy\fR \fIchecker\fR
+Which checker scores it.
+\fBspsc\fR is the only one.
+Needs \fB\%edit:strength_checker\fR.
 .TP
 .B strength_checker_opts \fIpolicy\fR \fIoptions\fR
-Set strength checker options.
+The options of the checker, as \fIname\fR=\fIvalue\fR separated by a semicolon, e.g. \fB\(dqmin_score=3;dict_order=en,de\(dq\fR.
+Each call replaces all of them; what is not given falls back to its default.
+Needs \fB\%edit:strength_checker_opts\fR.
+.RS
+.TP
+\fBmin_score\fR=\fIN\fR
+The lowest score a password may have.
+A score runs from 0 to 10 and is about the years it takes to guess the password at a million tries a second.
+Default 2.
+.TP
+\fBdict_order\fR=\fId1\fR,\fId2\fR
+The dictionaries a password is looked up in, and in which order; see
+.BR otpme\-dictionary (1).
+Default none.
+A dictionary that is disabled or deleted is skipped.
+The \fBpassword_strength\fR policy of a site has all the dictionaries the site was created with.
+.TP
+\fBrecent_years_past\fR=\fIN\fR, \fBrecent_years_future\fR=\fIN\fR
+Years in a password that count as easy to guess, counted back and forward from this year.
+Default 150 and 10.
+.RE
 .TP
 .B test \fR[\fB\-\-password\fR \fIpassword\fR] [\fB\-\-pin\fR \fIpin\fR] \fIpolicy\fR
-Test the policy against a password or PIN.
+Check a password or a PIN against the policy, without setting it.
+For a password it prints the score and whether it is strong enough.
 .RE
 .SS Login Times Policy
-Restricts authentication to specific time windows.
+When a login is allowed.
+It is checked at every login, on the token, the user and the access group, on the host, node or client, and on the roles that let the token in there.
+An admin token is always let in.
+The time is the local time of the node that checks the login.
 .PP
-Commands:
+A site has \fBworkhours_login\fR (\fB* 6\-18 * * 1\-5\fR, Monday to Friday 6:00 to 18:59) and \fBweekend_login\fR (\fB* * * * 6\-7\fR), assigned to nothing.
 .RS
 .TP
-.B login_times \fIpolicy\fR \fIlogin_times\fR
-Set allowed login times.
+.B login_times \fIpolicy\fR \fItimes\fR
+When a login is allowed, like the time fields of
+.BR cron (5):
+minute (0\-59), hour (0\-23), day of month (1\-31), month (1\-12), day of week (1\-7, Monday is 1).
+A field is \fB*\fR, a number, a range like \fB8\-17\fR, or a list of them like \fB1,3,5\-7\fR.
+A range whose end is below its start goes round: \fB22\-6\fR is 22:00 to 6:59.
+Several entries are separated by \fB|\fR; a login is allowed if one of them matches, e.g. \fB\(dq* 8\-17 * * 1\-5|* 9\-12 * * 6\(dq\fR.
+.br
+It asks first; \fB\-f\fR does not.
+Needs \fB\%edit:login_times\fR.
 .TP
-.B test \fR[\fB\-\-object\-type\fR \fItype\fR] [\fB\-\-test\-object\fR \fIobject\fR] [\fB\-\-token\fR \fItoken\fR] \fIpolicy\fR
-Test the policy. Specify the object type, test object, and token to simulate.
+.B test \-\-object\-type \fItype\fB \-\-test\-object \fIobject\fB \-\-token \fItoken\fR \fIpolicy\fR
+Check whether \fItoken\fR may log in now, with the policy as if it were assigned to \fIobject\fR of \fItype\fR.
+\fIobject\fR is a name, for a token its path.
+All three are required.
 .RE
 .SS Auto-Disable Policy
-Automatically disables accounts or tokens based on time or usage.
+Disables the object it is assigned to once its time is up: when the object is loaded, and at the latest when the master node looks, every 5 minutes.
+The time counts from when the policy was assigned.
 .PP
-Commands:
+To enable such an object again takes \fB\-f\fR, and the time starts anew.
+.PP
+A site has \fBauto_disable_hour\fR, \fB_day\fR, \fB_week\fR, \fB_month\fR and \fB_year\fR (+1h, +1D, +1W, +1M, +1Y), assigned to nothing.
 .RS
 .TP
-.B auto_disable \fIpolicy\fR \fItime\fR
-Set the disable time.
-It is either a relative time with a leading \fB+\fR, e.g. \fB+30D\fR for 30 days, or an absolute one, e.g. \fB"09:53 13.06.2023"\fR.
-The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
+.B auto_disable \fR[\fB\-u\fR] \fIpolicy\fR \fItime\fR
+After how long, or when.
+A relative time has a leading \fB+\fR, e.g. \fB+30D\fR for 30 days; the units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR (30 days) and \fBY\fR (365 days), see
 .BR otpme (7).
-Use \fB\-u\fR to disable the object after it has been unused for the given time.
+An absolute one is a date and a time, e.g. \fB\(dq09:53 13.06.2027\(dq\fR or \fB\(dq2027\-06\-13 09:53\(dq\fR.
+.br
+With \fB\-u\fR the time counts from the last use of the object instead, so it is disabled once it was unused for that long.
+That takes a relative time, and an object that keeps its last use, see \fBPOLICY TYPES\fR; one that was never used counts from the assignment.
+.br
+It asks first; \fB\-f\fR does not.
+Needs \fB\%edit:auto_disable\fR.
 .RE
 .SS Force Token Policy
-Requires specific token types or pass types for authentication.
+Which tokens may log in there.
+It is checked at every login on the role, host, node, client or access group it is assigned to, for admin tokens too.
+A link token is checked as the token it points to.
 .PP
-Commands:
+A token is let in when its type is in \fBforce_token_types\fR (if that is set) and its pass type in \fBforce_pass_types\fR (if that is set).
+The pass types are \fBotp\fR (hotp, totp, motp), \fBotp_push\fR, \fBtiqr\fR, \fBsmartcard\fR (fido2, u2f, passkey, yubikey_hmac, yubikey_piv), \fBssh_key\fR, \fBstatic\fR (password, and an ssh token used with a password), and \fBscript_otp\fR and \fBscript_static\fR, which are the types of the script tokens themselves.
+.PP
+A new policy has no token types and the pass types otp, otp_push, tiqr, ssh_key and smartcard.
+A site has \fBforce_token_otp\fR (otp, otp_push, tiqr) and \fBforce_token_non_static\fR (the same with ssh_key and smartcard), assigned to nothing.
+.PP
+Both commands take a comma separated list and replace the one there; \fB\(dq\(dq\fR empties it, so it no longer limits anything.
+A type OTPme does not know is refused.
+They ask first; \fB\-f\fR does not.
 .RS
 .TP
-.B force_token_types \fIpolicy\fR \fItoken_types\fR
-Set the list of allowed token types (e.g. totp, hotp, fido2).
+.B force_token_types \fIpolicy\fR \fItypes\fR
+The token types let in, e.g. \fBtotp,fido2\fR.
+Needs \fB\%edit:force_token_types\fR.
 .TP
-.B force_pass_types \fIpolicy\fR \fIpass_types\fR
-Set the list of allowed pass types.
+.B force_pass_types \fIpolicy\fR \fItypes\fR
+The pass types let in, e.g. \fBotp,smartcard\fR.
+Needs \fB\%edit:force_pass_types\fR.
 .RE
 .SS Auth On Action Policy
-Requires re-authentication before performing sensitive operations.
+Asks the user to log in again before an action: the client gets a new JWT for the token the user is logged in with.
+A site has \fBauth_on_action\fR, on every object.
 .PP
-Commands:
+It does not ask in API mode (directly on a node, without the daemons), over the local socket of a node, and not for the tokens and roles on its whitelist.
+.PP
+A hook is an action on an object type, e.g. \fBuser change_pin\fR or \fBunit pre_add_user\fR.
+A new policy gets every hook there is.
+\fBshow\fR \fIpolicy\fR lists the ones it has (\fBHOOKS\fR) and the ones removed by hand (\fBREMOVED_HOOKS\fR).
+Every object type has these:
+.\" BEGIN COMMON HOOKS
+.RS
+.PP
+.na
+.nh
+add, add_acl, add_attribute, add_extension, add_object_class, add_policy, change_description, change_unit, del_acl, del_attribute, del_object_class, delete, disable, disable_acl_inheritance, enable, enable_acl_inheritance, export, get_acls, modify, remove_extension, remove_orphans, remove_policy, rename.
+.hy
+.ad
+.RE
+.\" END COMMON HOOKS
+.PP
+The hooks an object type has on top of these are in its man page, section \fBAUTH ON ACTION HOOKS\fR.
+.PP
+The commands ask first; \fB\-f\fR does not.
 .RS
 .TP
 .B add_hook \fIpolicy\fR \fIobject_type\fR \fIhook\fR
-Add a hook that triggers re-authentication (e.g. change_pin).
-.TP
+.TQ
 .B remove_hook \fIpolicy\fR \fIobject_type\fR \fIhook\fR
-Remove a hook. The removal is remembered, so \fBupdate_hooks\fR will not add the hook again.
+Ask, or no longer ask, before that action.
+A hook OTPme does not know for the object type is refused.
+A removed hook is remembered, so \fBupdate_hooks\fR does not bring it back; \fBadd_hook\fR does, and forgets the removal.
+Needs \fBadd:hook\fR, \fBremove:hook\fR.
 .TP
 .B update_hooks \fIpolicy\fR
-Add all hooks that were registered after the policy was added (e.g. after an OTPme update). Hooks removed with \fBremove_hook\fR are not added again. To get such a hook back use \fBadd_hook\fR, which also makes the policy forget the removal.
+Add the hooks registered after the policy was added, e.g. by an OTPme update, except the ones removed by hand.
+Needs \fBadd:hook\fR.
 .TP
-.B reauth_timeout \fIpolicy\fR \fItimeout\fR
-Set the re-authentication timeout.
+.B reauth_timeout \fIpolicy\fR \fItime\fR
+How long one login again holds while the user keeps working: every action within it starts it anew.
+Default 30s; 0 asks before every action.
+A number of seconds, or with a unit like \fB5m\fR.
+Needs \fB\%edit:reauth_timeout\fR.
 .TP
-.B reauth_expiry \fIpolicy\fR \fIexpiry\fR
-Set the re-authentication expiry timeout.
+.B reauth_expiry \fIpolicy\fR \fItime\fR
+How long it holds at most, from the first login again, however busy the user is.
+Default 0, no limit.
+Has to be above \fBreauth_timeout\fR.
+Needs \fB\%edit:reauth_expiry\fR.
 .TP
-.B whitelist_token \fIpolicy\fR \fItoken\fR
-Add a token to the re-authentication whitelist (exempt from re-auth).
-.TP
-.B unwhitelist_token \fIpolicy\fR \fItoken\fR
-Remove a token from the whitelist.
-.TP
+.B whitelist_token \fIpolicy\fR \fIuser/token\fR
+.TQ
+.B unwhitelist_token \fIpolicy\fR \fIuser/token\fR
+.TQ
 .B whitelist_role \fIpolicy\fR \fIrole\fR
-Add a role to the re-authentication whitelist.
-.TP
+.TQ
 .B unwhitelist_role \fIpolicy\fR \fIrole\fR
-Remove a role from the whitelist.
+Tokens and roles that are never asked.
+A token in a role counts, however deep the roles are nested.
+The role is looked for in this site.
+Needs \fB\%add:whitelist\fR, \fB\%remove:whitelist\fR.
 .RE
 .SS Default Units Policy
-Specifies default organizational units for new objects.
+Says in which unit a new object goes when \fBadd\fR names no unit.
+It is assigned to users and works for what that user adds.
+Every new user gets \fBdefault_units\fR, which names the usual unit of each type, e.g. \fBusers\fR for a user and \fBhosts\fR for a host.
+.PP
+When a user adds an object without a unit, it goes to the unit that the policy of that user names for its type.
+If the policy names none, or the unit is gone, it goes to the usual unit of the type.
+The same holds for lines without a unit in \fBotpme\-tool mass_object_add\fR.
+Hosts and nodes that join, and templates, always go to the usual unit.
+.PP
+A user has one defaultunits policy.
+To give a user another one, remove \fBdefault_units\fR first.
+\fBshow\fR \fIpolicy\fR lists the units as \fBDEFAULT_UNITS\fR.
 .PP
 Commands:
 .RS
 .TP
 .B set_unit \fIpolicy\fR \fIobject_type\fR \fR[\fIunit\fR]
-Set default unit for an object type (user, host, group, etc.). Omit unit to clear.
+Set the unit for \fIobject_type\fR.
+\fIunit\fR is the path below the site, e.g. \fB\%it/users\fR.
+Without \fIunit\fR, the type has none again and goes to its usual unit.
+\fIobject_type\fR is one of:
+.na
+.nh
+accessgroup, ca, client, device, dictionary, group, host, node, pass, policy, pool, resolver, role, scope, script, share, user, vlan.
+Needs \fB\%add:default_unit\fR to set a type the first time, \fB\%edit:default_unit\fR to change it, \fB\%remove:default_unit\fR to clear it.
+.hy
+.ad
 .RE
 .SS Default Groups Policy
-Automatically adds new users to specified groups and sets the user's default (primary) group.
+Gives new users a default group and puts them into more groups.
+It is assigned to units and works for users added to that unit; a unit above or the site does not count.
+A new site has \fBdefault_groups\fR on the unit \fBusers\fR, with no groups in it, and every unit added later gets it too (from \fBdefault_policies\fR).
+.PP
+When a user is added without \fB\-\-group\fR and without a template that names a group, the user gets the default group of the policy.
+Without one, it is the group named like the site, e.g. \fBberlin\fR on the site \fBberlin\fR (\fBroot\fR for the admin user).
+.PP
+When a user is added without \fB\-\-groups\fR and gets a default token, that token is added to each group of the policy; groups hold tokens, not users.
+With \fB\-\-no\-default\-token\fR nothing is added.
+.PP
+Who assigns the policy to a unit needs the same rights on its groups as for setting them (see below).
+\fBshow\fR \fIpolicy\fR lists them as \fBDEFAULT_GROUP\fR and \fBDEFAULT_GROUPS\fR.
 .PP
 Commands:
 .RS
 .TP
 .B add_group \fIpolicy\fR \fIgroup\fR
-Add a default group.
+Add a group.
+Needs \fB\%add:default_group\fR on the policy and \fB\%add:token\fR on the group.
 .TP
 .B remove_group \fIpolicy\fR \fIgroup\fR
-Remove a default group.
+Remove a group.
+Needs \fB\%remove:default_group\fR.
 .TP
 .B default_group \fIpolicy\fR \fIgroup\fR
-Set the primary default group.
+Set the default group.
+\fB\(dq\(dq\fR as \fIgroup\fR removes it.
+.na
+Needs \fB\%edit:default_group\fR on the policy and \fB\%add:default_group_user\fR on the group.
+.ad
 .RE
 .SS Default Roles Policy
-Automatically adds a new user's default token to the specified roles.
+Puts the default token of new users into roles.
+It is assigned to units and works for users added to that unit; a unit above or the site does not count.
+A new site has \fBdefault_roles\fR on the unit \fBusers\fR, with the role \fBREALM_USER\fR in it, and every unit added later gets it too (from \fBdefault_policies\fR).
+.PP
+When a user is added and gets a default token, that token is added to each role of the policy.
+\fB\-\-roles\fR adds its roles on top.
+\fB\-\-role\fR turns the policy off for this user: the token goes to that role only, also not to \fBREALM_USER\fR.
+With \fB\-\-no\-default\-token\fR nothing is added.
+.PP
+Who assigns the policy to a unit needs \fB\%add:token\fR on each of its roles.
+\fBshow\fR \fIpolicy\fR lists them as \fBDEFAULT_ROLES\fR.
 .PP
 Commands:
 .RS
 .TP
 .B add_default_role \fIpolicy\fR \fIrole\fR
-Add a default role.
+Add a role.
+Needs \fB\%add:default_role\fR on the policy and \fB\%add:token\fR on the role.
 .TP
 .B remove_default_role \fIpolicy\fR \fIrole\fR
-Remove a default role.
+Remove a role.
+Needs \fB\%remove:default_role\fR.
 .RE
 .SS Default Policies Policy
-Automatically applies policies to new objects of a given type.
+Says which policies a new object gets.
+It is assigned to sites and units.
+A new object gets them from the unit it is added to, a unit right below the site from the site, and a token from the unit of its user.
+A unit further up does not count.
+.PP
+The policy lists policies per object type.
+A new object gets the ones listed for its type, without a check of rights; if one cannot be assigned, the object is not added.
+Entries for site and realm do nothing: those get their policies when they are made.
+.PP
+A new site has \fBdefault_policies\fR on the site and on every unit, and it lists itself for units, so every unit added later has it too.
+It lists \fBauth_on_action\fR for every type; \fBpassword_strength\fR for host, node, token and user; \fBdefault_units\fR and \fBtoken_acls\fR for user; and \fBdefault_groups\fR, \fBdefault_roles\fR, \fBobject_templates\fR and \fBdefault_policies\fR for unit.
+.PP
+.na
+Who assigns the policy needs what assigning each of its policies needs.
+\fBshow\fR \fIpolicy\fR lists them as \fBDEFAULT_POLICIES\fR, e.g. \fB\%user:[auth_on_action,default_units]\fR.
+.ad
 .PP
 Commands:
 .RS
 .TP
 .B add_default_policy \fIpolicy\fR \fIobject_type\fR \fIpolicy_name\fR
-Add a default policy for the given object type.
+Add \fIpolicy_name\fR for \fIobject_type\fR.
+It must be a policy of this site that can be assigned to that type.
+Needs \fB\%add:default_policy\fR, and what assigning \fIpolicy_name\fR needs, e.g. \fB\%add:token\fR on each role of a defaultroles policy.
 .TP
 .B remove_default_policy \fIpolicy\fR \fIobject_type\fR \fIpolicy_name\fR
-Remove a default policy.
+Remove it.
+Needs \fB\%remove:default_policy\fR.
 .RE
 .SS ID Range Policy
-Controls UID/GID allocation ranges.
+.na
+Says which uidNumber and gidNumber a new user or group gets.
+A user or group added without one gets the next free number from the policy of its unit; if the unit has none, or none for that attribute, from the policy of the site.
+A unit further up does not count.
+A number given by hand must lie in a range too.
+.PP
+A new site has \fBid_range\fR with \fB\%uidNumber:s:70000\-80000\fR and \fB\%gidNumber:s:70000\-80000\fR, or the ranges given with \fB\-\-id\-ranges\fR.
+Ranges must not overlap with any range of any idrange policy, also of other sites.
+.PP
+A range is written \fI<attribute>:<type>:<start>\-<end>\fR, e.g. \fB\%uidNumber:s:70000\-80000\fR.
+\fIattribute\fR is \fBuidNumber\fR or \fBgidNumber\fR.
+Type \fBs\fR hands out the numbers in order, going on after the last one handed out; at the end of the range it starts over.
+Type \fBr\fR takes a free number at random.
+Several ranges are separated by commas.
+.PP
+\fBshow\fR \fIpolicy\fR lists \fBID_RANGES\fR, \fBVERIFY_NEW_ID\fR and \fBRECHECK_ID_RANGES\fR.
 .PP
 Commands:
 .RS
 .TP
-.B add_id_range \fIpolicy\fR \fIattribute:type:range\fR
-Add an ID range. Range type must be s=sequence or r=random.
+.B add_id_range \fIpolicy\fR \fIrange,...\fR
+Add ranges.
+If one of them is wrong or overlaps, none is added.
+Needs \fB\%add:idrange\fR.
 .TP
-.B del_id_range \fIpolicy\fR \fIattribute:type:range\fR
-Delete an ID range.
+.B del_id_range \fIpolicy\fR \fIrange\fR
+Remove a range.
+Needs \fB\%delete:idrange\fR.
 .TP
-.B enable_id_check \fIpolicy\fR
-Enable check if a new ID is already in use.
+\fBenable_id_check\fR \fIpolicy\fR
+.TQ
+\fBdisable_id_check\fR \fIpolicy\fR
+Before a number is handed out, check that no user or group has it.
+On by default.
+Without it, type \fBs\fR takes the number after the last one handed out unchecked.
+Needs \fB\%enable:id_check\fR or \fB\%disable:id_check\fR.
 .TP
-.B disable_id_check \fIpolicy\fR
-Disable ID uniqueness check.
-.TP
-.B enable_id_range_recheck \fIpolicy\fR
-Enable periodic ID range re-check.
-.TP
-.B disable_id_range_recheck \fIpolicy\fR
-Disable ID range re-check.
+\fBenable_id_range_recheck\fR \fIpolicy\fR
+.TQ
+\fBdisable_id_range_recheck\fR \fIpolicy\fR
+When a range of type \fBs\fR has no free number after the last one handed out, look for gaps from its start.
+Off by default.
+Needs \fB\%enable:id_range_recheck\fR or \fB\%disable:id_range_recheck\fR.
 .RE
+.ad
 .SS Token ACLs Policy
-Defines default ACLs for users, tokens, and token creators.
+.na
+.nh
+Gives a new token its ACLs.
+It is assigned to users; every new user gets \fBtoken_acls\fR.
+When a token is added to the user, the policy adds:
+.RS
+.TP
+.B user ACLs
+on the user, for the new token: what a token may do with its user.
+.TP
+.B token ACLs
+on the new token, for the token itself and for the default token of the user.
+.TP
+.B creator ACLs
+on the new token, for the token that added it, when that one belongs to another user (e.g. an admin).
+.RE
+.PP
+A token type can bring more of its own.
+A token gets the ones its type knows, the others are left out.
+When a token is deleted, the same ones are taken away.
+When a token is moved to another user, the user and token ACLs of the old user's policy are taken away and those of the new user's policy are given, whatever ACL inheritance and \fB\-\-keep\-acls\fR say; the creator ACLs stay.
+The user \fBTOKENSTORE\fR gets no user and token ACLs.
+A change to the policy counts for tokens added or deleted after it.
+.PP
+A new site has \fBtoken_acls\fR with the user ACLs \fB\%view_all\fR, \fB\%gen_keys\fR, \fB\%encrypt\fR, \fB\%decrypt\fR and \fB\%sign\fR; the token ACLs \fB\%view\fR, \fB\%edit:pin\fR, \fB\%edit:password\fR and \fB\%delete\fR; and the creator ACLs \fB\%view\fR, \fB\%edit\fR and \fB\%delete\fR.
+.PP
+\fBshow\fR \fIpolicy\fR lists them as \fBUSER_ACLS\fR, \fBTOKEN_ACLS\fR and \fBTOKEN_CREATOR_ACLS\fR.
 .PP
 Commands:
 .RS
 .TP
-.B add_user_acl \fIpolicy\fR \fIacl\fR
-Add a user ACL.
+\fBadd_user_acl\fR \fIpolicy\fR \fIacl\fR
+.TQ
+\fBdel_user_acl\fR \fIpolicy\fR \fIacl\fR
+Add or remove a user ACL.
+It must be an ACL of users.
+Needs \fB\%add:user_acl\fR or \fB\%del:user_acl\fR.
 .TP
-.B del_user_acl \fIpolicy\fR \fIacl\fR
-Delete a user ACL.
+\fBadd_token_acl\fR \fIpolicy\fR \fIacl\fR
+.TQ
+\fBdel_token_acl\fR \fIpolicy\fR \fIacl\fR
+Add or remove a token ACL.
+It must be an ACL of some token type.
+Needs \fB\%add:token_acl\fR or \fB\%del:token_acl\fR.
 .TP
-.B add_token_acl \fIpolicy\fR \fIacl\fR
-Add a token ACL.
-.TP
-.B del_token_acl \fIpolicy\fR \fIacl\fR
-Delete a token ACL.
-.TP
-.B add_creator_acl \fIpolicy\fR \fIacl\fR
-Add a token creator ACL.
-.TP
-.B del_creator_acl \fIpolicy\fR \fIacl\fR
-Delete a token creator ACL.
+\fBadd_creator_acl\fR \fIpolicy\fR \fIacl\fR
+.TQ
+\fBdel_creator_acl\fR \fIpolicy\fR \fIacl\fR
+Add or remove a creator ACL.
+It must be an ACL of some token type.
+Needs \fB\%add:creator_acl\fR or \fB\%del:creator_acl\fR.
 .RE
+.hy
+.ad
 .SS Object Templates Policy
-Provides templates for creating new objects with predefined configurations.
+.na
+.nh
+Says which template a new user or host is made from.
+It is assigned to units; every new unit gets \fBobject_templates\fR.
+When a user or host is added to the unit, it gets the template the policy has for its type.
+.PP
+From its template, a user or host gets the policies, extensions, object classes and attributes, and whether ACL inheritance is on.
+A user also gets the group of the template, if none is given; its key, agent, login and auth script and whether they are enabled; and autosign.
+Templates get no template, nor do admins and base or internal users.
+A template given with \fBotpme\-user add \-\-template\fR or \fBotpme\-host add \-\-template\fR wins over the policy.
+\fBotpme\-user add \-\-no\-template\fR and \fBotpme\-host add \-\-no\-template\fR add one without any template.
+.PP
+A new user or host is made from the template of the policy without a check of rights, and a new user gets the group of the template.
+So who sets a template, or assigns the policy to a unit, needs \fBuse\fR on the template.
+\fB\-\-template\fR needs \fBuse\fR as well.
+.PP
+A new site has the templates \fBuser_template\fR and \fBhost_template\fR in the unit \fBtemplates\fR, and \fBobject_templates\fR with them.
+.PP
+\fBshow\fR \fIpolicy\fR lists them as \fBOBJECT_TEMPLATES\fR.
 .PP
 Commands:
 .RS
 .TP
-.B set_template \fIpolicy\fR \fIobject_type\fR \fItemplate\fR
-Set a template for the given object type.
+\fBset_template\fR \fIpolicy\fR \fIobject_type\fR {\fItemplate\fR|\fB\(dq\(dq\fR}
+Set the template for \fBuser\fR or \fBhost\fR.
+It must be a template of the site, e.g. one added with \fBotpme\-user add \-t\fR.
+\fB\(dq\(dq\fR removes it.
+Needs \fB\%set_template\fR, and \fBuse\fR on the template.
 .RE
+.hy
+.ad
 .SH OPTIONS
 .TP
 .B \-\-type \fITYPE\fR
-Specify the policy type. Required for the \fBadd\fR command and for all type-specific commands. Must be placed before the command.
-.TP
-.B \-\-keep\-acls
-Preserve ACLs when moving policy to different unit.
-.SS Display Options
-.TP
-.B \-a
-Show all policies (not just current unit).
-.TP
-.B \-z \fISIZE\fR
-Limit output size.
-.TP
-.B \-\-fields \fIFIELD1,FIELD2\fR
-Display only specified fields.
-.TP
-.B \-\-policy\-limit \fIN\fR
-Limit number of policies shown.
-.TP
-.B \-\-limit \fIN\fR
-Limit number of items shown per object.
+.na
+.nh
+The policy type.
+Needed for \fBadd\fR and for every command in \fBPOLICY TYPE DETAILS\fR, e.g. \fBotpme\-policy \-\-type idrange add_id_range id_range \%uidNumber:s:80001\-89999\fR.
+It can stand anywhere on the command line.
+.hy
+.ad
+.PP
+The options of each command are described with that command above.
 .PP
 Global options are available for all commands. See
 .BR otpme (1)
 for details.
 .SH CONFIG PARAMETERS
-Configuration parameters can be set with the \fBconfig\fR command and displayed with \fBshow_config\fR.
-For a complete description of all available parameters and their applicable object types, see
+.na
+.nh
+A policy takes these.
+What each of them does, and how a parameter is resolved, is in
 .BR otpme (7).
+The settings of a policy type are no config parameters, they are made with the commands of the type, see \fBPOLICY TYPE DETAILS\fR.
+.TP
+.B changelog \fR(bool, default: true)
+Write the commands that change the policy into its changelog, see \fBObject Changelog\fR.
+.TP
+.B allow_changelog_clearing \fR(bool, default: true)
+Allow \fBclear_changelog\fR on the policy.
+.hy
+.ad
 .SH EXAMPLES
+.na
+.nh
 .SS Password Policy
 .TP
-.B otpme-policy \-\-type password add strong_passwords
-Create a password policy
+.B otpme-policy \-\-type password add strong_pw
+A new password policy already asks for upper- and lowercase, a number, a special character and a strength check.
 .TP
-.B otpme-policy password_min_len strong_passwords 12
-Require minimum 12 characters
+.B otpme-policy \-\-type password password_min_len strong_pw 12
+At least 12 characters.
 .TP
-.B otpme-policy enable_require_upper strong_passwords
-Require at least one uppercase letter
+.B otpme-policy \-\-type password pin_min_len strong_pw 6
+PINs of at least 6 digits.
 .TP
-.B otpme-policy enable_require_number strong_passwords
-Require at least one number
+.B otpme-policy \-\-type password test \-\-password \(dqMyP@ss123\(dq strong_pw
+Try a password against it.
 .TP
-.B otpme-policy enable_require_special strong_passwords
-Require at least one special character
-.TP
-.B otpme-policy enable_strength_checker strong_passwords
-Enable password strength checking
-.TP
-.B otpme-policy test \-\-password \(dqMyP@ss123\(dq strong_passwords
-Test a password against the policy
-.TP
-.B otpme-user add_policy alice strong_passwords
-Apply policy to user alice
+.B otpme-user remove_policy alice password_strength
+.TQ
+.B otpme-user add_policy alice strong_pw
+Give it to alice instead of the one of the site: a user has one password policy.
 .SS Login Time Restrictions
 .TP
-.B otpme-policy \-\-type logintimes add workhours
-Create login times policy
+.B otpme-policy \-\-type logintimes add office
+.TQ
+.B otpme-policy \-\-type logintimes login_times office \(dq*\ 8\-17\ *\ *\ 1\-5\(dq
+Monday to Friday, 8:00 to 17:59.
 .TP
-.B otpme-policy login_times workhours \(dqmon-fri 08:00-18:00\(dq
-Set allowed login times
-.TP
-.B otpme-group add_policy contractors workhours
-Apply to contractors group
+.B otpme-accessgroup add_policy vpn office
+Logins through the access group vpn only then.
 .SS Auto-Disable Temporary Access
 .TP
 .B otpme-policy \-\-type autodisable add temp_access
-Create auto-disable policy
+.TQ
+.B otpme-policy \-\-type autodisable auto_disable temp_access +90D
+Disable after 90 days.
 .TP
-.B otpme-policy auto_disable temp_access +90D
-Auto-disable after 90 days
+.B otpme-policy \-\-type autodisable auto_disable \-u temp_access +30D
+Or instead: disable after 30 days without use.
 .TP
-.B otpme-policy auto_disable \-u temp_access +30D
-Auto-disable after 30 days of inactivity
-.TP
-.B otpme-user add_policy temp_contractor temp_access
-Apply to temporary contractor
+.B otpme-user add_policy contractor1 temp_access
+Give it to contractor1.
 .SS Force Two-Factor Authentication
 .TP
 .B otpme-policy \-\-type forcetoken add require_2fa
-Create force token policy
+.TQ
+.B otpme-policy \-\-type forcetoken force_token_types require_2fa totp,fido2
+Only TOTP and FIDO2 tokens.
 .TP
-.B otpme-policy force_token_types require_2fa totp,fido2
-Require TOTP or FIDO2 tokens
-.TP
-.B otpme-accessgroup add_policy vpn_access require_2fa
-Apply to VPN access group
+.B otpme-accessgroup add_policy vpn require_2fa
+Logins through the access group vpn only with those.
 .SS Protect Sensitive Operations
 .TP
 .B otpme-policy \-\-type authonaction add protect_ops
-Create auth-on-action policy
+A new one asks before every action there is.
 .TP
-.B otpme-policy add_hook protect_ops user change_pin
-Require re-auth for PIN changes
+.B otpme-policy \-\-type authonaction reauth_timeout protect_ops 5m
+One login again holds 5 minutes of work.
 .TP
-.B otpme-policy reauth_timeout protect_ops 300
-Re-auth valid for 5 minutes (300 seconds)
+.B otpme-policy \-\-type authonaction whitelist_role protect_ops SITE_ADMIN
+Admins are never asked.
 .TP
-.B otpme-policy whitelist_role protect_ops ADMIN
-Exempt admin role from re-auth
-.SS Set Organizational Defaults
+.B otpme-user remove_policy alice auth_on_action
+.TQ
+.B otpme-user add_policy alice protect_ops
+Give it to alice instead of the one of the site.
+.SS Units for New Objects
 .TP
-.B otpme-policy \-\-type defaultunits add org_defaults
-Create default units policy
+.B otpme-policy \-\-type defaultunits add it_units
+.TQ
+.B otpme-policy \-\-type defaultunits set_unit it_units user it/users
+.TQ
+.B otpme-policy \-\-type defaultunits set_unit it_units host it/servers
+Users and hosts go to these units.
 .TP
-.B otpme-policy set_unit org_defaults user it/users
-New users go to it/users unit
-.TP
-.B otpme-policy set_unit org_defaults host infrastructure/servers
-New hosts go to infrastructure/servers
+.B otpme-user remove_policy alice default_units
+.TQ
+.B otpme-user add_policy alice it_units
+For what alice adds without naming a unit.
 .SS ID Ranges
 .TP
-.B otpme-policy \-\-type idrange add uid_range
-Create ID range policy
+.B otpme-policy \-\-type idrange add it_ids
+.TQ
+.B otpme-policy \-\-type idrange add_id_range it_ids \%uidNumber:s:10000\-60000
+User IDs from 10000 to 60000, in order.
 .TP
-.B otpme-policy add_id_range uid_range uidNumber:s:10000-60000
-Add sequential UID range 10000-60000
-.TP
-.B otpme-policy enable_id_check uid_range
-Enable ID uniqueness checking
+.B otpme-unit add_policy it it_ids
+New users in the unit it get theirs from here.
+.hy
+.ad
+.\" BEGIN AUTH ON ACTION HOOKS
+.\" Generated by update_hooks_man.py. Do not edit, the next run
+.\" overwrites it.
+.SH AUTH ON ACTION HOOKS
+An auth on action policy can ask for a login again before these actions.
+See
+.B Auth On Action Policy
+above.
+A policy has the hooks every object type has, and these:
+.RS
+.PP
+.na
+.nh
+add_creator_acl, add_default_group, add_default_policy, add_default_role, add_hook, add_id_range, add_token_acl, add_user_acl, add_whitelist, change_auto_disable, change_default_group, change_force_pass_types, change_force_token_types, change_login_times, change_password_min_len, change_pin_min_len, change_reauth_expiry, change_reauth_timeout, change_strength_checker, change_strength_checker_opts, del_creator_acl, del_id_range, del_token_acl, del_user_acl, disable_require_lower, disable_require_number, disable_require_special, disable_require_upper, disable_strength_checker, enable_require_lower, enable_require_number, enable_require_special, enable_require_upper, enable_strength_checker, remove_default_group, remove_default_policy, remove_default_role, remove_hook, remove_whitelist, set_config_parameter, set_default_unit, set_template, show_config_parameters, update_hooks.
+.hy
+.ad
+.RE
+.\" END AUTH ON ACTION HOOKS
 .SH FILES
+.na
+.nh
 .TP
-.I /var/lib/otpme/objects/policy/
-Server-side policy storage
+\fI/var/lib/otpme/tree/\fR
+The objects of the realm, on the nodes and, by sync, on the hosts.
+A policy is the directory \fI<policy>.policy\fR in the directory of its unit, e.g. \fI<realm>.realm/<site>.site/policies.unit/password_strength.policy/\fR, with its settings in \fIobject.json\fR.
+Change them with the commands above, not in the file.
+.hy
+.ad
 .SH SEE ALSO
+.na
+.nh
 .BR otpme (1),
 .BR otpme (7),
 .BR otpme\-acls (7),
-.BR otpme-user (1),
-.BR otpme-group (1),
-.BR otpme-token (1),
-.BR otpme-unit (1)
+.BR otpme\-site (1),
+.BR otpme\-unit (1),
+.BR otpme\-user (1),
+.BR otpme\-token (1),
+.BR otpme\-group (1),
+.BR otpme\-role (1),
+.BR otpme\-accessgroup (1),
+.BR otpme\-host (1),
+.BR otpme\-node (1),
+.BR otpme\-client (1),
+.BR otpme\-dictionary (1),
+.BR otpme\-trash (1),
+.BR otpme\-tool (1),
+.BR cron (5)
+.hy
+.ad
 
 .SH AUTHOR
 the2nd <the2nd@otpme.org>
 .SH NOTE
 This manual page was created with AI assistance.
 .SH COPYRIGHT
-Copyright \(co 2014-2025 the2nd. License: GPLv3
+Copyright \(co 2014-2026 the2nd. License: GPLv3

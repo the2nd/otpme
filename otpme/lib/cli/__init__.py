@@ -62,6 +62,7 @@ modules = [
             'otpme.lib.cli.pool',
             'otpme.lib.cli.scope',
             'otpme.lib.cli.vlan',
+            'otpme.lib.cli.aclgroup',
             'otpme.lib.cli.otpme_password',
             'otpme.lib.cli.job',
             'otpme.lib.classes',
@@ -497,6 +498,14 @@ def get_opts(command_syntax, command_line, command_args=None,
                 val_type = dict
             except Exception:
                 pass
+            # A name, a text or a secret: taken as it is, not made an
+            # int, a bool or None by string_to_type() ("0123" stays
+            # "0123", "None" stays "None").
+            try:
+                val = check_string_opt(val)
+                val_type = str
+            except Exception:
+                pass
 
             # Check for file.
             try:
@@ -821,8 +830,9 @@ def get_opts(command_syntax, command_line, command_args=None,
                             msg = _("Unknown key/val parameter: {parameter}")
                             msg = msg.format(parameter=command_line[0])
                             raise OTPmeException(msg)
-                        key_val = command_line[0].split("=")[0]
-                        val_val = command_line[0].split("=")[1]
+                        # Only at the first "=": a value can hold one,
+                        # a DN always does (seeAlso=cn=x,dc=example,dc=org).
+                        key_val, val_val = command_line[0].split("=", 1)
                         val_val = stuff.string_to_type(val_val)
                         command_args[key_name] = key_val
                         command_args[val_name] = val_val

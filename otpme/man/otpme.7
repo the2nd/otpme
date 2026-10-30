@@ -459,7 +459,8 @@ There are two roles from the start:
 .B REALM_USER
 and
 .BR SITE_ADMIN .
-The default token of every user is added to REALM_USER.
+The \fBdefault_roles\fR policy adds the default token of a new user to REALM_USER (see
+.BR otpme\-policy (1)).
 With it the user can log in to the realm and is a member of the group \fIrealmusers\fR.
 A token in SITE_ADMIN has admin rights for its site.
 .PP
@@ -685,12 +686,30 @@ A new object gets the default ACLs of its unit when it is created.
 Objects that are already there do not, unless you say so: \fB\-a\fR applies the default ACLs to the objects of the unit, \fB\-r\fR also to the objects in the units below, see
 .BR otpme\-unit (1).
 .PP
-An object can refuse inherited ACLs with \fBdisable_acl_inheritance\fR.
-\fBenable_acl_inheritance\fR turns it on again.
+ACL inheritance is about a move, and nothing else.
+With \fBenable_acl_inheritance\fR a move of the object takes back what its old unit handed down and gives what the new unit hands down; for a token the old and the new user.
+With \fBdisable_acl_inheritance\fR a move leaves its ACLs as they are, and so does a move with \fB\-\-keep\-acls\fR.
+It is on for tokens and passwords, and off for everything else.
+Creating an object, \fB\-a\fR and \fB\-r\fR reach it either way.
 .PP
 Which ACLs a kind of object knows is in
 .BR otpme\-acls (7).
 \fBlist_acls\fR shows the ACLs an object has, and the shell completion offers the ones it takes after \fBadd_acl\fR.
+.SS ACL Groups
+An ACL group is a set of ACLs, each for an object type, for example \fBuser:edit:attribute\fR.
+Give the group in place of an ACL, as \fB@\fIgroup\fR, \fB+@\fIgroup\fR or \fB++@\fIgroup\fR:
+.RS
+.B otpme\-unit add_acl \fIlinux/users\fB role \fIhelpdesk\fB @usermanager,++@usermanager\fR
+.RE
+The unit \fIlinux/users\fR and every object in the tree below it now grant the role \fIhelpdesk\fR what the group holds for their type.
+\fB++@\fR alone counts only below the unit, not on the unit itself.
+Change the group, and the change counts at once on every object it is given on.
+Every site has the groups \fBrealm_user\fR, \fBusermanager\fR, \fBuseradmin\fR and \fBgroupmanager\fR, see
+.BR otpme\-aclgroup (1).
+.PP
+\fBrealm_user\fR is what every user of the realm may see: the site, units, users, groups, roles, hosts and nodes.
+The role \fBREALM_USER\fR has it on the whole site.
+A site from before the group gets it with \fBotpme\-site upgrade\fR, which also takes away the ACLs realm users had one by one.
 .SH OFFLINE AUTHENTICATION
 When a host can not reach the OTPme server, it can check logins against data it saved at the last login.
 This has to be switched on for each token (\fBenable_offline\fR).
@@ -749,7 +768,7 @@ Remove it again with \fB\-d\fR:
 .B otpme\-site config \-d \fIberlin\fB \fIparameter\fR
 .RE
 .PP
-A parameter is looked up at the object itself, then at its unit, then at its site.
+A parameter is looked up at the object itself, then at each unit above it, then at its site.
 The first value found wins, so a value on a site or unit is the default for the objects below it.
 A site can also enforce a parameter for all of its objects, see \fBforce_site_config_parameters\fR below.
 Above the site nothing is asked: a realm holds no config parameters.
@@ -842,7 +861,7 @@ Object types: site
 .TP
 .B changelog \fR(bool, default: true)
 Write the commands that change this object into its changelog.
-Looked up at the object, then at its unit, then at its site.
+Looked up at the object, then at each unit above it, then at its site.
 Switch it off for objects that change very often.
 A site that wants its own setting everywhere adds \fBchangelog\fR to
 .BR force_site_config_parameters .
@@ -852,6 +871,7 @@ Object types: all tree objects (site, unit, user, token, ...), but not the realm
 .B allow_changelog_clearing \fR(bool, default: true)
 Allow \fBclear_changelog\fR on this object.
 Switch it off to keep the changelog of an object complete.
+A value set on a token itself decides for whoever is signed in with that token, on every object.
 .br
 Object types: all tree objects (site, unit, user, token, ...), but not the realm
 .TP
@@ -3568,6 +3588,7 @@ The settings of one user, e.g. which agent to talk to.
 .BR otpme.conf (5),
 .BR pam_otpme (8),
 .BR otpme-accessgroup (1),
+.BR otpme-aclgroup (1),
 .BR otpme-backup (1),
 .BR otpme-ca (1),
 .BR otpme-client (1),

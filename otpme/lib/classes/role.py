@@ -21,6 +21,7 @@ from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.classes.realm import ADMIN_USER
 from otpme.lib.register import register_module
@@ -136,6 +137,23 @@ commands = {
                     },
                 },
             },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'edit_changelog'   : {
             'default'    : {
                 'exists'    : {
@@ -166,6 +184,15 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'auto_disable'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
                     'job_type'          : 'process',
                     },
                 },
@@ -306,7 +333,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['token_options', 'login_interfaces', 'sign', 'tags', 'share_notifications', 'persist_mount', 'skip_portal_token'],
+                    'oargs'             : ['token_options', 'login_interfaces', 'sign', 'tags', 'auto_sign', 'share_notifications', 'persist_mount', 'skip_portal_token'],
                     'job_type'          : 'process',
                     },
                 },
@@ -711,14 +738,6 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_attributes',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_attributes'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'show_attributes',
                     'job_type'          : 'thread',
                     },
                 },
@@ -1482,8 +1501,8 @@ class Role(OTPmeObject):
     def add_token(
         self,
         token_path: str,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         *args,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -1562,8 +1581,8 @@ class Role(OTPmeObject):
     def remove_token(
         self,
         token_path: str,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         *args,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -1638,10 +1657,10 @@ class Role(OTPmeObject):
     @object_lock()
     def add_role(
         self,
-        role_name: str=None,
-        role_uuid: str=None,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        role_name: Union[str,None]=None,
+        role_uuid: Union[str,None]=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         *args,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -1751,10 +1770,10 @@ class Role(OTPmeObject):
     @object_lock()
     def remove_role(
         self,
-        role_name: str=None,
-        role_uuid: str=None,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        role_name: Union[str,None]=None,
+        role_uuid: Union[str,None]=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         *args,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -1858,10 +1877,10 @@ class Role(OTPmeObject):
     def add_host(
         self,
         *args,
-        host_name: str=None,
-        host_uuid: str=None,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        host_name: Union[str,None]=None,
+        host_uuid: Union[str,None]=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -1893,10 +1912,10 @@ class Role(OTPmeObject):
     def remove_host(
         self,
         *args,
-        host_name: str=None,
-        host_uuid: str=None,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        host_name: Union[str,None]=None,
+        host_uuid: Union[str,None]=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -1986,8 +2005,8 @@ class Role(OTPmeObject):
     def enable(
         self,
         *args,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -2094,8 +2113,8 @@ class Role(OTPmeObject):
     def disable(
         self,
         *args,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -2245,8 +2264,7 @@ class Role(OTPmeObject):
                 _group = result[0]
                 if verify_acls:
                     if not _group.verify_acl("add:role"):
-                        msg = _("Group: {group_name}: Permission denied")
-                        msg = msg.format(group_name=group_name)
+                        msg = denied_msg(_group, "add:role")
                         return callback.error(msg)
                 # Acquire lock.
                 #_group._cache(callback=callback)
@@ -2268,8 +2286,7 @@ class Role(OTPmeObject):
                 _role = result[0]
                 if verify_acls:
                     if not _role.verify_acl("add:role"):
-                        msg = _("Role: {role_name}: Permission denied")
-                        msg = msg.format(role_name=role_name)
+                        msg = denied_msg(_role, "add:role")
                         return callback.error(msg)
                 _roles.append(_role)
 
@@ -2327,8 +2344,8 @@ class Role(OTPmeObject):
             if not self.verify_acl("delete:object"):
                 del_acl = f"delete:{self.type}"
                 if not parent_object.verify_acl(del_acl):
-                    msg = _("Permission denied: {role_name}")
-                    msg = msg.format(role_name=self.name)
+                    msg = denied_msg(self, "delete:object",
+                                    others=[(parent_object, del_acl)])
                     return callback.error(msg, exception=PermissionDenied)
 
         if self.tokens:
@@ -2406,7 +2423,7 @@ class Role(OTPmeObject):
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show role config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         token_list = []

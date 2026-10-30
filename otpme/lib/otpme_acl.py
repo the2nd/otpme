@@ -29,6 +29,35 @@ class OTPmeACL(object):
     def __init__(self):
         pass
 
+def acl_object_name(o):
+    """ An object as a refusal names it: its type and its path. """
+    o_type = getattr(o, 'type', None) or o.__class__.__name__
+    o_name = getattr(o, 'rel_path', None) or getattr(o, 'name', None)
+    return f"{o_type} {o_name}"
+
+def denied_msg(o, acls, others=None):
+    """ The message for a refusal for want of an ACL.
+
+    It names what would have done: any of <acls> on <o>, and each
+    (object, acls) of <others>, e.g. delete:object on a group or
+    delete:group on its unit. "Permission denied." alone left the user
+    to guess. The ACLs are no secret, otpme-acls(7) lists them, and a
+    refusal says the object is there anyway.
+    """
+    if isinstance(acls, str):
+        acls = [acls]
+    ways = [_(" or ").join(acls)]
+    for x_object, x_acls in others or []:
+        if isinstance(x_acls, str):
+            x_acls = [x_acls]
+        way = _("{acls} on {object}")
+        way = way.format(acls=_(" or ").join(x_acls),
+                        object=acl_object_name(x_object))
+        ways.append(way)
+    msg = _("Permission denied: {object}: needs {acls}")
+    msg = msg.format(object=acl_object_name(o), acls=_(" or ").join(ways))
+    return msg
+
 def check_acls(acls, need_exact_acl=False):
     """ Decorator to check ACLs in class methods.
 
@@ -82,7 +111,7 @@ def check_acls(acls, need_exact_acl=False):
                                object=obj_name,
                                method=f.__name__,
                                required_acls=','.join(acls))
-                    msg = _("Permission denied.")
+                    msg = denied_msg(self, acls)
                     return callback.error(msg, exception=PermissionDenied)
 
             if verify_acls_only:
@@ -197,6 +226,33 @@ def decode(acl):
     if default:
         x = x.replace("+", "")
 
+    # An ACL group (e.g. ++@it-user-manager): grants what the group holds
+    # for the type of the object it is on, see expand_aclgroups(). Given
+    # by name like the owner above, kept by UUID.
+    if x.startswith("@"):
+        if ":" in acl:
+            msg = _("Malformed ACL: {acl}")
+            msg = msg.format(acl=acl)
+            raise OTPmeException(msg)
+        aclgroup_uuid = get_aclgroup_uuid(x[1:])
+        acl_prefix = "+" * acl.count("+", 0, len(acl) - len(x))
+        acl_id = f"{acl_prefix}@{aclgroup_uuid}"
+        _acl = OTPmeACL()
+        _acl.default = default
+        _acl.recursive = recursive
+        _acl.owner_type = acl_owner_type
+        _acl.owner_uuid = acl_owner_uuid
+        _acl.object_type = None
+        _acl.name = f"@{aclgroup_uuid}"
+        _acl.value = None
+        _acl.id = acl_id
+        _acl.apply_id = f"@{aclgroup_uuid}"
+        _acl.raw = f"{acl_owner_type}:{acl_owner_uuid}:{acl_id}"
+        _acl._value = None
+        _acl._sub_value = None
+        _acl.aclgroup_uuid = aclgroup_uuid
+        return _acl
+
     # Check if ACL is an object ACL (e.g. ++user:edit).
     if x in config.tree_object_types:
         acl_object_type = x
@@ -268,8 +324,167 @@ def decode(acl):
     _acl.raw = raw_acl
     _acl._value = _acl_value
     _acl._sub_value = _acl_sub_value
+    _acl.aclgroup_uuid = None
 
     return _acl
+
+def get_aclgroup_uuid(aclgroup):
+    """ The UUID of the ACL group given by UUID, by <name> on our site or
+    by <site>/<name>. """
+    if stuff.is_uuid(aclgroup):
+        return aclgroup
+    aclgroup_site = config.site
+    aclgroup_name = aclgroup
+    if "/" in aclgroup:
+        aclgroup_site, aclgroup_name = aclgroup.split("/", 1)
+    result = backend.search(object_type="aclgroup",
+                            attribute="name",
+                            value=aclgroup_name,
+                            realm=config.realm,
+                            site=aclgroup_site,
+                            return_type="uuid")
+    if not result:
+        msg = _("Unknown ACL group: {aclgroup}")
+        msg = msg.format(aclgroup=aclgroup)
+        raise OTPmeException(msg)
+    return result[0]
+
+def resolve_aclgroup_acl(acl_id):
+    """ An ACL ID as it is shown: an ACL group (@<uuid>, +@<uuid>,
+    ++@<uuid>) by its name, <site>/<name> for one of another site, the
+    way decode() takes it back. Any other ACL as it is. """
+    prefix, sep, aclgroup_uuid = acl_id.partition("@")
+    if not sep or prefix.strip("+"):
+        return acl_id
+    object_id = backend.get_oid(uuid=aclgroup_uuid,
+                                object_type="aclgroup",
+                                instance=True)
+    if not object_id:
+        return acl_id
+    aclgroup_name = object_id.name
+    if object_id.site != config.site:
+        aclgroup_name = f"{object_id.site}/{aclgroup_name}"
+    return f"{prefix}@{aclgroup_name}"
+
+ACLGROUP_ATTRIBUTES = ['uuid', 'enabled', 'entry', 'aclgroup']
+
+def get_aclgroup_acls(aclgroup_uuid, object_type):
+    """ What the ACL group grants on an object of the given type: its
+    entries for the type, and those of the groups it is a member of, and
+    so on up. A disabled group grants nothing, and passes nothing on.
+    Groups may come round to one seen before: every group counts once.
+
+    Read from the index, so the search cache keeps it, and a write of an
+    ACL group throws it away (backend.outdate_object()). """
+    prefix = f"{object_type}:"
+    acls = []
+    seen = []
+    result = backend.search(object_type="aclgroup",
+                            attribute="uuid",
+                            value=aclgroup_uuid,
+                            return_attributes=ACLGROUP_ATTRIBUTES)
+    while result:
+        check_uuids = []
+        for x_uuid in result:
+            if x_uuid in seen:
+                continue
+            seen.append(x_uuid)
+            x_data = result[x_uuid]
+            try:
+                x_enabled = x_data['enabled'][0]
+            except Exception:
+                x_enabled = False
+            if not x_enabled:
+                continue
+            for x_entry in x_data.get('entry') or []:
+                if not x_entry.startswith(prefix):
+                    continue
+                x_acl = x_entry[len(prefix):]
+                if x_acl not in acls:
+                    acls.append(x_acl)
+            check_uuids.append(x_uuid)
+        if not check_uuids:
+            break
+        # The groups these are members of.
+        result = backend.search(object_type="aclgroup",
+                                attribute="aclgroup",
+                                values=check_uuids,
+                                return_attributes=ACLGROUP_ATTRIBUTES)
+    return acls
+
+def get_entry_aclgroups(entries):
+    """ The ACL groups that grant one of the given entries
+    (<object_type>:<acl>): those that hold it, if enabled, and the
+    enabled groups that are members of those, and so on down. The other
+    way round of get_aclgroup_acls(), for a search by ACL. """
+    aclgroups = []
+    seen = []
+    result = backend.search(object_type="aclgroup",
+                            attribute="entry",
+                            values=list(entries),
+                            return_attributes=ACLGROUP_ATTRIBUTES)
+    while result:
+        member_uuids = []
+        for x_uuid in result:
+            if x_uuid in seen:
+                continue
+            seen.append(x_uuid)
+            x_data = result[x_uuid]
+            try:
+                x_enabled = x_data['enabled'][0]
+            except Exception:
+                x_enabled = False
+            if not x_enabled:
+                continue
+            aclgroups.append(x_uuid)
+            for x_member in x_data.get('aclgroup') or []:
+                if x_member not in seen:
+                    member_uuids.append(x_member)
+        if not member_uuids:
+            break
+        result = backend.search(object_type="aclgroup",
+                                attribute="uuid",
+                                values=member_uuids,
+                                return_attributes=ACLGROUP_ATTRIBUTES)
+    return aclgroups
+
+def get_view_aclgroups(object_types):
+    """ The ACL groups that grant a view or an edit ACL of some kind on
+    one of the given object types, for a search that asks whether an
+    object can be seen at all (see the LDAP server). """
+    view_verbs = ("view", "view_all", "view_public", "edit")
+    result = backend.search(object_type="aclgroup",
+                            attribute="uuid",
+                            value="*",
+                            return_attributes=ACLGROUP_ATTRIBUTES)
+    entries = set()
+    for x_uuid in result:
+        for x_entry in result[x_uuid].get('entry') or []:
+            x_type, _sep, x_acl = x_entry.partition(":")
+            if x_type not in object_types:
+                continue
+            if x_acl.split(":")[0] not in view_verbs:
+                continue
+            entries.add(x_entry)
+    if not entries:
+        return []
+    return get_entry_aclgroups(entries)
+
+def expand_aclgroups(acl_list, object_type):
+    """ The given raw ACLs with each ACL group (owner:@<uuid>) replaced by
+    what it grants on an object of the given type. A default one
+    (owner:+@<uuid>, owner:++@<uuid>) stays as it is: it is handed down,
+    and grants nothing on the object it is on. """
+    expanded = []
+    for raw_acl in acl_list:
+        x_parts = raw_acl.split(":", 2)
+        if len(x_parts) < 3 or not x_parts[2].startswith("@"):
+            expanded.append(raw_acl)
+            continue
+        owner = f"{x_parts[0]}:{x_parts[1]}"
+        for x_acl in get_aclgroup_acls(x_parts[2][1:], object_type):
+            expanded.append(f"{owner}:{x_acl}")
+    return expanded
 
 def merge_acls(list1, list2):
     """ Merge two ACL lists without duplicates. """
@@ -365,7 +580,8 @@ def access_granted(acl, object_id=None, uuid=None, check_admin_user=True,
                     acl_list=acl_list,
                     acl=acl,
                     auth_token=auth_token,
-                    force_acl_check=True)
+                    force_acl_check=True,
+                    object_type=object_id.object_type)
     else:
         return access_granted
 
@@ -376,8 +592,12 @@ def access_granted(acl, object_id=None, uuid=None, check_admin_user=True,
     return False
 
 def verify(uuid, acl_list, acl, force_acl_check=False, need_exact_acl=False,
-    check_admin_user=True, check_admin_role=True, auth_token=None):
-    """ Check if current user is authorized by the given ACL. """
+    check_admin_user=True, check_admin_role=True, auth_token=None,
+    object_type=None):
+    """ Check if current user is authorized by the given ACL.
+
+    <object_type> is the type of the object, which says what an ACL group
+    on it grants. Looked up where it is not given and needed. """
     if not force_acl_check:
         if not auth_token:
             auth_token = config.auth_token
@@ -399,6 +619,14 @@ def verify(uuid, acl_list, acl, force_acl_check=False, need_exact_acl=False,
                                     acl=acl)
     if cached_acl_result is not None:
         return cached_acl_result
+
+    # Put what the ACL groups grant in their place.
+    if [x for x in acl_list if ":@" in x]:
+        if object_type is None:
+            object_id = backend.get_oid(uuid, instance=True)
+            if object_id:
+                object_type = object_id.object_type
+        acl_list = expand_aclgroups(acl_list, object_type)
 
     # Get token roles.
     token_roles = auth_token.get_roles(return_type="uuid",
@@ -537,8 +765,12 @@ def check_acl(acl, verify_acl, token_roles, need_exact_acl=False, auth_token=Non
     # Default should be None -> ACL does not match
     return None
 
-def get_raw_acls(acls, token):
-    """ Build RAW ACLs. """
+def get_raw_acls(acls, token, object_types=None):
+    """ Build RAW ACLs.
+
+    <object_types> are the types searched for: an ACL group on an object
+    grants by the type of the object, so only with them the groups that
+    grant one of the ACLs are found. """
     acl_list = []
     for acl in acls:
         # Decode ACL.
@@ -627,6 +859,15 @@ def get_raw_acls(acls, token):
             if acl_sub_value:
                 x = f"view:{acl_value}:{acl_sub_value}"
                 acl_list.append(x)
+
+    # And the ACL groups that grant one of them on the searched types.
+    if object_types:
+        entries = set()
+        for x_type in object_types:
+            for x_acl in acl_list:
+                entries.add(f"{x_type}:{x_acl}")
+        for x_uuid in get_entry_aclgroups(entries):
+            acl_list.append(f"@{x_uuid}")
 
     # We also have to build raw ACLs for each role the token is in.
     token_roles = token.get_roles(return_type="instance", recursive=True)

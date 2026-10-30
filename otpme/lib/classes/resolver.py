@@ -28,6 +28,7 @@ from otpme.lib.classes.user import User
 from otpme.lib.classes.group import Group
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.protocols.utils import register_commands
@@ -126,6 +127,23 @@ commands = {
                     },
                 },
             },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'edit_changelog'   : {
             'default'    : {
                 'exists'    : {
@@ -156,6 +174,16 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'auto_disable'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
+                    'oargs'             : ['unused'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1086,7 +1114,7 @@ class Resolver(OTPmeObject):
         self,
         object_types: Union[List,None]=None,
         test: bool=False,
-        interactive: bool=None,
+        interactive: Union[bool,None]=None,
         daemon_run: bool=False,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -2001,7 +2029,7 @@ class Resolver(OTPmeObject):
     @audit_log()
     def get_resolver_objects(
         self,
-        object_types: List=None,
+        object_types: Union[List,None]=None,
         return_type: str="name",
         run_policies: bool=True,
         force: bool=False,
@@ -2048,7 +2076,7 @@ class Resolver(OTPmeObject):
     @object_changelog("delete resolved objects")
     def delete_objects(
         self,
-        object_types: List=None,
+        object_types: Union[List,None]=None,
         force: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
@@ -2157,14 +2185,14 @@ class Resolver(OTPmeObject):
                 if not parent_object.verify_acl(del_acl):
                     sub_type = self.get_sub_type()
                     if not sub_type:
-                        msg = _("Permission denied: {name}")
-                        msg = msg.format(name=self.name)
+                        msg = denied_msg(self, "delete:object",
+                                        others=[(parent_object, del_acl)])
                         return callback.error(msg, exception=PermissionDenied)
                     sub_type_acl = f"delete:{self.type}:{sub_type}"
                     if not parent_object.verify_acl(sub_type_acl,
                                     need_exact_acl=True):
-                        msg = _("Permission denied: {name}")
-                        msg = msg.format(name=self.name)
+                        msg = denied_msg(self, "delete:object",
+                                others=[(parent_object, [del_acl, sub_type_acl])])
                         return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:

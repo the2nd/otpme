@@ -55,3 +55,9 @@ SITE_MAINTENANCE = 414
 # connects directly: no node is there (ConnectionError), not that the
 # command failed. otpme-pass then reads what the host keeps offline.
 DAEMON_UNREACHABLE = 415
+# A node asked for the sync of all sites, which only the master node
+# gives, while it knows no master node at all: it has quorum and the
+# election has not made one yet. Nothing is wrong, the same sync works
+# once the election is through. Not PERMISSION_DENIED, which is for a
+# node that knows another one is the master.
+NO_MASTER_NODE = 416

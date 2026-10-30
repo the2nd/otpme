@@ -525,16 +525,24 @@ class OathToken(Token):
         # Generate salt for used OTP hashes.
         self.used_otp_salt = stuff.gen_secret(32)
         return_message = None
-        show_pin = True
-        show_secret = True
         if not no_token_infos:
-            if verify_acls:
-                if not self.verify_acl("view:secret"):
-                    gen_qrcode = False
-                    show_secret = False
+            # Asked whatever verify_acls says: that only tells whether
+            # the creator may add the token, User.add() gives False for
+            # the default token of a new user. view:initial_secret and
+            # view:initial_pin show them now, when the token is made,
+            # but not later. Secrets: plain view must not show them,
+            # see otpme_acl.check_acl().
+            show_secret = self.verify_acl("view_all:secret") \
+                        or self.verify_acl("view_all:initial_secret")
+            show_pin = self.verify_acl("view_all:pin") \
+                        or self.verify_acl("view_all:initial_pin")
+            if not show_secret:
+                gen_qrcode = False
             if gen_qrcode:
+                # The QR code holds the secret, so who may see the
+                # secret may see it.
                 term_qrcode = self.gen_qrcode(pin=pin,
-                                            verify_acls=verify_acls,
+                                            verify_acls=False,
                                             run_policies=False)
                 return_message = term_qrcode
             if show_secret:
@@ -544,12 +552,21 @@ class OathToken(Token):
                 else:
                     msg = _("Token secret: {secret}")
                     return_message = msg.format(secret=token_secret)
-            if verify_acls:
-                if not self.verify_acl("view:pin"):
-                    show_pin = False
+            else:
+                message = _("Token secret not shown. This needs the ACL view:initial_secret.")
+                if return_message:
+                    return_message = f"{return_message}\n{message}"
+                else:
+                    return_message = message
             if show_pin:
                 msg = _("Token PIN: {pin_value}")
                 message = msg.format(pin_value=pin)
+                if return_message:
+                    return_message = f"{return_message}\n{message}"
+                else:
+                    return_message = message
+            else:
+                message = _("Token PIN not shown. This needs the ACL view:initial_pin.")
                 if return_message:
                     return_message = f"{return_message}\n{message}"
                 else:

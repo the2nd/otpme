@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [resolver]'),
-                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :output_fields: -z :max_len: -a :show_all=True: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: -a :show_all=True: [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show resolvers.'),
                                     '-a'                    : _('Show all resolvers.'),
@@ -35,7 +35,7 @@ cmd_help = {
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver list [regex]'),
-                    'cmd'   :   '[search_regex]',
+                    'cmd'   :   '["search_regex"]',
                     '_help' :   {
                                     'cmd'                   : _('List resolvers.'),
                                 },
@@ -58,6 +58,15 @@ cmd_help = {
                                 },
                 },
 
+    'auto_disable'          : {
+                    '_cmd_usage_help' : _('Usage: otpme-resolver auto_disable [-u] {resolver} {time}'),
+                    'cmd'   :   '-u :unused=True: <|object|> <auto_disable>',
+                    '_help' :   {
+                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023", 0 removes it).'),
+                                    '-u'                    : _('Disable object if it was unused for the given time.'),
+                                },
+                },
+
     'enable'    : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver enable {resolver}'),
                     'cmd'   :   '<|object|>',
@@ -76,7 +85,7 @@ cmd_help = {
 
     'rename'    : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver rename {resolver} {new_name}'),
-                    'cmd'   :   '<|object|> <new_name>',
+                    'cmd'   :   '<|object|> <"new_name">',
                     '_help' :   {
                                     'cmd'                   : _('Rename resolver.'),
                                 },
@@ -84,16 +93,31 @@ cmd_help = {
 
     'get_config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver get_config {resolver} {parameter}'),
-                    'cmd'   :   '<|object|> <parameter>',
+                    'cmd'   :   '<|object|> <"parameter">',
                     '_help' :   {
                                     'cmd'                   : _('Get config parameter.'),
                                 },
                 },
     'show_config'      : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver show_config {resolver} [parameter]'),
-                    'cmd'   :   '<|object|> [parameter]',
+                    'cmd'   :   '<|object|> ["parameter"]',
                     '_help' :   {
                                     'cmd'                   : _('Show resolver config parameters'),
+                                },
+                },
+    'show_oid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-resolver show_oid [--full] {resolver}'),
+                    'cmd'   :   '--full :full=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the OID of the object.'),
+                                    '--full'                : _('Show the full OID.'),
+                                },
+                },
+    'show_uuid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-resolver show_uuid {resolver}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the UUID of the object.'),
                                 },
                 },
     'changelog'    : {
@@ -105,7 +129,7 @@ cmd_help = {
                 },
     'edit_changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver edit_changelog {resolver} {entry_id} {comment}'),
-                    'cmd'   :   '<|object|> <entry_id> <comment>',
+                    'cmd'   :   '<|object|> <entry_id> <"comment">',
                     '_help' :   {
                                     'cmd'                   : _('Edit changelog entry comment.'),
                                 },
@@ -127,7 +151,7 @@ cmd_help = {
 
      'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver config -d -a {resolver} {param} [value]'),
-                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to resolver.'),
                                     '-a'                    : _('Append value to config parameter.'),
@@ -137,7 +161,7 @@ cmd_help = {
 
     'add_acl'   : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver add_acl {resolver} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
+                    'cmd'   :   '<|object|> <"owner_type"> <"owner_name"> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to resolver.'),
                                 },
@@ -180,7 +204,7 @@ cmd_help = {
 
     'unit'    : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver unit {resolver} {unit}'),
-                    'cmd'   :   '<|object|> <new_unit>',
+                    'cmd'   :   '<|object|> <"new_unit">',
                     '_help' :   {
                                     'cmd'                   : _('Change resolver\'s unit.'),
                                 },
@@ -189,7 +213,7 @@ cmd_help = {
 
     'description'    : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver description {resolver} [description]'),
-                    'cmd'   :   '<|object|> [description]',
+                    'cmd'   :   '<|object|> ["description"]',
                     '_help' :   {
                                     'cmd'                   : _('Set resolver description.'),
                                 },
@@ -197,7 +221,7 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver info {resolver} [info]'),
-                    'cmd'   :   '--language :language: <|object|> [info]',
+                    'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set resolver info'),
                                     '--language <lang>'     : _('Change info for language.'),
@@ -206,7 +230,7 @@ cmd_help = {
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver dump_info {resolver}'),
-                    'cmd'   :   '--language :language: <|object|>',
+                    'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump resolver info'),
                                     '--language <lang>'     : _('Dump info for language.'),
@@ -218,10 +242,6 @@ cmd_help = {
                 },
 
     '_list_valid_attributes'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_attributes'    : {
                     'cmd'   :   '<|object|>',
                 },
 
@@ -247,7 +267,7 @@ cmd_help = {
 
     'export'    : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver export --password <password> {resolver}'),
-                    'cmd'   :   '--password :password: <|object|>',
+                    'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export resolver config to stdout.'),
                                     '--password <password>' : _('Encrypt object config with password.'),
@@ -256,7 +276,7 @@ cmd_help = {
 
     'add_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver add_policy {resolver} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add policy to resolver.'),
                                 },
@@ -264,7 +284,7 @@ cmd_help = {
 
     'remove_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver remove_policy {resolver} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove policy from resolver.'),
                                 },
@@ -304,7 +324,7 @@ cmd_help = {
 
     'key_attribute' : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver key_attribute {resolver} {object_type} {attribute}'),
-                    'cmd'   :   '<|object|> <object_type> <key_attribute>',
+                    'cmd'   :   '<|object|> <"object_type"> <"key_attribute">',
                     '_help' :   {
                                     'cmd'                   : _('Set key attribute used to sync objects (e.g. entryUUID).'),
                                 },
@@ -320,7 +340,7 @@ cmd_help = {
 
     'sync_interval': {
                     '_cmd_usage_help' : _('Usage: otpme-resolver sync_interval {resolver} {sync_interval}'),
-                    'cmd'   :   '<|object|> <sync_interval>',
+                    'cmd'   :   '<|object|> <"sync_interval">',
                     '_help' :   {
                                     'cmd'                       : _('Set resolver sync interval.'),
                                 },
@@ -352,8 +372,8 @@ cmd_help = {
                                 },
                 },
     'list_policies'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-resolver list_policies {resolver}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-resolver list_policies [--return-type <type>] [--policy-types <type1,type2>] {resolver}'),
+                    'cmd'   :   '--return-type :"return_type": --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

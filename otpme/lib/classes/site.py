@@ -36,6 +36,7 @@ from otpme.lib.classes.user import User
 from otpme.lib.classes.group import Group
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.encoding.base import encode
 from otpme.lib.register import register_module
 from otpme.lib.job.callback import JobCallback
@@ -126,7 +127,9 @@ read_value_acls = {
                                 "sso_cert",
                                 "sso_key",
                                 "sso_hosts",
-                                "site_cert",
+                                # No "site_cert": the site certificate
+                                # is the certificate of the site,
+                                # shown with view:cert.
                                 "radius_cert",
                                 "radius_key",
                                 "radius_ca_cert",
@@ -138,7 +141,10 @@ read_value_acls = {
                                 "sync",
                                 "ca",
                                 "cert",
-                                "cert_key",
+                                # The private key: get_cert_key()
+                                # (dump_key) and show ask for
+                                # view_all:key.
+                                "key",
                                 "admin_role",
                                 "user_role",
                                 "admin_token",
@@ -154,9 +160,6 @@ read_value_acls = {
         }
 
 write_value_acls = {
-                    "view"      : [
-                                "config",
-                                ],
                     "add"       : [
                                 "unit",
                                 "trust",
@@ -175,20 +178,18 @@ write_value_acls = {
                     "remove"    : [
                                 "sso_host",
                                 ],
+                    # No syslog and audit_log: they are set in the config
+                    # file since e94f4d7d, nothing asks for these ACLs.
                     "enable"    : [
                                 "auth",
                                 "sync",
                                 "oidc",
-                                "syslog",
-                                "audit_log",
                                 "maintenance",
                                 ],
                     "disable"   : [
                                 "auth",
                                 "sync",
                                 "oidc",
-                                "syslog",
-                                "audit_log",
                                 "maintenance",
                                 ],
                     "set"       : [
@@ -232,7 +233,6 @@ default_acls = [
                     "disable",
                     "view_all",
                     "view",
-                    "import",
                     "export",
                 ]
 
@@ -248,7 +248,6 @@ recursive_default_acls = [
                     "view_all",
                     "view_public",
                     "view",
-                    "import",
                     "export",
                 ]
 
@@ -319,6 +318,23 @@ commands = {
                     },
                 },
             },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'edit_changelog'   : {
             'default'    : {
                 'exists'    : {
@@ -349,6 +365,15 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'auto_disable'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
                     'job_type'          : 'process',
                     },
                 },
@@ -948,6 +973,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'remove_orphans',
+                    'oargs'             : ['recursive'],
                     'job_type'          : 'process',
                     },
                 },
@@ -972,14 +998,6 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_attributes',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_attributes'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'show_attributes',
                     'job_type'          : 'thread',
                     },
                 },
@@ -1823,8 +1841,7 @@ def register_config():
             raise ValueError(msg)
         ag = result[0]
         if not ag.verify_acl("add:host"):
-            msg = _("You dont have permission to add hosts to this accessgroup: {ag}")
-            msg = msg.format(ag=ag.oid)
+            msg = denied_msg(ag, "add:host")
             raise PermissionDenied(msg)
         return ag.uuid
     def hosts_ag_getter(uuid, callback=JobCallback, **kwargs):
@@ -1862,8 +1879,7 @@ def register_config():
             raise ValueError(msg)
         ag = result[0]
         if not ag.verify_acl("add:device"):
-            msg = _("You dont have permission to add devices to this accessgroup: {ag}")
-            msg = msg.format(ag=ag.oid)
+            msg = denied_msg(ag, "add:device")
             raise PermissionDenied(msg)
         return ag.uuid
     def device_ag_getter(uuid, callback=JobCallback, **kwargs):
@@ -1934,8 +1950,7 @@ def register_config():
         """
         role = get_role_object(role)
         if not role.verify_acl("add:host"):
-            msg = _("You dont have permission to add hosts to this role: {role}")
-            msg = msg.format(role=role.oid)
+            msg = denied_msg(role, "add:host")
             raise PermissionDenied(msg)
         return role.uuid
     config.register_config_parameter(name="hosts_role",
@@ -1954,8 +1969,7 @@ def register_config():
         """
         role = get_role_object(role)
         if not role.verify_acl("add:device"):
-            msg = _("You dont have permission to add devices to this role: {role}")
-            msg = msg.format(role=role.oid)
+            msg = denied_msg(role, "add:device")
             raise PermissionDenied(msg)
         return role.uuid
     config.register_config_parameter(name="devices_role",
@@ -2141,8 +2155,7 @@ def register_config():
         for vlan in vlans:
             vlan_object = get_vlan_object(vlan)
             if not vlan_object.verify_acl("assign"):
-                msg = _("You dont have permission to assign this VLAN: {vlan}")
-                msg = msg.format(vlan=vlan_object.oid)
+                msg = denied_msg(vlan_object, "assign")
                 raise PermissionDenied(msg)
             try:
                 assigned_vlan = assigned_sites[vlan_object.site_uuid]
@@ -2207,8 +2220,7 @@ def register_config():
                 raise ValueError(msg)
             role = result[0]
             if not role.verify_acl("add:token"):
-                msg = _("You dont have permissions to add tokens to this role: {role}")
-                msg = msg.format(role=role.oid)
+                msg = denied_msg(role, "add:token")
                 raise PermissionDenied(msg)
             roles_uuids.append(role.uuid)
         return roles_uuids
@@ -4034,7 +4046,7 @@ class Site(OTPmeObject):
         acls: List,
         recursive_acls: bool=False,
         apply_default_acls: bool=False,
-        object_types: List=None,
+        object_types: Union[List,None]=None,
         verify_acls: bool=True,
         # Named, and not left to **kwargs: handle_acl() hands it to us,
         # and the call below passes both force=True and **kwargs. With
@@ -4159,7 +4171,7 @@ class Site(OTPmeObject):
     @object_changelog("change site certificate")
     def change_site_cert(
         self,
-        site_cert: str=None,
+        site_cert: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
@@ -4450,9 +4462,9 @@ class Site(OTPmeObject):
     @object_changelog("change RADIUS certificate")
     def change_radius_cert(
         self,
-        radius_cert: str=None,
-        radius_key: str=None,
-        radius_ca_cert: str=None,
+        radius_cert: Union[str,None]=None,
+        radius_key: Union[str,None]=None,
+        radius_ca_cert: Union[str,None]=None,
         force: bool=False,
         verify_acls: bool=True,
         run_policies: bool=True,
@@ -4466,12 +4478,10 @@ class Site(OTPmeObject):
         # those.
         if verify_acls:
             if radius_key and not self.verify_acl("edit:radius_key"):
-                msg = _("Permission denied: {acl}")
-                msg = msg.format(acl="edit:radius_key")
+                msg = denied_msg(self, "edit:radius_key")
                 return callback.error(msg, exception=PermissionDenied)
             if radius_ca_cert and not self.verify_acl("edit:radius_ca_cert"):
-                msg = _("Permission denied: {acl}")
-                msg = msg.format(acl="edit:radius_ca_cert")
+                msg = denied_msg(self, "edit:radius_ca_cert")
                 return callback.error(msg, exception=PermissionDenied)
 
         msg = _("Change RADIUS certificate of site '{site_name}'?: ")
@@ -4506,7 +4516,7 @@ class Site(OTPmeObject):
     @object_changelog("change RADIUS key")
     def change_radius_key(
         self,
-        radius_key: str=None,
+        radius_key: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
@@ -4542,7 +4552,7 @@ class Site(OTPmeObject):
     @object_changelog("change RADIUS CA certificate")
     def change_radius_ca_cert(
         self,
-        radius_ca_cert: str=None,
+        radius_ca_cert: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
@@ -4577,8 +4587,8 @@ class Site(OTPmeObject):
     @object_changelog("change SSO certificate")
     def change_sso_cert(
         self,
-        sso_cert: str=None,
-        sso_key: str=None,
+        sso_cert: Union[str,None]=None,
+        sso_key: Union[str,None]=None,
         force: bool=False,
         verify_acls: bool=True,
         run_policies: bool=True,
@@ -4591,8 +4601,7 @@ class Site(OTPmeObject):
         # RADIUS certificate above.
         if verify_acls:
             if sso_key and not self.verify_acl("edit:sso_key"):
-                msg = _("Permission denied: {acl}")
-                msg = msg.format(acl="edit:sso_key")
+                msg = denied_msg(self, "edit:sso_key")
                 return callback.error(msg, exception=PermissionDenied)
 
         msg = _("Change SSO certificate of site '{site_name}'?: ")
@@ -4623,7 +4632,7 @@ class Site(OTPmeObject):
     @object_changelog("change SSO key")
     def change_sso_key(
         self,
-        sso_key: str=None,
+        sso_key: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
@@ -4704,7 +4713,7 @@ class Site(OTPmeObject):
     @object_changelog("change OIDC pairwise secret")
     def change_oidc_pairwise_secret(
         self,
-        secret: str=None,
+        secret: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
@@ -4763,7 +4772,7 @@ class Site(OTPmeObject):
     @object_changelog("change tiqr secret")
     def change_tiqr_secret(
         self,
-        secret: str=None,
+        secret: Union[str,None]=None,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -5314,11 +5323,11 @@ class Site(OTPmeObject):
     @object_changelog("generate OIDC key {key_type}")
     def gen_oidc_key(
         self,
-        key_type: str=None,
-        kty: str=None,
+        key_type: Union[str,None]=None,
+        kty: Union[str,None]=None,
         size=None,
-        alg: str=None,
-        retired_max_age: int=None,
+        alg: Union[str,None]=None,
+        retired_max_age: Union[int,None]=None,
         force: bool=False,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -6112,9 +6121,13 @@ class Site(OTPmeObject):
         ):
         """ Bring this site up to the code that runs it.
 
-        Two things an update leaves behind: config parameters the site
-        does not have yet, and object configs stored in an older
-        version than the code writes. See upgrade_config_params() and
+        Five things an update leaves behind: config parameters the
+        site does not have yet, base ACL groups that are missing or hold
+        what an older version said, the ACLs realm users got one by one
+        before the ACL group realm_user, ACLs that grant nothing, and
+        object configs stored in an older version than the code writes.
+        See upgrade_config_params(), aclgroup.add_base_aclgroups(),
+        upgrade_realm_user_acls(), upgrade_dead_acls() and
         upgrade_object_configs().
 
         <procs> is how many workers write the objects, where there
@@ -6128,6 +6141,22 @@ class Site(OTPmeObject):
             result = self.upgrade_config_params(run_policies=run_policies,
                                                 callback=callback,
                                                 _caller=_caller)
+            if result is False:
+                return result
+            # The base ACL groups hold what this code says, and a site
+            # from before them gets them.
+            from otpme.lib.classes.aclgroup import add_base_aclgroups
+            result = add_base_aclgroups(self, callback=callback)
+            if result is False:
+                return result
+            # Realm users get realm_user instead of the ACLs one by one.
+            # A walk over the site, with the workers we were given.
+            result = self.upgrade_realm_user_acls(procs=procs,
+                                                callback=callback)
+            if result is False:
+                return result
+            # ACLs older versions gave that grant nothing.
+            result = self.upgrade_dead_acls(callback=callback)
             if result is False:
                 return result
             self._config_upgrade_procs = procs
@@ -6619,6 +6648,12 @@ class Site(OTPmeObject):
         """
         for parameter in config.valid_config_params:
             para_data = config.valid_config_params[parameter]
+            # Only what a site can hold. device_token_mschap is for roles
+            # alone, and set_config_param() refused it with "Config
+            # parameter not valid for object type: site" on every site
+            # add. Its default counts where nothing is set anyway.
+            if self.type not in (para_data['object_types'] or []):
+                continue
             default_value = para_data['default']
             if default_value is not None:
                 self.set_config_param(parameter, default_value, **kwargs)
@@ -7063,8 +7098,11 @@ class Site(OTPmeObject):
                 policy_method_args['callback'] = callback
                 # We create base objects. So no user questions.
                 policy_method_args['force'] = True
-                method_status = policy_method(verify_acls=False,
-                                            **policy_method_args)
+                # And no ACLs to check. Into the dict as force is: a post
+                # method may name it itself, and a keyword next to the
+                # dict would then be given twice.
+                policy_method_args['verify_acls'] = False
+                method_status = policy_method(**policy_method_args)
                 # A base policy that is not configured completely must not
                 # pass silently.
                 if not method_status:
@@ -7110,69 +7148,17 @@ class Site(OTPmeObject):
         """ Add default ACLs. """
         callback.send(_("Adding default ACLs..."))
 
-        # Base units whose ACLs are set by hand only (e.g. the one of the
-        # password objects). The recursive ACLs below walk every unit of
-        # the site, so these are left out of the walk.
-        no_acl_units = []
-        for early in (True, False):
-            base_units = config.get_base_objects("unit", early=early)
-            for x_unit in base_units:
-                if base_units[x_unit]['no_acls']:
-                    no_acl_units.append(x_unit)
-
-        # Add default ACLs to allow view of some objects for realm users.
-        view_objects = ['site']
-        for acl in self._recursive_default_acls:
-            if not acl.startswith("+"):
-                continue
-            object_type = acl.replace("+", "")
-            view_objects.append(object_type)
-
-        # Get realm user role. All ACLs in one call: each of them walks
-        # the whole site, and the walk is what this costs.
+        # What every realm user may see.
         realm_user_role = backend.get_object(uuid=self.user_role_uuid)
-        view_acls = []
-        for o in view_objects:
-            view_acls.append(f"role:{realm_user_role.uuid}:++{o}:view_public")
-        self.add_acl(acls=view_acls,
-                    force=True,
-                    recursive_acls=True,
-                    apply_default_acls=True,
-                    object_types=view_objects,
-                    skip_units=no_acl_units,
-                    verify_acls=False,
-                    verbose_level=1,
-                    callback=callback)
+        self.add_realm_user_acls(realm_user_role, callback=callback)
 
-        # Add ACLs to view LDIF attributes.
-        view_objects = [ "site", "unit", "user", "group" ]
-        view_acls = []
-        for o in view_objects:
-            view_acls.append(f"role:{realm_user_role.uuid}:++{o}:view:attribute")
-        self.add_acl(acls=view_acls,
-                    force=True,
-                    recursive_acls=True,
-                    apply_default_acls=True,
-                    object_types=view_objects,
-                    skip_units=no_acl_units,
-                    verify_acls=False,
-                    verbose_level=1,
-                    callback=callback)
+        # Nothing for the site admins: a token of their role is an
+        # admin, and otpme_acl.verify() lets an admin pass without an
+        # ACL. They got view_public here, see upgrade_dead_acls().
 
-        # Get site admin role.
-        site_admin_role = backend.get_object(uuid=self.admin_role_uuid)
-        # Add ACLs to view public site infos.
-        view_roles = [ realm_user_role, site_admin_role ]
-        view_acls = [f"role:{r.uuid}:view_public" for r in view_roles]
-        self.add_acl(acls=view_acls,
-                    force=True,
-                    recursive_acls=False,
-                    apply_default_acls=False,
-                    verify_acls=False,
-                    verbose_level=1,
-                    callback=callback)
-
-        # Add "dump" ACLs for default scripts.
+        # Add "dump" ACLs for default scripts. One by one: realm_user
+        # goes on the whole tree, and every user could dump every
+        # script then. The agent and the login fetch these as the user.
         acl = f"role:{realm_user_role.uuid}:dump"
         for script_name in os.listdir(config.script_dir):
             if script_name not in DUMP_SCRIPTS:
@@ -7193,6 +7179,166 @@ class Site(OTPmeObject):
         # Write objects.
         callback.write_modified_objects()
         cache.flush()
+
+    def get_no_acl_units(self):
+        """ Base units whose ACLs are set by hand only (e.g. the one of
+        the password objects). A walk over the site leaves them out. """
+        no_acl_units = []
+        for early in (True, False):
+            base_units = config.get_base_objects("unit", early=early)
+            for x_unit in base_units:
+                if base_units[x_unit]['no_acls']:
+                    no_acl_units.append(x_unit)
+        return no_acl_units
+
+    def get_realm_user_acls(self, realm_user_role):
+        """ What every realm user may see: the base ACL group realm_user,
+        on the site itself and on the tree below it. """
+        from otpme.lib.classes.aclgroup import REALM_USER_ACLGROUP
+        result = backend.search(object_type="aclgroup",
+                                attribute="name",
+                                value=REALM_USER_ACLGROUP,
+                                realm=self.realm,
+                                site=self.name,
+                                return_type="uuid")
+        if not result:
+            msg = _("Unknown ACL group: {aclgroup}")
+            msg = msg.format(aclgroup=REALM_USER_ACLGROUP)
+            raise OTPmeException(msg)
+        aclgroup_uuid = result[0]
+        return [
+                f"role:{realm_user_role.uuid}:@{aclgroup_uuid}",
+                f"role:{realm_user_role.uuid}:++@{aclgroup_uuid}",
+                ]
+
+    def get_old_realm_user_acls(self, realm_user_role):
+        """ What realm users got before the base ACL group realm_user:
+        view_public on every object type of the site, view:attribute on
+        sites, units, users and groups, one by one. """
+        view_objects = ['site']
+        for acl in self._recursive_default_acls:
+            if not acl.startswith("+"):
+                continue
+            object_type = acl.replace("+", "")
+            view_objects.append(object_type)
+        acls = [f"role:{realm_user_role.uuid}:view_public"]
+        for o in view_objects:
+            acls.append(f"role:{realm_user_role.uuid}:++{o}:view_public")
+        for o in ["site", "unit", "user", "group"]:
+            acls.append(f"role:{realm_user_role.uuid}:++{o}:view:attribute")
+        return acls
+
+    def add_realm_user_acls(self, realm_user_role,
+        procs: Union[int,None]=None,
+        callback: JobCallback=default_callback):
+        """ Give the realm users the base ACL group realm_user on the site
+        and on the tree below it. Only the object types it has entries
+        for get it, and the units, which hand it on. In one call: it
+        walks the whole site, and the walk is what this costs. """
+        from otpme.lib.classes.aclgroup import get_realm_user_object_types
+        return self.add_acl(acls=self.get_realm_user_acls(realm_user_role),
+                            force=True,
+                            recursive_acls=True,
+                            apply_default_acls=True,
+                            object_types=get_realm_user_object_types(),
+                            skip_units=self.get_no_acl_units(),
+                            procs=procs,
+                            verify_acls=False,
+                            verbose_level=1,
+                            callback=callback)
+
+    def upgrade_realm_user_acls(self, procs: Union[int,None]=None,
+        callback: JobCallback=default_callback):
+        """ Put the base ACL group realm_user in place of the ACLs realm
+        users got one by one before it, on every object of the site.
+        Done once: with the old ACLs gone from the site and the new ones
+        on it, there is nothing to do. """
+        realm_user_role = backend.get_object(uuid=self.user_role_uuid)
+        if not realm_user_role:
+            return callback.ok()
+        old_acls = [x for x in self.get_old_realm_user_acls(realm_user_role)
+                    if x in self.acls]
+        if old_acls:
+            msg = _("Removing the ACLs realm users got one by one...")
+            callback.send(msg)
+            del_result = self.del_acl(acls=old_acls,
+                                    force=True,
+                                    recursive_acls=True,
+                                    apply_default_acls=True,
+                                    skip_units=self.get_no_acl_units(),
+                                    procs=procs,
+                                    verify_acls=False,
+                                    verbose_level=1,
+                                    callback=callback)
+            if not del_result:
+                return del_result
+        new_acls = self.get_realm_user_acls(realm_user_role)
+        if not [x for x in new_acls if x not in self.acls]:
+            return callback.ok()
+        msg = _("Giving realm users the ACL group realm_user...")
+        callback.send(msg)
+        add_result = self.add_realm_user_acls(realm_user_role,
+                                            procs=procs,
+                                            callback=callback)
+        if not add_result:
+            return add_result
+        callback.write_modified_objects()
+        cache.flush()
+        return callback.ok()
+
+    def get_dead_acls(self):
+        """ ACLs older versions gave that grant nothing, as a list of
+        (object, [raw ACL]).
+
+        view_public of the site admin role on the site: a token of that
+        role is an admin, and otpme_acl.verify() lets an admin pass
+        without one. And on the units of the site: Unit.add() gives a
+        new unit the ACLs of its parent that the token adding it has, so
+        every unit a site admin added below the site got a copy, those
+        an upgrade adds (aclgroups, vlans) too, and from there the units
+        below them. And on the realm, which the master site set up, an
+        ACL with the owner type role and the UUID of the group
+        realmusers: only roles and tokens own ACLs, and no role has
+        that UUID.
+        """
+        dead_acls = []
+        site_acl = f"role:{self.admin_role_uuid}:view_public"
+        if site_acl in self.acls:
+            dead_acls.append((self, [site_acl]))
+        units = backend.search(object_type="unit",
+                                attribute="acl",
+                                value=site_acl,
+                                realm=self.realm,
+                                site=self.name,
+                                return_type="instance")
+        for unit in units:
+            dead_acls.append((unit, [site_acl]))
+        realm = backend.get_object(object_type="realm", uuid=self.realm_uuid)
+        if realm and realm.master == self.uuid:
+            realm_acl = f"role:{self.realm_users_group_uuid}:view_public"
+            if realm_acl in realm.acls:
+                dead_acls.append((realm, [realm_acl]))
+        return dead_acls
+
+    def upgrade_dead_acls(self, callback: JobCallback=default_callback):
+        """ Take away the ACLs of get_dead_acls(). They do no harm, but
+        list_acls shows them as rights nobody has. """
+        dead_acls = self.get_dead_acls()
+        if not dead_acls:
+            return callback.ok()
+        msg = _("Removing ACLs that grant nothing...")
+        callback.send(msg)
+        for x_object, x_acls in dead_acls:
+            del_result = x_object.del_acl(raw_acls=x_acls,
+                                        force=True,
+                                        verify_acls=False,
+                                        verbose_level=1,
+                                        callback=callback)
+            if not del_result:
+                return del_result
+        callback.write_modified_objects()
+        cache.flush()
+        return callback.ok()
 
     @object_lock(full_lock=True)
     def add_early_objects(
@@ -7606,8 +7752,11 @@ class Site(OTPmeObject):
                 policy_method_args['callback'] = callback
                 # We create base objects. So no user questions.
                 policy_method_args['force'] = True
-                method_status = policy_method(verify_acls=False,
-                                            **policy_method_args)
+                # And no ACLs to check. Into the dict as force is: a post
+                # method may name it itself, and a keyword next to the
+                # dict would then be given twice.
+                policy_method_args['verify_acls'] = False
+                method_status = policy_method(**policy_method_args)
                 # A base policy that is not configured completely must not
                 # pass silently.
                 if not method_status:
@@ -7632,6 +7781,16 @@ class Site(OTPmeObject):
                 msg = msg.format(policy_name=policy.name)
                 return callback.error(msg)
 
+        # Write objects.
+        callback.write_modified_objects()
+        cache.flush()
+
+        # Create base ACL groups. Before the default ACLs: realm users
+        # get one of them.
+        from otpme.lib.classes.aclgroup import add_base_aclgroups
+        if not add_base_aclgroups(self, callback=callback):
+            msg = _("Problem adding base ACL groups.")
+            return callback.error(msg)
         # Write objects.
         callback.write_modified_objects()
         cache.flush()
@@ -7753,8 +7912,11 @@ class Site(OTPmeObject):
                 policy_method_args['callback'] = callback
                 # We create base objects. So no user questions.
                 policy_method_args['force'] = True
-                method_status = policy_method(verify_acls=False,
-                                            **policy_method_args)
+                # And no ACLs to check. Into the dict as force is: a post
+                # method may name it itself, and a keyword next to the
+                # dict would then be given twice.
+                policy_method_args['verify_acls'] = False
+                method_status = policy_method(**policy_method_args)
                 # A base policy that is not configured completely must not
                 # pass silently. It would else e.g. result in a policy that
                 # adds no default policies to new objects.
@@ -8049,8 +8211,7 @@ class Site(OTPmeObject):
         # Get parent object to check ACLs.
         if verify_acls:
             if not self.verify_acl("delete:object"):
-                msg = _("Permission denied: {name}")
-                msg = msg.format(name=self.name)
+                msg = denied_msg(self, "delete:object")
                 return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:
@@ -8138,7 +8299,6 @@ class Site(OTPmeObject):
     def _remove_orphans_recursive(self, force=False, verbose_level=0,
         recursive=False, callback=default_callback, **kwargs):
         """ Recurse into the site's top level units. """
-        object_changed = False
         all_units = backend.search(attribute="uuid",
                                     object_type="unit",
                                     value="*",
@@ -8151,15 +8311,14 @@ class Site(OTPmeObject):
                 continue
             if verbose_level > 1:
                 callback.send(_("Processing {oid}").format(oid=unit.oid))
-            if unit.remove_orphans(force=force, verbose_level=verbose_level,
-                                    recursive=recursive, callback=callback):
-                object_changed = True
-        return object_changed
+            unit.remove_orphans(force=force, verbose_level=verbose_level,
+                                recursive=recursive, report_nothing=False,
+                                callback=callback)
 
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show site config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         admin_token = ""
@@ -8193,8 +8352,10 @@ class Site(OTPmeObject):
                 if ca:
                     site_ca = ca.rel_path
 
+        # The keys and secrets below are asked for as view_all: plain
+        # view must not show them, see otpme_acl.check_acl().
         cluster_key = ""
-        if self.verify_acl("view:cluster_key") \
+        if self.verify_acl("view_all:cluster_key") \
         or self.verify_acl("edit:cluster_key"):
             cluster_key = self.cluster_key
 
@@ -8221,6 +8382,18 @@ class Site(OTPmeObject):
                 sync_enabled = False
 
         lines.append(f'SYNC_ENABLED="{sync_enabled}"')
+
+        # view:oidc was listed, and nothing showed the status it is for.
+        oidc_enabled = "-"
+        if self.verify_acl("view:oidc") \
+        or self.verify_acl("enable:oidc") \
+        or self.verify_acl("disable:oidc"):
+            if self.oidc_enabled:
+                oidc_enabled = True
+            else:
+                oidc_enabled = False
+
+        lines.append(f'OIDC_ENABLED="{oidc_enabled}"')
 
         # Shown to whoever sees the site, as in the table of "show".
         lines.append(f'OTPME_VERSION="{self.otpme_version or ""}"')
@@ -8261,26 +8434,26 @@ class Site(OTPmeObject):
         else:
             lines.append('SSO_FQDN=""')
 
-        if self.verify_acl("view:sso_secret") \
+        if self.verify_acl("view_all:sso_secret") \
         or self.verify_acl("edit:sso_secret"):
             lines.append(f'SSO_SECRET="{self.sso_secret}"')
         else:
             lines.append('SSO_SECRET=""')
 
-        if self.verify_acl("view:sso_csrf_secret") \
+        if self.verify_acl("view_all:sso_csrf_secret") \
         or self.verify_acl("edit:sso_csrf_secret"):
             lines.append(f'SSO_CSRF_SECRET="{self.sso_csrf_secret}"')
         else:
             lines.append('SSO_CSRF_SECRET=""')
 
-        if self.verify_acl("view:oidc_pairwise_secret") \
+        if self.verify_acl("view_all:oidc_pairwise_secret") \
         or self.verify_acl("edit:oidc_pairwise_secret"):
             pw_secret = self.oidc_pairwise_secret or ""
             lines.append(f'OIDC_PAIRWISE_SECRET="{pw_secret}"')
         else:
             lines.append('OIDC_PAIRWISE_SECRET=""')
 
-        if self.verify_acl("view:tiqr_secret") \
+        if self.verify_acl("view_all:tiqr_secret") \
         or self.verify_acl("edit:tiqr_secret"):
             tiqr_secret = self.tiqr_secret or ""
             lines.append(f'TIQR_SECRET="{tiqr_secret}"')
@@ -8292,7 +8465,7 @@ class Site(OTPmeObject):
         else:
             lines.append('MGMT_CERT=""')
 
-        if self.verify_acl("view:mgmt_key"):
+        if self.verify_acl("view_all:mgmt_key"):
             lines.append(f'MGMT_KEY="{self.mgmt_key}"')
         else:
             lines.append('MGMT_KEY=""')
@@ -8302,7 +8475,7 @@ class Site(OTPmeObject):
         else:
             lines.append('SSO_CERT=""')
 
-        if self.verify_acl("view:sso_key"):
+        if self.verify_acl("view_all:sso_key"):
             lines.append(f'SSO_KEY="{self.sso_key}"')
         else:
             lines.append('SSO_KEY=""')
@@ -8312,7 +8485,7 @@ class Site(OTPmeObject):
         else:
             lines.append('RADIUS_CERT=""')
 
-        if self.verify_acl("view:radius_key"):
+        if self.verify_acl("view_all:radius_key"):
             lines.append(f'RADIUS_KEY="{self.radius_key}"')
         else:
             lines.append('RADIUS_KEY=""')

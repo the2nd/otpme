@@ -22,7 +22,7 @@ cmd_help = {
 
     'master_failover'    : {
                     '_cmd_usage_help' : _('Usage: otpme-cluster master_failover --random --to <new_master>'),
-                    'cmd'   :   '--random :random_node=True: --to :new_master_node: --wait :wait=True:',
+                    'cmd'   :   '--random :random_node=True: --to :"new_master_node": --wait :wait=True:',
                     '_help' :   {
                                     'cmd'                   : _('Switch master node to this node.'),
                                     '--to <node>'           : _('Switch master to the given node.'),

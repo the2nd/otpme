@@ -41,6 +41,7 @@ except Exception:
 from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.otp.oath import ocra
@@ -488,10 +489,12 @@ class TiqrToken(Token):
 
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
         lines = []
-        if self.verify_acl("view:secret"):
+        # A secret: plain view must not show it, see
+        # otpme_acl.check_acl().
+        if self.verify_acl("view_all:secret"):
             lines.append(f'SECRET="{self.secret}"')
         else:
             lines.append('SECRET=""')

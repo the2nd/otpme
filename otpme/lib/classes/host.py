@@ -20,6 +20,7 @@ from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.register import register_module
 from otpme.lib.typing import match_class_typing
@@ -48,18 +49,21 @@ read_acls = []
 write_acls =  [
                 "limit_logins",
                 "unlimit_logins",
+                # On a template: set it in an objecttemplates policy.
+                "use",
             ]
 
 read_value_acls = {
                 "view"      : [
-                                "mac",
+                                # OTPmeDevice.change_mac() and the show
+                                # of a device ask for mac_address.
+                                "mac_address",
                                 "roles",
                                 "tokens",
                                 "sync_users",
                                 "sync_groups",
                                 "dynamic_groups",
                                 "accessgroups",
-                                "auto_disable",
                                 "logins_limited",
                             ],
                 # The other direction: not what this host holds, but
@@ -82,8 +86,7 @@ write_value_acls = {
                                 "config",
                             ],
                 "edit"       : [
-                                "mac",
-                                "auto_disable",
+                                "mac_address",
                             ],
                 "remove"    : [
                                 "sync_user",
@@ -119,6 +122,8 @@ commands = {
                                             'email',
                                             'key_len',
                                             'valid',
+                                            'template_name',
+                                            'no_template',
                                         ],
                     'job_type'          : 'process',
                     },
@@ -143,6 +148,23 @@ commands = {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -222,6 +244,7 @@ commands = {
                                         'attribute',
                                         'search_regex',
                                         'sort_by',
+                                        'show_templates',
                                         ],
                     'job_type'          : None,
                     },
@@ -233,6 +256,7 @@ commands = {
                                         'attribute',
                                         'search_regex',
                                         'sort_by',
+                                        'show_templates',
                                         ],
                     'job_type'          : None,
                     },
@@ -347,7 +371,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['token_options', 'login_interfaces', 'sign', 'tags'],
+                    'oargs'             : ['token_options', 'login_interfaces', 'sign', 'tags', 'auto_sign'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -866,14 +890,6 @@ commands = {
                     },
                 },
             },
-    '_show_attributes'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'show_attributes',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     '_show_object_classes'   : {
             'default'    : {
                 'exists'    : {
@@ -938,7 +954,7 @@ def __get_value_acls(split=False, **kwargs):
         otpme_host_write_value_acls = _get_value_acls(split=split, **kwargs)
         _read_value_acls = otpme_acl.merge_value_acls(read_value_acls,
                                                     otpme_host_read_value_acls)
-        _write_value__acls = otpme_acl.merge_value_acls(read_value_acls,
+        _write_value__acls = otpme_acl.merge_value_acls(write_value_acls,
                                                         otpme_host_write_value_acls)
         return _read_value_acls, _write_value__acls
     otpme_host_value_acls = _get_value_acls(**kwargs)
@@ -1867,7 +1883,7 @@ class Host(OTPmeHost, OTPmeDevice):
     def show_config( self, callback: JobCallback=default_callback, **kwargs):
         """ Show host config. """
         if not self.verify_acl("view_public:object"):
-            msg = ("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

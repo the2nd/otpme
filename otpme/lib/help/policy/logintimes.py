@@ -27,7 +27,7 @@ cmd_help = {
 
     'login_times'          : {
                     '_cmd_usage_help' : _('Usage: otpme-policy login_times {policy} {login_times}'),
-                    'cmd'   :   '<|object|> <login_times>',
+                    'cmd'   :   '<|object|> <"login_times">',
                     '_help' :   {
                                     'cmd'                   : _('Change login times.'),
                                 },
@@ -35,7 +35,7 @@ cmd_help = {
 
     'test'          : {
                     '_cmd_usage_help' : _('Usage: otpme-policy test --object-type <object_type> --test-object <test_object> --token <token> {policy}'),
-                    'cmd'   :   '--object-type ::object_type:: --test-object ::test_object:: --token ::token:: <|object|>',
+                    'cmd'   :   '--object-type ::"object_type":: --test-object ::"test_object":: --token ::"token":: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Test policy.'),
                                     '--object-type'         : _('Object type to assume policy is assigned to.'),

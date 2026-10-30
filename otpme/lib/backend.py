@@ -148,12 +148,12 @@ def handle_daemon_shutdown():
 def register_object_type(
     object_type: str,
     class_getter: object=None,
-    class_getter_args: dict=None,
+    class_getter_args: Union[dict,None]=None,
     tree_object: bool=True,
     path_getter: object=None,
     oid_getter: object=None,
     index_rebuild_func: object=None,
-    dir_name_extension: str=None
+    dir_name_extension: Union[str,None]=None
     ):
     """ Register object type to be created by get_object(). """
     global object_type_map
@@ -225,7 +225,7 @@ def replay_before_change(*object_ids):
 @match_typing
 def read_config(
     object_id: oid.OTPmeOid,
-    parameters: list=None,
+    parameters: Union[list,None]=None,
     checksum_only: bool=False,
     decrypt: bool=True
     ):
@@ -315,7 +315,7 @@ def check_maintenance(object_id, cluster):
 def write_config(
     object_id: oid.OTPmeOid,
     instance: object=None,
-    object_config: dict=None,
+    object_config: Union[dict,None]=None,
     cluster: bool=False,
     wait_for_cluster_writes: bool=False,
     full_index_update: bool=False,
@@ -490,7 +490,19 @@ def outdate_object(object_id: oid.OTPmeOid, cache_type: Union[str,None]=None):
                         site=object_site,
                         object_types=[object_type])
     # Clear ACL cache.
-    if object_uuid:
+    if object_type == "role" or object_type == "aclgroup":
+        # A role decides for the tokens in it, and for the roles in it,
+        # on whatever object it holds an ACL on. The ACL cache keeps the
+        # answers by object and token, so a token taken out of a role,
+        # or a role disabled or deleted, kept what it was granted until
+        # each object was written again. Clear all of it: roles are
+        # written by admins, not on a login. Here and not in the methods
+        # that change a role, so a change that comes by sync clears it
+        # too, and only once it is written.
+        # An ACL group the same: what it holds is granted on every
+        # object it is on.
+        cache.outdate_acl_cache()
+    elif object_uuid:
         cache.outdate_acl_cache(object_uuid=object_uuid)
 
     # Make sure we notify ldapd about changed objects (e.g. clear ldap search cache).
@@ -680,9 +692,9 @@ def get_ldap_outdated_objects():
 @match_typing
 def import_config(
     object_config: dict,
-    object_id: oid.OTPmeOid=None,
+    object_id: Union[oid.OTPmeOid,None]=None,
     force: bool=False,
-    aes_key: str=None,
+    aes_key: Union[str,None]=None,
     callback: JobCallback=default_callback,
     **kwargs
     ):
@@ -714,32 +726,45 @@ def import_config(
     if not object_id or not isinstance(object_id, oid.OTPmeOid):
         object_id = oid.get(object_id=object_id)
 
-    if not force:
-        if object_exists(object_id):
-            msg = _("Object '{object_id}' already exists. Override?: ")
-            msg = msg.format(object_id=object_id)
-            answer = callback.ask(msg)
-            if answer.lower() != "y":
-                return callback.abort()
-            # Delete object we will override.
-            delete(object_id)
-
-    # Decrypt object config.
+    # Decrypt object config. Before anything is asked or touched: the
+    # object that is there was deleted first, and a wrong password or a
+    # write that failed left nothing at all.
     object_config = ObjectConfig(object_id, object_config)
-    object_config.decrypt(aes_key)
+    try:
+        object_config.decrypt(aes_key)
+    except Exception as e:
+        msg = _("Failed to decrypt object config: {error}")
+        msg = msg.format(error=e)
+        return callback.error(msg)
     # Remove OID from object config before import.
     object_config.pop("OID")
 
-    # Write object config to backend.
+    exists = object_exists(object_id)
+    if exists and not force:
+        msg = _("Object '{object_id}' already exists. Override?: ")
+        msg = msg.format(object_id=object_id)
+        answer = callback.ask(msg)
+        if answer.lower() != "y":
+            return callback.abort()
+
+    # Write object config to backend. An object that is there is written
+    # over whole -- its data, index, ACLs and LDIF -- the way the sync
+    # writes an object it got, and not deleted first.
     try:
         write_config(object_id=object_id,
                     object_config=object_config,
-                    cluster=True)
+                    cluster=True,
+                    full_data_update=exists,
+                    full_index_update=exists,
+                    full_acl_update=exists,
+                    full_ldif_update=exists)
     except Exception:
         config.raise_exception()
         return callback.error(_("Error writing object config."))
 
-    return callback.ok()
+    msg = _("Imported: {object_id}")
+    msg = msg.format(object_id=object_id)
+    return callback.ok(msg)
 
 @match_typing
 def get_checksum(object_id: oid.OTPmeOid):
@@ -868,9 +893,9 @@ def get_sync_map(
 
 @match_typing
 def outdate_sync_map(
-    realm: str=None,
-    site: str=None,
-    object_types: List=None
+    realm: Union[str,None]=None,
+    site: Union[str,None]=None,
+    object_types: Union[List,None]=None
     ):
     """ Make sure sync maps that include one of object_types are cleared. """
     if site:
@@ -974,7 +999,7 @@ def get_list_checksum(object_data, checksum_attribute):
 def get_sync_list(
     realm: str,
     site: str,
-    object_types: List=None,
+    object_types: Union[List,None]=None,
     skip_users: List=None,
     skip_admin: bool=False,
     skip_list: List=None,
@@ -1296,7 +1321,7 @@ def get_sync_list(
 @match_typing
 def get_instance_from_oid(
     object_id: oid.OTPmeOid,
-    object_config: Union[dict,ObjectConfig]=None,
+    object_config: Union[dict,ObjectConfig,None]=None,
     load: bool=True
     ):
     """ Load instance from oid.
@@ -1637,7 +1662,7 @@ def get_object_from_cache(
 @match_typing
 def search(
     return_type: str="uuid",
-    return_attributes: List=None,
+    return_attributes: Union[List,None]=None,
     **kwargs
     ) -> Union[List,dict]:
     """ Search objects. """
@@ -1672,29 +1697,29 @@ def search(
 @match_typing
 @search_cache.cache_function()
 def do_search(
-    attribute: str=None,
-    value: str=None,
-    values: List=None,
-    attributes: dict=None,
-    less_than: int=None,
-    greater_than: int=None,
+    attribute: Union[str,None]=None,
+    value: Union[str,None]=None,
+    values: Union[List,None]=None,
+    attributes: Union[dict,None]=None,
+    less_than: Union[int,None]=None,
+    greater_than: Union[int,None]=None,
     ignore_case: bool=False,
-    object_type: str=None,
-    object_types: List=None,
-    order_by: str=None,
+    object_type: Union[str,None]=None,
+    object_types: Union[List,None]=None,
+    order_by: Union[str,None]=None,
     reverse_order: bool=False,
-    join_search_attr: str=None,
-    join_search_val: str=None,
-    join_object_type: str=None,
-    join_attribute: str=None,
+    join_search_attr: Union[str,None]=None,
+    join_search_val: Union[str,None]=None,
+    join_object_type: Union[str,None]=None,
+    join_attribute: Union[str,None]=None,
     return_type: str="uuid",
     max_results: int=0,
     size_limit: int=0,
     realm: Union[str,None]=None,
     site: Union[str,None]=None,
-    return_attributes: List=None,
-    verify_acls: List=None,
-    return_acls: List=None,
+    return_attributes: Union[List,None]=None,
+    verify_acls: Union[List,None]=None,
+    return_acls: Union[List,None]=None,
     return_query_count: bool=False,
     **kwargs
     ) -> Union[List,dict]:
@@ -1702,19 +1727,26 @@ def do_search(
     if attributes is None:
         attributes = {}
 
+    # What an ACL group grants depends on the type of the object.
+    acl_object_types = object_types
+    if object_type is not None:
+        acl_object_types = [object_type]
+
     _verify_acls = None
     if verify_acls:
         if not config.auth_token:
             msg = _("Unable to verify ACLs: config.auth_token is None")
             raise OTPmeException(msg)
-        _verify_acls = otpme_acl.get_raw_acls(verify_acls, config.auth_token)
+        _verify_acls = otpme_acl.get_raw_acls(verify_acls, config.auth_token,
+                                            object_types=acl_object_types)
 
     _return_acls = None
     if return_acls:
         if not config.auth_token:
             msg = _("Unable to return ACLs: config.auth_token is None")
             raise OTPmeException(msg)
-        _return_acls = otpme_acl.get_raw_acls(return_acls, config.auth_token)
+        _return_acls = otpme_acl.get_raw_acls(return_acls, config.auth_token,
+                                            object_types=acl_object_types)
 
     if return_type == "instance":
         search_return_type = "full_oid"
@@ -1760,7 +1792,7 @@ def get_sessions(
     session_type: Union[str,None]=None,
     access_group: Union[str,None]=None,
     return_type: str="uuid",
-    return_attributes: List=None,
+    return_attributes: Union[List,None]=None,
     ):
     """ Get sessions from backend. """
     search_attrs = {}

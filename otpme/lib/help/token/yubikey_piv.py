@@ -28,7 +28,7 @@ cmd_help = {
 
     'deploy' : {
                     '_cmd_usage_help' : _('Usage: otpme-token --type yubikey_piv deploy -d -r -n --key-len <key_len> --sign-algo <algo> --encrypt-algo <algo> --backup <backup_file> --restore <restore_file> --restore-from-server --backup-key-file <key_file> --add-user-key {token}'),
-                    'cmd'   :   '-n :no_token_write=True: --key-len :key_len: --sign-algo :sign_algo: --encrypt-algo :encrypt_algo: -r :replace=True: --backup :backup_file: --restore :restore_file: -d :debug=True: --restore-from-server :restore_from_server=True: --backup-key-file :backup_key_file: --add-user-key :add_user_key=True: <|object|>',
+                    'cmd'   :   '-n :no_token_write=True: --key-len :key_len: --sign-algo :"sign_algo": --encrypt-algo :"encrypt_algo": -r :replace=True: --backup :backup_file: --restore :restore_file: -d :debug=True: --restore-from-server :restore_from_server=True: --backup-key-file :backup_key_file: --add-user-key :add_user_key=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Initialize yubikey PIV applet.'),
                                     '-r'                    : _('Replace existing token.'),
@@ -115,7 +115,7 @@ cmd_help = {
 
     'add_sign'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token add_sign [--tags tag1,tag2...] {name} {signature}'),
-                    'cmd'   :   '--tags :[tags]: <|object|> <signature>',
+                    'cmd'   :   '--tags :[tags]: <|object|> <"signature">',
                     '_help' :   {
                                     'cmd'                   : _('Add new signature to token.'),
                                     '--tags'                : _('Tags included in the signature.'),
@@ -124,7 +124,7 @@ cmd_help = {
 
     'del_sign'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token del_sign [--user username] [--tags tag1,tag2...] {name}'),
-                    'cmd'   :   '--user :username: --tags :[tags]: <|object|> [username]',
+                    'cmd'   :   '--user :"username": --tags :[tags]: <|object|> ["username"]',
                     '_help' :   {
                                     'cmd'                   : _('Delete signature from token.'),
                                     '--user'                : _('Select signature by username.'),
@@ -134,7 +134,7 @@ cmd_help = {
 
     'verify_sign'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token verify_sign [--user username] [--tags tag1,tag2...] {name}'),
-                    'cmd'   :   '--user :username: --tags :[tags]: <|object|> [username]',
+                    'cmd'   :   '--user :"username": --tags :[tags]: <|object|> ["username"]',
                     '_help' :   {
                                     'cmd'                   : _('Verify token signature(s).'),
                                     '--user'                : _('Select signature by username.'),
@@ -144,7 +144,7 @@ cmd_help = {
 
     'get_sign'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token get_sign [--user username] [--tags tag1,tag2...] {name}'),
-                    'cmd'   :   '--user :username: --tags :[tags]: <|object|>',
+                    'cmd'   :   '--user :"username": --tags :[tags]: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Get token signature(s).'),
                                     '--user'                : _('Select signature by username.'),

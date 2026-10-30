@@ -14,6 +14,7 @@ except Exception:
 from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.otp.motp import motp
@@ -46,9 +47,8 @@ logger = config.logger
 default_callback = config.get_callback()
 
 read_acls =  []
-write_acls =  []
 
-write_acls_acls =  [
+write_acls =  [
                 "generate",
             ]
 
@@ -56,6 +56,7 @@ read_value_acls = {
                 "view"      : [
                             "secret",
                             "auth_script",
+                            "mschap",
                             "smartcard_id",
                             "slot",
                             "hmac_id",
@@ -85,11 +86,13 @@ write_value_acls = {
                             "auth_script",
                             "offline",
                             "session_keep",
+                            "mschap",
                             ],
                 "disable"   : [
                             "auth_script",
                             "offline",
                             "session_keep",
+                            "mschap",
                             ],
                 "remove"   : [
                             "nt_hash",
@@ -682,7 +685,7 @@ class YubikeyhmacToken(Token):
         hmac_challenge: str,
         hmac_id: str,
         slot: int=DEFAULT_SLOT,
-        serial: str=None,
+        serial: Union[str,None]=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -736,7 +739,7 @@ class YubikeyhmacToken(Token):
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Chow token config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

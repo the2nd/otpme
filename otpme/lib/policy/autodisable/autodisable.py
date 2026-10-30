@@ -13,6 +13,7 @@ except Exception:
     pass
 
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib import maintenance
@@ -230,20 +231,11 @@ class AutodisablePolicy(Policy):
                             'enable',
                             ],
                     }
-        # No realm, see Realm.add_policy().
-        self.object_types = [
-                            'role',
-                            'user',
-                            'token',
-                            'host',
-                            'node',
-                            'unit',
-                            'site',
-                            'group',
-                            'client',
-                            'policy',
-                            'accessgroup',
-                            ]
+        # Every object can be disabled. No realm, see Realm.add_policy().
+        # No policy: one that switches itself off takes away what it
+        # enforces, without anybody removing it.
+        self.object_types = [x for x in config.tree_object_types
+                            if x not in ("realm", "policy")]
 
         self._auto_disable = "+1M"
         self._unused_disable = False
@@ -344,10 +336,25 @@ class AutodisablePolicy(Policy):
             log_msg = log_msg.format(e=e)
             logger.warning(log_msg)
 
+    def verify_object(self, o, callback=default_callback):
+        """ "Unused for" needs an object that keeps its last use. """
+        if o.is_special_object():
+            msg = _("{object_type} '{object_name}' is a base or internal object and is never auto-disabled.")
+            msg = msg.format(object_type=o.type, object_name=o.name)
+            return callback.error(msg)
+        if self._unused_disable and not o.track_last_used:
+            msg = _("{object_type} does not keep its last use, so -u of policy '{policy_name}' cannot apply to it.")
+            msg = msg.format(object_type=o.type, policy_name=self.name)
+            return callback.error(msg)
+        return callback.ok()
+
     def get_auto_disable_time(self, hook_object, policy_add_time=None, humanize=False):
+        check_time = None
         if self._unused_disable:
             check_time = hook_object.get_last_used_time()
-        else:
+        # Never used counts from when the policy was assigned, not from
+        # 1970.
+        if not check_time:
             check_time = policy_add_time
         disable_time = units.string2unixtime(self._auto_disable, check_time)
         if humanize:
@@ -358,6 +365,14 @@ class AutodisablePolicy(Policy):
     def _check_auto_disable(self, hook_object, policy_add_time=None, **kwargs):
         """ Handle auto disable. """
         if not policy_add_time:
+            return True
+        # An assignment made before the type was taken out (a policy)
+        # does nothing.
+        if hook_object.type not in self.object_types:
+            return True
+        # Nor one made to a base or internal object, see
+        # OTPmeObject.check_auto_disable().
+        if hook_object.is_special_object():
             return True
         disable_time = self.get_auto_disable_time(hook_object=hook_object,
                                                 policy_add_time=policy_add_time)
@@ -418,6 +433,27 @@ class AutodisablePolicy(Policy):
             msg = msg.format(e=e)
             return callback.error(msg)
 
+        if unused:
+            # A date does not depend on the last use.
+            if not auto_disable.startswith("+"):
+                msg = _("-u needs a relative time like +30D.")
+                return callback.error(msg)
+            # The objects it is assigned to have to keep their last use.
+            not_tracked = []
+            for object_type in self.object_types:
+                assigned = backend.search(attribute="policy",
+                                        value=self.uuid,
+                                        object_type=object_type,
+                                        return_type="instance")
+                for x in assigned:
+                    if x.track_last_used:
+                        continue
+                    not_tracked.append(f"{x.type}:{x.rel_path}")
+            if not_tracked:
+                msg = _("These do not keep their last use, -u cannot apply to them: {objects}")
+                msg = msg.format(objects=", ".join(sorted(not_tracked)))
+                return callback.error(msg)
+
         msg = _("Change auto disable of policy '{policy_name}' to '{auto_disable}'?: ")
         msg = msg.format(policy_name=self.name, auto_disable=auto_disable)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -450,7 +486,7 @@ class AutodisablePolicy(Policy):
     def show_config(self, callback=default_callback, **kwargs):
         """ Show policy config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

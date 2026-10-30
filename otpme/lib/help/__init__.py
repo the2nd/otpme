@@ -25,6 +25,12 @@ command_map = {
     # <>            = required para
     # []            = optional para
     # <[name]>      = required para is a list (e.g. val1,val2,val3,...)
+    # <"name">      = para is a string, taken as it is. Without the quotes
+    #                 a value goes through stuff.string_to_type(): "123"
+    #                 becomes an int, "true" a bool, "none" None, and
+    #                 "0123" loses its 0. So quote every name, text, path
+    #                 or secret (e.g. <"new_group">, <"password">).
+    # :"name":      = the same for an opt (e.g. --pin :"pin":)
     # |object|      = OTPme object
     # :+name+:      = Allow multiple occurance of the opt.
     # <file:name>   = Read file

@@ -455,9 +455,10 @@ can use a role instead. Roles can also be added to other roles, so you
 can build them on top of each other.
 
 There are two roles from the start: **REALM_USER** and **SITE_ADMIN**.
-The default token of every user is added to REALM_USER. With it the user
-can log in to the realm and is a member of the group *realmusers*. A
-token in SITE_ADMIN has admin rights for its site.
+The **default_roles** policy adds the default token of a new user to
+REALM_USER (see **otpme-policy**(1)). With it the user can log in to the
+realm and is a member of the group *realmusers*. A token in SITE_ADMIN
+has admin rights for its site.
 
 An example for roles:
 
@@ -718,12 +719,38 @@ Objects that are already there do not, unless you say so: **-a** applies
 the default ACLs to the objects of the unit, **-r** also to the objects
 in the units below, see **otpme-unit**(1).
 
-An object can refuse inherited ACLs with **disable_acl_inheritance**.
-**enable_acl_inheritance** turns it on again.
+ACL inheritance is about a move, and nothing else. With
+**enable_acl_inheritance** a move of the object takes back what its old
+unit handed down and gives what the new unit hands down; for a token the
+old and the new user. With **disable_acl_inheritance** a move leaves its
+ACLs as they are, and so does a move with **--keep-acls**. It is on for
+tokens and passwords, and off for everything else. Creating an object,
+**-a** and **-r** reach it either way.
 
 Which ACLs a kind of object knows is in **otpme-acls**(7). **list_acls**
 shows the ACLs an object has, and the shell completion offers the ones
 it takes after **add_acl**.
+
+## ACL Groups
+
+An ACL group is a set of ACLs, each for an object type, for example
+**user:edit:attribute**. Give the group in place of an ACL, as
+**@***group*, **+@***group* or **++@***group*:
+
+> **otpme-unit add_acl *linux/users* role *helpdesk*
+> @usermanager,++@usermanager**
+
+The unit *linux/users* and every object in the tree below it now grant
+the role *helpdesk* what the group holds for their type. **++@** alone
+counts only below the unit, not on the unit itself. Change the group,
+and the change counts at once on every object it is given on. Every site
+has the groups **realm_user**, **usermanager**, **useradmin** and
+**groupmanager**, see **otpme-aclgroup**(1).
+
+**realm_user** is what every user of the realm may see: the site, units,
+users, groups, roles, hosts and nodes. The role **REALM_USER** has it on
+the whole site. A site from before the group gets it with **otpme-site
+upgrade**, which also takes away the ACLs realm users had one by one.
 
 # OFFLINE AUTHENTICATION
 
@@ -793,10 +820,10 @@ Remove it again with **-d**:
 
 > **otpme-site config -d *berlin* *parameter***
 
-A parameter is looked up at the object itself, then at its unit, then at
-its site. The first value found wins, so a value on a site or unit is
-the default for the objects below it. A site can also enforce a
-parameter for all of its objects, see **force_site_config_parameters**
+A parameter is looked up at the object itself, then at each unit above
+it, then at its site. The first value found wins, so a value on a site
+or unit is the default for the objects below it. A site can also enforce
+a parameter for all of its objects, see **force_site_config_parameters**
 below. Above the site nothing is asked: a realm holds no config
 parameters. The line *Object types* of each parameter says on which
 objects it can be set.
@@ -883,15 +910,17 @@ Object types: site
 
 **changelog (bool, default: true)**  
 Write the commands that change this object into its changelog. Looked up
-at the object, then at its unit, then at its site. Switch it off for
-objects that change very often. A site that wants its own setting
-everywhere adds **changelog** to **force_site_config_parameters**.  
+at the object, then at each unit above it, then at its site. Switch it
+off for objects that change very often. A site that wants its own
+setting everywhere adds **changelog** to
+**force_site_config_parameters**.  
 Object types: all tree objects (site, unit, user, token, ...), but not
 the realm
 
 **allow_changelog_clearing (bool, default: true)**  
 Allow **clear_changelog** on this object. Switch it off to keep the
-changelog of an object complete.  
+changelog of an object complete. A value set on a token itself decides
+for whoever is signed in with that token, on every object.  
 Object types: all tree objects (site, unit, user, token, ...), but not
 the realm
 
@@ -3295,16 +3324,16 @@ The settings of one user, e.g. which agent to talk to.
 # SEE ALSO
 
 **otpme**(1), **otpme-acls**(7), **otpme.conf**(5), **pam_otpme**(8),
-**otpme-accessgroup**(1), **otpme-backup**(1), **otpme-ca**(1),
-**otpme-client**(1), **otpme-cluster**(1), **otpme-deploy**(1),
-**otpme-device**(1), **otpme-dictionary**(1), **otpme-group**(1),
-**otpme-host**(1), **otpme-inventory**(1), **otpme-mount**(1),
-**otpme-node**(1), **otpme-pass**(1), **otpme-policy**(1),
-**otpme-pool**(1), **otpme-realm**(1), **otpme-resolver**(1),
-**otpme-role**(1), **otpme-scope**(1), **otpme-script**(1),
-**otpme-share**(1), **otpme-site**(1), **otpme-token**(1),
-**otpme-tool**(1), **otpme-trash**(1), **otpme-unit**(1),
-**otpme-user**(1), **otpme-vlan**(1)
+**otpme-accessgroup**(1), **otpme-aclgroup**(1), **otpme-backup**(1),
+**otpme-ca**(1), **otpme-client**(1), **otpme-cluster**(1),
+**otpme-deploy**(1), **otpme-device**(1), **otpme-dictionary**(1),
+**otpme-group**(1), **otpme-host**(1), **otpme-inventory**(1),
+**otpme-mount**(1), **otpme-node**(1), **otpme-pass**(1),
+**otpme-policy**(1), **otpme-pool**(1), **otpme-realm**(1),
+**otpme-resolver**(1), **otpme-role**(1), **otpme-scope**(1),
+**otpme-script**(1), **otpme-share**(1), **otpme-site**(1),
+**otpme-token**(1), **otpme-tool**(1), **otpme-trash**(1),
+**otpme-unit**(1), **otpme-user**(1), **otpme-vlan**(1)
 
 # AUTHOR
 

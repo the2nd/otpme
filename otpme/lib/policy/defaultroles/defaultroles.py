@@ -11,6 +11,7 @@ except Exception:
     pass
 
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
@@ -205,8 +206,10 @@ class DefaultrolesPolicy(Policy):
                     'user'   : ['post_add_user'],
                     }
 
-        # No realm, see Realm.add_policy().
-        self.object_types = ['site', 'unit']
+        # Only units: the hook runs on the parent of a new user, and that
+        # is always a unit, never a site (and no realm, see
+        # Realm.add_policy()).
+        self.object_types = ['unit']
 
         self._sub_sync_fields = {}
         #self._sub_sync_fields = {
@@ -272,13 +275,12 @@ class DefaultrolesPolicy(Policy):
                 continue
             if role.verify_acl("add:token"):
                 continue
-            msg = _("Permission denied: {role}")
-            msg = msg.format(role=role.name)
+            msg = denied_msg(role, "add:token")
             return callback.error(msg)
         return True
 
     def handle_hook(self, hook_name=None, child_object=None,
-        verify_acls=True, callback=default_callback, **kwargs):
+        callback=default_callback, **kwargs):
         """ Handle policy hooks. """
         if hook_name == "post_add_user":
             # Handle default roles if user does have a default token.
@@ -299,7 +301,7 @@ class DefaultrolesPolicy(Policy):
                         try:
                             role.add_token(default_token,
                                         force=True,
-                                        verify_acls=verify_acls,
+                                        verify_acls=False,
                                         callback=callback)
                         except AlreadyExists:
                             continue
@@ -307,7 +309,7 @@ class DefaultrolesPolicy(Policy):
                             msg = _("Failed to add default token to role: {}: {}, {}")
                             msg = msg.format(role.name, default_token, e)
                             callback.raise_exception = old_exc_val
-                            return callback.error(msg)
+                            raise self.policy_exception(msg) from e
                         finally:
                             callback.raise_exception = old_exc_val
         else:
@@ -349,8 +351,7 @@ class DefaultrolesPolicy(Policy):
 
         if verify_acls:
             if not role.verify_acl("add:token"):
-                msg = _("Permission denied: {role}")
-                msg = msg.format(role=role.name)
+                msg = denied_msg(role, "add:token")
                 return callback.error(msg)
 
         msg = _("Add default role '{role_name}' to policy '{policy_name}'?: ")
@@ -425,7 +426,7 @@ class DefaultrolesPolicy(Policy):
     def show_config(self, callback=default_callback, **kwargs):
         """ Show policy config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

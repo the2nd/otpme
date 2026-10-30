@@ -34,6 +34,10 @@ from otpme.lib.exceptions import *
 # The translation functions get_translation() hands out, by language.
 TRANSLATIONS = {}
 
+# How many callers above the method that caught it raise_exception()
+# shows under -dee.
+RAISE_EXCEPTION_CALLERS = 5
+
 class OTPmeConfig(object):
     def __init__(self, tool_name="otpme", use_syslog=False,
         use_systemd_log=False, auto_load=True, quiet=False):
@@ -793,7 +797,6 @@ class OTPmeConfig(object):
         self.register_config_var("pidfile_dir", str, None)
         self.register_config_var("sockets_dir", str, None)
         self.register_config_var("sync_dir", str, None)
-        self.register_config_var("reload_file_path", str, None)
         self.register_config_var("audit_log_spool_dir", str, None)
         self.register_config_var("node_sync_file", str, None)
         self.register_config_var("node_sync_time_file", str, None)
@@ -1028,7 +1031,6 @@ class OTPmeConfig(object):
                                 list, valid_token_login_interfaces)
 
         self.register_config_var("last_config_file_mtime", float, 0.0)
-        self.register_config_var("last_reload_file_mtime", float, 0.0)
         self.register_config_var("last_config_reload_check", float, 0.0)
 
         self.register_config_var("reload_config_interval", int, 60,
@@ -1453,7 +1455,6 @@ class OTPmeConfig(object):
         # and a pin that is thrown away is no pin.
         self.host_key_pin_dir = os.path.join(self.spool_dir, "host_keys")
         self.user_key_pin_dir = os.path.join(self.spool_dir, "user_keys")
-        self.reload_file_path = os.path.join(self.spool_dir, "reload")
         self.node_sync_file = os.path.join(self.spool_dir, "node_synced")
         self.node_sync_time_file = os.path.join(self.spool_dir, "node_sync_time")
         self.audit_log_spool_dir = os.path.join(self.spool_dir, "audit_log")
@@ -1538,11 +1539,6 @@ class OTPmeConfig(object):
             # Try to get master key.
             if not self.master_key:
                 self.master_key = self.get_master_key()
-            # Set current reload file modification time
-            try:
-                self.last_reload_file_mtime = os.path.getmtime(self.reload_file_path)
-            except FileNotFoundError:
-                self.last_reload_file_mtime = time.time()
 
         # Try to get password salt.
         if not self.password_hash_salt:
@@ -2754,23 +2750,32 @@ class OTPmeConfig(object):
                             line=caller_frame.f_lineno,
                             method=caller_frame.f_code.co_name)
             error_message(msg)
-        # What was raised. Without it the lines above say where, but
-        # not what, and the caller may catch it without a word.
-        exc_type, exc_value = sys.exc_info()[:2]
-        if exc_type is not None:
-            msg = _("Exception: {exc_type}: {exc_value}")
-            msg = msg.format(exc_type=exc_type.__name__, exc_value=exc_value)
-            error_message(msg)
-        # And how we got here: the line above names the method that
-        # caught it, and that one may be called from anywhere.
-        if caller_frame is not None:
-            import traceback
-            stack = "".join(traceback.format_stack(caller_frame))
-            error_message(stack.rstrip())
+        ## What was raised. Without it the lines above say where, but
+        ## not what, and the caller may catch it without a word.
+        #import traceback
+        #exc_type, exc_value, exc_tb = sys.exc_info()
+        #if exc_type is not None:
+        #    msg = _("Exception: {exc_type}: {exc_value}")
+        #    msg = msg.format(exc_type=exc_type.__name__, exc_value=exc_value)
+        #    error_message(msg)
+        #    # Where it was raised: from the method that caught it down to
+        #    # the line that raised it.
+        #    if exc_tb is not None:
+        #        raised_at = "".join(traceback.format_tb(exc_tb))
+        #        error_message(raised_at.rstrip())
+        ## And a few of the callers above the method that caught it. Not
+        ## all of them: in a daemon the stack runs back through every fork
+        ## to the start of controld, dozens of lines that say nothing,
+        ## on every exception.
+        #if caller_frame is not None:
+        #    stack = "".join(traceback.format_stack(caller_frame,
+        #                                        limit=RAISE_EXCEPTION_CALLERS))
+        #    error_message(_("Called from:"))
+        #    error_message(stack.rstrip())
         if message is not None:
             error_message(message)
-        #from otpme.lib import debug
-        #debug.trace()
+        ##from otpme.lib import debug
+        ##debug.trace()
 
         #import traceback, sys
         #exc_type, exc_value, exc_traceback = sys.exc_info()
@@ -3162,7 +3167,6 @@ class OTPmeConfig(object):
                     }
 
         files_create = {
-                    self.reload_file_path       : 0o664,
                     self.realm_data_file_path   : 0o664,
                     self.sync_status_file_path  : 0o664,
                     }
@@ -3230,8 +3234,14 @@ class OTPmeConfig(object):
                 raise OTPmeException(msg)
 
     def gen_master_key(self, master_pass_salt=None, master_pass=None,
-        skip_if_exists=False, force=False):
-        """ Generate AES master key from passphrase. """
+        skip_if_exists=False, force=False, must_match=False):
+        """ Generate AES master key from passphrase.
+
+        <must_match>: a key file that is there has to be what the
+        password gives, or nothing is written. otpme-tool
+        regen_master_key wrote a key out of a mistyped password over the
+        right one, and the node could read none of its objects after
+        that. """
         if not self.key_command.startswith("file://"):
             msg = _("KEY_COMMAND is not set to a file. Unable to generate AES key.")
             raise OTPmeException(msg)
@@ -3270,6 +3280,13 @@ class OTPmeConfig(object):
         x = self.disk_encryption_mod.derive_key(secret=master_pass,
                                         salt=master_pass_salt,
                                         hash_type=self.master_key_hash_type)
+        if must_match and os.path.exists(key_file):
+            fd = open(key_file, "r")
+            current_key = fd.read().replace("\n", "")
+            fd.close()
+            if x['key'] != current_key:
+                msg = _("The password does not give the master key in use. Nothing changed.")
+                raise OTPmeException(msg)
         self.master_key = x['key']
         master_pass_salt = x['salt']
 
@@ -3473,19 +3490,10 @@ class OTPmeConfig(object):
             except FileNotFoundError:
                 config_file_mtime = time.time()
 
-            # Get current reload file modification time.
-            try:
-                reload_file_mtime = os.path.getmtime(self.reload_file_path)
-            except FileNotFoundError:
-                reload_file_mtime = time.time()
-
             # If current config file modification time differs from timstamp saved
             # in config module a reload is needed.
             if config_file_mtime != self.last_config_file_mtime:
                 return True, "Config file has new modification time. Reload needed..."
-            elif reload_file_mtime != self.last_reload_file_mtime:
-                self.last_reload_file_mtime = reload_file_mtime
-                return True, "Got reload command via reload file."
             else:
                 # Remember when we have check if a config reload is needed.
                 self.last_config_reload_check = time.time()

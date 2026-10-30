@@ -19,7 +19,7 @@ cmd_help = {
     '_need_command'             : True,
     'add'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token add [-r] {token} {destination_token}'),
-                    'cmd'   :   '-r :replace=True: <|object|> <destination_token>',
+                    'cmd'   :   '-r :replace=True: <|object|> <"destination_token">',
                     '_help' :   {
                                     'cmd'                   : _('Add new token.'),
                                     '-r'                    : _('Replace existing token and keep its UUID.'),

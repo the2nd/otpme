@@ -19,7 +19,7 @@ cmd_help = {
     '_need_command'             : True,
     'add'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token add [-r] [--mode <mode>] [--no-qrcode] {token}'),
-                    'cmd'   :   '-r :replace=True: --mode :mode: --no-qrcode :gen_qrcode=False: <|object|>',
+                    'cmd'   :   '-r :replace=True: --mode :"mode": --no-qrcode :gen_qrcode=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Add new token.'),
                                     '--mode <mode>'         : _('Add token in mode <mode>.'),
@@ -29,7 +29,7 @@ cmd_help = {
 
     'secret'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token secret {token} [secret]'),
-                    'cmd'   :   '<|object|> [secret]',
+                    'cmd'   :   '<|object|> ["secret"]',
                     '_help' :   {
                                     'cmd'                   : _('Change token secret.'),
                                 },
@@ -102,7 +102,7 @@ cmd_help = {
 
     'mode'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token mode {token} {mode}'),
-                    'cmd'   :   '<|object|> <new_mode>',
+                    'cmd'   :   '<|object|> <"new_mode">',
                     '_help' :   {
                                     'cmd'                   : _('Change token operation mode.'),
                                 },

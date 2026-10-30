@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-host show [--policy-limit <limit>] [--token-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-t] [-a] [host]'),
-                    'cmd'   :   '--policy-limit :max_policies: --token-limit :max_tokens: --role-limit :max_roles: --limit :limit: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: -t :show_templates=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --token-limit :max_tokens: --role-limit :max_roles: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: -t :show_templates=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show host(s)'),
                                     '-a'                    : _('Show all hosts.'),
@@ -37,25 +37,28 @@ cmd_help = {
                                     '--sort-by <attribute>' : _('Sort output by <attribute>.'),
                                     '--raw'                 : _('Output table without any headers/borders.'),
                                     '--csv'                 : _('Output table as CSV.'),
-                                    '--csv-sep <separator>' : _('Output table as CSV.'),
+                                    '--csv-sep <separator>' : _('Separator between the CSV columns.'),
                                 },
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-host list [--attribute attribute] [-a] [regex]'),
-                    'cmd'   :   '--attribute :attribute: -a :show_all=True: [search_regex]',
+                    '_cmd_usage_help' : _('Usage: otpme-host list [--attribute attribute] [-a] [-t] [regex]'),
+                    'cmd'   :   '--attribute :"attribute": -a :show_all=True: -t :show_templates=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List hosts.'),
                                     '-a'                        : _('List all hosts.'),
-                                    '--attribute <attribute>'   : _('Output given attribute.')
+                                    '-t'                        : _('List the host templates instead of the hosts.'),
+                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
                                 },
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-host add {host}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-host add [--template <template_name>] [--no-template] {host}'),
+                    'cmd'   :   '--template :"template_name": --no-template :no_template=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Add new host'),
+                                    '--template'            : _('Add host from template.'),
+                                    '--no-template'         : _('Do not use the template the unit sets (objecttemplates policy).'),
                                 },
                 },
 
@@ -70,9 +73,24 @@ cmd_help = {
 
     'get_config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-host get_config {host} {parameter}'),
-                    'cmd'   :   '<|object|> <parameter>',
+                    'cmd'   :   '<|object|> <"parameter">',
                     '_help' :   {
                                     'cmd'                   : _('Get config parameter.'),
+                                },
+                },
+    'show_oid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-host show_oid [--full] {host}'),
+                    'cmd'   :   '--full :full=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the OID of the object.'),
+                                    '--full'                : _('Show the full OID.'),
+                                },
+                },
+    'show_uuid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-host show_uuid {host}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the UUID of the object.'),
                                 },
                 },
     'changelog'    : {
@@ -84,7 +102,7 @@ cmd_help = {
                 },
     'edit_changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-host edit_changelog {host} {entry_id} {comment}'),
-                    'cmd'   :   '<|object|> <entry_id> <comment>',
+                    'cmd'   :   '<|object|> <entry_id> <"comment">',
                     '_help' :   {
                                     'cmd'                   : _('Edit changelog entry comment.'),
                                 },
@@ -129,17 +147,17 @@ cmd_help = {
                 },
 
     'auto_disable'          : {
-                    '_cmd_usage_help' : _('Usage: otpme-host auto_disable -u {host} {time}'),
+                    '_cmd_usage_help' : _('Usage: otpme-host auto_disable [-u] {host} {time}'),
                     'cmd'   :   '-u :unused=True: <|object|> <auto_disable>',
                     '_help' :   {
-                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023").'),
+                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023", 0 removes it).'),
                                     '-u'                    : _('Disable object if it was unused for the given time.'),
                                 },
                 },
 
     'mac'       : {
                     '_cmd_usage_help' : _('Usage: otpme-host mac {host} {mac_address}'),
-                    'cmd'   :   '<|object|> <mac_address>',
+                    'cmd'   :   '<|object|> <"mac_address">',
                     '_help' :   {
                                     'cmd'                   : _('Set hosts MAC address.'),
                                 },
@@ -147,7 +165,7 @@ cmd_help = {
 
     'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-host config -d -a {host} {param} [value]'),
-                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to host.'),
                                     '-a'                    : _('Append value to config parameter.'),
@@ -157,7 +175,7 @@ cmd_help = {
 
     'show_config'      : {
                     '_cmd_usage_help' : _('Usage: otpme-host show_config {host} [parameter]'),
-                    'cmd'   :   '<|object|> [parameter]',
+                    'cmd'   :   '<|object|> ["parameter"]',
                     '_help' :   {
                                     'cmd'                   : _('Show host config parameters'),
                                 },
@@ -222,7 +240,7 @@ cmd_help = {
 
     'add_acl'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host add_acl {host} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
+                    'cmd'   :   '<|object|> <"owner_type"> <"owner_name"> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to host'),
                                 },
@@ -265,7 +283,7 @@ cmd_help = {
 
     'move'    : {
                     '_cmd_usage_help' : _('Usage: otpme-host move [--keep-acls] {host} {unit}'),
-                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <new_unit>',
+                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <"new_unit">',
                     '_help' :   {
                                     'cmd'                   : _('Change host\'s unit'),
                                     '--keep-acls'           : _('Keep object ACLs.')
@@ -284,7 +302,7 @@ cmd_help = {
 
     'description'    : {
                     '_cmd_usage_help' : _('Usage: otpme-host description {host} [description]'),
-                    'cmd'   :   '<|object|> [description]',
+                    'cmd'   :   '<|object|> ["description"]',
                     '_help' :   {
                                     'cmd'                   : _('Set host description'),
                                 },
@@ -292,7 +310,7 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-host info {host} [info]'),
-                    'cmd'   :   '--language :language: <|object|> [info]',
+                    'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set host info'),
                                     '--language <lang>'     : _('Change info for language.'),
@@ -301,7 +319,7 @@ cmd_help = {
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-host dump_info {host}'),
-                    'cmd'   :   '--language :language: <|object|>',
+                    'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump host info'),
                                     '--language <lang>'     : _('Dump info for language.'),
@@ -313,10 +331,6 @@ cmd_help = {
                 },
 
     '_list_valid_attributes'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_attributes'    : {
                     'cmd'   :   '<|object|>',
                 },
 
@@ -342,7 +356,7 @@ cmd_help = {
 
     'export'    : {
                     '_cmd_usage_help' : _('Usage: otpme-host export --password <password> {host}'),
-                    'cmd'   :   '--password :password: <|object|>',
+                    'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export host config to stdout'),
                                     '--password <password>' : _('Encrypt object config with password.'),
@@ -351,7 +365,7 @@ cmd_help = {
 
     'add_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-host add_policy {host} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add policy to host'),
                                 },
@@ -359,15 +373,15 @@ cmd_help = {
 
     'remove_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-host remove_policy {host} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove policy from host'),
                                 },
                 },
 
     'list_policies'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-host list_policies {host}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-host list_policies [--return-type <type>] [--policy-types <type1,type2>] {host}'),
+                    'cmd'   :   '--return-type :"return_type": --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -379,7 +393,7 @@ cmd_help = {
                 },
     'list_users'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host list_users {host}'),
-                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    'cmd'   :   '--return-type :"return_type": [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List users.'),
                                     '--return-type'             : _('Attribute to return.'),
@@ -387,7 +401,7 @@ cmd_help = {
                 },
     'list_tokens'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host list_tokens {host}'),
-                    'cmd'   :   '--return-type :return_type: --token-types :[token_types]: [|object|]',
+                    'cmd'   :   '--return-type :"return_type": --token-types :[token_types]: [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('List assigned tokens.'),
                                     '--return-type'             : _('Attribute to return.'),
@@ -403,7 +417,7 @@ cmd_help = {
                 },
     'find_roles'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host find_roles [--return-type <return_type>] {host}'),
-                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'cmd'   :   '--return-type :"return_type": <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -414,7 +428,7 @@ cmd_help = {
                 },
     'find_groups'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host find_groups [--return-type <return_type>] {host}'),
-                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'cmd'   :   '--return-type :"return_type": <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -425,7 +439,7 @@ cmd_help = {
                 },
     'find_accessgroups'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host find_accessgroups [--return-type <return_type>] {host}'),
-                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'cmd'   :   '--return-type :"return_type": <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -436,7 +450,7 @@ cmd_help = {
                 },
     'find_shares'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host find_shares [--return-type <return_type>] {host}'),
-                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'cmd'   :   '--return-type :"return_type": <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -447,7 +461,7 @@ cmd_help = {
                 },
     'find_passwords'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host find_passwords [--return-type <return_type>] {host}'),
-                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'cmd'   :   '--return-type :"return_type": <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -458,7 +472,7 @@ cmd_help = {
                 },
     'show_password'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host show_password {host} [entry]'),
-                    'cmd'   :   '<|object|> [entry_name]',
+                    'cmd'   :   '<|object|> ["entry_name"]',
                     '_help' :   {
                                     'cmd'                   : _('Show the passwords of this host, see otpme-pass.'),
                                 },
@@ -472,7 +486,7 @@ cmd_help = {
                 },
     'list_sync_users'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host list_sync_users {host}'),
-                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    'cmd'   :   '--return-type :"return_type": [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List sync users.'),
                                     '--return-type'             : _('Attribute to return.'),
@@ -481,7 +495,7 @@ cmd_help = {
 
     'list_sync_groups'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host list_sync_groups {host}'),
-                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    'cmd'   :   '--return-type :"return_type": [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List sync groups.'),
                                     '--return-type'             : _('Attribute to return.'),
@@ -518,7 +532,7 @@ cmd_help = {
 
     'public_key'    : {
                     '_cmd_usage_help' : _('Usage: otpme-host public_key {host} [public_key]'),
-                    'cmd'   :   '<|object|> [public_key]',
+                    'cmd'   :   '<|object|> ["public_key"]',
                     '_help' :   {
                                     'cmd'                   : _('Change host\'s public key.'),
                                 },
@@ -582,7 +596,7 @@ cmd_help = {
 
     'add_role'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host add_role {host} {role}'),
-                    'cmd'   :   '<|object|> <role_name>',
+                    'cmd'   :   '<|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add role to host.'),
                                 },
@@ -590,7 +604,7 @@ cmd_help = {
 
     'remove_role'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host remove_role {host} {role}'),
-                    'cmd'   :   '<|object|> <role_name>',
+                    'cmd'   :   '<|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove role from host.'),
                                 },
@@ -598,7 +612,7 @@ cmd_help = {
 
     'add_token'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host add_token [-i tty,gui,ssh] [--no-auto-sign] [--sign --tags {tag1,tag2,...}] {host} {token} [token_options]'),
-                    'cmd'   :   '-i :[login_interfaces]: --no-auto-sign :auto_sign=False: --sign :sign=True: --tags :[tags]: <|object|> <token_path> [token_options]',
+                    'cmd'   :   '-i :[login_interfaces]: --no-auto-sign :auto_sign=False: --sign :sign=True: --tags :[tags]: <|object|> <"token_path"> ["token_options"]',
                     '_help' :   {
                                     'cmd'                   : _('Add token to host.'),
                                     '-i <tty,gui,ssh>'      : _('Limit login to given interface(s).'),
@@ -610,7 +624,7 @@ cmd_help = {
 
     'remove_token'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host remove_token --keep-sign {host} {token}'),
-                    'cmd'   :   '--keep-sign :keep_sign=True: <|object|> <token_path>',
+                    'cmd'   :   '--keep-sign :keep_sign=True: <|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Remove token from host.'),
                                     '--keep-sign'           : _('Do not remove any signature.'),
@@ -619,7 +633,7 @@ cmd_help = {
 
     'add_dynamic_group'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host add_dynamic_group {host} {group_name}'),
-                    'cmd'   :   '<|object|> <group_name>',
+                    'cmd'   :   '<|object|> <"group_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add dynamic group to host.'),
                                 },
@@ -627,7 +641,7 @@ cmd_help = {
 
     'remove_dynamic_group'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host remove_dynamic_group {host} {group_name}'),
-                    'cmd'   :   '<|object|> <group_name>',
+                    'cmd'   :   '<|object|> <"group_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove dynamic group from host.'),
                                 },
@@ -635,7 +649,7 @@ cmd_help = {
 
     'add_sync_user'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host add_sync_user {host} {user}'),
-                    'cmd'   :   '<|object|> <user_name>',
+                    'cmd'   :   '<|object|> <"user_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add sync user to host.'),
                                 },
@@ -643,7 +657,7 @@ cmd_help = {
 
     'remove_sync_user'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host remove_sync_user {host} {user}'),
-                    'cmd'   :   '<|object|> <user_name>',
+                    'cmd'   :   '<|object|> <"user_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove sync user from host.'),
                                 },
@@ -651,7 +665,7 @@ cmd_help = {
 
     'add_sync_group'    : {
                     '_cmd_usage_help' : _('Usage: otpme-host add_sync_group {host} {group}'),
-                    'cmd'   :   '<|object|> <group_name>',
+                    'cmd'   :   '<|object|> <"group_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add sync group.'),
                                 },
@@ -659,7 +673,7 @@ cmd_help = {
 
     'remove_sync_group'    : {
                     '_cmd_usage_help' : _('Usage: otpme-host remove_sync_group {host} {group}'),
-                    'cmd'   :   '<|object|> <group_name>',
+                    'cmd'   :   '<|object|> <"group_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove sync group.'),
                                 },
@@ -715,7 +729,7 @@ cmd_help = {
 
     'get_ssh_authorized_keys'    : {
                     '_cmd_usage_help' : _('Usage: otpme-host get_ssh_authorized_keys {host} [user]'),
-                    'cmd'   :   '<|object|> [user]',
+                    'cmd'   :   '<|object|> ["user"]',
                     '_help' :   {
                                     'cmd'                   : _('Get SSH authorized keys for host.'),
                                 },

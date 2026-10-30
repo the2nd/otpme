@@ -58,6 +58,11 @@ if config.debug_level("debug_timings") > 0:
 if add_decorators:
     add_debug_decorators()
 
+# How often otpme-deploy results --watch asks for new results. confd
+# reports a result as soon as the job is over, so this is how long a
+# result waits to be seen, at most.
+DEPLOY_WATCH_INTERVAL = 2
+
 def on_a_terminal():
     """ Whether what we write goes to a terminal.
 
@@ -253,6 +258,11 @@ class CommandHandler(object):
             status_code, \
             response, \
             binary_data = daemon_conn.send(command, command_args=command_args)
+            # A refusal of hostd (e.g. "Permission denied." to a user
+            # that is not root) was printed as the answer of a command
+            # that worked.
+            if status is False:
+                raise OTPmeException(response)
             return response
 
         if not command:
@@ -851,6 +861,9 @@ class CommandHandler(object):
             if command == "vlan":
                 register_module('otpme.lib.classes.vlan')
                 register_module('otpme.lib.cli.vlan')
+            if command == "aclgroup":
+                register_module('otpme.lib.classes.aclgroup')
+                register_module('otpme.lib.cli.aclgroup')
             if command == "pass":
                 register_module('otpme.lib.classes.otpme_password')
                 register_module('otpme.lib.cli.otpme_password')
@@ -1324,14 +1337,17 @@ class CommandHandler(object):
             backup_filename = "+".join(backup_filename)
             return backup_filename
 
+        # The names of users, hosts, tokens... are nobody else's business.
         if not os.path.exists(backup_dir):
-            os.mkdir(backup_dir)
+            os.mkdir(backup_dir, 0o700)
 
         backup_time = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
         backup_revision_dir = os.path.join(backup_dir, backup_time)
         if not os.path.exists(backup_revision_dir):
-            os.mkdir(backup_revision_dir)
+            os.mkdir(backup_revision_dir, 0o700)
 
+        done = 0
+        failures = []
         for object_type in config.object_add_order:
             result = backend.search(object_type=object_type,
                                     attribute="uuid",
@@ -1339,20 +1355,33 @@ class CommandHandler(object):
                                     return_type="oid")
             backup_dir = os.path.join(backup_revision_dir, object_type)
             if not os.path.exists(backup_dir):
-                os.mkdir(backup_dir)
+                os.mkdir(backup_dir, 0o700)
             for x_oid in result:
                 backup_file_name = get_backup_filename(x_oid)
                 backup_file_name = f"{backup_file_name}.json"
                 backup_file = os.path.join(backup_dir, backup_file_name)
-                msg = f"Backing up: {x_oid}"
-                print(msg)
+                msg = _("Backing up: {object_id}")
+                msg = msg.format(object_id=x_oid)
+                message(msg)
                 try:
                     backup_data = backup.backup_object(x_oid)
+                    filetools.create_file(path=backup_file, content=backup_data)
                 except Exception as e:
-                    msg = f"Failed to backup object: {x_oid}: {e}"
-                    print(msg)
+                    msg = _("Failed to backup object: {object_id}: {error}")
+                    msg = msg.format(object_id=x_oid, error=e)
+                    error_message(msg)
+                    failures.append(msg)
                     continue
-                filetools.create_file(path=backup_file, content=backup_data)
+                done += 1
+        msg = _("Backed up {count} object(s), {failed} failed.")
+        msg = msg.format(count=done, failed=len(failures))
+        if not failures:
+            return msg
+        # An error at the end, so a cron job sees that something is
+        # missing in the backup.
+        lines = [msg, _("Failed:")]
+        lines += [f"  {x}" for x in failures]
+        raise OTPmeException("\n".join(lines))
 
     def full_restore(self, restore_dir):
         from otpme.lib import nsscache
@@ -1361,10 +1390,17 @@ class CommandHandler(object):
         if not _index.is_available():
             _index.command("init")
         backend.init(init_file_dir_perms=True)
+        done = 0
         failed_restores = []
         for object_type in config.object_add_order:
             x_restore_order = {}
             x_restore_dir = os.path.join(restore_dir, object_type)
+            # A backup from before this object type was there.
+            if not os.path.isdir(x_restore_dir):
+                msg = _("Not in the backup, skipped: {object_type}")
+                msg = msg.format(object_type=object_type)
+                message(msg)
+                continue
             for x_filename in sorted(os.listdir(x_restore_dir)):
                 x_file = os.path.join(x_restore_dir, x_filename)
                 file_content = filetools.read_file(x_file)
@@ -1384,25 +1420,32 @@ class CommandHandler(object):
             x_sort = lambda x: x_restore_order[x]['path_len']
             x_restore_order_sorted = sorted(x_restore_order, key=x_sort)
             for x_oid in x_restore_order_sorted:
-                msg = f"Restoring: {x_oid}"
-                print(msg)
+                msg = _("Restoring: {object_id}")
+                msg = msg.format(object_id=x_oid)
+                message(msg)
                 x_oc = x_restore_order[x_oid]['object_config']
                 x_uuid = x_restore_order[x_oid]['object_uuid']
                 x_last_used = x_restore_order[x_oid]['last_used']
+                # LDIF and ACLs as well: for an object that is there
+                # already they are not built on their own.
                 try:
                     backend.write_config(object_id=x_oid,
                                         object_config=x_oc,
                                         full_index_update=True,
                                         full_data_update=True,
+                                        full_ldif_update=True,
+                                        full_acl_update=True,
                                         encrypt=False)
                 except Exception as e:
-                    msg = f"Failed to restore object: {x_oid}: {e}"
-                    print(msg)
+                    msg = _("Failed to restore object: {object_id}: {e}")
+                    msg = msg.format(object_id=x_oid, e=e)
+                    error_message(msg)
                     failed_restores.append(msg)
                 else:
                     backend.set_last_used(x_oid, x_uuid, x_last_used)
-        msg = "Creating DB indexes..."
-        print(msg)
+                    done += 1
+        msg = _("Creating DB indexes...")
+        message(msg)
         _index.command("create_db_indices")
         # Make sure cache is started.
         _cache = config.get_cache_module()
@@ -1415,8 +1458,13 @@ class CommandHandler(object):
         nsscache.update(config.realm, master_site.name)
         # Enable nsscache symlinks.
         nsscache.enable()
-        for x in failed_restores:
-            print(x)
+        msg = _("Restored {count} object(s), {failed} failed.")
+        msg = msg.format(count=done, failed=len(failed_restores))
+        if not failed_restores:
+            return msg
+        lines = [msg, _("Failed:")]
+        lines += [f"  {x}" for x in failed_restores]
+        raise OTPmeException("\n".join(lines))
 
     def restore_object(self, restore_file):
         from otpme.lib import filetools
@@ -1503,9 +1551,12 @@ class CommandHandler(object):
             if dry_run:
                 msg = _("Would remove: {x_path}")
                 msg = msg.format(x_path=x_path)
-                print(msg)
+                message(msg)
                 continue
             shutil.rmtree(x_path)
+            msg = _("Removed: {x_path}")
+            msg = msg.format(x_path=x_path)
+            message(msg)
 
     def get_backupd_conn(self, host):
         from otpme.lib import filetools
@@ -2088,9 +2139,6 @@ class CommandHandler(object):
                 raise OTPmeException(_("Not logged in."))
             return login_pass_type
 
-        if subcommand == "reload":
-            return stuff.update_reload_file()
-
         if subcommand == "do_sync":
             # Init cache.
             cache.init()
@@ -2179,13 +2227,19 @@ class CommandHandler(object):
         if subcommand == "get_user_site":
             return self.handle_get_user_site_command()
 
+        # The services under OTPme are root's. index asked, cache and
+        # radius did not, and a user got a Python error of kill() or of
+        # a socket directory instead of being told.
+        if subcommand in ("index", "cache", "radius"):
+            if config.system_user() != "root":
+                msg = _("You need to be root to run {command} commands.")
+                msg = msg.format(command=subcommand)
+                raise OTPmeException(msg)
+
         if subcommand == "cache":
             return self.handle_cache_command(command_line)
 
         if subcommand == "index":
-            if config.system_user() != "root":
-                msg = _("You need to be root to run index commands.")
-                raise OTPmeException(msg)
             try:
                 command = command_line[0]
             except Exception:
@@ -2199,10 +2253,10 @@ class CommandHandler(object):
                     restore_file = None
                 if not restore_file:
                     return self.get_help()
+                # An error, not a line on the screen and exit 0.
                 if stuff.controld_status():
-                    msg = "Please stop OTPme daemon first."
-                    print(msg)
-                    return False
+                    msg = _("Please stop OTPme daemon first.")
+                    raise OTPmeException(msg)
                 return self.handle_index_restore(restore_file)
             else:
                 return self.handle_index_command(command_line)
@@ -2246,16 +2300,14 @@ class CommandHandler(object):
             return self.handle_reneg_command()
 
         if subcommand == "start_ssh_agent":
-            self.start_ssh_agent()
-            return ""
+            return self.start_ssh_agent()
 
         if subcommand == "stop_ssh_agent":
             self.stop_ssh_agent()
             return ""
 
         if subcommand == "restart_ssh_agent":
-            self.restart_ssh_agent()
-            return ""
+            return self.restart_ssh_agent()
 
         if subcommand == "radius":
             return self.handle_radius_command(command_line)
@@ -2267,6 +2319,11 @@ class CommandHandler(object):
             return self.handle_search_command(command_line)
 
         if subcommand == "backup":
+            # It reads the tree of this node.
+            if config.system_user() != "root":
+                msg = _("You need to be root to run {command} commands.")
+                msg = msg.format(command=subcommand)
+                raise OTPmeException(msg)
             from otpme.lib.register import register_modules
             register_modules()
             # Get command syntax.
@@ -2336,7 +2393,9 @@ class CommandHandler(object):
                     return self.get_help()
                 elif str(e) != "":
                     return self.get_help(str(e))
-            return self.show_offline_token(token_id=object_identifier)
+            show_secret = bool(command_args.get('show_secret'))
+            return self.show_offline_token(token_id=object_identifier,
+                                        show_secret=show_secret)
 
         if subcommand == "restore":
             from otpme.lib.register import register_modules
@@ -2372,11 +2431,18 @@ class CommandHandler(object):
                 restore_file = None
             if not restore_dir and not restore_file:
                 return self.get_help()
+            if restore_dir and restore_file:
+                msg = _("Please give -d or -f, not both.")
+                raise OTPmeException(msg)
             if restore_dir:
+                # It writes the tree of this node.
+                if config.system_user() != "root":
+                    msg = _("You need to be root to run {command} commands.")
+                    msg = msg.format(command=subcommand)
+                    raise OTPmeException(msg)
                 if stuff.controld_status():
-                    msg = "Please stop OTPme daemon first."
-                    print(msg)
-                    return False
+                    msg = _("Please stop OTPme daemon first.")
+                    raise OTPmeException(msg)
                 return self.full_restore(restore_dir)
             if restore_file:
                 return self.restore_object(restore_file)
@@ -2386,10 +2452,6 @@ class CommandHandler(object):
         or subcommand == "encrypt" \
         or subcommand == "decrypt":
             return self.handle_key_script_command(subcommand)
-
-        # FIXME: implement mass creation of users, tokens, clients groups etc. from file
-        if subcommand == "add_user":
-            return self.handle_add_user_command()
 
         if subcommand == "reset_reauth":
             return self.send_command(daemon="mgmtd",
@@ -2439,6 +2501,10 @@ class CommandHandler(object):
             self.init(use_backend=True)
 
         login_user = config.login_user
+        if subcommand == "results" and "--watch" in command_line:
+            return self.watch_deploy_results(command, subcommand,
+                                            command_line,
+                                            client_type=client_type)
         # Send command.
         command_args = {}
         response = self.send_command(daemon="mgmtd",
@@ -2447,6 +2513,56 @@ class CommandHandler(object):
                                 username=login_user,
                                 client_type=client_type)
         return response
+
+    def watch_deploy_results(self, command, subcommand, command_line,
+        client_type="CLIENT"):
+        """ otpme-deploy results --watch: the results of a job as the
+        hosts send them, until none is left to come.
+
+        Asked again every DEPLOY_WATCH_INTERVAL seconds, with the results
+        already shown, so each answer holds only what is new (see
+        deploy.show_results()). Ctrl-C ends it; the job goes on.
+
+        Ctrl-C is put back before each wait. Every request opens a
+        connection to mgmtd, and that puts in a SIGINT handler of its
+        own which neither raises nor passes the signal on, and leaves it
+        there (see rac_client.interruptible()). So the KeyboardInterrupt
+        below never came, and nothing stopped the watching. """
+        import signal
+        from otpme.lib import json
+        def stop_watching(_signal, _frame):
+            raise KeyboardInterrupt
+        org_int_handler = signal.getsignal(signal.SIGINT)
+        login_user = config.login_user
+        seen = []
+        printed = False
+        try:
+            while True:
+                command_args = {'watch': True, 'seen': seen}
+                response = self.send_command(daemon="mgmtd",
+                                        command=command,
+                                        subcommand=subcommand,
+                                        command_line=list(command_line),
+                                        command_args=command_args,
+                                        username=login_user,
+                                        client_type=client_type)
+                answer = json.decode(response)
+                if answer['output']:
+                    if printed:
+                        # One empty line between what two runs said, as
+                        # without --watch.
+                        print("", flush=True)
+                    print(answer['output'], flush=True)
+                    printed = True
+                seen = answer['seen']
+                if answer['done']:
+                    return answer['summary']
+                signal.signal(signal.SIGINT, stop_watching)
+                time.sleep(DEPLOY_WATCH_INTERVAL)
+        except KeyboardInterrupt:
+            return ""
+        finally:
+            signal.signal(signal.SIGINT, org_int_handler)
 
     def handle_inventory_command(self, command, subcommand, command_line):
         """ Handle inventory command: the system and the packages of
@@ -2501,7 +2617,12 @@ class CommandHandler(object):
         config.reload()
         command = command_line[0]
         _cache = config.get_cache_module()
-        _cache.command(command)
+        result = _cache.command(command)
+        # start and restart say whether it came up. That was dropped, and
+        # a cache that did not start ended the command without a word.
+        if command in ("start", "restart") and result is False:
+            msg = _("The cache did not start.")
+            raise OTPmeException(msg)
 
     def handle_index_command(self, command_line):
         """ Handle index command. """
@@ -2530,7 +2651,11 @@ class CommandHandler(object):
                 self.init()
                 backend.init()
                 return backend.index_rebuild_object(config_dir)
-        _index.command(command)
+        result = _index.command(command)
+        # The same as for the cache, see handle_cache_command().
+        if command in ("start", "restart") and result is False:
+            msg = _("The index did not start.")
+            raise OTPmeException(msg)
 
     def handle_index_backup(self):
         """ Handle index backup command. """
@@ -2563,7 +2688,22 @@ class CommandHandler(object):
         if not _index.status():
             _index.start()
         if not os.path.exists(restore_file):
-            msg = f"No such file or directory: {restore_file}"
+            msg = _("No such file or directory: {restore_file}")
+            msg = msg.format(restore_file=restore_file)
+            raise OTPmeException(msg)
+        # Into an empty index only. The index has no unique keys: into
+        # one that is filled every entry went in a second time, and only
+        # creating the DB indices afterwards failed -- with the doubles
+        # already committed.
+        try:
+            found = backend.search(attribute="uuid",
+                                    value="*",
+                                    return_type="uuid",
+                                    size_limit=1)
+        except SizeLimitExceeded:
+            found = True
+        if found:
+            msg = _("The index is not empty. Restore into an empty one (index drop, index init).")
             raise OTPmeException(msg)
         try:
             file_content = filetools.read_file(restore_file)
@@ -2575,9 +2715,10 @@ class CommandHandler(object):
         try:
             do_index_restore(index_data)
         except Exception as e:
-            msg = f"Failed to do index restore: {e}"
+            msg = _("Failed to do index restore: {error}")
+            msg = msg.format(error=e)
             raise OTPmeException(msg) from e
-        msg = "Creating DB indexes..."
+        msg = _("Creating DB indexes...")
         print(msg)
         _index.command("create_db_indices")
         return
@@ -2594,36 +2735,45 @@ class CommandHandler(object):
             command = command_line[0]
         except Exception:
             return self.get_help()
-        if command == "start":
-            # Register modules.
-            register_modules()
-            self.init(use_backend=True)
-            start()
-        elif command == "stop":
-            stop()
-        elif command == "restart":
-            # Register modules.
-            register_modules()
-            self.init(use_backend=True)
-            stop()
-            start()
-        elif command == "status":
+        # freeradius/utils.py says what went wrong with a plain
+        # Exception ("Freeradius already running.", not running at all),
+        # and that ended in a traceback. Said as an error now.
+        if command in ("start", "stop", "restart", "status"):
             try:
-                status()
-                print("Freeradius running.")
-            except Exception:
+                if command in ("start", "restart"):
+                    # Register modules.
+                    register_modules()
+                    self.init(use_backend=True)
+                if command in ("stop", "restart"):
+                    stop()
+                if command in ("start", "restart"):
+                    start()
+                if command == "status":
+                    status()
+                    return _("Freeradius running.")
+            except OTPmeException:
                 raise
-        elif command == "reload":
+            except Exception as e:
+                raise OTPmeException(str(e)) from e
+            return
+        if command == "reload":
+            # Through hostd, which has it done on every node. Without
+            # hostd, or when it said no, this ended without a word.
             try:
                 hostd_conn = connections.get("hostd")
             except Exception as e:
-                log_msg = _("Failed to get hostd connection: {e}", log=True)[1]
-                log_msg = log_msg.format(e=e)
-                self.logger.warning(log_msg)
-                return
-            hostd_conn.send(command="reload_radius")
+                msg = _("Failed to get hostd connection: {e}")
+                msg = msg.format(e=e)
+                raise OTPmeException(msg) from e
+            status, \
+            status_code, \
+            reply, \
+            binary_data = hostd_conn.send(command="reload_radius")
+            if status is False:
+                raise OTPmeException(reply)
+            return reply
 
-        elif command == "test":
+        if command == "test":
             import pyrad.packet
             from pyrad.client import Client
             from pyrad.dictionary import Dictionary
@@ -2632,7 +2782,7 @@ class CommandHandler(object):
             if "--mschap" in command_line:
                 mschap = True
                 command_line.remove("--mschap")
-            usage_help = "Usage: otpme-tool radius test [--mschap] <username> <password> <nas_id> <secret>"
+            usage_help = _("Usage: otpme-tool radius test [--mschap] <username> <password> <nas_id> <secret>")
             if "-h" in command_line:
                 print(usage_help)
                 return
@@ -2648,12 +2798,12 @@ class CommandHandler(object):
                 print(usage_help)
                 return
             if mschap:
-                msg = "Sending MSCHAP radius request."
+                msg = _("Sending MSCHAP radius request.")
                 print(msg)
                 r = RADIUS(radius_host, radius_secret, radius_nas_ip, radius_nas_id, eap=True)
                 status = r.is_credential_valid(username, password)
             else:
-                msg = "Sending radius request."
+                msg = _("Sending radius request.")
                 print(msg)
                 radius_dict = os.path.join(config.config_dir, "radius", "dictionary")
                 radius_secret = radius_secret.encode()
@@ -2671,14 +2821,14 @@ class CommandHandler(object):
                 if response.code == pyrad.packet.AccessAccept:
                     status = True
             if not status:
-                msg = "Radius request failed."
+                msg = _("Radius request failed.")
                 raise OTPmeException(msg)
-            msg = "Radius request successful."
+            msg = _("Radius request successful.")
             print(msg)
-        else:
-            msg = _("Unknown command: {command}")
-            msg = msg.format(command=command)
-            raise Exception(msg)
+            return
+        msg = _("Unknown command: {command}")
+        msg = msg.format(command=command)
+        raise OTPmeException(msg)
 
     def handle_show_sessions_command(self, command_line):
         """ Handle show sessions command.
@@ -3058,20 +3208,44 @@ class CommandHandler(object):
             procs = None
         if procs is None:
             procs = int(os.cpu_count() / 2)
+        try:
+            procs = int(procs)
+        except ValueError:
+            msg = _("--procs needs a number: {procs}")
+            msg = msg.format(procs=procs)
+            raise OTPmeException(msg) from None
+        # No cap at the CPUs: a login mostly waits for the node.
+        procs = max(1, procs)
+        logout = bool(command_args.pop('logout', False))
 
-        csv_file = command_args.pop('csv_file')
-        with open(csv_file, newline='', encoding='utf-8') as csvfile:
-            reader = csv.reader(csvfile, delimiter=',')
-            #header = next(reader)
-            #print("Got header from csv file:", header)
-            csv_data = list(reader)
-
-        if procs < 1:
-            procs = 1
+        try:
+            csv_file = command_args.pop('csv_file')
+        except KeyError:
+            return self.get_help()
+        # All of it checked before a worker starts: a bad line found
+        # later ended in a traceback with the workers running.
+        try:
+            with open(csv_file, newline='', encoding='utf-8') as csvfile:
+                csv_data = list(csv.reader(csvfile, delimiter=','))
+        except OSError as e:
+            msg = _("Unable to read CSV file: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg) from e
+        for line_no, line in enumerate(csv_data, start=1):
+            if len(line) < 2 or not line[0] or not line[1]:
+                msg = _("Line {line_no}: need username,password.")
+                msg = msg.format(line_no=line_no)
+                raise OTPmeException(msg)
+        if not csv_data:
+            msg = _("No logins in CSV file: {csv_file}")
+            msg = msg.format(csv_file=csv_file)
+            raise OTPmeException(msg)
 
         register_module("otpme.lib.multiprocessing")
         task_queue = py_multiprocessing.Queue(maxsize=procs * 2)
         result_queue = py_multiprocessing.Queue()
+        # Set when the clock is stopped: the logouts are not measured.
+        logout_event = py_multiprocessing.Event()
         counter_lock = py_multiprocessing.Lock()
         login_counter_value = py_multiprocessing.Value('i', 0)
         # Shared start_time so the parent can initialise the clock *after*
@@ -3092,6 +3266,7 @@ class CommandHandler(object):
                 result_queue.close()
                 result_queue.join_thread()
             multiprocessing.register_at_exit(flush_result_queue)
+            sessions = []
             while True:
                 job = task_queue.get()
                 if job is None:
@@ -3120,22 +3295,44 @@ class CommandHandler(object):
                     self.login(**method_kwargs)
                 except Exception as e:
                     error = str(e)
+                else:
+                    if logout:
+                        # Missing pieces are the logout's error, a
+                        # KeyError here would end the worker and the
+                        # parent would wait for its results for good.
+                        login_response = self.login_response
+                        auth_response = login_response.get('auth_response') or {}
+                        sessions.append((username, node,
+                                        auth_response.get('slp'),
+                                        login_response.get('realm'),
+                                        login_response.get('site')))
                 finally:
                     with counter_lock:
                         now = time.monotonic()
                         login_counter_value.value += 1
                         per_login_time = (now - start_time_value.value) / login_counter_value.value
+                        user_text = username
                         if node:
-                            if error:
-                                print(f"Login failed: {username} ({node}): {error} ({per_login_time:.2f})", flush=True)
-                            else:
-                                print(f"Login finished: {username} ({node}) ({per_login_time:.2f})", flush=True)
+                            user_text = f"{username} ({node})"
+                        if error:
+                            msg = _("Login failed: {user}: {error} ({seconds:.2f})")
+                            msg = msg.format(user=user_text, error=error,
+                                            seconds=per_login_time)
                         else:
-                            if error:
-                                print(f"Login failed: {username}: {error} ({per_login_time:.2f})", flush=True)
-                            else:
-                                print(f"Login finished: {username} ({per_login_time:.2f})", flush=True)
-                    result_queue.put((username, error))
+                            msg = _("Login finished: {user} ({seconds:.2f})")
+                            msg = msg.format(user=user_text,
+                                            seconds=per_login_time)
+                        message(msg)
+                    result_queue.put(("login", username, error))
+            if logout:
+                logout_event.wait()
+                for username, node, slp, realm, site in sessions:
+                    try:
+                        self.benchmark_logout(username, node, slp, realm, site)
+                    except Exception as e:
+                        result_queue.put(("logout", username, str(e)))
+                    else:
+                        result_queue.put(("logout", username, None))
             # Cleanup on exit.
             try:
                 multiprocessing.cleanup()
@@ -3173,12 +3370,12 @@ class CommandHandler(object):
         for _x in range(worker_count):
             task_queue.put(None)
 
+        failed = 0
         while login_counter < login_count:
-            username, error = result_queue.get()
+            _result_type, username, error = result_queue.get()
             login_counter += 1
-
-        for worker in worker_procs:
-            worker.join()
+            if error:
+                failed += 1
 
         now = time.monotonic()
         duration = now - start_time
@@ -3186,7 +3383,62 @@ class CommandHandler(object):
             logins_per_second = 0
         else:
             logins_per_second = login_counter / duration
-        print(f"Requests/Second: {logins_per_second:.2f}", flush=True)
+        msg = _("Logins: {count}, failed: {failed}, requests/second: {rate:.2f}")
+        msg = msg.format(count=login_counter, failed=failed,
+                        rate=logins_per_second)
+        message(msg)
+
+        if logout:
+            logout_event.set()
+            logout_count = login_count - failed
+            logout_failed = 0
+            for _x in range(logout_count):
+                _result_type, username, error = result_queue.get()
+                if error:
+                    logout_failed += 1
+                    msg = _("Logout failed: {user}: {error}")
+                    msg = msg.format(user=username, error=error)
+                    error_message(msg)
+            msg = _("Logged out: {count}, failed: {failed}")
+            msg = msg.format(count=logout_count - logout_failed,
+                            failed=logout_failed)
+            message(msg)
+            failed += logout_failed
+
+        for worker in worker_procs:
+            worker.join()
+
+        # So a script running it sees that something went wrong.
+        if failed:
+            raise OTPmeException()
+
+    def benchmark_logout(self, username, node, slp, realm, site):
+        """ Log out a session of login_benchmark, without otpme-agent,
+        the way otpme-agent does it: with the SLP at authd. """
+        if not slp or not realm or not site:
+            msg = _("Got no session to log out.")
+            raise OTPmeException(msg)
+        auth_conn = connections.get(daemon="authd",
+                                    username=username,
+                                    realm=realm,
+                                    site=site,
+                                    node=node,
+                                    slp=slp,
+                                    login=False,
+                                    logout=True,
+                                    use_agent=False,
+                                    auto_auth=False,
+                                    autoconnect=True,
+                                    allow_untrusted=True,
+                                    endpoint=False)
+        try:
+            logout_message = auth_conn.authenticate()
+        finally:
+            auth_conn.close()
+        if not logout_message:
+            msg = _("User logout failed: {message}")
+            msg = msg.format(message=logout_message)
+            raise OTPmeException(msg)
 
     def handle_mass_object_add(self, command, subcommand):
         """ Handle mass object add command. """
@@ -3214,11 +3466,14 @@ class CommandHandler(object):
             elif str(e) != "":
                 return self.get_help(str(e))
         csv_file = command_args.pop('csv_file')
-        with open(csv_file, newline='', encoding='utf-8') as csvfile:
-            reader = csv.reader(csvfile, delimiter=';')
-            #header = next(reader)
-            #print("Got header from csv file:", header)
-            csv_data = list(reader)
+        try:
+            with open(csv_file, newline='', encoding='utf-8') as csvfile:
+                reader = csv.reader(csvfile, delimiter=';')
+                csv_data = list(reader)
+        except Exception as e:
+            msg = _("Error reading CSV file: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg) from e
         if config.use_api:
             register_modules()
         self.init()
@@ -3362,6 +3617,12 @@ class CommandHandler(object):
                             return_type="instance")
         if not hosts:
             return _("No host here to take a key from.")
+        # A name nobody has: "No host key changed" read as if all was
+        # well with a host that is not there.
+        if only_host and only_host not in [x.name for x in hosts]:
+            msg = _("Unknown host: {host}")
+            msg = msg.format(host=only_host)
+            raise OTPmeException(msg)
 
         table_headers = [
                     "host",
@@ -3490,6 +3751,11 @@ class CommandHandler(object):
                                 attribute="uuid",
                                 value="*",
                                 return_attributes=['name', 'encrypt_public_key'])
+        # A name nobody has, see update_host_keys.
+        if only_user and only_user not in [x['name'] for x in result.values()]:
+            msg = _("Unknown user: {user}")
+            msg = msg.format(user=only_user)
+            raise OTPmeException(msg)
 
         table_headers = [
                     "user",
@@ -3658,12 +3924,27 @@ class CommandHandler(object):
         if len(command_line) < 3:
             return self.get_help()
 
+        # Numbers, said as such: int() of anything else ended in a
+        # traceback.
+        for x_value in command_line[:1] + command_line[3:4]:
+            if not x_value.isdigit():
+                msg = _("Not a number: {value}")
+                msg = msg.format(value=x_value)
+                return self.get_help(msg)
+
         if len(command_line) >= 4:
             otp_count = int(command_line[3])
         else:
             otp_count = 1
 
-        epoch_time = int(str(int(command_line[0]))[:-1])
+        # The 10 second step. Not by cutting the last digit off the
+        # string: of a time below 10 that left nothing to make a number
+        # of. And not step 0, which motp.generate() takes for "now".
+        epoch_time = int(command_line[0]) // 10
+        if epoch_time == 0:
+            msg = _("Not a time: {value}")
+            msg = msg.format(value=command_line[0])
+            return self.get_help(msg)
         secret = command_line[1]
         pin = command_line[2]
 
@@ -3719,8 +4000,15 @@ class CommandHandler(object):
             msg = msg.format(e=e)
             raise OTPmeException(msg) from e
 
-        object_config = json.loads(file_content)
-        object_id = object_config.pop('OID')
+        # What otpme-<type> export writes. Anything else ended in a
+        # traceback.
+        try:
+            object_config = json.loads(file_content)
+            object_id = object_config.pop('OID')
+        except Exception as e:
+            msg = _("Not an exported object config: {file}")
+            msg = msg.format(file=filename)
+            raise OTPmeException(msg) from e
 
         return self.import_object(object_config,
                                 object_id=object_id,
@@ -3870,15 +4158,15 @@ class CommandHandler(object):
         # Examples
         # we want users to access this node to be in the role "verwaltung"
         # we trust the user root that she only adds users that are allowed to the role "verwaltung"
-        #   - otpme-tool add_signer --type token --tag "role|realm.tld/site/roles/verwaltung" "user|realm.tld/site/users/root"
+        #   - otpme-tool add_signer --signer-type token --tag "role|realm.tld/site/verwaltung" "user|realm.tld/root"
         # we allow only the user test1 to login with a token that was signed for the node node1.
-        #   - otpme-tool add_signer --type token --tag "node|realm.tld/site/nodes/node1" --tag "user|realm.tld/site/users/test1" "user|realm.tld/site/users/root"
+        #   - otpme-tool add_signer --signer-type token --tag "node|realm.tld/site/node1" --tag "user|realm.tld/test1" "user|realm.tld/root"
         # trust any auth_script signed by any member of the manager role.
-        #   - otpme-tool add_signer --type auth_script "role|realm.tld/site/roles/manager"
+        #   - otpme-tool add_signer --signer-type auth_script "role|realm.tld/site/manager"
         # trust scripts signed by the root user for the site site.
-        #   - otpme-tool add_signer --type auth_script --tag "site|realm.tld/site" "user|realm.tld/site/users/root"
+        #   - otpme-tool add_signer --signer-type auth_script --tag "site|realm.tld/site" "user|realm.tld/root"
         # trust only key scripts signed by the user itself
-        #   - otpme-tool add_signer --type key_script "user|realm.tld/site/users/test1"
+        #   - otpme-tool add_signer --signer-type key_script "user|realm.tld/test1"
 
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
@@ -3898,8 +4186,8 @@ class CommandHandler(object):
         except Exception as e:
             if str(e) == "help":
                 return self.get_help()
-            elif str(e) != "":
-                return self.get_help(str(e))
+            # An exception without a message went on with no args.
+            return self.get_help(str(e) or None)
 
         if config.system_user() != "root":
             command_args['private'] = True
@@ -4054,91 +4342,14 @@ class CommandHandler(object):
             'encrypt_key_type'      : encrypt_algo,
         }
 
-    def add_users(self, user_list):
-        """ Mass user adding. """
-        from otpme.lib import backend
-        from otpme.lib.classes.user import User
-        status = True
-        register_module("otpme.lib.filetools")
+    def show_offline_token(self, token_id=None, show_secret=False):
+        """ The offline tokens of the user who runs this.
 
-        # Init otpme.
-        #init_otpme()
-        self.init()
-
-        from otpme.lib import debug
-        #config.debug_timings = False
-
-        callback = config.get_callback()
-
-        counter = 0
-        user_counter = 0
-        user_count = len(user_list)
-        for username in user_list:
-            counter += 1
-            user_counter += 1
-
-            stop_add = False
-            #if user_counter > 5:
-            #    if add_time > 1.3 and add_time < 1.5:
-            #        config.debug_timings = True
-            #        stop_add = True
-
-            add_time = 0
-            if add_time:
-                pass
-            #if user_counter == 5:
-            #    config.debug_timings = True
-
-            x_oid = oid.get(object_type="user", name=username, realm=config.realm, site=config.site)
-            if backend.object_exists(x_oid):
-                msg = _("Skipping existing user: {username}")
-                msg = msg.format(username=username)
-                message(msg)
-                counter = 0
-                #user_counter = 0
-                #config.debug_timings = False
-                stop_add = False
-                continue
-
-            #if counter == 1:
-            #    backend.begin_transaction("add_user")
-
-            msg = _("Adding user: {username} ({user_counter}/{user_count})")
-            msg = msg.format(username=username, user_counter=user_counter, user_count=user_count)
-            message(msg)
-
-            debug.start_timing()
-            try:
-                user = User(name=username, realm=config.realm, site=config.site)
-                user.add(callback=callback, verbose_level=3)
-            except Exception as e:
-                status = False
-                msg = _("Error adding user: {e}")
-                msg = msg.format(e=e)
-                error_message(msg)
-            add_time = debug.end_timing()
-
-            #if config.debug_timings:
-            #    debug.print_timing_result(print_status=True)
-            #    config.debug_timings = False
-
-            if counter == 10:
-                counter = 0
-                #backend.end_transaction()
-                callback.write_modified_objects()
-
-            #if user_counter >= 20:
-            #    stop_add = True
-
-            if stop_add:
-                #backend.end_transaction()
-                break
-
-        if not status:
-            msg = ("There where errors while creating users.")
-            raise OTPmeException(msg)
-
-    def show_offline_token(self, token_id=None):
+        With <token_id> what the token keeps for an offline login: the
+        secret of an HOTP token, the password hash of a password token.
+        Only with <show_secret>, else it says which there are: a secret
+        on the screen ends up in a scrollback or a screenshot.
+        """
         from otpme.lib.offline_token import OfflineToken
         username = config.system_user()
         offline_token = OfflineToken()
@@ -4149,21 +4360,26 @@ class CommandHandler(object):
             msg = msg.format(e=e)
             raise OTPmeException(msg) from e
         if not offline_token.status():
-            msg = "No offline tokens saved."
+            msg = _("No offline tokens saved.")
             raise OTPmeException(msg)
         offline_token.load()
-        offline_data = {'offline_tokens_pinned':offline_token.pinned}
         offline_tokens = offline_token.get()
+        if token_id:
+            # An id that is not there printed the whole list, as if all
+            # was well.
+            if token_id not in offline_tokens:
+                msg = _("Unknown offline token: {object_id}")
+                msg = msg.format(object_id=token_id)
+                raise OTPmeException(msg)
+            offline_data = offline_tokens[token_id].get_offline_data()
+            if not show_secret:
+                hidden = _("(hidden, --show-secret shows it)")
+                offline_data = {x: hidden for x in offline_data}
+            return pprint.pformat(offline_data)
+        offline_data = {'offline_tokens_pinned':offline_token.pinned}
         for key in offline_tokens:
-            token = offline_tokens[key]
-            if token_id:
-                if key != token_id:
-                    continue
-                offline_data = token.get_offline_data()
-                break
-            offline_data[key] = token.rel_path
-        offline_data = pprint.pformat(offline_data)
-        return offline_data
+            offline_data[key] = offline_tokens[key].rel_path
+        return pprint.pformat(offline_data)
 
     def pin_offline_token(self):
         from otpme.lib.offline_token import OfflineToken
@@ -4176,13 +4392,13 @@ class CommandHandler(object):
             msg = msg.format(e=e)
             raise OTPmeException(msg) from e
         if not offline_token.status():
-            msg = "No offline tokens saved."
+            msg = _("No offline tokens saved.")
             raise OTPmeException(msg)
         if offline_token.pinned:
-            msg = "Offline tokens already pinned."
+            msg = _("Offline tokens already pinned.")
             raise OTPmeException(msg)
         offline_token.pin()
-        msg = "Offline tokens successfully pinned."
+        msg = _("Offline tokens successfully pinned.")
         return msg
 
     def unpin_offline_token(self):
@@ -4196,13 +4412,13 @@ class CommandHandler(object):
             msg = msg.format(e=e)
             raise OTPmeException(msg) from e
         if not offline_token.status():
-            msg = "No offline tokens saved."
+            msg = _("No offline tokens saved.")
             raise OTPmeException(msg)
         if not offline_token.pinned:
-            msg = "Offline tokens not pinned."
+            msg = _("Offline tokens not pinned.")
             raise OTPmeException(msg)
         offline_token.unpin()
-        msg = "Offline tokens successfully unpinned."
+        msg = _("Offline tokens successfully unpinned.")
         return msg
 
     def get_script_uuid(self, script_path, realm=None, site=None):
@@ -4324,7 +4540,8 @@ class CommandHandler(object):
         ssh_agent_script_opts, \
         ssh_agent_script_uuid, \
         ssh_agent_script_signs, \
-        ssh_agent_script = self.get_ssh_agent_script(username=login_user)
+        ssh_agent_script, \
+        verify_signs = self.get_ssh_agent_script(username=login_user)
         # Get SSH agent instance.
         ssh_agent = SSHAgent(username=login_user,
                     script=ssh_agent_script,
@@ -4332,7 +4549,7 @@ class CommandHandler(object):
                     script_path=ssh_agent_script_path,
                     script_opts=ssh_agent_script_opts,
                     script_signs=ssh_agent_script_signs)
-        return ssh_agent
+        return ssh_agent, verify_signs
 
     def get_ssh_agent_script(self, username):
         """ Get users SSH agent script. """
@@ -4352,6 +4569,9 @@ class CommandHandler(object):
                 msg = _("Error getting user SSH agent script: {e}")
                 msg = msg.format(e=e)
                 raise OTPmeException(msg) from e
+            # Like PAM: online the signatures are checked if agent
+            # script signers are configured.
+            verify_signs = "auto"
 
         elif login_status == None:
             # Try to get SSH agent script from offline tokens.
@@ -4369,6 +4589,8 @@ class CommandHandler(object):
                 msg = _("Error loading SSH script from offline tokens: {e}")
                 msg = msg.format(e=e)
                 raise OTPmeException(msg) from e
+            # Like PAM: offline the signatures are not checked.
+            verify_signs = False
         else:
             raise OTPmeException(_("Unable to get SSH agent script."))
 
@@ -4376,36 +4598,64 @@ class CommandHandler(object):
                 ssh_agent_script_opts,
                 ssh_agent_script_uuid,
                 ssh_agent_script_signs,
-                ssh_agent_script)
+                ssh_agent_script,
+                verify_signs)
+
+    def get_ssh_agent_env(self, ssh_agent):
+        """ Agent variables as shell lines for eval. """
+        import shlex
+        agent_vars = {
+                    'SSH_AUTH_SOCK'     : ssh_agent.ssh_auth_sock,
+                    'SSH_AGENT_PID'     : ssh_agent.ssh_agent_pid,
+                    'SSH_AGENT_NAME'    : ssh_agent.ssh_agent_name,
+                    'GPG_AGENT_INFO'    : ssh_agent.gpg_agent_info,
+                    }
+        lines = []
+        for var_name, var_value in agent_vars.items():
+            if not var_value:
+                continue
+            var_value = shlex.quote(var_value)
+            lines.append(f"{var_name}={var_value}; export {var_name};")
+        if not lines:
+            # e.g. "SSH agent already running." Not to stdout, an
+            # eval would run it.
+            if ssh_agent.script_output:
+                error_message(ssh_agent.script_output.rstrip("\n"))
+            return ""
+        return "\n".join(lines)
 
     def start_ssh_agent(self):
         """ Start SSH agent via agent script. """
         #init_otpme()
         self.init()
-        ssh_agent = self.get_ssh_agent()
-        ssh_agent.start()
+        ssh_agent, verify_signs = self.get_ssh_agent()
+        ssh_agent.start(verify_signs=verify_signs)
+        return self.get_ssh_agent_env(ssh_agent)
 
     def stop_ssh_agent(self):
         """ Stop SSH agent via agent script. """
         #init_otpme()
         self.init()
-        ssh_agent = self.get_ssh_agent()
-        ssh_agent.start()
+        ssh_agent, verify_signs = self.get_ssh_agent()
+        ssh_agent.stop(verify_signs=verify_signs)
 
     def restart_ssh_agent(self):
         """ Restart SSH agent via agent script. """
         #init_otpme()
         self.init()
-        ssh_agent = self.get_ssh_agent()
-        ssh_agent.stop()
-        ssh_agent.start()
+        ssh_agent, verify_signs = self.get_ssh_agent()
+        ssh_agent.stop(verify_signs=verify_signs)
+        ssh_agent.start(verify_signs=verify_signs)
+        return self.get_ssh_agent_env(ssh_agent)
 
     def ssh_agent_status(self):
         """ Get SSH agent status via agent script. """
         #init_otpme()
         self.init()
-        ssh_agent = self.get_ssh_agent()
-        return ssh_agent.status()
+        ssh_agent, verify_signs = self.get_ssh_agent()
+        if not ssh_agent.status(verify_signs=verify_signs):
+            raise OTPmeException(_("Stopped"))
+        return _("Running")
 
     def show_login_session(self, login_pid=None):
         """ Show login sessions. """
@@ -4813,7 +5063,7 @@ class CommandHandler(object):
         # Check if otpme-agent is running
         agent_status, pid = otpme_agent.status(quiet=True)
         if not agent_status:
-            msg = "No running otpme-agent found..."
+            msg = _("No running otpme-agent found...")
             raise OTPmeException(msg)
 
         # Try to get agent connection
@@ -4851,7 +5101,7 @@ class CommandHandler(object):
         # Check if otpme-agent is running
         agent_status, pid = otpme_agent.status(quiet=True)
         if not agent_status:
-            msg = "No running otpme-agent found..."
+            msg = _("No running otpme-agent found...")
             raise OTPmeException(msg)
 
         # Try to get agent connection
@@ -4886,7 +5136,7 @@ class CommandHandler(object):
         # Check if otpme-agent is running
         agent_status, pid = otpme_agent.status(quiet=True)
         if not agent_status:
-            msg = "No running otpme-agent found..."
+            msg = _("No running otpme-agent found...")
             raise OTPmeException(msg)
 
         # Try to get agent connection
@@ -4919,7 +5169,7 @@ class CommandHandler(object):
         # Check if otpme-agent is running
         agent_status, pid = otpme_agent.status(quiet=True)
         if not agent_status:
-            msg = "No running otpme-agent found..."
+            msg = _("No running otpme-agent found...")
             raise OTPmeException(msg)
 
         # Try to get agent connection
@@ -4968,7 +5218,7 @@ class CommandHandler(object):
         # Check if otpme-agent is running
         agent_status, pid = otpme_agent.status(quiet=True)
         if not agent_status:
-            msg = "No running otpme-agent found..."
+            msg = _("No running otpme-agent found...")
             raise OTPmeException(msg)
 
         # Try to get agent connection
@@ -5022,13 +5272,19 @@ class CommandHandler(object):
             help_text = self.get_help(msg)
             raise OTPmeException(help_text) from e
 
-        # Parse command line.
-        object_cmd, \
-        object_required, \
-        object_identifier, \
-        command_args = cli.get_opts(command_syntax=command_syntax,
-                                    command_line=self.command_line,
-                                    command_args=self.command_args)
+        # Parse command line. Caught like everywhere else: -h or an
+        # option it does not know ended in a traceback.
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            command_args = cli.get_opts(command_syntax=command_syntax,
+                                        command_line=self.command_line,
+                                        command_args=self.command_args)
+        except Exception as e:
+            if str(e) == "help":
+                return self.get_help()
+            return self.get_help(str(e) or None)
 
         try:
             key_role = command_args['key_role']
@@ -5047,7 +5303,7 @@ class CommandHandler(object):
         # Check if otpme-agent is running
         agent_status, pid = otpme_agent.status(quiet=True)
         if not agent_status:
-            msg = "No running otpme-agent found..."
+            msg = _("No running otpme-agent found...")
             raise OTPmeException(msg)
 
         # Try to get agent connection
@@ -5098,7 +5354,7 @@ class CommandHandler(object):
         # Check if otpme-agent is running
         agent_status, pid = otpme_agent.status(quiet=True)
         if not agent_status:
-            msg = "No running otpme-agent found..."
+            msg = _("No running otpme-agent found...")
             raise OTPmeException(msg)
 
         # Try to get agent connection
@@ -5134,7 +5390,7 @@ class CommandHandler(object):
         # Check if otpme-agent is running.
         agent_status, pid = otpme_agent.status(quiet=True)
         if not agent_status:
-            msg = "No running otpme-agent found..."
+            msg = _("No running otpme-agent found...")
             raise OTPmeException(msg)
 
         # Try to get agent connection.
@@ -5160,15 +5416,16 @@ class CommandHandler(object):
             raise OTPmeException(str(e)) from e
 
     def regen_master_key(self):
-        """ Regenerate master key. """
+        """ Write the master key file again, from the master password and
+        the salt kept here. """
+        # Root first: a user was told about the salt file instead.
+        if config.system_user() != "root":
+            raise OTPmeException(_("You must be root for this command."))
         #init_otpme()
         self.init()
         if not os.path.exists(config.master_pass_salt_file):
             msg = _("Realm config does not have a master pass salt.")
             raise OTPmeException(msg)
-
-        if config.system_user() != "root":
-            raise OTPmeException(_("You must be root for this command."))
 
         try:
             fd = open(config.master_pass_salt_file, "r")
@@ -5178,8 +5435,10 @@ class CommandHandler(object):
             msg = _("Error reading master pass salt from file: {e}")
             msg = msg.format(e=e)
             raise OTPmeException(msg) from e
-        # Re-gen master key.
-        config.gen_master_key(master_pass_salt=master_pass_salt)
+        # Re-gen master key. A key file that is there has to be what the
+        # password gives, see gen_master_key().
+        config.gen_master_key(master_pass_salt=master_pass_salt,
+                            must_match=True)
 
     def renew_auth_key(self):
         """ Regenerate host auth key. """
@@ -5226,8 +5485,8 @@ class CommandHandler(object):
         self.handle_command(command="controld", command_line=["reload"])
         self.handle_command(command="agent", command_line=["reload"])
 
-    def renew_host_cert(self, key_len=None):
-        """ Regenerate host auth key. """
+    def renew_host_cert(self):
+        """ Get a new certificate for the key this host has. """
         config.daemon_mode = True
         #init_otpme()
         self.init()
@@ -5304,7 +5563,7 @@ class CommandHandler(object):
         return response
 
     def delete_object(self, object_id):
-        """ Dump object config. """
+        """ Delete an object as it is stored, see mgmt1._cmd_delete_object. """
         #init_otpme()
         self.init()
         register_module("otpme.lib.multiprocessing")
@@ -5362,6 +5621,7 @@ class CommandHandler(object):
                                     command_args=command_args)
         if status is False:
             raise OTPmeException(response)
+        return response
 
     def gen_motp(self, **kwargs):
         """ Generate MOTP. """
@@ -5653,7 +5913,8 @@ class CommandHandler(object):
         #		--tag sometag=withvalue
         #
         if signer_type not in OTPmeSigner.supported_signer_types:
-            msg = f"Invalid signer type: {signer_type}"
+            msg = _("Invalid signer type: {signer_type}")
+            msg = msg.format(signer_type=signer_type)
             raise OTPmeException(msg)
 
         if allow_throwaway_key and signer_type != "remote_access":
@@ -5681,11 +5942,14 @@ class CommandHandler(object):
         if tags:
             resolved_tags = resolve_tags(tags=tags, from_uuid=False)
 
-        # Get signer UUID.
+        # Get signer UUID. OTPmeOid() says a bad OID with an
+        # OTPmeException, not with InvalidOID: the message below was
+        # never seen.
         try:
             object_oid = oid.get(object_oid)
-        except InvalidOID as err:
-            msg = f"Invaild signer OID: {object_oid}"
+        except OTPmeException as err:
+            msg = _("Invalid signer OID (e.g. 'user|realm/name' or 'role|realm/site/name'): {object_oid}")
+            msg = msg.format(object_oid=object_oid)
             raise OTPmeException(msg) from err
         object_uuid = stuff.resolve_oid(object_oid)
 
@@ -5697,21 +5961,40 @@ class CommandHandler(object):
                             verify_token_opts=verify_token_opts,
                             allow_throwaway_key=allow_throwaway_key)
         signer.load()
+        # A role whose members have no sign key gives no key at all:
+        # the signer would be there and nothing would check out.
+        if not signer.signers:
+            msg = _("No sign key found for any member of: {object_oid}")
+            msg = msg.format(object_oid=object_oid)
+            raise OTPmeException(msg)
 
         # Save signer to file.
         self.save_signer(signer=signer,
                         private=private)
 
-    def save_signer(self, signer, private):
-        """ Save signer to signers directory. """
+    def save_signer(self, signer, private, replace=False):
+        """ Save signer to signers directory.
+
+        <replace> writes over the file of the same signer, which is what
+        enable, disable and update do. They deleted it and wrote it
+        again, and a write that failed in between left no signer at all.
+        create_file() replaces a file whole.
+        """
         from otpme.lib import filetools
         signers = self.get_signers(private=private)
         for x in signers:
+            if replace and x.uuid == signer.uuid:
+                continue
             if signer == x:
-                msg = f"Signer already exists: {x.uuid}: {x.object_oid}"
+                msg = _("Signer already exists: {uuid}: {object_oid}")
+                msg = msg.format(uuid=x.uuid, object_oid=x.object_oid)
                 raise OTPmeException(msg)
 
-        file_owner = config.user
+        # The signers of the host are what it trusts: root's, and
+        # readable for everyone, as they hold public keys only. They
+        # belonged to otpme and could be written by its group, so any
+        # process of that user could change what the host trusts.
+        file_owner = "root"
         signers_dir = config.signers_dir
         if private:
             file_owner=config.system_user()
@@ -5722,9 +6005,10 @@ class CommandHandler(object):
             try:
                 filetools.create_dir(signers_dir,
                                     user=file_owner,
-                                    mode=0o775)
+                                    mode=0o755)
             except Exception as e:
-                msg = f"Failed to create signers dir: {signers_dir}: {e}"
+                msg = _("Failed to create signers dir: {signers_dir}: {e}")
+                msg = msg.format(signers_dir=signers_dir, e=e)
                 raise OTPmeException(msg) from e
 
         file_content = signer.dumps()
@@ -5733,9 +6017,10 @@ class CommandHandler(object):
             filetools.create_file(path=signers_file,
                                 content=file_content,
                                 user=file_owner,
-                                mode=0o774)
+                                mode=0o644)
         except Exception as e:
-            msg = f"Failed to write signers file: {signers_file}: {e}"
+            msg = _("Failed to write signers file: {signers_file}: {e}")
+            msg = msg.format(signers_file=signers_file, e=e)
             raise OTPmeException(msg) from e
 
     def del_signer(self, signer_uuid, username=None, private=False, **kwargs):
@@ -5751,19 +6036,21 @@ class CommandHandler(object):
                                     username=username,
                                     private=private)
         if not signer:
-            msg = "Signer does not exist."
+            msg = _("Signer does not exist.")
             raise OTPmeException(msg)
 
         signers_dir = os.path.join(signers_dir, signer.signer_type)
         signers_file = os.path.join(signers_dir, signer.uuid)
         if not os.path.exists(signers_file):
-            msg = f"Signer file does not exists: {signer_uuid}: {signers_file}"
+            msg = _("Signer file does not exist: {signer_uuid}: {signers_file}")
+            msg = msg.format(signer_uuid=signer_uuid, signers_file=signers_file)
             raise OTPmeException(msg)
 
         try:
             filetools.delete(signers_file)
         except Exception as e:
-            msg = f"Failed to delete signers file: {signers_file}: {e}"
+            msg = _("Failed to delete signers file: {signers_file}: {e}")
+            msg = msg.format(signers_file=signers_file, e=e)
             raise OTPmeException(msg) from e
 
     def update_signer(self, signer_uuid=None, private=False,
@@ -5788,23 +6075,9 @@ class CommandHandler(object):
         signer is added, and this is the only way to change one of them
         without taking the signer away and putting it back.
         """
-        if not signer_uuid and not signer_type:
-            msg = "Need <signer_uuid> or <signer_type>."
-            raise OTPmeException(msg)
-
-        result = self.get_signers(signer_uuid=signer_uuid,
-                                    signer_type=signer_type,
-                                    private=private)
-        if not result:
-            if signer_uuid:
-                msg = f"Unknown signer: {signer_uuid}"
-                raise OTPmeException(msg)
-            msg = f"No signers of type found: {signer_type}"
-            raise OTPmeException(msg)
-
-        signers = result
-        if signer_uuid:
-            signers = [result]
+        signers = self.get_signers_to_change(signer_uuid=signer_uuid,
+                                            signer_type=signer_type,
+                                            private=private)
 
         if allow_throwaway_key:
             not_remote_access = [x for x in signers
@@ -5813,20 +6086,32 @@ class CommandHandler(object):
                 msg = _("Only a remote_access signer takes --allow-throwaway-key.")
                 raise OTPmeException(msg)
 
+        # One signer that cannot be loaded (with <remove_gone>: its user
+        # was deleted) stopped the loop, and the ones after it were not
+        # updated, without a word about them.
+        failed = []
         for signer in signers:
-            signer.load(keep_gone=not remove_gone)
+            try:
+                signer.load(keep_gone=not remove_gone)
+            except Exception as e:
+                failed.append(f"{signer.uuid}: {signer.object_oid}: {e}")
+                continue
             if verify_token_opts is not None:
                 signer.verify_token_opts = verify_token_opts
             if allow_throwaway_key is not None:
                 signer.allow_throwaway_key = allow_throwaway_key
-            self.del_signer(signer.uuid, private=private)
-            self.save_signer(signer=signer, private=private)
+            self.save_signer(signer=signer, private=private, replace=True)
+        if failed:
+            msg = _("Signers not updated:\n{failed}")
+            msg = msg.format(failed="\n".join(failed))
+            raise OTPmeException(msg)
 
-    def enable_signer(self, signer_uuid=None, private=False,
-        signer_type=None, **kwargs):
-        """ Enaable signer. """
+    def get_signers_to_change(self, signer_uuid=None, signer_type=None,
+        private=False):
+        """ One signer by its UUID, or all of a type: what update,
+        enable and disable work on. """
         if not signer_uuid and not signer_type:
-            msg = "Need <signer_uuid> or <signer_type>."
+            msg = _("Need <signer_uuid> or <signer_type>.")
             raise OTPmeException(msg)
 
         result = self.get_signers(signer_uuid=signer_uuid,
@@ -5834,45 +6119,36 @@ class CommandHandler(object):
                                     private=private)
         if not result:
             if signer_uuid:
-                msg = f"Unknown signer: {signer_uuid}"
+                msg = _("Unknown signer: {signer_uuid}")
+                msg = msg.format(signer_uuid=signer_uuid)
                 raise OTPmeException(msg)
-            msg = f"No signers of type found: {signer_type}"
+            msg = _("No signers of type found: {signer_type}")
+            msg = msg.format(signer_type=signer_type)
             raise OTPmeException(msg)
 
-        signers = result
         if signer_uuid:
-            signers = [result]
+            return [result]
+        return result
 
+    def enable_signer(self, signer_uuid=None, private=False,
+        signer_type=None, **kwargs):
+        """ Enable signer. """
+        signers = self.get_signers_to_change(signer_uuid=signer_uuid,
+                                            signer_type=signer_type,
+                                            private=private)
         for signer in signers:
             signer.enable()
-            self.del_signer(signer.uuid, private=private)
-            self.save_signer(signer=signer, private=private)
+            self.save_signer(signer=signer, private=private, replace=True)
 
     def disable_signer(self, signer_uuid=None, private=False,
         signer_type=None, **kwargs):
         """ Disable signer. """
-        if not signer_uuid and not signer_type:
-            msg = "Need <signer_uuid> or <signer_type>."
-            raise OTPmeException(msg)
-
-        result = self.get_signers(signer_uuid=signer_uuid,
-                                    signer_type=signer_type,
-                                    private=private)
-        if not result:
-            if signer_uuid:
-                msg = f"Unknown signer: {signer_uuid}"
-                raise OTPmeException(msg)
-            msg = f"No signers of type found: {signer_type}"
-            raise OTPmeException(msg)
-
-        signers = result
-        if signer_uuid:
-            signers = [result]
-
+        signers = self.get_signers_to_change(signer_uuid=signer_uuid,
+                                            signer_type=signer_type,
+                                            private=private)
         for signer in signers:
             signer.disable()
-            self.del_signer(signer.uuid, private=private)
-            self.save_signer(signer=signer, private=private)
+            self.save_signer(signer=signer, private=private, replace=True)
 
     def get_signers(self, signer_type=None, signer_uuid=None,
         private=False, username=None, pinned=None):
@@ -5881,7 +6157,8 @@ class CommandHandler(object):
 
         if private and signer_type:
             if signer_type not in config.valid_private_signer_types:
-                msg = f"Invalid private signer type: {signer_type}"
+                msg = _("Invalid private signer type: {signer_type}")
+                msg = msg.format(signer_type=signer_type)
                 raise OTPmeException(msg)
 
         signers_dir = config.signers_dir
@@ -5908,7 +6185,8 @@ class CommandHandler(object):
                     file_content = fd.read()
                     fd.close()
                 except Exception as e:
-                    msg = f"Failed to read signers file: {signers_file}: {e}"
+                    msg = _("Failed to read signers file: {signers_file}: {e}")
+                    msg = msg.format(signers_file=signers_file, e=e)
                     raise OTPmeException(msg) from e
 
                 x_signer = OTPmeSigner()
@@ -5965,7 +6243,8 @@ class CommandHandler(object):
         if signer_uuid:
             # One UUID answers with one signer, not with a list of them.
             if not signers:
-                msg = f"Unknown signer: {signer_uuid}"
+                msg = _("Unknown signer: {signer_uuid}")
+                msg = msg.format(signer_uuid=signer_uuid)
                 raise OTPmeException(msg)
             signers = [signers]
         for x_signer in signers:
@@ -6056,10 +6335,10 @@ class CommandHandler(object):
         # Remove top border.
         output = "\n".join(output.split("\n")[1:-1])
 
-        # Add info on private sigeners.
+        # Add info on private signers.
         if private:
             system_user = config.system_user()
-            msg = _("{output}\n\n***Private singers of user '{system_user}'***")
+            msg = _("{output}\n\n***Private signers of user '{system_user}'***")
             output = msg.format(output=output, system_user=system_user)
 
         return output
@@ -6193,6 +6472,8 @@ class CommandHandler(object):
                                 **kwargs)
         except Exception as e:
             raise OTPmeException(str(e)) from e
+        # login_benchmark --logout takes the session from here.
+        self.login_response = login_handler.login_response
         login_message = login_handler.login_response['login_message']
         return login_message
 
@@ -7603,7 +7884,7 @@ class CommandHandler(object):
             if str(e) == "help":
                 return self.get_help()
             return self.get_help(str(e))
-        host = command_args.get('host_name')
+        host = command_args.get('host')
         if not host:
             return self.get_help(_("Need a host."))
 
@@ -8009,9 +8290,12 @@ class CommandHandler(object):
         for sc_type in sc_types:
             if sc_type in supported_smartcards:
                 continue
-            msg = f"Unsupported smartcard type: {sc_type}"
+            msg = _("Unsupported smartcard type: {sc_type}")
+            msg = msg.format(sc_type=sc_type)
             raise OTPmeException(msg)
-        detect_smartcard(sc_types, detect_only=True, print_devices=True)
+        found = detect_smartcard(sc_types, detect_only=True, print_devices=True)
+        if not found:
+            raise OTPmeException(_("No smartcard found."))
 
     def handle_token_deploy_command(self):
         """ Handle token deploy command. """
@@ -9269,28 +9553,6 @@ class CommandHandler(object):
                                 interactive=False)
         return result
 
-    def handle_add_user_command(self):
-        """ Handle add user command. """
-        if len(self.command_line) < 1:
-            return self.get_help()
-
-        filename = self.command_line[0]
-        try:
-            fd = open(filename,'r')
-        except (OSError, IOError) as e:
-            msg = _("Error reading users file: {e}")
-            msg = msg.format(e=e)
-            raise OTPmeException(msg) from e
-
-        user_list = []
-        for line in fd:
-            if not line.startswith("#"):
-                username = line.replace("\n", "")
-                user_list.append(username)
-
-        fd.close()
-        return self.add_users(user_list)
-
     def handle_key_script_command(self, subcommand):
         """ Handle key script commands. """
         # Init otpme.
@@ -9373,29 +9635,32 @@ class CommandHandler(object):
         except Exception:
             pass
         try:
-            if local_command_args['password']:
-                if 'no_rsa' in local_command_args:
-                    aes_pass = local_command_args['password']
-        except Exception:
-            pass
-        try:
             if local_command_args['force_pass']:
                 script_command.append("--force-pass")
         except Exception:
             pass
 
-        try:
-            if local_command_args['stdin_pass']:
-                try:
-                    password = sys.stdin.readline().replace("\n", "")
-                except Exception:
-                    password = None
-                if 'no_rsa' in local_command_args:
-                    aes_pass = password
-                else:
-                    key_pass = password
-        except Exception:
-            pass
+        # Which passphrase a password given here is. sign: the one of the
+        # private key. encrypt: the one the AES key is protected with --
+        # with a key instead it is not used, nothing is asked for then.
+        # decrypt: either, and the file says which, so it goes to both
+        # and the other one stays unused. It went to the AES passphrase
+        # only with --no-rsa, which decrypt does not have: there --pass
+        # did nothing, and --force-pass asked for the password it got.
+        password = local_command_args.get('password')
+        if local_command_args.get('stdin_pass'):
+            try:
+                password = sys.stdin.readline().replace("\n", "")
+            except Exception:
+                password = None
+        if password:
+            if subcommand == "encrypt":
+                aes_pass = password
+            elif subcommand == "decrypt":
+                aes_pass = password
+                key_pass = password
+            else:
+                key_pass = password
 
         algo = None
         if script_command[0] == "sign" \

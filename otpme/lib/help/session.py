@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-session show [-a] [--fields <f1,f2,f3>] [-z <size_limit>] [--sort-by <field>] [--reverse-sort] [search_regex]'),
-                    'cmd'   :   '-a :show_all=True: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse-sort :reverse_sort=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [search_regex]',
+                    'cmd'   :   '-a :show_all=True: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse-sort :reverse_sort=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": ["search_regex"]',
                     '_help' :   {
                                     'cmd'                   : _('Show sessions.'),
                                     '-a'                    : _('Show all sessions.'),
@@ -32,13 +32,13 @@ cmd_help = {
                                     '--reverse-sort'        : _('Sort in reverse order'),
                                     '--raw'                 : _('Output table without any headers/borders.'),
                                     '--csv'                 : _('Output table as CSV.'),
-                                    '--csv-sep <separator>' : _('Output table as CSV.'),
+                                    '--csv-sep <separator>' : _('Separator between the CSV columns.'),
                                 },
                 },
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-session list [-a] [search_regex]'),
-                    'cmd'   :   '-a :show_all=True: [search_regex]',
+                    'cmd'   :   '-a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                   : _('List sessions.'),
                                     '-a'                    : _('List all sessions.'),

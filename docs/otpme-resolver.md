@@ -42,6 +42,20 @@ Delete a resolver.
 **show \[**-a**\] \[*resolver*\]**  
 Display resolver information. Use **-a** to show all resolvers.
 
+<!-- -->
+
+**show_oid \[**--full**\] *resolver***  
+Show the OID of the resolver: **resolver\|\<realm\>/\<site\>/\<name\>**.
+With **--full** the full OID, which names the unit as well:
+**resolver\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
+Needs the ACL **view_public:object**.
+
+**show_uuid *resolver***  
+Show the UUID of the resolver.  
+Needs the ACL **view_public:object**.
+
+<!-- -->
+
 **list \[*regex*\]**  
 List resolvers, optionally filtered by regex pattern.
 
@@ -50,6 +64,17 @@ Enable a disabled resolver.
 
 **disable *resolver***  
 Disable a resolver without deleting it.
+
+**auto_disable \[**-u**\] *resolver* *time***  
+Set auto-disable time. It is either a relative time with a leading
+**+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
+The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
+**otpme**(7). A relative time counts from when it is set, and again from
+when the resolver is enabled. **0** removes it. It is refused for an
+object the realm or a site comes with, e.g. the admin user; a time set
+on one before does nothing. Use **-u** to disable the resolver once it
+was unused for the given time. That takes a relative time; a resolver
+that was never used counts from when this was set.
 
 **rename *resolver* *new_name***  
 Rename a resolver.
@@ -157,10 +182,11 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *resolver***  
-List the policies attached to the resolver. Use **--return-type** to
-select the attribute returned (**name**, **read_oid**, **full_oid**,
-**uuid**). Use **--policy-types** to list only policies of the given
-types; these are policy types, not policy names.  
+List the policies attached to the resolver, the disabled ones too,
+marked **(disabled)**. Use **--return-type** to select the attribute
+returned (**name**, **read_oid**, **full_oid**, **uuid**). Use
+**--policy-types** to list only policies of the given types; these are
+policy types, not policy names.  
 Needs the ACL **view:policies**.
 
 ## ACL Management
@@ -175,10 +201,12 @@ Remove an access control entry.
 Display all ACLs for the resolver.
 
 **enable_acl_inheritance *resolver***  
-Enable ACL inheritance from parent objects.
-
 **disable_acl_inheritance *resolver***  
-Disable ACL inheritance.
+ACL inheritance says whether a move swaps the default ACLs of the old
+unit for those of the new one. A resolver cannot be moved, so for a
+resolver it changes nothing. A new resolver gets the default ACLs of its
+unit, and **add_acl -a** or **-r** on a unit reach it either way.  
+Needs the ACL **enable:acl_inheritance** or **disable:acl_inheritance**.
 
 ## Configuration and Attributes
 
@@ -227,8 +255,8 @@ Remove every entry of the changelog.
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
-refused. OTPme asks the token you are signed in with first, then the
-object.
+refused. A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 
 ## Import/Export
 
@@ -316,6 +344,19 @@ Run the resolver to sync objects
 
 **otpme-resolver run --object-types user ad_resolver**  
 Sync only users
+
+# AUTH ON ACTION HOOKS
+
+An auth on action policy can ask for a login again before these actions.
+See **Auth On Action Policy** in **otpme-policy**(1). A resolver has the
+hooks every object type has, and these:
+
+> add_attribute_mapping, add_filter, add_server, change_ca_data,
+> change_key_attribute, change_ldap_base, change_login_dn,
+> change_login_password, del_attribute_mapping, del_filter, del_server,
+> delete_objects, disable_deletions, disable_sync_units,
+> enable_deletions, enable_sync_units, get_resolver_objects, run,
+> set_config_parameter, show_config_parameters, test.
 
 # FILES
 

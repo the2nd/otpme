@@ -161,6 +161,20 @@ given.
 Show password objects, without their entries. A name can hold **\***,
 and a unit path that ends with **/** shows the passwords of that unit.
 
+<!-- -->
+
+**show_oid \[**--full**\] *password***  
+Show the OID of the password: **pass\|\<realm\>/\<site\>/\<name\>**.
+With **--full** the full OID, which names the unit as well:
+**pass\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
+Needs the ACL **view_public:object**.
+
+**show_uuid *password***  
+Show the UUID of the password.  
+Needs the ACL **view_public:object**.
+
+<!-- -->
+
 **list \[**--offline**\] \[**--attribute** *attribute*\] \[**-a**\] \[*regex*\]**  
 List password objects.
 
@@ -173,6 +187,15 @@ count from then on. Run **update_keys** when they differ.
 
 **touch *password***  
 Write the object again, for example to build its index again.
+
+**auto_disable *password* *time***  
+Set auto-disable time. It is either a relative time with a leading
+**+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
+The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
+**otpme**(7). A relative time counts from when it is set, and again from
+when the password object is enabled. **0** removes it. It is refused for
+an object the realm or a site comes with, e.g. the admin user; a time
+set on one before does nothing.
 
 ## Entries
 
@@ -283,10 +306,25 @@ Remove an access control entry.
 Show all ACLs of the password object.
 
 **enable_acl_inheritance *password***  
-Take the default ACLs of the unit again.
+Let a move of the password swap its default ACLs: what the old unit
+handed down is taken away, and what the new unit hands down is given. It
+does by default, because who may see a password is said on its unit.
+
+Only a move asks this. A new password gets the default ACLs of its unit,
+and **add_acl -a** or **-r** on a unit reach it either way. A move with
+**--keep-acls** leaves its ACLs alone all the same.
+
+A move by somebody who does not hold **add:acl** and **delete:acl** on
+the password leaves its ACLs alone as well, and says so. Otherwise
+moving a password into a unit would be a way of handing yourself the
+default ACLs of that unit.
+
+Needs the ACL **enable:acl_inheritance**.
 
 **disable_acl_inheritance *password***  
-Stop taking the default ACLs of the unit.
+A move leaves the ACLs of the password as they are: whoever could reach
+it in the old unit still can, and the new unit gives nobody anything.  
+Needs the ACL **disable:acl_inheritance**.
 
 ## Configuration
 
@@ -408,9 +446,15 @@ Let the hosts in the group "admins" keep them as well
 **otpme-pass show_password --offline node1**  
 Read the password this host keeps, without asking a node
 
+# AUTH ON ACTION HOOKS
+
+An auth on action policy can ask for a login again before these actions.
+See **Auth On Action Policy** in **otpme-policy**(1). A pass has the
+hooks every object type has, and no others.
+
 # FILES
 
-*/var/cache/otpme/offline/*user_uuid*/pass.json*  
+*/var/cache/otpme/offline/\<user_uuid\>/pass.json*  
 The passwords a host keeps for the user, encrypted.
 
 # SEE ALSO

@@ -23,6 +23,7 @@ from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.protocols.utils import register_commands
@@ -188,6 +189,23 @@ commands = {
                     },
                 },
             },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'edit_changelog'   : {
             'default'    : {
                 'exists'    : {
@@ -218,6 +236,16 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'auto_disable'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
+                    'oargs'             : ['unused'],
                     'job_type'          : 'process',
                     },
                 },
@@ -955,14 +983,6 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_attributes',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_attributes'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'show_attributes',
                     'job_type'          : 'thread',
                     },
                 },
@@ -1946,7 +1966,7 @@ class Client(OTPmeClientObject):
     @object_changelog("change OIDC sector identifier URI {uri}")
     def change_oidc_sector_identifier_uri(
         self,
-        uri: str=None,
+        uri: Union[str,None]=None,
         validate: bool=False,
         clear: bool=False,
         force: bool=False,
@@ -2021,7 +2041,7 @@ class Client(OTPmeClientObject):
     @object_changelog("change OIDC backchannel logout URI {uri}")
     def change_oidc_backchannel_logout_uri(
         self,
-        uri: str=None,
+        uri: Union[str,None]=None,
         clear: bool=False,
         force: bool=False,
         run_policies: bool=True,
@@ -2239,7 +2259,7 @@ class Client(OTPmeClientObject):
     @object_changelog("change OIDC backchannel CA certificate")
     def change_oidc_backchannel_ca_cert(
         self,
-        ca_cert: str=None,
+        ca_cert: Union[str,None]=None,
         clear: bool=False,
         force: bool=False,
         run_policies: bool=True,
@@ -3060,7 +3080,7 @@ class Client(OTPmeClientObject):
     @object_changelog("change login URL {login_url}")
     def change_login_url(
         self,
-        login_url: bool=False,
+        login_url: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
@@ -3096,7 +3116,7 @@ class Client(OTPmeClientObject):
     @object_changelog("change helper URL {helper_url}")
     def change_helper_url(
         self,
-        helper_url: str=None,
+        helper_url: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
@@ -3439,8 +3459,8 @@ class Client(OTPmeClientObject):
             if not self.verify_acl("delete:object"):
                 del_acl = f"delete:{self.type}"
                 if not parent_object.verify_acl(del_acl):
-                    msg = _("Permission denied: {client_name}")
-                    msg = msg.format(client_name=self.name)
+                    msg = denied_msg(self, "delete:object",
+                                    others=[(parent_object, del_acl)])
                     return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:
@@ -3473,7 +3493,7 @@ class Client(OTPmeClientObject):
         ):
         """ Show client config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

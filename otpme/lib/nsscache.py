@@ -98,7 +98,11 @@ def gen_cachefile_path(object_id, action):
         msg = _("Invalid action: {action}")
         msg = msg.format(action=action)
         raise OTPmeException(msg)
-    path = f"{config.nsscache_objects_dir}/{object_id.full_oid.replace('/', '+')}.{action}"
+    # Named by the read OID. The full one names the unit, and an object
+    # moved before update() reads the file was looked for where it had
+    # been: found by its read OID all the same, but built with a unit
+    # that is gone, and not found by the search for its entry.
+    path = f"{config.nsscache_objects_dir}/{object_id.read_oid.replace('/', '+')}.{action}"
     return path
 
 def update_sync_map(lock=None, syncing=False):
@@ -335,9 +339,15 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
             file_path = os.path.join(config.nsscache_objects_dir, f)
             x_oid = ".".join(f.split(".")[:-1]).replace("+", "/")
             x_oid = oid.get(x_oid)
+            # Only roles and groups have members to update, and that
+            # the OID says without loading the object.
+            if x_oid.object_type not in ("role", "group"):
+                continue
             if x_oid.realm != realm:
                 continue
-            if x_oid.site != site:
+            # The read OID of a group has no site: its name is unique
+            # in the realm. Its site is checked once it is loaded.
+            if x_oid.site and x_oid.site != site:
                 continue
 
             counter += 1
@@ -450,7 +460,7 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                                     site=site,
                                     object_type=object_type,
                                     attributes=search_attrs,
-                                    return_type="full_oid")
+                                    return_type="read_oid")
             if result:
                 try:
                     x_updated_objects = updated_objects[object_type]
@@ -474,12 +484,16 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
             action = f.split(".")[-1]
             if action not in valid_actions:
                 continue
-            full_oid = ".".join(f.split(".")[:-1]).replace("+", "/")
-            object_id = oid.get(full_oid)
+            # A read OID, or a full one from a file written before.
+            # Either way it is the read OID that finds the object.
+            spool_oid = ".".join(f.split(".")[:-1]).replace("+", "/")
+            object_id = oid.get(spool_oid)
             object_type = object_id.object_type
             if object_id.realm != realm:
                 continue
-            if object_id.site != site:
+            # The read OID of a user or group has no site, their names
+            # are unique in the realm.
+            if object_id.site and object_id.site != site:
                 continue
 
             file_path = os.path.join(config.nsscache_objects_dir, f)
@@ -502,7 +516,7 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                     x_updated_objects = updated_objects[object_type]
                 except Exception:
                     x_updated_objects = []
-                x_updated_objects.append(full_oid)
+                x_updated_objects.append(object_id.read_oid)
                 updated_objects[object_type] = x_updated_objects
 
             if action == "remove":
@@ -548,7 +562,7 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                             ]
         # Get objects.
         result = backend.search(object_type=object_type,
-                                attribute="full_oid",
+                                attribute="read_oid",
                                 values=object_oids,
                                 return_attributes=return_attrs)
         object_attributes[object_type] = result

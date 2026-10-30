@@ -846,8 +846,16 @@ decrypt_file () {
 		base64 -d | openssl enc -d -$CIPHER -salt -pbkdf2 -in /dev/stdin -pass file:<(echo -n "$AES_KEY") > "$OUTFILE"
 	fi
 
-	# Handle RSA encrypted data.
+	# Handle RSA encrypted data (encrypt --rsa): the file itself encrypted
+	# with the key, base64. Into $OUTFILE like the AES data above; it went
+	# to stdout.
 	if [ "$ENC_TYPE" = "RSA" ] ; then
+		decrypt_key_data > "$OUTFILE"
+	fi
+}
+
+decrypt_key_data () {
+	{
 		if [ "$YUBIKEY_PIV" = "true" ] ; then
 			if [ "$USE_AGENT_PIV" = "true" ] ; then
 				USE_AGENT_OPT="--use-agent"
@@ -865,7 +873,23 @@ decrypt_file () {
 				fi
 				PIN_OPT="--pin env:PIN"
 			fi
-			echo -n "$RSA_DATA" | otpme-yk-piv $USE_AGENT_OPT --decrypt $PIN_OPT
+			# The data was never read here: $RSA_DATA was empty.
+			if ! YKPIV_ENC_ALGO="$(get_piv_enc_algo)" ; then
+				echo "decrypt_file: failed to fetch encrypt key algo" 1>&2
+				return 1
+			fi
+			case "${YKPIV_ENC_ALGO:-rsa}" in
+				rsa)
+					base64 -d | otpme-yk-piv $USE_AGENT_OPT --decrypt $PIN_OPT
+				;;
+				x25519)
+					base64 -d | otpme-yk-piv $USE_AGENT_OPT --hpke-decrypt $PIN_OPT
+				;;
+				*)
+					echo "decrypt_file: unsupported yubikey-piv encrypt algo: $YKPIV_ENC_ALGO" 1>&2
+					return 1
+				;;
+			esac
 		elif [ "$KEY_MODE" = "server" ] ; then
 			RSA_DATA="$(cat)"
 			if [ "$_OTPME_KEYSCRIPT_KEY_PASS" = "" ] ; then
@@ -876,9 +900,22 @@ decrypt_file () {
 			fi
 		elif [ "$KEY_MODE" = "client" ] ; then
 			PRIVATE_KEY="$(get_private_key encrypt)"
-			base64 -d | openssl pkeyutl -decrypt  -inkey <(echo -n "$PRIVATE_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+			case "$ALGO" in
+				rsa)
+					base64 -d | openssl pkeyutl -decrypt  -inkey <(echo -n "$PRIVATE_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+				;;
+				x25519)
+					# encrypt --rsa with an X25519 key: the file
+					# HPKE-encrypted to it (see encrypt).
+					base64 -d | otpme-hpke decrypt --recipient-priv <(echo -n "$PRIVATE_KEY")
+				;;
+				*)
+					echo "decrypt_file: unsupported algo $ALGO" 1>&2
+					return 1
+				;;
+			esac
 		fi
-	fi
+	}
 }
 
 # Get command

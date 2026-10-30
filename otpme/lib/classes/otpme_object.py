@@ -44,6 +44,7 @@ from otpme.lib.otpme_acl import OTPmeACL
 from otpme.lib.cache import config_cache
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.encoding.base import encode
 from otpme.lib.cache import ldap_search_cache
 from otpme.lib.job.callback import JobCallback
@@ -124,7 +125,8 @@ global_write_acls = [
                     "delete",
                     "enable",
                     "disable",
-                    "import",
+                    # No "import": nothing asks for it, reading an
+                    # object in needs admin rights.
                     "touch",
                     # move() asks for it, here and in Unit.move(), and
                     # it was in no list: moving an object to another
@@ -165,15 +167,19 @@ sync_safe_acls = [
                 ]
 
 global_read_value_acls = {
-                    "view"      : [
-                                "uuid",
-                                "path",
-                                "rel_path",
-                                "read_oid",
-                                "full_oid",
-                                "checksum",
-                                "sync_checksum",
+                    # show_oid(), show_uuid() and the first check of
+                    # every show_config() ask for it.
+                    "view_public" : [
                                 "object",
+                                ],
+                    # No uuid, path, rel_path, read_oid, full_oid,
+                    # checksum or sync_checksum: nothing asked for them,
+                    # show prints the OID and the UUID with view:object.
+                    "view"      : [
+                                "object",
+                                # list_acls() asks for it.
+                                "acl",
+                                "last_modified_by",
                                 "policies",
                                 "extension",
                                 "attribute",
@@ -190,6 +196,7 @@ global_read_value_acls = {
                                 "resolver_key",
                                 "resolver_checksum",
                                 "changelog",
+                                "auto_disable",
                                 ],
             }
 
@@ -233,6 +240,7 @@ global_write_value_acls = {
                                 # nobody but an admin could ever hold
                                 # it.
                                 "description",
+                                "auto_disable",
                                 ],
                     "set"      : [
                                 "config",
@@ -295,6 +303,40 @@ def get_acls_string(acls):
     if isinstance(acls, str):
         return acls
     return ", ".join([str(x) for x in acls])
+
+def lookup_acl_owner(uuid, acl_owners, object_type=None):
+    """ The type and the name of an ACL owner.
+
+    handle_one_acl() wants it three times: whether it exists at all,
+    which type it is where the ACL carries only the UUID, and its name
+    for the message. Each of them asked the index again, for every ACL
+    and every object of a walk, although the owner of an ACL does not
+    change while the walk runs. And the lookup is cached, but writing
+    an object throws that cache away (cache.add_instance()), so a walk
+    that writes all the time never hits it.
+
+    So it is asked once and remembered in <acl_owners>, a dict that
+    travels with the walk. Returns (type, name), both None where there
+    is no such object.
+    """
+    try:
+        return acl_owners[uuid]
+    except KeyError:
+        pass
+    owner = (None, None)
+    if object_type:
+        object_id = backend.get_oid(uuid=uuid,
+                                    object_type=object_type,
+                                    instance=True)
+    else:
+        # Only these two can own an ACL, see otpme_acl.decode().
+        object_id = backend.get_oid(uuid=uuid,
+                                    object_types=['role', 'token'],
+                                    instance=True)
+    if object_id:
+        owner = (object_id.object_type, object_id.rel_path)
+    acl_owners[uuid] = owner
+    return owner
 
 def get_global_acls(split=False):
     """ Get all supported object ACLs """
@@ -377,6 +419,11 @@ def run_pre_post_add_policies():
                 verify_acls = f_kwargs['verify_acls']
             except Exception:
                 verify_acls = True
+            # The objecttemplates policy sets the template in a pre-add
+            # hook, which runs before the method. So --no-template has
+            # to be told to it here, not in add() itself.
+            if f_kwargs.get('no_template'):
+                self.ignore_policy_types.append("objecttemplates")
             if run_policies:
                 try:
                     self._run_pre_add_policies(callback=callback)
@@ -1404,10 +1451,10 @@ class OTPmeLockObject(object):
 
     def release_lock(
         self,
-        lock_caller: str=None,
+        lock_caller: Union[str,None]=None,
         recursive: bool=False,
         force: bool=False,
-        callback: JobCallback=None,
+        callback: Union[JobCallback,None]=None,
         ):
         """ Release object lock. """
         if self.offline:
@@ -1760,9 +1807,17 @@ class OTPmeBaseObject(OTPmeLockObject):
             unit_oid = backend.get_oid(self.unit_uuid,
                                         object_type="unit",
                                         instance=True)
+            # A unit that is gone, e.g. on a node that was disabled while
+            # the unit was moved away: its objects still name the old one
+            # until the sync writes them anew. Loaded they have to be, for
+            # that sync (and to be removed); the message was made here and
+            # then the None was used all the same. What the OID said about
+            # the unit stays.
             if not unit_oid:
-                msg = _("Unknown unit: {obj}: {unit_uuid}")
-                msg = msg.format(obj=self, unit_uuid=self.unit_uuid)
+                log_msg = _("Unknown unit: {obj}: {unit_uuid}", log=True)[1]
+                log_msg = log_msg.format(obj=self, unit_uuid=self.unit_uuid)
+                logger.warning(log_msg)
+                return
             self.unit = unit_oid.rel_path
             return
 
@@ -2991,7 +3046,7 @@ class OTPmeBaseObject(OTPmeLockObject):
     @object_lock()
     def _write(self,
         cluster: bool=True,
-        no_transaction: bool=None,
+        no_transaction: Union[bool,None]=None,
         wait_for_cluster_writes: bool=True,
         update_last_modified: bool=True,
         update_last_modified_by: bool=True,
@@ -3254,6 +3309,23 @@ class OTPmeBaseObject(OTPmeLockObject):
         index.pop(key, None)
         if value:
             index[key] = [value]
+        object_config['INDEX'] = index
+
+    def set_config_acl_inheritance_off(self, object_config):
+        """ Switch ACL inheritance off in a config, and in its index.
+
+        For an upgrade_to_<n>(), see set_config_index(): the index of
+        the config as well, or a config the sync writes as it is says
+        off while the index of the node says on. Not with
+        set_config_index(), which leaves a false value out.
+        """
+        object_config['ACL_INHERITANCE_ENABLED'] = False
+        try:
+            index = object_config['INDEX']
+        except KeyError:
+            index = None
+        index = dict(index or {})
+        index['acl_inheritance_enabled'] = [False]
         object_config['INDEX'] = index
 
     def del_index(
@@ -3649,7 +3721,7 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         new_oid: Union[oid.OTPmeOid,None]=None,
         switch_lock: bool=False,
-        lock_caller: str=None,
+        lock_caller: Union[str,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -3785,9 +3857,11 @@ class OTPmeObject(OTPmeBaseObject):
         return auto_disable_time
 
     def get_auto_disable_time(self):
+        check_time = None
         if self.unused_disable:
             check_time = self.get_last_used_time()
-        else:
+        # Never used counts from when auto disable was set, not from 1970.
+        if not check_time:
             check_time = self.auto_disable_start_time
         try:
             # Check if given date string is valid.
@@ -3883,7 +3957,7 @@ class OTPmeObject(OTPmeBaseObject):
         # for one of them would be handed to the next.
         if verify_acls:
             if not self.verify_acl(f'view:config:{parameter}'):
-                msg = "Permission denied."
+                msg = denied_msg(self, f'view:config:{parameter}')
                 return callback.error(msg)
         value = self._get_config_parameter(parameter,
                                         recursive=recursive,
@@ -4278,7 +4352,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     def release_lock(
         self,
-        lock_caller: str=None,
+        lock_caller: Union[str,None]=None,
         recursive: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -4542,6 +4616,27 @@ class OTPmeObject(OTPmeBaseObject):
             return True
         return bool(value)
 
+    @check_acls(['view_public:object'])
+    def show_oid(
+        self,
+        full: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Show the read OID of this object, with full=True the full one. """
+        if full:
+            return callback.ok(self.oid.full_oid)
+        return callback.ok(self.oid.read_oid)
+
+    @check_acls(['view_public:object'])
+    def show_uuid(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Show the UUID of this object. """
+        return callback.ok(self.uuid)
+
     @check_acls(['view:changelog'])
     def show_changelog(
         self,
@@ -4662,9 +4757,11 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Changelog is already empty.")
             return callback.error(msg)
 
+        # Only what is set on the token itself. Its user, units and site
+        # would always answer, and the object would never be asked.
         changelog_clearing = None
         if config.auth_token:
-            changelog_clearing = config.auth_token.get_config_parameter("allow_changelog_clearing")
+            changelog_clearing = config.auth_token.get_config_parameter("allow_changelog_clearing", recursive=False)
         if changelog_clearing is None:
             changelog_clearing = self.get_config_parameter("allow_changelog_clearing")
         if changelog_clearing is None:
@@ -4815,7 +4912,7 @@ class OTPmeObject(OTPmeBaseObject):
     def export_config(
         self,
         run_policies: bool=True,
-        password: str=None,
+        password: Union[str,None]=None,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
@@ -4941,8 +5038,8 @@ class OTPmeObject(OTPmeBaseObject):
     def add_extension(
         self,
         extension: str,
-        default_attributes: dict=None,
-        ignore_missing_attributes: List=None,
+        default_attributes: Union[dict,None]=None,
+        ignore_missing_attributes: Union[List,None]=None,
         force: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
@@ -5028,7 +5125,7 @@ class OTPmeObject(OTPmeBaseObject):
         ):
         """ Remove OTPme extension from object. """
         if extension not in self.extensions:
-            msg = ("Extension not enabled for this object.")
+            msg = _("Extension not enabled for this object.")
             return callback.error(msg)
 
         dep_extensions = []
@@ -5080,7 +5177,7 @@ class OTPmeObject(OTPmeBaseObject):
     def update_extensions(
         self,
         hook: str,
-        extensions: list=None,
+        extensions: Union[list,None]=None,
         fail_on_unknown_hook: bool=False,
         **kwargs,
         ):
@@ -5278,7 +5375,7 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         extension: str,
         attribute: str,
-        auto_value: bool=None,
+        auto_value: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         ):
         """ Get extension attribute values. """
@@ -5300,7 +5397,7 @@ class OTPmeObject(OTPmeBaseObject):
     def get_extension_attributes(
         self,
         extension: str,
-        auto_value: bool=None,
+        auto_value: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         ):
         """ Get extension attributes. """
@@ -5340,8 +5437,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("add:sync_user"):
-                msg = _("Permission denied: {self}")
-                msg = msg.format(self=self)
+                msg = denied_msg(self, "add:sync_user")
                 return callback.error(msg, exception=PermissionDenied)
 
         user = backend.get_object(object_type="user",
@@ -5353,7 +5449,10 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error(msg)
 
         if user.uuid in self.sync_users:
-            msg = "User already added to object."
+            msg = _("User '{user_name}' is already a sync user of {object_type} '{object_name}'.")
+            msg = msg.format(user_name=user.name,
+                            object_type=self.type,
+                            object_name=self.name)
             return callback.error(msg)
 
         msg = _("Add sync user '{user_name}' to {object_type} '{object_name}'?: ")
@@ -5408,24 +5507,28 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("remove:sync_user"):
-                msg = _("Permission denied: {self}")
-                msg = msg.format(self=self)
+                msg = denied_msg(self, "remove:sync_user")
                 return callback.error(msg, exception=PermissionDenied)
 
-        # FIXME: we also need to allow to remove UUIDs of user that do not exists anymore!!!!!       
-        # Allow removal of orphan user UUIDs.
+        # A user who is gone is taken out by the UUID, as remove_token()
+        # does it for a token.
+        user = None
         if stuff.is_uuid(user_name):
             user = backend.get_object(object_type="user", uuid=user_name)
         else:
             user = backend.get_object(object_type="user",
                                     realm=config.realm,
                                     name=user_name)
-        if not user:
+        if user:
+            user_uuid = user.uuid
+        elif stuff.is_uuid(user_name) and user_name in self.sync_users:
+            user_uuid = user_name
+        else:
             msg = _("Unknown user: {user_name}")
             msg = msg.format(user_name=user_name)
             return callback.error(msg)
 
-        if user.uuid not in self.sync_users:
+        if user_uuid not in self.sync_users:
             msg = _("User is not assigned to {obj_type} '{obj_name}'.")
             msg = msg.format(obj_type=self.type, obj_name=self.name)
             return callback.error(msg)
@@ -5450,9 +5553,9 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error(msg)
 
         # Remove user from object.
-        self.sync_users.remove(user.uuid)
+        self.sync_users.remove(user_uuid)
         # Update index.
-        self.del_index('sync_user', user.uuid)
+        self.del_index('sync_user', user_uuid)
 
         return self._cache(callback=callback)
 
@@ -5491,8 +5594,8 @@ class OTPmeObject(OTPmeBaseObject):
     @object_changelog("add role {role_name}")
     def add_role(
         self,
-        role_name: str=None,
-        role_uuid: str=None,
+        role_name: Union[str,None]=None,
+        role_uuid: Union[str,None]=None,
         return_uuid: bool=False,
         force: bool=False,
         verify_acls: bool=True,
@@ -5509,12 +5612,15 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("add:role"):
-                msg = _("Permission denied: {self}")
-                msg = msg.format(self=self)
+                msg = denied_msg(self, "add:role")
                 return callback.error(msg, exception=PermissionDenied)
 
         if role_name:
             role_uuid = self.get_role_uuid(role_name, callback=callback)
+            # An unknown role was said by get_role_uuid(), which does not
+            # stop us: False went on and was added as a role.
+            if not role_uuid:
+                return callback.error()
         elif not role_uuid:
             msg = "Need <role_name> or <role_uuid>."
             raise OTPmeException(msg)
@@ -5567,8 +5673,8 @@ class OTPmeObject(OTPmeBaseObject):
             ##    return callback.error(msg)
             #if role_uuid in child_roles:
             #    return callback.error(msg)
-            # Trigger ACL cache clearing.
-            cache.clear_acl_cache()
+            # The ACL cache is cleared once the role is written, see
+            # backend.outdate_object().
 
         msg = _("Adding role to {obj_type} '{obj_name}'.")
         msg = msg.format(obj_type=self.type, obj_name=self.name)
@@ -5606,8 +5712,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("remove:role"):
-                msg = ("Permission denied: {self}")
-                msg = msg.format(self=self)
+                msg = denied_msg(self, "remove:role")
                 return callback.error(msg, exception=PermissionDenied)
 
         # Allow removal of orphan role UUIDs.
@@ -5826,14 +5931,14 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         token_path: str,
         token_options: Union[dict,None]=None,
-        login_interfaces: List=None,
+        login_interfaces: Union[List,None]=None,
         return_uuid: bool=False,
         force: bool=False,
         run_policies: bool=True,
         verify_acls: bool=True,
         auto_sign: Union[bool,None]=None,
         sign: bool=False,
-        tags: str=None,
+        tags: Union[str,None]=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -5848,8 +5953,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("add:token"):
-                msg = _("Permission denied: {self}")
-                msg = msg.format(self=self)
+                msg = denied_msg(self, "add:token")
                 return callback.error(msg, exception=PermissionDenied)
 
         if "/" not in token_path:
@@ -5968,9 +6072,8 @@ class OTPmeObject(OTPmeBaseObject):
         msg = msg.format(token_path=token.rel_path, obj_type=self.type, obj_name=self.name)
         callback.send(msg)
 
-        if self.type == "role":
-            # Trigger ACL cache clearing.
-            cache.clear_acl_cache(token_uuid=token.uuid)
+        # The ACL cache is cleared once a role is written, see
+        # backend.outdate_object().
 
         # Handle auto sign stuff.
         if auto_sign is None:
@@ -6172,15 +6275,16 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("remove:token"):
-                msg = _("Permission denied: {self}")
-                msg = msg.format(self=self)
+                msg = denied_msg(self, "remove:token")
                 return callback.error(msg, exception=PermissionDenied)
 
-        # FIXME: we also need to allow to remove UUIDs of tokens that do not exists anymore!!!!!       
-        #               how to remove signatures of this tokens??????    
-        # Allow removal of orphan token UUIDs.
+        # Allow removal of orphan token UUIDs. A token that is gone took
+        # its signatures with it, so only the UUID is left to remove.
+        orphan_uuid = None
         if stuff.is_uuid(token_path):
             token = backend.get_object(object_type="token", uuid=token_path)
+            if not token and token_path in self.tokens:
+                orphan_uuid = token_path
         else:
             if "/" not in token_path:
                 msg = _("Invalid token path: {token_path}")
@@ -6193,19 +6297,25 @@ class OTPmeObject(OTPmeBaseObject):
                                         realm=config.realm,
                                         user=token_user,
                                         name=token_name)
-        if not token:
+        if orphan_uuid:
+            token_uuid = orphan_uuid
+            token_rel_path = orphan_uuid
+        elif not token:
             msg = _("Unknown token: {token_path}")
             msg = msg.format(token_path=token_path)
             return callback.error(msg)
+        else:
+            token_uuid = token.uuid
+            token_rel_path = token.rel_path
 
-        if token.uuid not in self.tokens:
+        if token_uuid not in self.tokens:
             msg = _("Token is not assigned to {obj_type} '{obj_name}'.")
             msg = msg.format(obj_type=self.type, obj_name=self.name)
             return callback.error(msg)
 
         if ask_confirmation:
             msg = _("Remove token '{token_path}' from {object_type} '{object_name}'?: ")
-            msg = msg.format(token_path=token.rel_path,
+            msg = msg.format(token_path=token_rel_path,
                             object_type=self.type,
                             object_name=self.name)
             if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -6224,7 +6334,7 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error(msg)
 
         # Remove signature from token.
-        if not keep_sign:
+        if not keep_sign and not orphan_uuid:
             # Search token signatures that where signed for this object.
             token_signatures = token.search_sign(sign_object=self.uuid,
                                                 callback=callback,
@@ -6249,23 +6359,23 @@ class OTPmeObject(OTPmeBaseObject):
                                     callback=callback)
 
         msg = _("Removing token {token_path} from {obj_type} {obj_name}.")
-        msg = msg.format(token_path=token.rel_path, obj_type=self.type, obj_name=self.name)
+        msg = msg.format(token_path=token_rel_path, obj_type=self.type, obj_name=self.name)
         callback.send(msg)
 
         # Remove token from object. Not every object type that holds
         # tokens has options for them (AttributeError), and one that
         # has may hold none for this token (KeyError).
-        self.tokens.remove(token.uuid)
+        self.tokens.remove(token_uuid)
         try:
-            self.token_options.pop(token.uuid)
+            self.token_options.pop(token_uuid)
         except (AttributeError, KeyError):
             pass
         try:
-            self.token_login_interfaces.pop(token.uuid)
+            self.token_login_interfaces.pop(token_uuid)
         except (AttributeError, KeyError):
             pass
         # Update index.
-        self.del_index('token', token.uuid)
+        self.del_index('token', token_uuid)
 
         return self._cache(callback=callback)
 
@@ -6292,8 +6402,8 @@ class OTPmeObject(OTPmeBaseObject):
     @object_changelog("add host {host_name}")
     def add_host(
         self,
-        host_name: str=None,
-        host_uuid: str=None,
+        host_name: Union[str,None]=None,
+        host_uuid: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -6348,8 +6458,8 @@ class OTPmeObject(OTPmeBaseObject):
     @object_changelog("remove host {host_name}")
     def remove_host(
         self,
-        host_name: str=None,
-        host_uuid: str=None,
+        host_name: Union[str,None]=None,
+        host_uuid: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -6367,21 +6477,30 @@ class OTPmeObject(OTPmeBaseObject):
 
         if not host_uuid:
             host_uuid = self.get_host_uuid(host_name)
+        # A host that is gone has no name to be found by: it is taken
+        # out by its UUID, as remove_token() does it for a token.
+        if not host_uuid and host_name and stuff.is_uuid(host_name):
+            host_uuid = host_name
         host = None
         if host_uuid:
             host = backend.get_object(object_type="host", uuid=host_uuid)
-        if not host:
+        if host:
+            host_uuid = host.uuid
+            host_label = host.name
+        elif host_uuid and host_uuid in self.hosts:
+            host_label = host_uuid
+        else:
             msg = _("Host does not exist: {host_name}")
             msg = msg.format(host_name=host_name or host_uuid)
             return callback.error(msg)
 
-        if host.uuid not in self.hosts:
+        if host_uuid not in self.hosts:
             msg = _("Host not in {object_type}.")
             msg = msg.format(object_type=self.type)
             return callback.error(msg)
 
         msg = _("Remove host '{host_name}' from {object_type} '{object_name}'?: ")
-        msg = msg.format(host_name=host.name,
+        msg = msg.format(host_name=host_label,
                         object_type=self.type,
                         object_name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -6399,9 +6518,9 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error()
 
         # Remove host UUID from object.
-        self.hosts.remove(host.uuid)
+        self.hosts.remove(host_uuid)
         # Update index.
-        self.del_index("host", host.uuid)
+        self.del_index("host", host_uuid)
         return self._cache(callback=callback)
 
     @cli.check_rapi_opts()
@@ -6466,8 +6585,8 @@ class OTPmeObject(OTPmeBaseObject):
     @object_changelog("add device {device_name}")
     def add_device(
         self,
-        device_name: str=None,
-        device_uuid: str=None,
+        device_name: Union[str,None]=None,
+        device_uuid: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -6526,8 +6645,8 @@ class OTPmeObject(OTPmeBaseObject):
     @object_changelog("remove device {device_name}")
     def remove_device(
         self,
-        device_name: str=None,
-        device_uuid: str=None,
+        device_name: Union[str,None]=None,
+        device_uuid: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -6662,8 +6781,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("add:node"):
-                msg = _("Permission denied: {self}")
-                msg = msg.format(self=self)
+                msg = denied_msg(self, "add:node")
                 return callback.error(msg, exception=PermissionDenied)
 
         # The name finds a node of any site (see node.py), and only the
@@ -6732,8 +6850,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("remove:node"):
-                msg = _("Permission denied: {self}")
-                msg = msg.format(self=self)
+                msg = denied_msg(self, "remove:node")
                 return callback.error(msg, exception=PermissionDenied)
 
         # See add_node().
@@ -6989,8 +7106,13 @@ class OTPmeObject(OTPmeBaseObject):
             msg = msg.format(object_type=self.type)
             return callback.error(msg)
 
+        if not policy.verify_object(self, callback=callback):
+            return callback.error()
+
         if not policy.allow_multiple:
-            policies = self.get_policies(policy_type=policy.policy_type)
+            # A disabled one counts too, it could be enabled again.
+            policies = self.get_policies(policy_type=policy.policy_type,
+                                        include_disabled=True)
             if len(policies) > 0:
                 msg = _("Policy of this type already exists: {policy_type}")
                 msg = msg.format(policy_type=policy.policy_type)
@@ -7163,9 +7285,32 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['view:policies'])
     def list_policies(
         self,
+        return_type: str="uuid",
+        _caller: str="API",
+        callback: JobCallback=default_callback,
         **kwargs,
         ):
-        return self.get_policies(**kwargs)
+        # What is assigned, disabled or not.
+        kwargs.setdefault('include_disabled', True)
+        # As lists, the joining for the client is done below.
+        policies = self.get_policies(return_type=return_type, **kwargs)
+        # A name says when its policy is disabled. The other return
+        # types are for scripts and stay as they are.
+        if return_type == "name" and kwargs['include_disabled']:
+            enabled_kwargs = dict(kwargs)
+            enabled_kwargs['include_disabled'] = False
+            enabled = self.get_policies(return_type="name", **enabled_kwargs)
+            result = []
+            for x_name in policies:
+                if x_name not in enabled:
+                    x_name = f"{x_name} (disabled)"
+                result.append(x_name)
+            policies = result
+        if _caller == "RAPI":
+            policies = ",".join(policies)
+        if _caller == "CLIENT":
+            policies = "\n".join(policies)
+        return callback.ok(policies)
 
     def get_policies(
         self,
@@ -7175,11 +7320,17 @@ class OTPmeObject(OTPmeBaseObject):
         child_object: Union[OTPmeBaseObject,None]=None,
         return_type: str="uuid",
         ignore_hooks: bool=False,
+        include_disabled: bool=False,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Get policies enabled for this object. """
+        """ Get policies enabled for this object.
+
+        A disabled policy is left out: it stays assigned but does nothing.
+        <include_disabled> is for who has to see every assignment, e.g. to
+        carry it along when the object moves to another site.
+        """
         if not backend.is_available():
             raise BackendUnavailable("Backend not available.")
 
@@ -7191,13 +7342,15 @@ class OTPmeObject(OTPmeBaseObject):
 
         search_result = []
         if self.policies:
-            search_attributes = None
+            search_attributes = {}
             if policy_types:
-                search_attributes = {
-                                    'policy_type' : {
+                search_attributes['policy_type'] = {
                                             'values'    : policy_types,
-                                            },
-                                    }
+                                            }
+            if not include_disabled:
+                search_attributes['enabled'] = {'value':True}
+            if not search_attributes:
+                search_attributes = None
             return_attributes = ['uuid']
             if return_type not in return_attributes:
                 return_attributes.append(return_type)
@@ -7289,11 +7442,11 @@ class OTPmeObject(OTPmeBaseObject):
 
     def run_policies(
         self,
-        hook_name: str=None,
-        token: OTPmeBaseObject=None,
-        child_object: OTPmeBaseObject=None,
-        policy_type: str=None,
-        ignore_policy_types: List=None,
+        hook_name: Union[str,None]=None,
+        token: Union[OTPmeBaseObject,None]=None,
+        child_object: Union[OTPmeBaseObject,None]=None,
+        policy_type: Union[str,None]=None,
+        ignore_policy_types: Union[List,None]=None,
         force: bool=False,
         verify_acls: bool=True,
         callback: JobCallback=default_callback,
@@ -7755,8 +7908,7 @@ class OTPmeObject(OTPmeBaseObject):
         else:
             find_acl = f"find:{object_type}s"
             if not self.verify_acl(find_acl):
-                msg = _("Permission denied: {object_path}")
-                msg = msg.format(object_path=self.path)
+                msg = denied_msg(self, find_acl)
                 return callback.error(msg, exception=PermissionDenied)
 
         search_attributes = {
@@ -7802,6 +7954,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog("sign password_store_members")
     def sign_password_members(
         self,
         force: bool=False,
@@ -7815,6 +7968,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog("unsign password_store_members")
     def unsign_password_members(
         self,
         signer: Union[str,None]=None,
@@ -7895,7 +8049,7 @@ class OTPmeObject(OTPmeBaseObject):
     def is_assigned_token(
         self,
         token_uuid: str,
-        checked_roles: list=None,
+        checked_roles: Union[list,None]=None,
         ):
         if checked_roles is None:
             checked_roles = []
@@ -7918,7 +8072,7 @@ class OTPmeObject(OTPmeBaseObject):
     def is_assigned_host(
         self,
         host_uuid: str,
-        checked_roles: list=None,
+        checked_roles: Union[list,None]=None,
         ):
         if checked_roles is None:
             checked_roles = []
@@ -7941,7 +8095,7 @@ class OTPmeObject(OTPmeBaseObject):
     def is_assigned_device(
         self,
         device_uuid: str,
-        checked_roles: list=None,
+        checked_roles: Union[list,None]=None,
         ):
         if checked_roles is None:
             checked_roles = []
@@ -7964,7 +8118,7 @@ class OTPmeObject(OTPmeBaseObject):
     def is_assigned_role(
         self,
         role_uuid: str,
-        checked_roles: list=None,
+        checked_roles: Union[list,None]=None,
         ):
         if checked_roles is None:
             checked_roles = []
@@ -8063,8 +8217,7 @@ class OTPmeObject(OTPmeBaseObject):
         # Handle LDIF attributes.
         if verify_acls:
             if not self.verify_acl("view:attribute:" + attribute):
-                msg = _("Permission denied: {self}")
-                msg = msg.format(self=self)
+                msg = denied_msg(self, "view:attribute:" + attribute)
                 return callback.error(msg, exception=PermissionDenied)
         try:
             val_list = list(self.ldif[attribute])
@@ -8083,7 +8236,7 @@ class OTPmeObject(OTPmeBaseObject):
         run_policies: bool=True,
         ignore_ro: bool=False,
         position: int=-1,
-        ignore_missing_attributes: List=None,
+        ignore_missing_attributes: Union[List,None]=None,
         verify_acls: bool=True,
         verify_id_range: bool=True,
         verbose_level: int=0,
@@ -8098,7 +8251,7 @@ class OTPmeObject(OTPmeBaseObject):
         # uidNumber with it.
         if verify_acls:
             if not self.verify_acl(f"add:attribute:{attribute}"):
-                msg = _("Permission denied.")
+                msg = denied_msg(self, f"add:attribute:{attribute}")
                 return callback.error(msg, exception=PermissionDenied)
         if ignore_missing_attributes is None:
             ignore_missing_attributes = []
@@ -8144,7 +8297,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Try to add attribute.
         try:
-            extension.add_attribute(self, attribute, value,
+            result = extension.add_attribute(self, attribute, value,
                                 position=position,
                                 ignore_ro=ignore_ro,
                                 verify_id_range=verify_id_range,
@@ -8155,6 +8308,10 @@ class OTPmeObject(OTPmeBaseObject):
             #config.raise_exception()
             msg = str(e)
             return callback.error(msg)
+        # A refusal (read-only, no value) comes as callback.error(),
+        # which has told the user already.
+        if not result:
+            return callback.error()
 
         # Update extensions.
         self.update_extensions("add_attribute",
@@ -8186,7 +8343,7 @@ class OTPmeObject(OTPmeBaseObject):
         """ Add attribute to object. """
         if verify_acls:
             if not self.verify_acl(f"edit:attribute:{attribute}"):
-                msg = _("Permission denied.")
+                msg = denied_msg(self, f"edit:attribute:{attribute}")
                 return callback.error(msg, exception=PermissionDenied)
 
         msg = _("Modify attribute '{attribute}' of {object_type} '{object_name}'?: ")
@@ -8232,15 +8389,20 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Try to add attribute.
         try:
-            extension.modify_attribute(self, attribute, old_value,
+            result = extension.modify_attribute(self, attribute, old_value,
                                         new_value, ignore_ro=ignore_ro,
                                         verify_id_range=verify_id_range,
-                                        verbose_level=verbose_level)
+                                        verbose_level=verbose_level,
+                                        callback=callback)
         except Exception as e:
             #config.raise_exception()
             msg = _("Unable to add attribute: {attribute}: {exception}")
             msg = msg.format(attribute=attribute, exception=e)
             return callback.error(msg)
+        # A refusal (read-only, an old value we do not have) comes as
+        # callback.error(), which has told the user already.
+        if not result:
+            return callback.error()
 
         # Update extensions.
         self.update_extensions("modify_attribute",
@@ -8272,7 +8434,7 @@ class OTPmeObject(OTPmeBaseObject):
         """ Delete attribute from object. """
         if verify_acls:
             if not self.verify_acl(f"delete:attribute:{attribute}"):
-                msg = _("Permission denied.")
+                msg = denied_msg(self, f"delete:attribute:{attribute}")
                 return callback.error(msg, exception=PermissionDenied)
 
         msg = _("Delete attribute '{attribute}' from {object_type} '{object_name}'?: ")
@@ -8334,15 +8496,32 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
-    #def show_attributes(self, callback=default_callback, **kwargs):
-    #    """ Show all attributes of object """
-    #    # xxxxxxxxxxxxx
-    #    # FIXME: how to handle ACLs here?
-    #    attributes = []
-    #    for x in self._extensions:
-    #        e = self._extensions[x]
-    #        attributes += e.get_attributes(self)
-    #    return callback.ok("\n".join(attributes))
+    def keeps_dn_class(self, object_class: str):
+        """ Whether the object keeps a class for its DN attribute
+        without object_class. """
+        try:
+            dn_attribute = config.dn_attributes[self.type]
+        except KeyError:
+            return True
+        for oc in self.object_classes:
+            if oc == object_class:
+                continue
+            try:
+                oc_attributes = config.ldap_object_classes[oc].must \
+                                + config.ldap_object_classes[oc].may
+            except KeyError:
+                continue
+            if dn_attribute in oc_attributes:
+                return True
+        try:
+            oc_attributes = config.ldap_object_classes[object_class].must \
+                            + config.ldap_object_classes[object_class].may
+        except KeyError:
+            return True
+        # Not the class of the DN attribute.
+        if dn_attribute not in oc_attributes:
+            return True
+        return False
 
     def list_valid_object_classes(
         self,
@@ -8425,12 +8604,17 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error(msg)
 
         try:
-            extension.add_object_class(self, object_class,
-                                    verbose_level=verbose_level)
+            result = extension.add_object_class(self, object_class,
+                                    verbose_level=verbose_level,
+                                    callback=callback)
         except Exception as e:
             msg = _("Error adding object class: {exception}")
             msg = msg.format(exception=e)
             return callback.error(msg)
+        # A refusal (already assigned) comes as callback.error(), which
+        # has told the user already.
+        if not result:
+            return callback.error()
 
         return self._cache(callback=callback)
 
@@ -8440,7 +8624,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_changelog("remove object class {object_class}")
     def del_object_class(
         self,
-        object_class: bool=False,
+        object_class: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
@@ -8468,6 +8652,14 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("{object_type} does not have object class '{object_class}' assigned.")
             msg = msg.format(object_type=object_type, object_class=object_class)
             return callback.error(msg)
+        # The entry is named by its DN attribute (ou of a unit, uid of a
+        # user), and one of its classes has to allow it. Without such a
+        # class ldapd serves an entry its own name does not fit.
+        if not self.keeps_dn_class(object_class):
+            msg = _("Object class '{object_class}' carries the DN attribute '{dn_attribute}' and cannot be removed.")
+            msg = msg.format(object_class=object_class,
+                            dn_attribute=config.dn_attributes[self.type])
+            return callback.error(msg)
         if self.confirmation_policy == "force":
             force = True
 
@@ -8477,6 +8669,7 @@ class OTPmeObject(OTPmeBaseObject):
             if self.type in extension.object_types:
                 if object_class in extension.object_classes[self.type]:
                     break
+            extension = None
         if not extension:
             msg = _("Failed to get extension to handle object class: {object_class}")
             msg = msg.format(object_class=object_class)
@@ -8605,7 +8798,7 @@ class OTPmeObject(OTPmeBaseObject):
     @ldif_cache.cache_method()
     def _get_ldif(
         self,
-        attributes: str=None,
+        attributes: Union[str,None]=None,
         _caller: str="API",
         verify_acls: bool=True,
         **kwargs,
@@ -8792,7 +8985,8 @@ class OTPmeObject(OTPmeBaseObject):
                 _acl = otpme_acl.decode(raw_acl)
                 if _acl.owner_uuid != self.uuid:
                     continue
-                _acl_string = f"{x_oid} {_acl.id}"
+                _acl_id = otpme_acl.resolve_aclgroup_acl(_acl.id)
+                _acl_string = f"{x_oid} {_acl_id}"
                 if _caller == "CLIENT":
                     # Appended first, then the block checked: the other
                     # way round the entry that fills the block is the
@@ -8814,6 +9008,8 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(acls)
 
     @object_lock()
+    @audit_log()
+    @object_changelog("enable acl inheritance")
     def enable_acl_inheritance(
         self,
         force: bool=False,
@@ -8827,8 +9023,7 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error("Object cannot inherit ACLs.")
 
         if not self.verify_acl("enable:acl_inheritance"):
-            msg = _("Permission denied: {self}")
-            msg = msg.format(self=self)
+            msg = denied_msg(self, "enable:acl_inheritance")
             return callback.error(msg, exception=PermissionDenied)
 
         if self.acl_inheritance_enabled:
@@ -8858,6 +9053,8 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @object_lock()
+    @audit_log()
+    @object_changelog("disable acl inheritance")
     def disable_acl_inheritance(
         self,
         force: bool=False,
@@ -8871,8 +9068,7 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error("Object cannot inherit ACLs.")
 
         if not self.verify_acl("disable:acl_inheritance"):
-            msg = _("Permission denied: {self}")
-            msg = msg.format(self=self)
+            msg = denied_msg(self, "disable:acl_inheritance")
             return callback.error(msg, exception=PermissionDenied)
 
         if not self.acl_inheritance_enabled:
@@ -8955,7 +9151,8 @@ class OTPmeObject(OTPmeBaseObject):
                                     check_admin_role=check_admin_role,
                                     check_admin_user=check_admin_user,
                                     need_exact_acl=need_exact_acl,
-                                    auth_token=auth_token)
+                                    auth_token=auth_token,
+                                    object_type=self.type)
         return result
 
     def get_acl_apply_ids(
@@ -8990,8 +9187,28 @@ class OTPmeObject(OTPmeBaseObject):
                 # If the ACL is not for this object but a supported default acl
                 # add it by acl id.
                 apply_id = acl.id
+            elif self.type == "user" and acl.object_type == "token":
+                # A token inherits from its user, not from the unit, so
+                # the user holds the default token ACLs of the unit, as
+                # the walk of add_acl -r below hands them over. Without
+                # this a new user or one moved into the unit got none
+                # of them, and so none of its tokens.
+                apply_id = acl.id
+                if acl.recursive:
+                    apply_id = acl.id[1:]
+            # The same for an ACL group given to the whole subtree
+            # (++@): the user holds it for its tokens (+@).
+            if acl.aclgroup_uuid and acl.recursive and self.type == "user":
+                recursive_apply_id = acl.id[1:]
         else:
-            if supported_acl:
+            if acl.aclgroup_uuid and acl.default and self.type == "user":
+                # An ACL group for the whole subtree (++@) the same way
+                # as the token ACLs below: the user holds it for its
+                # tokens (+@). One for the members of the unit only
+                # (+@) is not for its tokens.
+                if acl.recursive:
+                    apply_id = acl.id[1:]
+            elif supported_acl:
                 apply_id = acl.id
             else:
                 # For users we have to apply default and recursive token ACLs
@@ -9019,6 +9236,16 @@ class OTPmeObject(OTPmeBaseObject):
         **kwargs,
         ):
         """ Check if the given ACL is supported by this object. """
+        # An ACL group can be put on any object: it grants what it holds
+        # for the type of the object, which may be nothing. Handed down
+        # (+@, ++@) only by what has members, and by a user to its
+        # tokens (+@), see get_acl_apply_ids().
+        if acl.aclgroup_uuid:
+            if not acl.default:
+                return True
+            if self.type == "user":
+                return not acl.recursive
+            return self.type in ("site", "unit")
         acl_types = ['acls']
         if acl.default:
             if acl.recursive:
@@ -9066,7 +9293,7 @@ class OTPmeObject(OTPmeBaseObject):
     @supported_acls_cache.cache_method()
     def _get_supported_acls(
         self,
-        acl_types: List=None,
+        acl_types: Union[List,None]=None,
         **kwargs,
         ):
         """ The ACLs the object supports, and nothing else.
@@ -9382,6 +9609,51 @@ class OTPmeObject(OTPmeBaseObject):
 
         return callback.ok()
 
+    def get_move_acl_inheritance(self, keep_acls=False):
+        """ Whether a move hands this object the default ACLs of where it
+        goes, and takes those of where it was.
+
+        That is what ACL inheritance says, and the only thing it says:
+        add_acl -r and -a are asked for and reach the object whatever
+        it says. The parent is the unit, for a token the user.
+
+        Returns (True or False, why not).
+        """
+        # Do not inherit ACL if object does not support it.
+        if self.acl_inheritance_enabled is None:
+            return False, _("Object cannot inherit ACLs")
+
+        if self.acl_inheritance_enabled is False:
+            return False, _("ACL inheritance disabled")
+
+        if self.type == "user":
+            if self.is_admin():
+                return False, _("ACL inheritance for admin users not allowed")
+        if self.type == "token":
+            if self.is_admin():
+                return False, _("ACL inheritance for admin tokens not allowed")
+
+        if self.uuid == config.admin_role_uuid:
+            return False, _("ACL inheritance for admin role not allowed")
+
+        # Or whoever may move an object would hand it the default ACLs
+        # of wherever it goes.
+        for acl in ("add:acl", "delete:acl"):
+            if not self.verify_acl(acl):
+                return False, denied_msg(self, acl)
+
+        # Only ever switches the inheritance off. Letting keep_acls=False
+        # switch it on would step over every check above -- including the
+        # one for add:acl/delete:acl on this object, which is what keeps
+        # somebody who may move an object into a unit from handing
+        # themselves the default ACLs of that unit. The CLI never sends
+        # False (--keep-acls maps to True), but the command takes the
+        # argument, so the API can.
+        if keep_acls:
+            return False, ""
+
+        return True, ""
+
     @check_acls(acls=['view:acl'])
     @audit_log()
     def list_acls(
@@ -9410,6 +9682,7 @@ class OTPmeObject(OTPmeBaseObject):
             o_type = i.split(":")[0]
             o_uuid = i.split(":")[1]
             acl = ":".join(i.split(":")[2:])
+            acl = otpme_acl.resolve_aclgroup_acl(acl)
             result = backend.search(attribute="uuid",
                                     value=o_uuid,
                                     return_type="path")
@@ -9466,6 +9739,11 @@ class OTPmeObject(OTPmeBaseObject):
         # Ask here and not in handle_acl(): recursive ACLs and default
         # ACLs call handle_acl() once per object, this method once per
         # command.
+        if not kwargs.get("force", False):
+            try:
+                self.check_given_acls("add", **kwargs)
+            except OTPmeException as e:
+                return callback.error(str(e))
         msg = _("Add ACL '{acls}' to {object_type} '{object_name}'?: ")
         msg = msg.format(acls=get_acls_string(acls or kwargs.get("raw_acls")),
                         object_type=self.type,
@@ -9498,6 +9776,11 @@ class OTPmeObject(OTPmeBaseObject):
         # Ask here and not in handle_acl(): recursive ACLs and default
         # ACLs call handle_acl() once per object, this method once per
         # command.
+        if not kwargs.get("force", False):
+            try:
+                self.check_given_acls("del", **kwargs)
+            except OTPmeException as e:
+                return callback.error(str(e))
         msg = _("Delete ACL '{acls}' from {object_type} '{object_name}'?: ")
         msg = msg.format(acls=get_acls_string(acls or kwargs.get("raw_acls")),
                         object_type=self.type,
@@ -9548,12 +9831,12 @@ class OTPmeObject(OTPmeBaseObject):
     def handle_one_acl(
         self,
         action: str,
-        acl: str=None,
-        raw_acl: str=None,
+        acl: Union[str,None]=None,
+        raw_acl: Union[str,None]=None,
         owner_type: Union[str,None]=None,
         owner_name: Union[str,None]=None,
         owner_uuid: Union[str,None]=None,
-        ignore_unknown_owner: str=False,
+        ignore_unknown_owner: bool=False,
         object_types: Union[List,None]=None,
         recursive_acls: bool=False,
         valid_acl: bool=True,
@@ -9585,40 +9868,101 @@ class OTPmeObject(OTPmeBaseObject):
         if acl_owners is None:
             acl_owners = {}
 
-        def lookup_acl_owner(uuid, object_type=None):
-            """ The type and the name of an ACL owner.
+        _acl, raw_acl, owner_type, owner_uuid = self.resolve_acl(action,
+                                    acl=acl,
+                                    raw_acl=raw_acl,
+                                    owner_type=owner_type,
+                                    owner_name=owner_name,
+                                    owner_uuid=owner_uuid,
+                                    ignore_unknown_owner=ignore_unknown_owner,
+                                    acl_owners=acl_owners)
 
-            Three things below want it: whether it exists at all,
-            which type it is where the ACL carries only the UUID, and
-            its name for the message. Each of them asked the index
-            again, for every ACL and every object of a walk, although
-            the owner of an ACL does not change while the walk runs.
-            And the lookup is cached, but writing an object throws
-            that cache away (cache.add_instance()), so a walk that
-            writes all the time never hits it.
+        # Check if this object supports the ACL.
+        if valid_acl:
+            acl_supported = self.check_supported_acl(acl=_acl)
+            if not acl_supported:
+                valid_acl = False
+                # An unsupported ACL is only an error if its added explicitly
+                # (not recursive) to this object or if this is not the first
+                # call of an recursive call of _handle_acl(). E.g. adding the
+                # ACL "+token:edit" recursive to a site is a valid call because
+                # the ACL will be added to all supported objects of the site
+                # but not to the site itself.
+                if not recursive_acls or (recursive_acls and not first_call):
+                    exception = _("Unsupported ACL: {object_oid}: {acl_id}")
+                    exception = exception.format(object_oid=self.oid, acl_id=_acl.id)
+                    if raise_exception:
+                        raise ValueError(exception)
 
-            So it is asked once and remembered in a dict that travels
-            with the walk. Returns (type, name), both None where there
-            is no such object.
-            """
-            try:
-                return acl_owners[uuid]
-            except KeyError:
-                pass
-            owner = (None, None)
-            if object_type:
-                object_id = backend.get_oid(uuid=uuid,
-                                            object_type=object_type,
-                                            instance=True)
-            else:
-                # Only these two can own an ACL, see otpme_acl.decode().
-                object_id = backend.get_oid(uuid=uuid,
-                                            object_types=['role', 'token'],
-                                            instance=True)
-            if object_id:
-                owner = (object_id.object_type, object_id.rel_path)
-            acl_owners[uuid] = owner
-            return owner
+        # Add ACL (or default ACL) to the object if there was no exception.
+        if valid_acl and raw_acl:
+            def get_resolved_acl():
+                """ The ACL with the name of its owner, for the message.
+
+                Built where the message is sent and nowhere else,
+                because that is all it is for, see lookup_acl_owner().
+                """
+                # FIXME: add full object path or OID instead of rel_path!!!?
+                object_desc = lookup_acl_owner(owner_uuid, acl_owners,
+                                                owner_type)[1]
+                if not object_desc:
+                    object_desc = owner_uuid
+                return f"{owner_type}:{object_desc}:{_acl.id}"
+
+            object_match = True
+            if object_types and self.type not in object_types:
+                object_match = False
+
+            if object_match:
+                if action == "add":
+                    # Add ACL.
+                    if raw_acl not in self.acls:
+                        self.acls.append(raw_acl)
+                        now = time.time_ns()
+                        self.acl_journal.append([now, action, raw_acl])
+                        object_modified = True
+                        if verbose_level > 0:
+                            msg = _("Adding ACL {resolved_acl} to {object_oid}")
+                            msg = msg.format(resolved_acl=get_resolved_acl(),
+                                            object_oid=self.oid)
+                            callback.send(f"{progress}{msg}")
+                else:
+                    # Remove ACL.
+                    if raw_acl in self.acls:
+                        object_modified = True
+                        if verbose_level > 0:
+                            msg = _("Removing ACL {resolved_acl} from {object_oid}")
+                            msg = msg.format(resolved_acl=get_resolved_acl(),
+                                            object_oid=self.oid)
+                            callback.send(f"{progress}{msg}")
+                        self.acls.remove(raw_acl)
+                        now = time.time_ns()
+                        self.acl_journal.append([now, action, raw_acl])
+
+        return object_modified, _acl, exception
+
+    def resolve_acl(
+        self,
+        action: str,
+        acl: Union[str,None]=None,
+        raw_acl: Union[str,None]=None,
+        owner_type: Union[str,None]=None,
+        owner_name: Union[str,None]=None,
+        owner_uuid: Union[str,None]=None,
+        ignore_unknown_owner: bool=False,
+        acl_owners: Union[dict,None]=None,
+        ):
+        """ Decode one ACL and find its owner.
+
+        The part of handle_one_acl() that does not depend on the object:
+        add_acl() and del_acl() run it for every ACL before they ask,
+        so a typo is refused before the question and not after it.
+
+        Returns the decoded ACL, the raw ACL, the owner type and the
+        owner UUID. Raises OTPmeException.
+        """
+        if acl_owners is None:
+            acl_owners = {}
 
         if raw_acl:
             # Load raw ACL.
@@ -9634,7 +9978,8 @@ class OTPmeObject(OTPmeBaseObject):
             owner_uuid = _acl.owner_uuid
             if not ignore_unknown_owner:
                 if action == "add":
-                    if not lookup_acl_owner(owner_uuid, owner_type)[0]:
+                    if not lookup_acl_owner(owner_uuid, acl_owners,
+                                            owner_type)[0]:
                         msg = _("Cannot add ACL for unknown owner: {owner_uuid}: {acl}")
                         msg = msg.format(owner_uuid=owner_uuid, acl=raw_acl)
                         raise OTPmeException(msg)
@@ -9689,7 +10034,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Try to get owner type from backend.
         if owner_uuid and not owner_type:
-            owner_type = lookup_acl_owner(owner_uuid)[0]
+            owner_type = lookup_acl_owner(owner_uuid, acl_owners)[0]
             if not owner_type:
                 msg = _("Unknown object: {owner_uuid}")
                 msg = msg.format(owner_uuid=owner_uuid)
@@ -9713,69 +10058,58 @@ class OTPmeObject(OTPmeBaseObject):
                 log_msg = log_msg.format(acl=acl, exception=e)
                 logger.critical(log_msg)
                 raise OTPmeException(msg) from e
+            # An ACL group given by name is kept by its UUID.
+            if _acl.aclgroup_uuid:
+                raw_acl = _acl.raw
 
-        # Check if this object supports the ACL.
-        if valid_acl:
-            acl_supported = self.check_supported_acl(acl=_acl)
-            if not acl_supported:
-                valid_acl = False
-                # An unsupported ACL is only an error if its added explicitly
-                # (not recursive) to this object or if this is not the first
-                # call of an recursive call of _handle_acl(). E.g. adding the
-                # ACL "+token:edit" recursive to a site is a valid call because
-                # the ACL will be added to all supported objects of the site
-                # but not to the site itself.
-                if not recursive_acls or (recursive_acls and not first_call):
-                    exception = _("Unsupported ACL: {object_oid}: {acl_id}")
-                    exception = exception.format(object_oid=self.oid, acl_id=_acl.id)
-                    if raise_exception:
-                        raise ValueError(exception)
+        return _acl, raw_acl, owner_type, owner_uuid
 
-        # Add ACL (or default ACL) to the object if there was no exception.
-        if valid_acl and raw_acl:
-            def get_resolved_acl():
-                """ The ACL with the name of its owner, for the message.
+    def check_given_acls(
+        self,
+        action: str,
+        acls: Union[List,str,None]=None,
+        raw_acls: Union[List,str,None]=None,
+        owner_type: Union[str,None]=None,
+        owner_name: Union[str,None]=None,
+        owner_uuid: Union[str,None]=None,
+        ignore_unknown_owner: bool=False,
+        recursive_acls: bool=False,
+        **kwargs,
+        ):
+        """ What handle_acl() would refuse on its first object, before
+        add_acl() or del_acl() ask: an ACL that cannot be decoded, an
+        unknown owner or ACL group, and an ACL this object does not
+        support. A recursive walk (-r) takes an ACL its first object does
+        not support, see handle_one_acl().
 
-                Built where the message is sent and nowhere else,
-                because that is all it is for, see lookup_acl_owner().
-                """
-                # FIXME: add full object path or OID instead of rel_path!!!?
-                object_desc = lookup_acl_owner(owner_uuid, owner_type)[1]
-                if not object_desc:
-                    object_desc = owner_uuid
-                return f"{owner_type}:{object_desc}:{_acl.id}"
+        Only where they ask, i.e. without force. The calls from within a
+        walk (inherit_default_acl() and alike) pass force, and they skip
+        an ACL the object does not support on purpose.
 
-            object_match = True
-            if object_types and self.type not in object_types:
-                object_match = False
-
-            if object_match:
-                if action == "add":
-                    # Add ACL.
-                    if raw_acl not in self.acls:
-                        self.acls.append(raw_acl)
-                        now = time.time_ns()
-                        self.acl_journal.append([now, action, raw_acl])
-                        object_modified = True
-                        if verbose_level > 0:
-                            msg = _("Adding ACL {resolved_acl} to {object_oid}")
-                            msg = msg.format(resolved_acl=get_resolved_acl(),
-                                            object_oid=self.oid)
-                            callback.send(f"{progress}{msg}")
-                else:
-                    # Remove ACL.
-                    if raw_acl in self.acls:
-                        object_modified = True
-                        if verbose_level > 0:
-                            msg = _("Removing ACL {resolved_acl} from {object_oid}")
-                            msg = msg.format(resolved_acl=get_resolved_acl(),
-                                            object_oid=self.oid)
-                            callback.send(f"{progress}{msg}")
-                        self.acls.remove(raw_acl)
-                        now = time.time_ns()
-                        self.acl_journal.append([now, action, raw_acl])
-
-        return object_modified, _acl, exception
+        Raises OTPmeException.
+        """
+        if isinstance(acls, str):
+            acls = [acls]
+        if isinstance(raw_acls, str):
+            raw_acls = [raw_acls]
+        acl_owners = {}
+        given = [{'raw_acl': x} for x in raw_acls or []]
+        given += [{'acl': x} for x in acls or []]
+        for x in given:
+            _acl = self.resolve_acl(action,
+                                owner_type=owner_type,
+                                owner_name=owner_name,
+                                owner_uuid=owner_uuid,
+                                ignore_unknown_owner=ignore_unknown_owner,
+                                acl_owners=acl_owners,
+                                **x)[0]
+            if recursive_acls:
+                continue
+            if self.check_supported_acl(acl=_acl):
+                continue
+            msg = _("Unsupported ACL: {object_oid}: {acl_id}")
+            msg = msg.format(object_oid=self.oid, acl_id=_acl.id)
+            raise OTPmeException(msg)
 
     def handle_acl(
         self,
@@ -9785,7 +10119,7 @@ class OTPmeObject(OTPmeBaseObject):
         owner_type: Union[str,None]=None,
         owner_name: Union[str,None]=None,
         owner_uuid: Union[str,None]=None,
-        ignore_unknown_owner: str=False,
+        ignore_unknown_owner: bool=False,
         object_types: Union[List,None]=None,
         recursive_acls: bool=False,
         apply_default_acls: bool=False,
@@ -9842,8 +10176,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl(check_acl):
-                exception = _("Permission denied: {obj}")
-                exception = exception.format(obj=self)
+                exception = denied_msg(self, check_acl)
                 valid_acl = False
                 # Whatever the verbosity: this is the reason an object
                 # of a walk was left out, and a walk that silently does
@@ -10007,6 +10340,11 @@ class OTPmeObject(OTPmeBaseObject):
             return
         if not self._enabled:
             return
+        # What the realm needs to run (the admin user, the management
+        # accessgroup, ...) is never switched off unattended. A value
+        # set before change_auto_disable() refused it does nothing.
+        if self.is_special_object():
+            return
         disable_time = self.get_auto_disable_time()
         now = time.time()
         if now >= disable_time:
@@ -10069,13 +10407,28 @@ class OTPmeObject(OTPmeBaseObject):
         **kwargs,
         ):
         """ Change auto disable value. """
+        # The 0 that removes it comes as a string from the command line.
+        if str(auto_disable) in ("0", ""):
+            auto_disable = 0
         if auto_disable != 0:
+            if self.is_special_object():
+                msg = _("{object_type} '{object_name}' is a base or internal object and is never auto-disabled.")
+                msg = msg.format(object_type=self.type, object_name=self.name)
+                return callback.error(msg)
             try:
                 # Check if given date string is valid.
                 units.string2unixtime(auto_disable, time.time())
             except Exception as e:
                 msg = _("Invalid date string: {error}")
                 msg = msg.format(error=e)
+                return callback.error(msg)
+            # A date does not depend on the last use.
+            if unused and not str(auto_disable).startswith("+"):
+                msg = _("-u needs a relative time like +30D.")
+                return callback.error(msg)
+            if unused and not self.track_last_used:
+                msg = _("{object_type} does not keep its last use, so -u cannot apply to it.")
+                msg = msg.format(object_type=self.type)
                 return callback.error(msg)
 
         msg = _("Change auto disable of {object_type} '{object_name}' to '{auto_disable}'?: ")
@@ -10119,7 +10472,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_changelog("change secret")
     def change_secret(
         self,
-        secret: str=None,
+        secret: Union[str,None]=None,
         auto_secret: bool=False,
         force: bool=False,
         run_policies: bool=True,
@@ -10246,7 +10599,7 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error(msg)
         return callback.ok(self.cert)
 
-    @check_acls(acls=['view_all:cert_key'])
+    @check_acls(acls=['view_all:key'])
     @audit_log()
     def get_cert_key(
         self,
@@ -10279,7 +10632,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     def get_ca_chain(
         self,
-        crl: str=None,
+        crl: Union[str,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -10344,9 +10697,8 @@ class OTPmeObject(OTPmeBaseObject):
 
         add_acl = f"add:{self.type}"
         if not _new_unit.verify_acl(add_acl):
-            msg = _("Permission denied: {unit_path}")
-            msg = msg.format(unit_path=_new_unit.path)
-            return callback.error(msg)
+            msg = denied_msg(_new_unit, add_acl)
+            return callback.error(msg, exception=PermissionDenied)
 
         msg = _("Move {object_type} '{object_name}' to unit '{new_unit}'?: ")
         msg = msg.format(object_type=self.type,
@@ -10379,7 +10731,7 @@ class OTPmeObject(OTPmeBaseObject):
         new_unit: OTPmeBaseObject,
         lock_caller: str,
         run_policies: bool=True,
-        keep_acls: bool=None,
+        keep_acls: Union[bool,None]=None,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -10399,48 +10751,8 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error(msg)
 
         exception = None
-        inherit_acls = True
-        inherit_acls_message = ""
-
-        # Do not inherit ACL if object does not support it.
-        if self.acl_inheritance_enabled is None:
-            inherit_acls_message = _("Object cannot inherit ACLs")
-            inherit_acls = False
-
-        if self.acl_inheritance_enabled is False:
-            inherit_acls_message = _("ACL inheritance disabled")
-            inherit_acls = False
-
-        if inherit_acls:
-            if self.type == "user":
-                if self.is_admin():
-                    inherit_acls_message = _("ACL inheritance for admin users not allowed")
-                    inherit_acls = False
-            if self.type == "token":
-                if self.is_admin():
-                    inherit_acls_message = _("ACL inheritance for admin tokens not allowed")
-                    inherit_acls = False
-
-        if inherit_acls:
-            if self.uuid == config.admin_role_uuid:
-                inherit_acls_message = _("ACL inheritance for admin role not allowed")
-                inherit_acls = False
-
-        if inherit_acls:
-            if not self.verify_acl("add:acl") \
-            or not self.verify_acl("delete:acl"):
-                inherit_acls_message = _("Permission denied")
-                inherit_acls = False
-
-        # Only ever switches the inheritance off. Letting keep_acls=False
-        # switch it on would step over every check above -- including the
-        # one for add:acl/delete:acl on this object, which is what keeps
-        # somebody who may move an object into a unit from handing
-        # themselves the default ACLs of that unit. The CLI never sends
-        # False (--keep-acls maps to True), but the command takes the
-        # argument, so the API can.
-        if keep_acls:
-            inherit_acls = False
+        inherit_acls, \
+        inherit_acls_message = self.get_move_acl_inheritance(keep_acls)
 
         if inherit_acls:
             callback.send(_("* Removing default ACLs of old unit..."))
@@ -10588,8 +10900,7 @@ class OTPmeObject(OTPmeBaseObject):
             s = result[0]
             if verify_acls:
                 if not s.verify_acl("assign"):
-                    msg = _("Permission denied: {script}")
-                    msg = msg.format(script=s.rel_path)
+                    msg = denied_msg(s, "assign")
                     return callback.error(msg, exception=PermissionDenied)
             script = s.uuid
 
@@ -10736,8 +11047,8 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock(full_lock=True)
     def sign(
         self,
-        tags: List=None,
-        sign_ref: str=None,
+        tags: Union[List,None]=None,
+        sign_ref: Union[str,None]=None,
         force: bool=False,
         stdin_pass: bool=False,
         run_policies: bool=True,
@@ -11112,7 +11423,7 @@ class OTPmeObject(OTPmeBaseObject):
             # other way around it may be useful to allow one to verify object
             # signatures without the permission to view the object.
             if not self.verify_acl("verify_signature"):
-                msg = ("Permission denied.")
+                msg = denied_msg(self, "verify_signature")
                 return callback.error(msg, exception=PermissionDenied)
 
         if tags:
@@ -11323,7 +11634,7 @@ class OTPmeObject(OTPmeBaseObject):
         username: Union[str,None]=None,
         user_uuid: Union[str,None]=None,
         tags: Union[List,None]=None,
-        sign_object: str=None,
+        sign_object: Union[str,None]=None,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
@@ -11369,7 +11680,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_changelog("change description")
     def change_description(
         self,
-        description: str=None,
+        description: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
@@ -11422,7 +11733,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_changelog("change info")
     def change_info(
         self,
-        info: str=None,
+        info: Union[str,None]=None,
         language: str=DEFAULT_INFO_LANGUAGE,
         force: bool=False,
         run_policies: bool=True,
@@ -11616,14 +11927,12 @@ class OTPmeObject(OTPmeBaseObject):
                         need_exact_acl=need_exact_acl):
                 sub_type = self.get_sub_type()
                 if not sub_type:
-                    msg = _("Permission denied: {parent_path}")
-                    msg = msg.format(parent_path=parent_object.path)
+                    msg = denied_msg(parent_object, add_acl)
                     return callback.error(msg, exception=PermissionDenied)
                 sub_type_acl = f"add:{self.type}:{sub_type}"
                 if not parent_object.verify_acl(sub_type_acl,
                                 need_exact_acl=need_exact_acl):
-                    msg = _("Permission denied: {parent_path}")
-                    msg = msg.format(parent_path=parent_object.path)
+                    msg = denied_msg(parent_object, [add_acl, sub_type_acl])
                     return callback.error(msg, exception=PermissionDenied)
 
         msg = _("Adding {object_type}: {object_name}")
@@ -11646,7 +11955,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Add policies from template.
         if template:
-            for x in template.get_policies():
+            for x in template.get_policies(include_disabled=True):
                 policy = backend.get_object(object_type="policy",
                                             uuid=x)
                 if x in self.policies:
@@ -11693,13 +12002,13 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         creator: Union[str,None]=None,
         resolver: Union[str,None]=None,
-        extensions: List=None,
+        extensions: Union[List,None]=None,
         enabled: bool=True,
-        default_attributes: dict=None,
+        default_attributes: Union[dict,None]=None,
         inherit_acls: bool=True,
         template: Union[OTPmeBaseObject,None]=None,
         template_object: bool=False,
-        ignore_missing_attributes: List=None,
+        ignore_missing_attributes: Union[List,None]=None,
         verbose_level: int=0,
         verify_acls: bool=True,
         run_policies: bool=True,
@@ -11816,40 +12125,10 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error(str(e))
 
         if template:
-            # Add object classes from template.
-            ocs = self.get_object_classes()
-            for x in template.get_object_classes():
-                if x in ocs:
-                    continue
-                self.add_object_class(x, force=True)
-
-            # Add attributes from template.
-            for ext in template.extensions:
-                x_attrs = self.get_extension_attributes(ext)
-                for attr in template.get_extension_attributes(ext):
-                    x_vals = template.get_extension_attribute(ext, attr)
-                    x_auto_val = template.get_extension_attribute(extension=ext,
-                                                                attribute=attr,
-                                                                auto_value=True,
-                                                                callback=default_callback)
-                    for x in x_vals:
-                        if x not in x_auto_val:
-                            self.add_attribute(attribute=attr,
-                                                value=x,
-                                                force=True,
-                                                ignore_ro=True,
-                                                ignore_missing_attributes=ignore_missing_attributes,
-                                                verify_acls=verify_acls,
-                                                callback=callback)
-                            continue
-                        if attr in x_attrs:
-                            continue
-                        self.add_attribute(attribute=attr,
-                                        force=True,
-                                        ignore_ro=True,
-                                        ignore_missing_attributes=ignore_missing_attributes,
-                                        verify_acls=verify_acls,
-                                        callback=callback)
+            self.take_over_ldif(template,
+                            ignore_missing_attributes=ignore_missing_attributes,
+                            verify_acls=False,
+                            callback=callback)
 
         # Add default policies.
         if not self.add_default_policies(callback=callback):
@@ -12044,6 +12323,57 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
+    def take_over_ldif(
+        self,
+        source: OTPmeBaseObject,
+        ignore_missing_attributes: Union[List,None]=None,
+        verify_acls: bool=True,
+        callback: JobCallback=default_callback,
+        ):
+        """ Take the object classes and attributes of source over.
+
+        For an object made from a template, and for the unit a move
+        makes. The extensions have to be there already. An attribute
+        whose value source made up itself (e.g. from its name) is not
+        taken but made up again here.
+        """
+        if ignore_missing_attributes is None:
+            ignore_missing_attributes = []
+        # Add object classes.
+        ocs = self.get_object_classes()
+        for x in source.get_object_classes():
+            if x in ocs:
+                continue
+            self.add_object_class(x, force=True)
+
+        # Add attributes.
+        for ext in source.extensions:
+            x_attrs = self.get_extension_attributes(ext)
+            for attr in source.get_extension_attributes(ext):
+                x_vals = source.get_extension_attribute(ext, attr)
+                x_auto_val = source.get_extension_attribute(extension=ext,
+                                                            attribute=attr,
+                                                            auto_value=True,
+                                                            callback=default_callback)
+                for x in x_vals:
+                    if x not in x_auto_val:
+                        self.add_attribute(attribute=attr,
+                                            value=x,
+                                            force=True,
+                                            ignore_ro=True,
+                                            ignore_missing_attributes=ignore_missing_attributes,
+                                            verify_acls=verify_acls,
+                                            callback=callback)
+                        continue
+                    if attr in x_attrs:
+                        continue
+                    self.add_attribute(attribute=attr,
+                                    force=True,
+                                    ignore_ro=True,
+                                    ignore_missing_attributes=ignore_missing_attributes,
+                                    verify_acls=verify_acls,
+                                    callback=callback)
+
     def add_to_trash(
         self,
         deleted_by: Union[str,None]=None,
@@ -12134,6 +12464,11 @@ class OTPmeObject(OTPmeBaseObject):
             _acl = otpme_acl.decode(x)
             acl_oid = backend.get_oid(object_types=['role', 'token'],
                                         uuid=_acl.owner_uuid)
+            # An ACL group that is gone leaves the ACL as empty as an
+            # owner that is gone.
+            if acl_oid and _acl.aclgroup_uuid:
+                acl_oid = backend.get_oid(object_type="aclgroup",
+                                        uuid=_acl.aclgroup_uuid)
             if acl_oid:
                 continue
             acl_list.append(x)
@@ -12444,6 +12779,7 @@ class OTPmeObject(OTPmeBaseObject):
         extra_ref_lists=None,
         orphan_hooks=None,
         recursive_func=None,
+        report_nothing: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
@@ -12458,6 +12794,10 @@ class OTPmeObject(OTPmeBaseObject):
         (get()->[display items], remove(items)->bool). Child classes keep a thin
         override that declares these and calls super().remove_orphans(...). A
         single confirmation is shown for everything found.
+
+        recursive_func walks the members with report_nothing=False: a
+        member with nothing to clean up says nothing, or a unit of 500
+        objects answers with 500 lines.
         """
         if run_policies:
             try:
@@ -12537,13 +12877,18 @@ class OTPmeObject(OTPmeBaseObject):
             if hook['remove'](items):
                 object_changed = True
 
-        # Optional type specific recursive cascade.
+        # Optional type specific recursive cascade. Each member writes
+        # itself, and what it answers says nothing about this object:
+        # callback.ok() is True with a change and without one, and
+        # counting it here wrote this object and put "remove orphan
+        # objects" into its changelog where nothing was removed.
         if recursive and recursive_func is not None:
-            if recursive_func(force=force, verbose_level=verbose_level,
-                            recursive=recursive, callback=callback):
-                object_changed = True
+            recursive_func(force=force, verbose_level=verbose_level,
+                            recursive=recursive, callback=callback)
 
         if not object_changed:
+            if not report_nothing:
+                return callback.ok()
             msg = _("No orphan objects found for {type}: {name}")
             msg = msg.format(type=self.type, name=self.name)
             return callback.ok(msg)
@@ -12555,7 +12900,10 @@ class OTPmeObject(OTPmeBaseObject):
     def set_config_param(
         self,
         parameter: str,
-        value: Union[str,int,float,None]=None,
+        # A config parameter can be of any of these (ctype of
+        # register_config_parameter()), and set_default_config_params()
+        # hands on the default as it is, a list one as a list.
+        value: Union[str,int,float,bool,list,None]=None,
         delete: bool=False,
         append: bool=False,
         force: bool=False,
@@ -12613,7 +12961,7 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("A realm cannot hold config parameters.")
             return callback.error(msg)
         if verify_acls and not self.verify_acl(f'set:config:{parameter}'):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, f'set:config:{parameter}')
             return callback.error(msg)
         # Some parameters take effect outside the object they are set on
         # (a filesystem path, a reference to a privileged object), so no ACL
@@ -12871,7 +13219,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     def show_config_parameters(
         self,
-        parameter: str=None,
+        parameter: Union[str,None]=None,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -12885,7 +13233,7 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = msg.format(parameter=parameter)
                 return callback.error(msg)
             if not self.verify_acl(f'view:config:{parameter}'):
-                msg = _("Permission denied.")
+                msg = denied_msg(self, f'view:config:{parameter}')
                 return callback.error(msg)
         if run_policies:
             try:
@@ -12945,7 +13293,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     def show_config(
         self,
-        config_lines: List=None,
+        config_lines: Union[List,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -12953,7 +13301,7 @@ class OTPmeObject(OTPmeBaseObject):
         if config_lines is None:
             config_lines = []
         if not self.verify_acl("view:object"):
-            msg = ("Permission denied.")
+            msg = denied_msg(self, "view:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []
@@ -13004,8 +13352,11 @@ class OTPmeObject(OTPmeBaseObject):
             else:
                 lines.append('CERT=""')
 
+        # The private key: plain view must not show it, see
+        # otpme_acl.check_acl(). The same ACL as get_cert_key() (the
+        # dump_key command), so one ACL gives the key both ways.
         if self.key:
-            if self.verify_acl("view:key") \
+            if self.verify_acl("view_all:key") \
             or self.verify_acl("edit:key"):
                 lines.append(f'KEY="{self.key}"')
             else:
@@ -13580,7 +13931,7 @@ class OTPmeDataObject(OTPmeBaseObject):
         self,
         creator: Union[str,None]=None,
         resolver: Union[str,None]=None,
-        extensions: List=None,
+        extensions: Union[List,None]=None,
         enabled: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,

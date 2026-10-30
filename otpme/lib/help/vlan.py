@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [vlan]'),
-                    'cmd'   :   '--fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: --policy-limit :max_policies: --limit :limit: [|object|]',
+                    'cmd'   :   '--fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": --policy-limit :max_policies: --limit :limit: [|object|]',
                     '_help' :   {
                                     'cmd'                           : _('Show VLAN(s)'),
                                     '-a'                            : _('Show all VLANs.'),
@@ -32,7 +32,7 @@ cmd_help = {
                                     '--sort-by <attribute>'         : _('Sort output by <attribute>.'),
                                     '--raw'                         : _('Output table without any headers/borders.'),
                                     '--csv'                         : _('Output table as CSV.'),
-                                    '--csv-sep <separator>'         : _('Output table as CSV.'),
+                                    '--csv-sep <separator>'         : _('Separator between the CSV columns.'),
                                     '--policy-limit <limit>'        : _('Output <limit> assigned policies.'),
                                     '--limit <limit>'               : _('Limit number of items shown per object.'),
                                 },
@@ -40,11 +40,11 @@ cmd_help = {
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan list [--attribute attribute] [-a] [regex]'),
-                    'cmd'   :   '--attribute :attribute: -a :show_all=True: [search_regex]',
+                    'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List VLANs.'),
                                     '-a'                        : _('List all VLANs.'),
-                                    '--attribute <attribute>'   : _('Output given attribute.')
+                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
                                 },
                 },
 
@@ -75,7 +75,7 @@ cmd_help = {
 
     'add_token'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan add_token {vlan} {token}'),
-                    'cmd'   :   '<|object|> <token_path>',
+                    'cmd'   :   '<|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Add token to VLAN.'),
                                 },
@@ -83,7 +83,7 @@ cmd_help = {
 
     'remove_token'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan remove_token {vlan} {token}'),
-                    'cmd'   :   '<|object|> <token_path>',
+                    'cmd'   :   '<|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Remove token from VLAN.'),
                                 },
@@ -91,7 +91,7 @@ cmd_help = {
 
     'add_role'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan add_role {vlan} {role}'),
-                    'cmd'   :   '<|object|> <role_name>',
+                    'cmd'   :   '<|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add role to VLAN.'),
                                 },
@@ -99,7 +99,7 @@ cmd_help = {
 
     'remove_role'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan remove_role {vlan} {role}'),
-                    'cmd'   :   '<|object|> <role_name>',
+                    'cmd'   :   '<|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove role from VLAN.'),
                                 },
@@ -107,7 +107,7 @@ cmd_help = {
 
     'add_host'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan add_host {vlan} {host}'),
-                    'cmd'   :   '<|object|> <host_name>',
+                    'cmd'   :   '<|object|> <"host_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add host to VLAN.'),
                                 },
@@ -115,7 +115,7 @@ cmd_help = {
 
     'remove_host'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan remove_host {vlan} {host}'),
-                    'cmd'   :   '<|object|> <host_name>',
+                    'cmd'   :   '<|object|> <"host_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove host from VLAN.'),
                                 },
@@ -123,7 +123,7 @@ cmd_help = {
 
     'add_device'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan add_device {vlan} {device}'),
-                    'cmd'   :   '<|object|> <device_name>',
+                    'cmd'   :   '<|object|> <"device_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add device to VLAN.'),
                                 },
@@ -131,7 +131,7 @@ cmd_help = {
 
     'remove_device'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan remove_device {vlan} {device}'),
-                    'cmd'   :   '<|object|> <device_name>',
+                    'cmd'   :   '<|object|> <"device_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove device from VLAN.'),
                                 },
@@ -139,7 +139,7 @@ cmd_help = {
 
     'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan config -d -a {vlan} {param} [value]'),
-                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to VLAN.'),
                                     '-a'                    : _('Append value to config parameter.'),
@@ -149,19 +149,34 @@ cmd_help = {
 
     'get_config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan get_config {vlan} {parameter}'),
-                    'cmd'   :   '<|object|> <parameter>',
+                    'cmd'   :   '<|object|> <"parameter">',
                     '_help' :   {
                                     'cmd'                   : _('Get config parameter.'),
                                 },
                 },
     'show_config'      : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan show_config {vlan} [parameter]'),
-                    'cmd'   :   '<|object|> [parameter]',
+                    'cmd'   :   '<|object|> ["parameter"]',
                     '_help' :   {
                                     'cmd'                   : _('Show vlan config parameters'),
                                 },
                 },
 
+    'show_oid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-vlan show_oid [--full] {vlan}'),
+                    'cmd'   :   '--full :full=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the OID of the object.'),
+                                    '--full'                : _('Show the full OID.'),
+                                },
+                },
+    'show_uuid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-vlan show_uuid {vlan}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the UUID of the object.'),
+                                },
+                },
     'changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan changelog {vlan}'),
                     'cmd'   :   '<|object|>',
@@ -172,7 +187,7 @@ cmd_help = {
 
     'edit_changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan edit_changelog {vlan} {entry_id} {comment}'),
-                    'cmd'   :   '<|object|> <entry_id> <comment>',
+                    'cmd'   :   '<|object|> <entry_id> <"comment">',
                     '_help' :   {
                                     'cmd'                   : _('Edit changelog entry comment.'),
                                 },
@@ -202,6 +217,14 @@ cmd_help = {
                                 },
                 },
 
+    'auto_disable'          : {
+                    '_cmd_usage_help' : _('Usage: otpme-vlan auto_disable {vlan} {time}'),
+                    'cmd'   :   '<|object|> <auto_disable>',
+                    '_help' :   {
+                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023", 0 removes it).'),
+                                },
+                },
+
     'enable'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan enable {vlan}'),
                     'cmd'   :   '<|object|>',
@@ -220,7 +243,7 @@ cmd_help = {
 
     'rename'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan rename {vlan} {new_name}'),
-                    'cmd'   :   '<|object|> <new_name>',
+                    'cmd'   :   '<|object|> <"new_name">',
                     '_help' :   {
                                     'cmd'                   : _('Rename VLAN.'),
                                 },
@@ -228,7 +251,7 @@ cmd_help = {
 
     'add_acl'   : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan add_acl {vlan} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
+                    'cmd'   :   '<|object|> <"owner_type"> <"owner_name"> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to VLAN.'),
                                 },
@@ -268,7 +291,7 @@ cmd_help = {
 
     'move'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan move [--keep-acls] {vlan} {unit}'),
-                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <new_unit>',
+                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <"new_unit">',
                     '_help' :   {
                                     'cmd'                   : _('Change VLAN unit.'),
                                     '--keep-acls'           : _('Keep object ACLs.')
@@ -285,7 +308,7 @@ cmd_help = {
 
     'description'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan description {vlan} [description]'),
-                    'cmd'   :   '<|object|> [description]',
+                    'cmd'   :   '<|object|> ["description"]',
                     '_help' :   {
                                     'cmd'                   : _('Set VLAN description.'),
                                 },
@@ -293,7 +316,7 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan info {vlan} [info]'),
-                    'cmd'   :   '--language :language: <|object|> [info]',
+                    'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set VLAN info'),
                                     '--language <lang>'     : _('Change info for language.'),
@@ -302,7 +325,7 @@ cmd_help = {
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan dump_info {vlan}'),
-                    'cmd'   :   '--language :language: <|object|>',
+                    'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump VLAN info'),
                                     '--language <lang>'     : _('Dump info for language.'),
@@ -327,7 +350,7 @@ cmd_help = {
 
     'export'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan export --password <password> {vlan}'),
-                    'cmd'   :   '--password :password: <|object|>',
+                    'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export VLAN config to stdout.'),
                                     '--password <password>' : _('Encrypt object config with password.'),
@@ -336,7 +359,7 @@ cmd_help = {
 
     'add_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan add_policy {vlan} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add policy to VLAN.'),
                                 },
@@ -344,15 +367,15 @@ cmd_help = {
 
     'remove_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan remove_policy {vlan} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove policy from VLAN.'),
                                 },
                 },
 
     'list_policies'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-vlan list_policies {vlan}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-vlan list_policies [--return-type <type>] [--policy-types <type1,type2>] {vlan}'),
+                    'cmd'   :   '--return-type :"return_type": --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

@@ -25,6 +25,20 @@ policy, and warns about shares that use the pool.
 **show \[*pool*\]**  
 Display pool information.
 
+<!-- -->
+
+**show_oid \[**--full**\] *pool***  
+Show the OID of the pool: **pool\|\<realm\>/\<site\>/\<name\>**. With
+**--full** the full OID, which names the unit as well:
+**pool\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
+Needs the ACL **view_public:object**.
+
+**show_uuid *pool***  
+Show the UUID of the pool.  
+Needs the ACL **view_public:object**.
+
+<!-- -->
+
 **list \[*regex*\]**  
 List pools, optionally filtered by regex pattern.
 
@@ -42,6 +56,15 @@ Move pool to a different unit.
 
 **touch *pool***  
 Re-index the object to fix potential index problems.
+
+**auto_disable *pool* *time***  
+Set auto-disable time. It is either a relative time with a leading
+**+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
+The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
+**otpme**(7). A relative time counts from when it is set, and again from
+when the pool is enabled. **0** removes it. It is refused for an object
+the realm or a site comes with, e.g. the admin user; a time set on one
+before does nothing.
 
 ## Node Management
 
@@ -78,10 +101,11 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *pool***  
-List the policies attached to the pool. Use **--return-type** to select
-the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
-Use **--policy-types** to list only policies of the given types; these
-are policy types, not policy names.  
+List the policies attached to the pool, the disabled ones too, marked
+**(disabled)**. Use **--return-type** to select the attribute returned
+(**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
+to list only policies of the given types; these are policy types, not
+policy names.  
 Needs the ACL **view:policies**.
 
 ## ACL Management
@@ -96,10 +120,24 @@ Remove an access control entry.
 Display all ACLs for the pool.
 
 **enable_acl_inheritance *pool***  
-Enable ACL inheritance from parent objects.
+Let a move of the pool swap its default ACLs: what the old unit handed
+down is taken away, and what the new unit hands down is given. It does
+not by default; a move then leaves the ACLs of the pool as they are.
+
+Only a move asks this. A new pool gets the default ACLs of its unit, and
+**add_acl -a** or **-r** on a unit reach it either way. A move with
+**--keep-acls** leaves its ACLs alone all the same.
+
+A move by somebody who does not hold **add:acl** and **delete:acl** on
+the pool leaves its ACLs alone as well, and says so. Otherwise moving an
+object into a unit would be a way of handing yourself the default ACLs
+of that unit.
+
+Needs the ACL **enable:acl_inheritance**.
 
 **disable_acl_inheritance *pool***  
-Disable ACL inheritance.
+A move leaves the ACLs of the pool as they are again.  
+Needs the ACL **disable:acl_inheritance**.
 
 ## Configuration
 
@@ -144,8 +182,8 @@ Remove every entry of the changelog.
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
-refused. OTPme asks the token you are signed in with first, then the
-object.
+refused. A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 
 ## Import/Export
 
@@ -219,6 +257,12 @@ Add a node to the pool
 
 **otpme-pool list_nodes europe**  
 List nodes in the pool
+
+# AUTH ON ACTION HOOKS
+
+An auth on action policy can ask for a login again before these actions.
+See **Auth On Action Policy** in **otpme-policy**(1). A pool has the
+hooks every object type has, and no others.
 
 # FILES
 

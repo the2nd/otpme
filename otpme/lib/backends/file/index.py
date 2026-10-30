@@ -67,6 +67,26 @@ def init(init_file_dir_perms=False):
     engine = _index.get_db_engine()
     Base.metadata.create_all(engine)
 
+def add_classes():
+    """ Create classes for object types registered after init().
+
+    In API mode a command registers the modules it needs and then runs
+    the backend init; a command that registers all modules later on
+    (site add, script sign, the tool commands) brought object types
+    without class, and every search over all types failed with
+    "Unknown object type".
+    """
+    if Base is None:
+        return
+    new_types = [x for x in config.object_types if x not in classes]
+    if not new_types:
+        return
+    for x in new_types:
+        create_classes(x)
+    _index = config.get_index_module()
+    engine = _index.get_db_engine()
+    Base.metadata.create_all(engine)
+
 def get_class(otype):
     """ Get class for object type. """
     if otype not in classes:
@@ -166,13 +186,36 @@ def get_all_tables():
         all_tables[table_name]['columns'] = table.columns
     return all_tables
 
+def get_db_index_names():
+    """ The names of the indices the database has, of every table. """
+    from sqlalchemy import inspect
+    _index = config.get_index_module()
+    engine = _index.get_db_engine()
+    inspector = inspect(engine)
+    names = set()
+    for table_name in inspector.get_table_names():
+        for x in inspector.get_indexes(table_name):
+            names.add(x['name'])
+    return names
+
 def create_db_indices(drop=False, desc=False,
     left_prefix=False, create_trigram_index=False):
-    """ Create DB indices. """
+    """ Create DB indices.
+
+    One that is there already is not created again, and one that is not
+    there is not dropped: a second create_db_indices, or the one after
+    an index restore, failed on the first index that existed. Asked of
+    the database and not written as IF [NOT] EXISTS, which MySQL does
+    not have. """
     from sqlalchemy import text
     from sqlalchemy.types import VARCHAR
     index_names = []
     all_tables = get_all_tables()
+    existing_indices = get_db_index_names()
+    def nothing_to_do(name):
+        if drop:
+            return name not in existing_indices
+        return name in existing_indices
     _index = config.get_index_module()
     session = _index.get_db_connection()
     if create_trigram_index:
@@ -218,7 +261,8 @@ def create_db_indices(drop=False, desc=False,
             raise OTPmeException(msg)
         index_names.append(asc_index_name)
         try:
-            session.execute(asc_index_cmd)
+            if not nothing_to_do(asc_index_name):
+                session.execute(asc_index_cmd)
         except Exception as e:
             msg = _("Index command failed: {e}")
             msg = msg.format(e=e)
@@ -245,7 +289,8 @@ def create_db_indices(drop=False, desc=False,
             index_names.append(desc_index_name)
             logger.debug(log_msg)
             try:
-                session.execute(desc_index_cmd)
+                if not nothing_to_do(desc_index_name):
+                    session.execute(desc_index_cmd)
             except Exception as e:
                 msg = _("Index command failed: {e}")
                 msg = msg.format(e=e)
@@ -273,7 +318,8 @@ def create_db_indices(drop=False, desc=False,
                 raise OTPmeException(msg)
             index_names.append(asc_index_name)
             try:
-                session.execute(asc_index_cmd)
+                if not nothing_to_do(asc_index_name):
+                    session.execute(asc_index_cmd)
             except Exception as e:
                 msg = _("Index command failed: {e}")
                 msg = msg.format(e=e)
@@ -299,7 +345,8 @@ def create_db_indices(drop=False, desc=False,
                     raise OTPmeException(msg)
                 index_names.append(desc_index_name)
                 try:
-                    session.execute(desc_index_cmd)
+                    if not nothing_to_do(desc_index_name):
+                        session.execute(desc_index_cmd)
                 except Exception as e:
                     msg = _("Index command failed: {e}")
                     msg = msg.format(e=e)

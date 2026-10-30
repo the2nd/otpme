@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-ca show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [ca]'),
-                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show CA(s)'),
                                     '-a'                    : _('Show all CAs.'),
@@ -34,23 +34,23 @@ cmd_help = {
                                     '--sort-by <attribute>' : _('Sort output by <attribute>.'),
                                     '--raw'                 : _('Output table without any headers/borders.'),
                                     '--csv'                 : _('Output table as CSV.'),
-                                    '--csv-sep <separator>' : _('Output table as CSV.'),
+                                    '--csv-sep <separator>' : _('Separator between the CSV columns.'),
                                 },
                 },
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-ca list [--attribute attribute] [-a] [regex]'),
-                    'cmd'   :   '--attribute :attribute: -a :show_all=True: [search_regex]',
+                    'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                   : _('List CAs'),
                                     '-a'                    : _('List all CAs.'),
-                                    '--attribute <attribute>' : _('Output given attribute.'),
+                                    '--attribute <attribute>' : _('Match the regex against this attribute instead of the name.'),
                                 },
                 },
 
     'add'    : {
                     '_cmd_usage_help' : _('Usage: otpme-ca add {ca}'),
-                    'cmd'   :   '--country :country: --state :state: --locality :locality: --organization :organization: --ou :ou: --email :email: --valid :valid: --key-len :key_len: <|object|>',
+                    'cmd'   :   '--country :"country": --state :"state": --locality :"locality": --organization :"organization": --ou :"ou": --email :"email": --valid :valid: --key-len :key_len: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Add new CA'),
                                     '--valid'               : _('CA certificate validity in days.'),
@@ -75,9 +75,24 @@ cmd_help = {
 
     'get_config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-ca get_config {ca} {parameter}'),
-                    'cmd'   :   '<|object|> <parameter>',
+                    'cmd'   :   '<|object|> <"parameter">',
                     '_help' :   {
                                     'cmd'                   : _('Get config parameter.'),
+                                },
+                },
+    'show_oid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-ca show_oid [--full] {ca}'),
+                    'cmd'   :   '--full :full=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the OID of the object.'),
+                                    '--full'                : _('Show the full OID.'),
+                                },
+                },
+    'show_uuid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-ca show_uuid {ca}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the UUID of the object.'),
                                 },
                 },
     'changelog'    : {
@@ -89,7 +104,7 @@ cmd_help = {
                 },
     'edit_changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-ca edit_changelog {ca} {entry_id} {comment}'),
-                    'cmd'   :   '<|object|> <entry_id> <comment>',
+                    'cmd'   :   '<|object|> <entry_id> <"comment">',
                     '_help' :   {
                                     'cmd'                   : _('Edit changelog entry comment.'),
                                 },
@@ -117,6 +132,14 @@ cmd_help = {
                                 },
                 },
 
+    'auto_disable'          : {
+                    '_cmd_usage_help' : _('Usage: otpme-ca auto_disable {ca} {time}'),
+                    'cmd'   :   '<|object|> <auto_disable>',
+                    '_help' :   {
+                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023", 0 removes it).'),
+                                },
+                },
+
     'enable'    : {
                     '_cmd_usage_help' : _('Usage: otpme-ca enable {ca}'),
                     'cmd'   :   '<|object|>',
@@ -135,7 +158,7 @@ cmd_help = {
 
     'create_client_cert'    : {
                     '_cmd_usage_help' : _('Usage: otpme-ca create_client_cert {ca} {cn} {cert_out_file} {key_out_file}'),
-                    'cmd'   :   '--country :country: --state :state: --locality :locality: --organization :organization: --ou :ou: --email :email: --valid :valid: --key-len :key_len: <|object|> <cn> <cert_out_file> <key_out_file>',
+                    'cmd'   :   '--country :"country": --state :"state": --locality :"locality": --organization :"organization": --ou :"ou": --email :"email": --valid :valid: --key-len :key_len: <|object|> <"cn"> <"cert_out_file"> <"key_out_file">',
                     '_help' :   {
                                     'cmd'                   : _('Create client certificate.'),
                                     '--valid'               : _('Certificate validity in days.'),
@@ -159,7 +182,7 @@ cmd_help = {
 
      'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-ca config -d -a {ca} {param} [value]'),
-                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to CA.'),
                                     '-a'                    : _('Append value to config parameter.'),
@@ -169,7 +192,7 @@ cmd_help = {
 
     'show_config'      : {
                     '_cmd_usage_help' : _('Usage: otpme-ca show_config {ca} [parameter]'),
-                    'cmd'   :   '<|object|> [parameter]',
+                    'cmd'   :   '<|object|> ["parameter"]',
                     '_help' :   {
                                     'cmd'                   : _('Show CA config parameters'),
                                 },
@@ -233,7 +256,7 @@ cmd_help = {
 
     'add_acl'   : {
                     '_cmd_usage_help' : _('Usage: otpme-ca add_acl {ca} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
+                    'cmd'   :   '<|object|> <"owner_type"> <"owner_name"> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to CA'),
                                 },
@@ -294,7 +317,7 @@ cmd_help = {
 
     'description'    : {
                     '_cmd_usage_help' : _('Usage: otpme-ca description {ca} [description]'),
-                    'cmd'   :   '<|object|> [description]',
+                    'cmd'   :   '<|object|> ["description"]',
                     '_help' :   {
                                     'cmd'                   : _('Set CA description'),
                                 },
@@ -302,7 +325,7 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-ca info {ca} [info]'),
-                    'cmd'   :   '--language :language: <|object|> [info]',
+                    'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set CA info'),
                                     '--language <lang>'     : _('Change info for language.'),
@@ -311,7 +334,7 @@ cmd_help = {
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-ca dump_info {ca}'),
-                    'cmd'   :   '--language :language: <|object|>',
+                    'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump CA info'),
                                     '--language <lang>'     : _('Dump info for language.'),
@@ -323,10 +346,6 @@ cmd_help = {
                 },
 
     '_list_valid_attributes'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_attributes'    : {
                     'cmd'   :   '<|object|>',
                 },
 
@@ -352,7 +371,7 @@ cmd_help = {
 
     'export'    : {
                     '_cmd_usage_help' : _('Usage: otpme-ca export --password <password> {ca}'),
-                    'cmd'   :   '--password :password: <|object|>',
+                    'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export CA config to stdout'),
                                     '--password <password>' : _('Encrypt object config with password.'),
@@ -361,7 +380,7 @@ cmd_help = {
 
     'add_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-ca add_policy {ca} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add policy to CA'),
                                 },
@@ -369,15 +388,15 @@ cmd_help = {
 
     'remove_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-ca remove_policy {ca} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove policy from CA'),
                                 },
                 },
 
     'list_policies'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca list_policies {ca}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-ca list_policies [--return-type <type>] [--policy-types <type1,type2>] {ca}'),
+                    'cmd'   :   '--return-type :"return_type": --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -399,7 +418,7 @@ cmd_help = {
 
     'dump_key'   : {
                     '_cmd_usage_help' : _('Usage: otpme-ca dump_key [-p passphrase] {ca}'),
-                    'cmd'   :   '<|object|> -p :passphrase:',
+                    'cmd'   :   '<|object|> -p :"passphrase":',
                     '_help' :   {
                                     'cmd'                   : _('Dump CA\'s private key to stdout'),
                                     '-p <passphrase>'       : _('Export private key encrypted with "passphrase"'),

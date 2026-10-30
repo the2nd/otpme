@@ -19,7 +19,7 @@ cmd_help = {
     '_need_command'             : True,
     'add'    : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver add [--template <template>] {resolver}'),
-                    'cmd'   :   '--template :ldap_template: <|object|>',
+                    'cmd'   :   '--template :"ldap_template": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Add new resolver.'),
                                     '--template <template>' : _('Use settings from given template.'),
@@ -28,7 +28,7 @@ cmd_help = {
 
     'ldap_base'   : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver ldap_base {resolver} {ldap_base}'),
-                    'cmd'   :   '<|object|> <ldap_base>',
+                    'cmd'   :   '<|object|> <"ldap_base">',
                     '_help' :   {
                                     'cmd'                   : _('Set LDAP base.'),
                                 },
@@ -36,7 +36,7 @@ cmd_help = {
 
     'login_dn'   : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver login_dn {resolver} {login_dn}'),
-                    'cmd'   :   '<|object|> <login_dn>',
+                    'cmd'   :   '<|object|> <"login_dn">',
                     '_help' :   {
                                     'cmd'                   : _('Set DN used to login to LDAP server.'),
                                 },
@@ -45,7 +45,7 @@ cmd_help = {
 
     'login_password'   : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver login_password {resolver} [password]'),
-                    'cmd'   :   '<|object|> [login_password]',
+                    'cmd'   :   '<|object|> ["login_password"]',
                     '_help' :   {
                                     'cmd'                   : _('Set password used to login to LDAP server.'),
                                 },
@@ -63,7 +63,7 @@ cmd_help = {
 
     'add_server'   : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver add_server {resolver} {server_uri}'),
-                    'cmd'   :   '<|object|> <server_uri>',
+                    'cmd'   :   '<|object|> <"server_uri">',
                     '_help' :   {
                                     'cmd'                   : _('Add LDAP server URI (e.g. ldaps://ldap.domain.tld, ldaps://ldap2.domain.tld:389).'),
                                 },
@@ -71,7 +71,7 @@ cmd_help = {
 
     'del_server' : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver del_server {resolver} {server_uri}'),
-                    'cmd'   :   '<|object|> <server_uri>',
+                    'cmd'   :   '<|object|> <"server_uri">',
                     '_help' :   {
                                     'cmd'                   : _('Delete LDAP server URI.'),
                                 },
@@ -80,7 +80,7 @@ cmd_help = {
 
     'add_ldap_filter'   : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver add_ldap_filter {resolver} {object_type} {ldap_filter}'),
-                    'cmd'   :   '<|object|> <object_type> <ldap_filter>',
+                    'cmd'   :   '<|object|> <"object_type"> <"ldap_filter">',
                     '_help' :   {
                                     'cmd'                   : _('Add LDAP filter to search given object type.'),
                                 },
@@ -88,7 +88,7 @@ cmd_help = {
 
     'del_ldap_filter' : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver del_ldap_filter {resolver} {object_type} {ldap_filter}'),
-                    'cmd'   :   '<|object|> <object_type> <ldap_filter>',
+                    'cmd'   :   '<|object|> <"object_type"> <"ldap_filter">',
                     '_help' :   {
                                     'cmd'                   : _('Delete LDAP filter for given object type.'),
                                 },
@@ -96,7 +96,7 @@ cmd_help = {
 
     'add_ldap_attribute'   : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver add_ldap_attribute {resolver} {object_type} {src_attr} [dst_attr]'),
-                    'cmd'   :   '<|object|> <object_type> <src_attr> [dst_attr]',
+                    'cmd'   :   '<|object|> <"object_type"> <"src_attr"> ["dst_attr"]',
                     '_help' :   {
                                     'cmd'                   : _('Add LDAP attribute to be mapped to the given object type.'),
                                 },
@@ -104,7 +104,7 @@ cmd_help = {
 
     'del_ldap_attribute' : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver del_ldap_attribute {resolver} {object_type} {ldap_attribute}'),
-                    'cmd'   :   '<|object|> <object_type> <src_attr>',
+                    'cmd'   :   '<|object|> <"object_type"> <"src_attr">',
                     '_help' :   {
                                     'cmd'                   : _('Delete LDAP attribute for given object type.'),
                                 },

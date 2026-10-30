@@ -24,6 +24,8 @@ except Exception:
 from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
+from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
@@ -76,7 +78,6 @@ read_value_acls = {
 write_value_acls = {
                 "edit"      : [
                             "uv",
-                            "attestation_cert",
                             "auth_script",
                             "offline_expiry",
                             "offline_unused_expiry",
@@ -427,7 +428,9 @@ class Fido2Token(Token):
         fido2_server = Fido2Server(rp_data, attestation="direct")
         return fido2_server
 
+    @check_acls(['edit:uv'])
     @object_lock()
+    @backend.transaction
     @audit_log()
     @object_changelog("change user verification to {uv}")
     def set_uv(self, uv, force: bool=False,
@@ -449,7 +452,7 @@ class Fido2Token(Token):
     @backend.transaction
     def pre_deploy(
         self,
-        pre_deploy_args: dict=None,
+        pre_deploy_args: Union[dict,None]=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -716,7 +719,7 @@ class Fido2Token(Token):
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

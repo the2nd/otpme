@@ -30,6 +30,20 @@ Delete a CA.
 **show \[*ca*\]**  
 Display CA information. Without arguments, shows all CAs.
 
+<!-- -->
+
+**show_oid \[**--full**\] *ca***  
+Show the OID of the CA: **ca\|\<realm\>/\<site\>/\<name\>**. With
+**--full** the full OID, which names the unit as well:
+**ca\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
+Needs the ACL **view_public:object**.
+
+**show_uuid *ca***  
+Show the UUID of the CA.  
+Needs the ACL **view_public:object**.
+
+<!-- -->
+
 **list \[*regex*\]**  
 List CAs, optionally filtered by regex pattern.
 
@@ -42,6 +56,15 @@ Disable a CA without deleting it.
 **touch *ca***  
 Re-index the object to fix potential index problems.
 
+**auto_disable *ca* *time***  
+Set auto-disable time. It is either a relative time with a leading
+**+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
+The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
+**otpme**(7). A relative time counts from when it is set, and again from
+when the CA is enabled. **0** removes it. It is refused for an object
+the realm or a site comes with, e.g. the admin user; a time set on one
+before does nothing.
+
 ## Certificate Operations
 
 **dump_cert *ca***  
@@ -49,7 +72,9 @@ Export the CA certificate to stdout.
 
 **dump_key \[**-p** *passphrase*\] *ca***  
 Export the CA private key to stdout. Use **-p** to encrypt with a
-passphrase.
+passphrase.  
+Needs the ACL **view:key**, or **view_all**. A plain **view** does not
+open it.
 
 **dump_ca_chain *ca***  
 Export the CA certificate chain to stdout.
@@ -126,8 +151,8 @@ Remove every entry of the changelog.
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
-refused. OTPme asks the token you are signed in with first, then the
-object.
+refused. A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 
 ## Policy Management
 
@@ -152,10 +177,11 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *ca***  
-List the policies attached to the CA. Use **--return-type** to select
-the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
-Use **--policy-types** to list only policies of the given types; these
-are policy types, not policy names.  
+List the policies attached to the CA, the disabled ones too, marked
+**(disabled)**. Use **--return-type** to select the attribute returned
+(**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
+to list only policies of the given types; these are policy types, not
+policy names.  
 Needs the ACL **view:policies**.
 
 ## ACL Management
@@ -170,10 +196,12 @@ Remove an access control entry.
 Display all ACLs for the CA.
 
 **enable_acl_inheritance *ca***  
-Enable ACL inheritance from parent objects.
-
 **disable_acl_inheritance *ca***  
-Disable ACL inheritance.
+ACL inheritance says whether a move swaps the default ACLs of the old
+unit for those of the new one. A CA cannot be moved, so for a CA it
+changes nothing. A new CA gets the default ACLs of its unit, and
+**add_acl -a** or **-r** on a unit reach it either way.  
+Needs the ACL **enable:acl_inheritance** or **disable:acl_inheritance**.
 
 ## Import/Export
 
@@ -287,6 +315,15 @@ Export CRL
 
 **otpme-ca update_crl myca**  
 Remove expired certificates from CRL
+
+# AUTH ON ACTION HOOKS
+
+An auth on action policy can ask for a login again before these actions.
+See **Auth On Action Policy** in **otpme-policy**(1). A ca has the hooks
+every object type has, and these:
+
+> create_ca_cert, create_cert, create_client_cert, create_server_cert,
+> revoke_cert, set_config_parameter, set_crl, update_crl.
 
 # FILES
 

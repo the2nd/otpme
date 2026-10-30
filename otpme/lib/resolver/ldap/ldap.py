@@ -20,6 +20,7 @@ from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.classes.resolver import Resolver
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.unit import register_subtype_add_acl
@@ -1115,7 +1116,7 @@ class LdapResolver(Resolver):
     def show_config(self, callback=default_callback, **kwargs):
         """ Show resolver config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

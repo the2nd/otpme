@@ -27,7 +27,7 @@ cmd_help = {
 
     'add_hook'      : {
                     '_cmd_usage_help' : _('Usage: otpme-policy add_hook {policy} {object_type} {hook}'),
-                    'cmd'   :   '<|object|> <object_type> <hook_name>',
+                    'cmd'   :   '<|object|> <"object_type"> <"hook_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add hook when to force reauth (e.g. change_pin).'),
                                 },
@@ -35,7 +35,7 @@ cmd_help = {
 
     'remove_hook'   : {
                     '_cmd_usage_help' : _('Usage: otpme-policy remove_hook {policy} {object_type} {hook}'),
-                    'cmd'   :   '<|object|> <object_type> <hook_name>',
+                    'cmd'   :   '<|object|> <"object_type"> <"hook_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove hook.'),
                                 },
@@ -68,7 +68,7 @@ cmd_help = {
 
     'whitelist_token'      : {
                     '_cmd_usage_help' : _('Usage: otpme-policy whitelist_token {policy} {token}'),
-                    'cmd'   :   '<|object|> <token_path>',
+                    'cmd'   :   '<|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Add token to reauth whitelist.'),
                                 },
@@ -76,7 +76,7 @@ cmd_help = {
 
     'unwhitelist_token'   : {
                     '_cmd_usage_help' : _('Usage: otpme-policy unwhitelist_token {policy} {token}'),
-                    'cmd'   :   '<|object|> <token_path>',
+                    'cmd'   :   '<|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Remove token from reauth whitelist.'),
                                 },
@@ -85,7 +85,7 @@ cmd_help = {
 
     'whitelist_role'      : {
                     '_cmd_usage_help' : _('Usage: otpme-policy whitelist_role {policy} {role}'),
-                    'cmd'   :   '<|object|> <role_path>',
+                    'cmd'   :   '<|object|> <"role_path">',
                     '_help' :   {
                                     'cmd'                   : _('Add role to reauth whitelist.'),
                                 },
@@ -93,7 +93,7 @@ cmd_help = {
 
     'unwhitelist_role'   : {
                     '_cmd_usage_help' : _('Usage: otpme-policy unwhitelist_role {policy} {role}'),
-                    'cmd'   :   '<|object|> <role_path>',
+                    'cmd'   :   '<|object|> <"role_path">',
                     '_help' :   {
                                     'cmd'                   : _('Remove role from reauth whitelist.'),
                                 },

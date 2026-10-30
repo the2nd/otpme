@@ -13,6 +13,7 @@ except Exception:
     pass
 
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
@@ -46,6 +47,54 @@ default_callback = config.get_callback()
 POLICY_TYPE = "logintimes"
 REGISTER_BEFORE = ['otpme.lib.policy.defaultpolicies.defaultpolicies']
 REGISTER_AFTER = []
+
+# The fields of a login times entry, in their order, with the lowest and
+# the highest value. The day of week is 1 (Monday) to 7 (Sunday).
+LOGIN_TIMES_FIELDS = [
+                    ('minute', 0, 59),
+                    ('hour', 0, 23),
+                    ('day', 1, 31),
+                    ('month', 1, 12),
+                    ('weekday', 1, 7),
+                    ]
+
+def login_times_match(login_times, now):
+    """ Whether the datetime <now> is in <login_times>. """
+    now_values = {
+                'minute'    : now.minute,
+                'hour'      : now.hour,
+                'day'       : now.day,
+                'month'     : now.month,
+                'weekday'   : now.isoweekday(),
+                }
+    for entry in login_times.split("|"):
+        entry_fields = entry.split()
+        match_count = 0
+        for (name, lower, upper), field in zip(LOGIN_TIMES_FIELDS, entry_fields):
+            now_value = now_values[name]
+            for i in field.split(","):
+                if i == "*":
+                    match_count += 1
+                    break
+                if "-" in i:
+                    start = int(i.split("-")[0])
+                    end = int(i.split("-")[1])
+                    if start <= end:
+                        values = range(start, end + 1)
+                    else:
+                        # Round the end of the field, e.g. 22-6 hours.
+                        values = list(range(start, upper + 1))
+                        values += list(range(lower, end + 1))
+                    if now_value in values:
+                        match_count += 1
+                        break
+                    continue
+                if int(i) == now_value:
+                    match_count += 1
+                    break
+        if match_count == len(LOGIN_TIMES_FIELDS):
+            return True
+    return False
 
 read_acls =  []
 write_acls =  []
@@ -266,54 +315,9 @@ class LogintimesPolicy(Policy):
     def check_login_times(self, hook_object, login_times,
         callback=default_callback, **kwargs):
         """ Check for valid login time """
-        _now = datetime.datetime.now()
-        minute = int(_now.strftime("%M"))
-        hour = int(_now.strftime("%H"))
-        day = int(_now.strftime("%d"))
-        month = int(_now.strftime("%m"))
-        weekday = int(_now.strftime("%w"))
-
-        now = {
-                'minute'    : minute,
-                'hour'      : hour,
-                'day'       : day,
-                'month'     : month,
-                'weekday'   : weekday,
-                }
-
-        found_match = False
-        for entry in login_times.split("|"):
-            entry_times = {
-                    'minute'    : entry.split()[0],
-                    'hour'      : entry.split()[1],
-                    'day'       : entry.split()[2],
-                    'month'     : entry.split()[3],
-                    'weekday'   : entry.split()[4],
-                    }
-
-            match_count = 0
-            for x in now:
-                now_entry = now[x]
-                login_entry = entry_times[x]
-                for i in login_entry.split(","):
-                    if "-" in i:
-                        start = int(i.split("-")[0])
-                        end = int(i.split("-")[1])
-                        values = list(range(start, end + 1))
-                        if now_entry in values:
-                            match_count += 1
-                            break
-                    elif i == '*':
-                        match_count += 1
-                        break
-                    elif int(i) == now[x]:
-                        match_count += 1
-                        break
-            if match_count == 5:
-                found_match = True
-                break
-
-        if found_match:
+        # strftime("%w") counts Sunday as 0, which no entry can hold (1-7),
+        # so Sunday never matched.
+        if login_times_match(login_times, datetime.datetime.now()):
             return callback.ok()
 
         msg = _("Login times restricted by policy: {}: {}")
@@ -359,7 +363,7 @@ class LogintimesPolicy(Policy):
             msg = msg.format(e)
             return callback.error(msg)
         else:
-            msg = _("Policy verfied successful.")
+            msg = _("Policy verified successfully.")
             return callback.ok(msg)
 
     def handle_hook(self, hook_object, hook_name, token,
@@ -466,7 +470,7 @@ class LogintimesPolicy(Policy):
     def show_config(self, callback=default_callback, **kwargs):
         """ Show policy config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

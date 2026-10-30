@@ -18,6 +18,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import filetools
 from otpme.lib.job.callback import JobCallback
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.otpme_object import OTPmeDataObject
 
@@ -164,10 +165,10 @@ class OTPmeTreeJob(OTPmeDataObject):
     """ Class that implements OTPme tree job object. """
     def __init__(
         self,
-        realm: str=None,
-        site: str=None,
-        src_realm: str=None,
-        src_site: str=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        src_realm: Union[str,None]=None,
+        src_site: Union[str,None]=None,
         job_name: Union[str,None]=None,
         job_data: Union[dict,None]=None,
         object_id: Union[oid.OTPmeOid,None]=None,
@@ -345,7 +346,7 @@ class OTPmeTreeJob(OTPmeDataObject):
             raise OTPmeException(msg) from e
         if status is False:
             if verify_acls_only:
-                msg = _("Permission denied.")
+                msg = denied_msg(role, "add:token")
                 raise OTPmeException(msg)
             else:
                 msg = f"Failed: {callback.job.return_value}"
@@ -406,7 +407,7 @@ class OTPmeTreeJob(OTPmeDataObject):
             raise OTPmeException(msg) from e
         if status is False:
             if verify_acls_only:
-                msg = _("Permission denied.")
+                msg = denied_msg(group, "add:token")
                 raise OTPmeException(msg)
             msg = f"Failed: {callback.job.return_value}"
             raise OTPmeException(msg)
@@ -453,7 +454,7 @@ class OTPmeTreeJob(OTPmeDataObject):
             raise OTPmeException(msg) from e
         if status is False:
             if verify_acls_only:
-                msg = _("Permission denied.")
+                msg = denied_msg(group, "add:default_group_user")
                 raise OTPmeException(msg)
             self.job_status = f"Failed: {callback.job.return_value}"
             self.update_index('job_status', self.job_status)

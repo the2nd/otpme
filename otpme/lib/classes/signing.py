@@ -34,8 +34,10 @@ def hash_sign_data(sign_data):
 def resolve_tags(tags, from_uuid=True):
     """ Resolve tags from UUID to OID and reverse. """
     object_tags = {}
-    # Make sure we do not modify tags list we got.
-    tags = list(tags)
+    # Make sure we do not modify tags list we got. As strings: the
+    # command line makes a number of "--tag 123", and an OID check of
+    # an int ended in a traceback.
+    tags = [str(x) for x in tags]
     for tag in list(tags):
         object_id = None
         object_uuid = None
@@ -79,7 +81,12 @@ def resolve_tags(tags, from_uuid=True):
                                         site=config.site,
                                         return_type="full_oid")
                 if not result:
-                    continue
+                    # Kept as it was written, it would be a tag no
+                    # signature carries: a typo, or an object of another
+                    # site, and nothing would check out anymore.
+                    msg = _("Unknown object in tag (searched in site {site}): {tag}")
+                    msg = msg.format(site=config.site, tag=tag)
+                    raise InvalidTag(msg)
                 object_id = result[0]
                 object_id = oid.get(object_id)
             object_uuid = stuff.resolve_oid(object_id)
@@ -112,8 +119,33 @@ def drop_disabled_signers(signers):
         signers.remove(signer)
     return signers
 
+def load_unpinned_signers(signers):
+    """ Give a signer that does not pin its keys the keys it has now.
+
+    A pinned signer keeps its keys in its file. One that is not pinned
+    has none there, and nothing asked for them: it had no key to check
+    a signature against, and every check that needed a signature from
+    it failed. A signer whose user or role cannot be loaded is left
+    out, the way a disabled one is. """
+    for signer in list(signers):
+        if signer.pinned:
+            continue
+        try:
+            signer.load()
+        except Exception as e:
+            log_msg = _("Ignoring signer that cannot be loaded: {signer_oid}: {error}", log=True)[1]
+            log_msg = log_msg.format(signer_oid=signer.object_oid, error=e)
+            logger.warning(log_msg)
+            signers.remove(signer)
+    return signers
+
 def get_signers(signer_type, username=None):
     """ Get signers configured for this host. """
+    signers = _get_signers(signer_type, username=username)
+    return load_unpinned_signers(signers)
+
+def _get_signers(signer_type, username=None):
+    """ The signers configured for this host, as their files say. """
     from otpme.lib.classes.command_handler import CommandHandler
     command_handler = CommandHandler(interactive=False)
 
@@ -412,7 +444,7 @@ class OTPmeSigner(object):
 
         if not stuff.is_uuid(self.object_uuid):
             msg = _("Invalid signer UUID: {uuid}")
-            msg = msg.format(uuid=self.uuid)
+            msg = msg.format(uuid=self.object_uuid)
             raise UnknownObject(msg)
 
         if self.signer_type not in self.supported_signer_types:
@@ -443,7 +475,7 @@ class OTPmeSigner(object):
                 self.logger.info(log_msg)
                 return
             msg = _("Unknown user/role: {uuid}")
-            msg = msg.format(uuid=self.uuid)
+            msg = msg.format(uuid=self.object_uuid)
             raise UnknownObject(msg)
 
         self.object_oid = object_id
@@ -451,8 +483,8 @@ class OTPmeSigner(object):
         # Check object type.
         object_type = object_id.object_type
         if object_type not in self.supported_signers:
-            msg = _("Got unknown signer type: {object_type}")
-            msg = msg.format(object_type=object_type)
+            msg = _("A signer is a user or a role, not: {object_id}")
+            msg = msg.format(object_id=object_id)
             raise OTPmeException(msg)
 
         # For users we are done here.
@@ -576,6 +608,7 @@ class OTPmeSigner(object):
         deleted_val = "deleted"
         removed_val = "removed"
         outdated_val = "outdated"
+        no_key_val = "no key"
         # Get copy of this signer object to update and compare.
         c_signer = self.__class__(object_uuid=self.object_uuid,
                                 signer_type=self.signer_type,
@@ -591,6 +624,14 @@ class OTPmeSigner(object):
             self.logger.warning(log_msg)
             config.raise_exception()
             return deleted_val
+        except OTPmeException as e:
+            # A user without a sign key: there is nothing to compare the
+            # pinned key with. Said for this signer, instead of the whole
+            # of show_signer stopping over it.
+            log_msg = _("Unable to load signer: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
+            return no_key_val
 
         # Check if signer object (e.g. role) itself is outdated.
         if not uuid:
@@ -649,7 +690,8 @@ class OTPmeSigner(object):
         # Try to get cached signing key.
         cached_pkey = sign_key_cache.get_cache(user_uuid=uuid)
         if not cached_pkey:
-            msg = _("No signing key found.")
+            msg = _("No signing key found for user: {uuid}")
+            msg = msg.format(uuid=uuid)
             raise OTPmeException(msg)
         return cached_pkey
 

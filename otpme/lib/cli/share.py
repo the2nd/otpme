@@ -294,9 +294,9 @@ def row_getter(realm, site, share_order, share_data, acls,
                 if not role_enabled:
                     role_status_string = " (D)"
                 if role_site == config.site:
-                    role_string = f"{role_name} {role_status_string}"
+                    role_string = f"{role_name}{role_status_string}"
                 else:
-                    role_string = f"{role_name} ({role_site}) {role_status_string}"
+                    role_string = f"{role_name} ({role_site}){role_status_string}"
                 member_roles.append(role_string)
 
                 processed_roles = len(member_roles)

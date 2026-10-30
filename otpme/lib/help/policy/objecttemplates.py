@@ -26,8 +26,8 @@ cmd_help = {
                 },
 
     'set_template'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-policy set_template {policy} {object_type} {template}'),
-                    'cmd'   :   '<|object|> <object_type> <object_name>',
+                    '_cmd_usage_help' : _('Usage: otpme-policy set_template {policy} {object_type} {template|""}'),
+                    'cmd'   :   '<|object|> <"object_type"> <"object_name">',
                     '_help' :   {
                                     'cmd'                   : _('Set template.'),
                                 },

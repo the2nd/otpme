@@ -129,6 +129,15 @@ Add a token to a user.
 \fB\-\-type\fR comes before the command, and it has to: the type decides which arguments and options \fBadd\fR takes, and OTPme reads it before it parses the rest of the line.
 \fB\-r\fR replaces a token of that name and keeps its UUID, which is what a setup run does when it runs again.
 .br
+An \fBhotp\fR, \fBtotp\fR or \fBmotp\fR token shows its new secret and PIN, a \fBpassword\fR or \fBotp_push\fR token the password it made up.
+You only see them with the right ACLs on the new token.
+The secret and the password need \fBview:initial_secret\fR, the PIN needs \fBview:initial_pin\fR.
+These two only count now, when the token is added, and not later.
+\fBview:secret\fR and \fBview:pin\fR show them as well.
+To give them for every new token of a unit, add them to the unit as \fB++token:view:initial_secret\fR and \fB++token:view:initial_pin\fR, see
+.BR otpme\-unit (1).
+Without them you get a note instead, and the token is added all the same.
+.br
 What each type adds to the line:
 .RS
 .TP
@@ -208,6 +217,21 @@ Without it you get 5 of each, or 30 of each when you asked for one token by name
 .B \-\-role\-limit \fIN\fR, \fB\-\-scope\-limit \fIN\fR, \fB\-\-policy\-limit \fIN\fR
 The same for one of the three, where the others should stay as they are.
 .RE
+.na
+.nh
+.TP
+.B show_oid \fR[\fB\-\-full\fR] \fItoken\fR
+Show the OID of the token: \fB\%token|<realm>/<user>/<name>\fR.
+With \fB\-\-full\fR the full OID, which names the site as well: \fB\%token|<realm>/<site>/<user>/<name>\fR.
+.br
+Needs the ACL \fBview_public:object\fR.
+.TP
+.B show_uuid \fItoken\fR
+Show the UUID of the token.
+.br
+Needs the ACL \fBview_public:object\fR.
+.hy
+.ad
 .TP
 .B list \fR[\fB\-a\fR] \fR[\fIregex\fR]
 List the token paths, and with a regex only those that match it, e.g. \fBalice/*\fR for the tokens of one user.
@@ -250,12 +274,19 @@ The default token of a user is only renamed where the config parameter
 says so, see
 .BR otpme (7).
 .TP
-.B move \fR[\fB\-r\fR] \fItoken\fR \fIdst_user\fR[\fB/\fIname\fR]
+.B move \fR[\fB\-r\fR] [\fB\-\-keep\-acls\fR] \fItoken\fR \fIdst_user\fR[\fB/\fIname\fR]
 Move a token to another user.
 The user has to be on the same site; moving a token to another site does not work.
 .br
 \fB\-r\fR replaces a token of that name at the destination and keeps its UUID.
 Without it OTPme asks, and it says so when the token it would replace is the default token of that user.
+.br
+The default ACLs of the old user are taken away and those of the new one are applied, as ACL inheritance is on for a token, see \fBenable_acl_inheritance\fR.
+\fB\-\-keep\-acls\fR keeps those default ACLs.
+.br
+What the token ACLs policy of a user gives its tokens always follows the token: the ACLs on the old user and those of its default token go, and the policy of the new user gives its own, see
+.BR otpme\-policy (1).
+The ACLs of whoever created the token stay.
 .br
 Moving into the
 .B TOKENSTORE
@@ -290,7 +321,11 @@ Set auto\-disable time.
 It is either a relative time with a leading \fB+\fR, e.g. \fB+30D\fR, or an absolute one, e.g. \fB"09:53 13.06.2023"\fR.
 The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
 .BR otpme (7).
-Use \fB\-u\fR to disable the token if it was unused for the given time.
+A relative time counts from when it is set, and again from when the token is enabled.
+\fB0\fR removes it.
+It is refused for a token of a user the realm or a site comes with, e.g. the admin; a time set on one before does nothing.
+Use \fB\-u\fR to disable the token once it was unused for the given time.
+That takes a relative time; a token that was never used counts from when this was set.
 .TP
 .B description \fItoken\fR \fR[\fIdescription\fR]
 Set the description of the token.
@@ -656,7 +691,8 @@ This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
 has to allow it (see \fBotpme\fR(7)).
 It is true by default, but where no value is found at all, clearing is refused.
-OTPme asks the token you are signed in with first, then the object.
+A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 .SS Policy Management
 A \fIpolicy\fR is the name of a policy, not a path.
 It is looked for in the site of the token.
@@ -680,7 +716,7 @@ Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR d
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
 .B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fItoken\fR
-List the policies attached to the token.
+List the policies attached to the token, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
 .br
@@ -694,11 +730,13 @@ What the three forms \fIacl\fR, \fB+\fIacl\fR and \fB++\fIacl\fR mean, and which
 .PP
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
-.B add_acl \fItoken\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[\fB:\fIvalue\fR]
-Give a role or a token an ACL on this token.
+.B add_acl \fItoken\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
+Give a role or a token one or more ACLs on this token.
 .br
-\fIowner_type\fR is \fBrole\fR or \fBtoken\fR, and \fIowner\fR the path of that role or token.
-An ACL may carry a value, for example \fBview:token_type\fR.
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
+\fIowner\fR is the path of that role or token.
+An ACL can carry a value, for example \fBview:token_type\fR.
+To give several ACLs at once, separate them with commas: \fB\%view:token_type,view:status\fR.
 .br
 Needs the ACL \fBadd:acl\fR.
 .TP
@@ -719,24 +757,23 @@ The other direction: the ACLs this token holds on other objects.
 Admin only. This one cannot be given away.
 .TP
 .B enable_acl_inheritance \fItoken\fR
-Let the token take the ACLs that reach it from elsewhere. It does by default.
+Let a move of the token to another user swap its default ACLs: what the old user handed down is taken away, and what the new user hands down is given.
+It does by default.
 .RS
 .PP
-Two things reach it: a default ACL of the unit the token sits in, and an ACL added to its user with \fB\-r\fR (see
-.BR otpme\-user (1)).
-A token that does not inherit is passed over by both.
-.PP
-Only default ACLs are inherited. An ordinary ACL on the unit never is.
-.PP
-Moving a token into another unit is the one place that asks something else as well: an admin token gets neither the default ACLs of the new unit nor loses those of the old one.
+Only a move asks this.
+A new token gets the default ACLs of its user, and \fBadd_acl \-a\fR or \fB\-r\fR on its user or unit reach it either way.
+A move with \fB\-\-keep\-acls\fR leaves its ACLs alone all the same, and so does a move of an admin token.
 That is the admin token of the site and every token in the site admin role \fBSITE_ADMIN\fR.
+.PP
+A move by somebody who does not hold \fBadd:acl\fR and \fBdelete:acl\fR on the token leaves its ACLs alone as well, and says so.
+Otherwise moving a token to a user would be a way of handing yourself the default ACLs of that user.
 .PP
 Needs the ACL \fBenable:acl_inheritance\fR.
 .RE
 .TP
 .B disable_acl_inheritance \fItoken\fR
-Stop that.
-Only the ACLs on the token itself count from then on.
+A move leaves the ACLs of the token as they are.
 .br
 Needs the ACL \fBdisable:acl_inheritance\fR.
 .SS Export and Cleanup
@@ -1249,17 +1286,36 @@ A token is held by its UUID, and \fB\-r\fR gives the new token the UUID of the o
 Deleting it and adding it again would give it a new UUID, and every assignment would be gone.
 .br
 alice has to scan the new QR code.
+.\" BEGIN AUTH ON ACTION HOOKS
+.\" Generated by update_hooks_man.py. Do not edit, the next run
+.\" overwrites it.
+.SH AUTH ON ACTION HOOKS
+An auth on action policy can ask for a login again before these actions.
+See
+.B Auth On Action Policy
+in
+.BR otpme\-policy (1).
+A token has the hooks every object type has, and these:
+.RS
+.PP
+.na
+.nh
+add_dynamic_group, add_sign, change_2f_token, change_auth_script, change_counter_check_range, change_encrypt_public_key, change_key_type, change_mode, change_offline_expiry, change_offline_unused_expiry, change_password, change_phone_number, change_pin, change_push_script, change_push_token, change_sign_public_key, change_ssh_public_key, change_timedrift_tolerance, change_validity_time, del_sign, deploy, disable_2f_token, disable_auth_script, disable_mschap, disable_offline, disable_pin, disable_session_keep, disable_sso_deploy, dump_token_data, enable_2f_token, enable_auth_script, enable_mschap, enable_offline, enable_pin, enable_session_keep, enable_sso_deploy, encrypt_public_key, gen_mschap, gen_qrcode, get_otp, key_type, move, remove_dynamic_group, resync, set_config_parameter, set_temp_password, set_token_data, show_config_parameters, show_pin, show_secret, sign_public_key, ssh_public_key.
+.hy
+.ad
+.RE
+.\" END AUTH ON ACTION HOOKS
 .SH FILES
 .TP
 .I /var/lib/otpme/
 The objects of the realm, on a node.
 A token lives under the user it belongs to.
 .TP
-.I /var/cache/otpme/offline/\fIuser_uuid\fI/
+\fI/var/cache/otpme/offline/<user_uuid>/\fR
 The tokens a host can check while it cannot reach the realm, one directory per user.
 Written at login, and only for a token that allows it \(em see \fBOffline Configuration\fR above.
 .TP
-.I /var/cache/otpme/ssh/authorized_keys/\fIuser\fI/authorized_keys
+\fI/var/cache/otpme/ssh/authorized_keys/<user>/authorized_keys\fR
 The keys of the SSH tokens of that user, on a host, as sshd reads them.
 Written by \fBhostd\fR from the tokens of the realm.
 .SH SEE ALSO

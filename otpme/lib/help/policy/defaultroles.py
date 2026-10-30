@@ -27,7 +27,7 @@ cmd_help = {
 
     'add_default_role'      : {
                     '_cmd_usage_help' : _('Usage: otpme-policy add_default_role {policy} {role}'),
-                    'cmd'   :   '<|object|> <role_name>',
+                    'cmd'   :   '<|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add role.'),
                                 },
@@ -35,7 +35,7 @@ cmd_help = {
 
     'remove_default_role'   : {
                     '_cmd_usage_help' : _('Usage: otpme-policy remove_default_role {policy} {role}'),
-                    'cmd'   :   '<|object|> <role_name>',
+                    'cmd'   :   '<|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove role.'),
                                 },

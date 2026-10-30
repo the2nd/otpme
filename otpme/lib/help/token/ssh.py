@@ -19,7 +19,7 @@ cmd_help = {
     '_need_command'             : True,
     'add'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token add [-r] {token} [public_key]'),
-                    'cmd'   :   '-r :replace=True: <|object|> [public_key]',
+                    'cmd'   :   '-r :replace=True: <|object|> ["public_key"]',
                     '_help' :   {
                                     'cmd'                   : _('Add new token.'),
                                     '-r'                    : _('Replace existing token and keep its UUID.'),
@@ -28,7 +28,7 @@ cmd_help = {
 
     'password'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token password --generate [--weak-password] {token} [password]'),
-                    'cmd'   :   '--generate :auto_password=True: --weak-password :weak_password=True: <|object|> [password]',
+                    'cmd'   :   '--generate :auto_password=True: --weak-password :weak_password=True: <|object|> ["password"]',
                     '_help' :   {
                                     'cmd'                   : _('Change token password.'),
                                     '--generate'            : _('Generate password.'),
@@ -38,7 +38,7 @@ cmd_help = {
 
     'ssh_public_key'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token ssh_public_key {token} [ssh_public_key]'),
-                    'cmd'   :   '<|object|> [ssh_public_key]',
+                    'cmd'   :   '<|object|> ["ssh_public_key"]',
                     '_help' :   {
                                     'cmd'                   : _('Change token SSH public key.'),
                                 },
@@ -46,7 +46,7 @@ cmd_help = {
 
     'card_type'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token card_type {token} [card_type]'),
-                    'cmd'   :   '<|object|> [card_type]',
+                    'cmd'   :   '<|object|> ["card_type"]',
                     '_help' :   {
                                     'cmd'                   : _('Set card type of SSH token (e.g. gpg).'),
                                 },
@@ -54,7 +54,7 @@ cmd_help = {
 
     'key_type'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token key_type {token} {key_type}'),
-                    'cmd'   :   '<|object|> <key_type>',
+                    'cmd'   :   '<|object|> <"key_type">',
                     '_help' :   {
                                     'cmd'                   : _('Set SSH key type (e.g. rsa).'),
                                 },
@@ -62,7 +62,7 @@ cmd_help = {
 
     '2f_token'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token 2f_token {token} {2f_token}'),
-                    'cmd'   :   '<|object|> <second_factor_token>',
+                    'cmd'   :   '<|object|> <"second_factor_token">',
                     '_help' :   {
                                     'cmd'                   : _('Change second factor token.'),
                                 },
@@ -114,7 +114,7 @@ cmd_help = {
 
     'add_sign'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token add_sign [--tags tag1,tag2...] {name} {signature}'),
-                    'cmd'   :   '--tags :[tags]: <|object|> <signature>',
+                    'cmd'   :   '--tags :[tags]: <|object|> <"signature">',
                     '_help' :   {
                                     'cmd'                   : _('Add new signature to token.'),
                                     '--tags'                : _('Tags included in the signature.'),
@@ -123,7 +123,7 @@ cmd_help = {
 
     'del_sign'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token del_sign [--user username] [--tags tag1,tag2...] {name}'),
-                    'cmd'   :   '--user :username: --tags :[tags]: <|object|> [username]',
+                    'cmd'   :   '--user :"username": --tags :[tags]: <|object|> ["username"]',
                     '_help' :   {
                                     'cmd'                   : _('Delete signature from token.'),
                                     '--user'                : _('Select signature by username.'),
@@ -133,7 +133,7 @@ cmd_help = {
 
     'verify_sign'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token verify_sign [--user username] [--tags tag1,tag2...] {name}'),
-                    'cmd'   :   '--user :username: --tags :[tags]: <|object|> [username]',
+                    'cmd'   :   '--user :"username": --tags :[tags]: <|object|> ["username"]',
                     '_help' :   {
                                     'cmd'                   : _('Verify token signature(s).'),
                                     '--user'                : _('Select signature by username.'),
@@ -143,7 +143,7 @@ cmd_help = {
 
     'get_sign'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token get_sign [--user username] [--tags tag1,tag2...] {name}'),
-                    'cmd'   :   '--user :username: --tags :[tags]: <|object|>',
+                    'cmd'   :   '--user :"username": --tags :[tags]: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Get token signature(s).'),
                                     '--user'                : _('Select signature by username.'),

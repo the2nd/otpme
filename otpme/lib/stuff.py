@@ -240,21 +240,6 @@ def is_email(s):
         return False
     return bool(re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', v))
 
-def update_reload_file():
-    """ Update reload file. """
-    from otpme.lib import config
-    try:
-        os.utime(config.reload_file_path, None)
-    except IOError as e:
-        if e.errno == e.errno.EACCES:
-            raise Exception(_("Permission denied.")) from e
-    except Exception as e:
-        msg = _("Error accessing reload file: ") % e
-        raise Exception(msg) from e
-    msg = _("You must wait up to {reload_config_interval} seconds for config reload to happen.")
-    msg = msg.format(reload_config_interval=config.reload_config_interval)
-    raise OTPmeException(msg)
-
 def split_list(_list, _len):
     """ Split list. """
     list_list = []
@@ -1541,10 +1526,25 @@ def search(**kwargs):
         result = backend.search(**kwargs)
         return result
     from otpme.lib.classes.command_handler import CommandHandler
+    # Without a backend the mgmtd of <realm>/<site> searches. Its
+    # "backend search" takes a list of key=value and answers with one
+    # result per line. Handing it the keyword arguments of
+    # backend.search() was a TypeError: on a client host every signature
+    # tag that names an object (signing.py) failed.
+    realm = kwargs.pop("realm", None)
+    site = kwargs.pop("site", None)
+    search_command = []
+    for key in ("object_type", "attribute", "value", "return_type"):
+        if key not in kwargs:
+            continue
+        search_command.append(f"{key}={kwargs.pop(key)}")
+    if kwargs:
+        msg = "Search without backend does not take: {args}"
+        msg = msg.format(args=", ".join(sorted(kwargs)))
+        raise OTPmeException(msg)
     command_handler = CommandHandler(interactive=False)
-    # FIXME: how to make sure we connect to correct site???
-    result = command_handler.search(**kwargs)
-    return result
+    result = command_handler.search(search_command, realm=realm, site=site)
+    return [x for x in str(result).split("\n") if x]
 
 def get_agent_vars(string):
     """ Get gpg/ssh-agent variables from string. """

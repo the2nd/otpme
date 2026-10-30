@@ -90,6 +90,20 @@ listed because that parameter is not indexed.
 **show \[*vlan*\]**  
 Display VLAN information.
 
+<!-- -->
+
+**show_oid \[**--full**\] *vlan***  
+Show the OID of the VLAN: **vlan\|\<realm\>/\<site\>/\<name\>**. With
+**--full** the full OID, which names the unit as well:
+**vlan\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
+Needs the ACL **view_public:object**.
+
+**show_uuid *vlan***  
+Show the UUID of the VLAN.  
+Needs the ACL **view_public:object**.
+
+<!-- -->
+
 **list \[*regex*\]**  
 List VLANs, optionally filtered by regex pattern.
 
@@ -109,6 +123,15 @@ Move VLAN to a different unit.
 
 **touch *vlan***  
 Re-index the object to fix potential index problems.
+
+**auto_disable *vlan* *time***  
+Set auto-disable time. It is either a relative time with a leading
+**+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
+The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
+**otpme**(7). A relative time counts from when it is set, and again from
+when the VLAN is enabled. **0** removes it. It is refused for an object
+the realm or a site comes with, e.g. the admin user; a time set on one
+before does nothing.
 
 ## Members
 
@@ -181,8 +204,8 @@ Remove every entry of the changelog.
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
-refused. OTPme asks the token you are signed in with first, then the
-object.
+refused. A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 
 ## Policy Management
 
@@ -207,10 +230,11 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *vlan***  
-List the policies attached to the VLAN. Use **--return-type** to select
-the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
-Use **--policy-types** to list only policies of the given types; these
-are policy types, not policy names.  
+List the policies attached to the VLAN, the disabled ones too, marked
+**(disabled)**. Use **--return-type** to select the attribute returned
+(**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
+to list only policies of the given types; these are policy types, not
+policy names.  
 Needs the ACL **view:policies**.
 
 ## ACL Management
@@ -226,10 +250,24 @@ Remove an access control entry.
 Display all ACLs for the VLAN.
 
 **enable_acl_inheritance *vlan***  
-Enable ACL inheritance from parent objects.
+Let a move of the VLAN swap its default ACLs: what the old unit handed
+down is taken away, and what the new unit hands down is given. It does
+not by default; a move then leaves the ACLs of the VLAN as they are.
+
+Only a move asks this. A new VLAN gets the default ACLs of its unit, and
+**add_acl -a** or **-r** on a unit reach it either way. A move with
+**--keep-acls** leaves its ACLs alone all the same.
+
+A move by somebody who does not hold **add:acl** and **delete:acl** on
+the VLAN leaves its ACLs alone as well, and says so. Otherwise moving an
+object into a unit would be a way of handing yourself the default ACLs
+of that unit.
+
+Needs the ACL **enable:acl_inheritance**.
 
 **disable_acl_inheritance *vlan***  
-Disable ACL inheritance.
+A move leaves the ACLs of the VLAN as they are again.  
+Needs the ACL **disable:acl_inheritance**.
 
 ## Configuration
 
@@ -339,6 +377,14 @@ Assign a VLAN of another site to a host
 
 **otpme-site config berlin vlan_trusts master:berlin/guests**  
 Allow objects of the site "master" to get the VLAN "guests" of berlin
+
+# AUTH ON ACTION HOOKS
+
+An auth on action policy can ask for a login again before these actions.
+See **Auth On Action Policy** in **otpme-policy**(1). A vlan has the
+hooks every object type has, and these:
+
+> change_vlan_id, set_config_parameter.
 
 # FILES
 

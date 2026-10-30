@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-share show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [share]'),
-                    'cmd'   :   '--fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: --node-limit :max_nodes: --host-limit :max_hosts: --group-limit :max_groups: --pool-limit :max_pools: --token-limit :max_tokens: --role-limit :max_roles: --policy-limit :max_policies: --limit :limit: [|object|]',
+                    'cmd'   :   '--fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": --node-limit :max_nodes: --host-limit :max_hosts: --group-limit :max_groups: --pool-limit :max_pools: --token-limit :max_tokens: --role-limit :max_roles: --policy-limit :max_policies: --limit :limit: [|object|]',
                     '_help' :   {
                                     'cmd'                           : _('Show share(s)'),
                                     '-a'                            : _('Show all shares.'),
@@ -32,7 +32,7 @@ cmd_help = {
                                     '--sort-by <attribute>'         : _('Sort output by <attribute>.'),
                                     '--raw'                         : _('Output table without any headers/borders.'),
                                     '--csv'                         : _('Output table as CSV.'),
-                                    '--csv-sep <separator>'         : _('Output table as CSV.'),
+                                    '--csv-sep <separator>'         : _('Separator between the CSV columns.'),
                                     '--node-limit <limit>'          : _('Output <limit> member nodes.'),
                                     '--host-limit <limit>'          : _('Output <limit> member hosts.'),
                                     '--pool-limit <limit>'          : _('Output <limit> member pools.'),
@@ -46,17 +46,17 @@ cmd_help = {
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share list [--attribute attribute] [-a] [regex]'),
-                    'cmd'   :   '--attribute :attribute: -a :show_all=True: [search_regex]',
+                    'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List shares.'),
                                     '-a'                        : _('List all shares.'),
-                                    '--attribute <attribute>'   : _('Output given attribute.')
+                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
                                 },
                 },
 
     'add'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share add [--force-group <group>] [--force-directory-mode <mode>] [--force-create-mode <mode>] [--crypt] [--no-key-gen] [--block-size <block_size>] [--home-share] [--home-share-uid] [--restore <restore_share>] [--restore-token <token>] [--no-mount-token] {share}'),
-                    'cmd'   :   '--force-group :force_group: --force-directory-mode :force_directory_mode: --force-create-mode :force_create_mode: --crypt :encrypted=True: --no-key-gen :no_key_gen=True: --block-size :block_size: --home-share :home_share=True: --home-share-uid :home_share_uid=True: --restore :restore_share: --restore-token :restore_token: --no-mount-token :no_mount_token=True: <|object|>',
+                    'cmd'   :   '--force-group :"force_group": --force-directory-mode :"force_directory_mode": --force-create-mode :"force_create_mode": --crypt :encrypted=True: --no-key-gen :no_key_gen=True: --block-size :block_size: --home-share :home_share=True: --home-share-uid :home_share_uid=True: --restore :"restore_share": --restore-token :"restore_token": --no-mount-token :no_mount_token=True: <|object|>',
                     '_help' :   {
                                     'cmd'                           : _('Add new share.'),
                                     '--home-share'                  : _('Add home share (subdirs are user UUID named.).'),
@@ -88,7 +88,7 @@ cmd_help = {
 
     'get_config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share get_config {share} {parameter}'),
-                    'cmd'   :   '<|object|> <parameter>',
+                    'cmd'   :   '<|object|> <"parameter">',
                     '_help' :   {
                                     'cmd'                   : _('Get config parameter.'),
                                 },
@@ -102,6 +102,30 @@ cmd_help = {
                                 },
                 },
 
+    'auto_disable'          : {
+                    '_cmd_usage_help' : _('Usage: otpme-share auto_disable [-u] {share} {time}'),
+                    'cmd'   :   '-u :unused=True: <|object|> <auto_disable>',
+                    '_help' :   {
+                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023", 0 removes it).'),
+                                    '-u'                    : _('Disable object if it was unused for the given time.'),
+                                },
+                },
+
+    'show_oid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share show_oid [--full] {share}'),
+                    'cmd'   :   '--full :full=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the OID of the object.'),
+                                    '--full'                : _('Show the full OID.'),
+                                },
+                },
+    'show_uuid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share show_uuid {share}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the UUID of the object.'),
+                                },
+                },
     'changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share changelog {share}'),
                     'cmd'   :   '<|object|>',
@@ -112,7 +136,7 @@ cmd_help = {
 
     'edit_changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share edit_changelog {share} {entry_id} {comment}'),
-                    'cmd'   :   '<|object|> <entry_id> <comment>',
+                    'cmd'   :   '<|object|> <entry_id> <"comment">',
                     '_help' :   {
                                     'cmd'                   : _('Edit changelog entry comment.'),
                                 },
@@ -135,7 +159,7 @@ cmd_help = {
 
     'root_dir'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share root_dir {share} {/root/dir}'),
-                    'cmd'   :   '<|object|> <root_dir>',
+                    'cmd'   :   '<|object|> <"root_dir">',
                     '_help' :   {
                                     'cmd'                   : _('Set share root dir.'),
                                 },
@@ -143,7 +167,7 @@ cmd_help = {
 
     'force_group'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share force_group {share} [group]'),
-                    'cmd'   :   '<|object|> [group_name]',
+                    'cmd'   :   '<|object|> ["group_name"]',
                     '_help' :   {
                                     'cmd'                   : _('Files and directories will always be owned by group. Without a group the forced group is removed.'),
                                 },
@@ -210,7 +234,7 @@ cmd_help = {
 
      'mount_timeout'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share mount_timeout {share} {mount_timeout}'),
-                    'cmd'   :   '<|object|> <mount_timeout>',
+                    'cmd'   :   '<|object|> <"mount_timeout">',
                     '_help' :   {
                                     'cmd'                   : _('Set the timeout a mount drops its unused connection after (0 to disable).'),
                                 },
@@ -219,7 +243,7 @@ cmd_help = {
 
      'update_sign_public_keys'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share update_sign_public_keys {share} [username]'),
-                    'cmd'   :   '<|object|> [username]',
+                    'cmd'   :   '<|object|> ["username"]',
                     '_help' :   {
                                     'cmd'                   : _('Take over the current sign public keys of the token users.'),
                                 },
@@ -227,7 +251,7 @@ cmd_help = {
 
     'get_share_key'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share get_share_key {share} {user}'),
-                    'cmd'   :   '<|object|> <username>',
+                    'cmd'   :   '<|object|> <"username">',
                     '_help' :   {
                                     'cmd'                   : _('Get encrypted share key from share.'),
                                 },
@@ -261,7 +285,7 @@ cmd_help = {
 
     'rename'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share rename {share} {new_name}'),
-                    'cmd'   :   '<|object|> <new_name>',
+                    'cmd'   :   '<|object|> <"new_name">',
                     '_help' :   {
                                     'cmd'                   : _('Rename share.'),
                                 },
@@ -269,7 +293,7 @@ cmd_help = {
 
     'mount_script'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share mount_script {share} {mount_script} -- [script_options]'),
-                    'cmd'   :   '<|object|> <mount_script> [script_options]',
+                    'cmd'   :   '<|object|> <"mount_script"> ["script_options"]',
                     '_help' :   {
                                     'cmd'                   : _('Change share mount script'),
                                 },
@@ -293,7 +317,7 @@ cmd_help = {
 
     'add_acl'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share add_acl {share} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
+                    'cmd'   :   '<|object|> <"owner_type"> <"owner_name"> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to share.'),
                                 },
@@ -336,7 +360,7 @@ cmd_help = {
 
     'move'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share move [--keep-acls] {share} {unit}'),
-                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <new_unit>',
+                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <"new_unit">',
                     '_help' :   {
                                     'cmd'                   : _('Change share unit.'),
                                     '--keep-acls'           : _('Keep object ACLs.')
@@ -355,7 +379,7 @@ cmd_help = {
 
     'description'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share description {share} [description]'),
-                    'cmd'   :   '<|object|> [description]',
+                    'cmd'   :   '<|object|> ["description"]',
                     '_help' :   {
                                     'cmd'                   : _('Set share description.'),
                                 },
@@ -363,7 +387,7 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share info {share} [info]'),
-                    'cmd'   :   '--language :language: <|object|> [info]',
+                    'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set share info'),
                                     '--language <lang>'     : _('Change info for language.'),
@@ -372,7 +396,7 @@ cmd_help = {
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share dump_info {share}'),
-                    'cmd'   :   '--language :language: <|object|>',
+                    'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump share info'),
                                     '--language <lang>'     : _('Dump info for language.'),
@@ -381,7 +405,7 @@ cmd_help = {
 
      'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share config -d -a {share} {param} [value]'),
-                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to share.'),
                                     '-a'                    : _('Append value to config parameter.'),
@@ -391,7 +415,7 @@ cmd_help = {
 
     'show_config'      : {
                     '_cmd_usage_help' : _('Usage: otpme-share show_config {share} [parameter]'),
-                    'cmd'   :   '<|object|> [parameter]',
+                    'cmd'   :   '<|object|> ["parameter"]',
                     '_help' :   {
                                     'cmd'                   : _('Show share\'s config parameters'),
                                 },
@@ -415,7 +439,7 @@ cmd_help = {
 
     'export'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share export --password <password> {share}'),
-                    'cmd'   :   '--password :password: <|object|>',
+                    'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export share config to stdout.'),
                                     '--password <password>' : _('Encrypt object config with password.'),
@@ -424,7 +448,7 @@ cmd_help = {
 
     'add_pool'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share add_pool {share} {pool}'),
-                    'cmd'   :   '<|object|> <pool_name>',
+                    'cmd'   :   '<|object|> <"pool_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add pool to share.'),
                                 },
@@ -432,7 +456,7 @@ cmd_help = {
 
     'remove_pool'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share remove_pool {share} {pool}'),
-                    'cmd'   :   '<|object|> <pool_name>',
+                    'cmd'   :   '<|object|> <"pool_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove pool from share.'),
                                 },
@@ -440,7 +464,7 @@ cmd_help = {
 
     'add_host'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share add_host [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {host}'),
-                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <host_name>',
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <"host_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add host to share.'),
                                     '--share-notify'        : _('Send notification to all online hosts on new share permissions.'),
@@ -452,7 +476,7 @@ cmd_help = {
 
     'remove_host'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share remove_host [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {host}'),
-                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <host_name>',
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <"host_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove host from share.'),
                                     '--share-notify'        : _('Send notification to all online hosts on revoked share permissions.'),
@@ -488,7 +512,7 @@ cmd_help = {
 
     'add_node'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share add_node {share} {node}'),
-                    'cmd'   :   '<|object|> <node_name>',
+                    'cmd'   :   '<|object|> <"node_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add node to share.'),
                                 },
@@ -496,7 +520,7 @@ cmd_help = {
 
     'remove_node'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share remove_node {share} {node}'),
-                    'cmd'   :   '<|object|> <node_name>',
+                    'cmd'   :   '<|object|> <"node_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove node from share.'),
                                 },
@@ -504,7 +528,7 @@ cmd_help = {
 
     'add_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share add_policy {share} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add policy to share.'),
                                 },
@@ -512,7 +536,7 @@ cmd_help = {
 
     'remove_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share remove_policy {share} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove policy from share.'),
                                 },
@@ -520,7 +544,7 @@ cmd_help = {
 
     'add_master_password_token'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share add_master_password_token {share} {token}'),
-                    'cmd'   :   '<|object|> <token_path>',
+                    'cmd'   :   '<|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Allow token to mount share with master password.'),
                                 },
@@ -528,7 +552,7 @@ cmd_help = {
 
     'remove_master_password_token'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share remove_master_password_token {share} {token}'),
-                    'cmd'   :   '<|object|> <token_path>',
+                    'cmd'   :   '<|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Remove master password token from share.'),
                                 },
@@ -536,7 +560,7 @@ cmd_help = {
 
     'add_root_mount_token'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share add_root_mount_token [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {token}'),
-                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <token_path>',
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Let token mount the share root of a home share (access to all home dirs).'),
                                     '--share-notify'        : _('Send notification to all online hosts on new share permissions.'),
@@ -548,7 +572,7 @@ cmd_help = {
 
     'add_no_mount_token'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share add_no_mount_token {share} {token}'),
-                    'cmd'   :   '<|object|> <token_path>',
+                    'cmd'   :   '<|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Add token that does not get the share mounted automatically.'),
                                 },
@@ -556,7 +580,7 @@ cmd_help = {
 
     'remove_no_mount_token'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share remove_no_mount_token [--remove-share-key] [--keep-share-key] [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {token}'),
-                    'cmd'   :   '--keep-share-key :keep_share_key=True: --remove-share-key :keep_share_key=False: --share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <token_path>',
+                    'cmd'   :   '--keep-share-key :keep_share_key=True: --remove-share-key :keep_share_key=False: --share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Remove no mount token from share.'),
                                     '--keep-share-key'      : _('Keep share key.'),
@@ -570,7 +594,7 @@ cmd_help = {
 
     'remove_root_mount_token'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share remove_root_mount_token [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {token}'),
-                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <token_path>',
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Remove root mount token from share.'),
                                     '--share-notify'        : _('Send notification to all online hosts on revoked share permissions.'),
@@ -582,7 +606,7 @@ cmd_help = {
 
     'add_token'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share add_token [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {token}'),
-                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <token_path>',
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Add token to share.'),
                                     '--share-notify'        : _('Send notification to all online hosts on new share permissions.'),
@@ -594,7 +618,7 @@ cmd_help = {
 
     'remove_token'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share remove_token [--remove-share-key] [--keep-share-key] [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {token}'),
-                    'cmd'   :   '--keep-share-key :keep_share_key=True: --remove-share-key :keep_share_key=False: --share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <token_path>',
+                    'cmd'   :   '--keep-share-key :keep_share_key=True: --remove-share-key :keep_share_key=False: --share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Remove token from share.'),
                                     '--share-notify'        : _('Send notification to all online hosts on revoked share permissions.'),
@@ -608,7 +632,7 @@ cmd_help = {
 
     'add_role'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share add_role [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {role}'),
-                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <role_name>',
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add role to share.'),
                                     '--share-notify'        : _('Send notification to all online hosts on new share permissions.'),
@@ -620,7 +644,7 @@ cmd_help = {
 
     'remove_role'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share remove_role [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {role}'),
-                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <role_name>',
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove role from share.'),
                                     '--share-notify'        : _('Send notification to all online hosts on revoked share permissions.'),
@@ -632,7 +656,7 @@ cmd_help = {
 
     'add_group'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share add_group [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {group}'),
-                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <group_name>',
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <"group_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add (host) group to share.'),
                                     '--share-notify'        : _('Send notification to all online hosts on new share permissions.'),
@@ -644,7 +668,7 @@ cmd_help = {
 
     'remove_group'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share remove_group [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {group}'),
-                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <group_name>',
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <"group_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove (host) group from share.'),
                                     '--share-notify'        : _('Send notification to all online hosts on revoked share permissions.'),
@@ -656,7 +680,7 @@ cmd_help = {
 
     'list_groups'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share list_groups [--return-type <return_type>] {share}'),
-                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'cmd'   :   '--return-type :"return_type": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('List (host) groups assigned to this share.'),
                                     '--return-type'         : _('Attribute to return.'),
@@ -665,7 +689,7 @@ cmd_help = {
 
     'list_pools'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share list_pools [--return-type <return_type>] {share}'),
-                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    'cmd'   :   '--return-type :"return_type": [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List assigned pools.'),
                                     '--return-type'             : _('Attribute to return.'),
@@ -673,7 +697,7 @@ cmd_help = {
                 },
     'list_nodes'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share list_nodes [--return-type <return_type>] {share}'),
-                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    'cmd'   :   '--return-type :"return_type": [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List assigned nodes.'),
                                     '--return-type'             : _('Attribute to return.'),
@@ -681,7 +705,7 @@ cmd_help = {
                 },
     'list_hosts'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share list_hosts [--return-type <return_type>] {share}'),
-                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    'cmd'   :   '--return-type :"return_type": [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List assigned hosts.'),
                                     '--return-type'             : _('Attribute to return.'),
@@ -689,7 +713,7 @@ cmd_help = {
                 },
     'list_users'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share list_users {share}'),
-                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    'cmd'   :   '--return-type :"return_type": [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List users.'),
                                     '--return-type'             : _('Attribute to return.'),
@@ -697,7 +721,7 @@ cmd_help = {
                 },
     'list_tokens'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share list_tokens {share}'),
-                    'cmd'   :   '--return-type :return_type: --token-types :[token_types]: [|object|]',
+                    'cmd'   :   '--return-type :"return_type": --token-types :[token_types]: [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List assigned tokens.'),
                                     '--return-type'             : _('Attribute to return.'),
@@ -712,8 +736,8 @@ cmd_help = {
                                 },
                 },
     'list_policies'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-share list_policies {share}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-share list_policies [--return-type <type>] [--policy-types <type1,type2>] {share}'),
+                    'cmd'   :   '--return-type :"return_type": --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

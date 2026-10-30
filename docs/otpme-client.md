@@ -113,6 +113,20 @@ a table row, and that is where all of it is: one value per line, from
 the addresses to the redirect URIs. The secret is in there only for
 whoever may see it.
 
+<!-- -->
+
+**show_oid \[**--full**\] *client***  
+Show the OID of the client: **client\|\<realm\>/\<site\>/\<name\>**.
+With **--full** the full OID, which names the unit as well:
+**client\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
+Needs the ACL **view_public:object**.
+
+**show_uuid *client***  
+Show the UUID of the client.  
+Needs the ACL **view_public:object**.
+
+<!-- -->
+
 **list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
 List the client names, and with a regex only those that match it. You
 get the clients you may change; **-a** adds those you may only look
@@ -139,15 +153,27 @@ is a change on the other side as well.
 Needs the ACL **rename:object**.
 
 **move \[**--keep-acls**\] *client* *unit***  
-Move the client into another unit. Its ACLs move with it: the default
-ACLs of the old unit are taken away and those of the new one are
-applied. **--keep-acls** leaves the ACLs of the client as they are.  
-A client does not inherit ACLs by default, see
-**enable_acl_inheritance** below.
+Move the client into another unit. Its ACLs stay as they are, unless
+**enable_acl_inheritance** (below) was switched on for it: then the
+default ACLs of the old unit are taken away and those of the new one are
+applied. **--keep-acls** leaves the ACLs of the client as they are in
+any case.
 
 **touch *client***  
 Re-index the object to fix potential index problems.  
 Needs the ACL **touch**.
+
+**auto_disable \[**-u**\] *client* *time***  
+Set auto-disable time. It is either a relative time with a leading
+**+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
+The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
+**otpme**(7). A relative time counts from when it is set, and again from
+when the client is enabled. **0** removes it. It is refused for an
+object the realm or a site comes with, e.g. the admin user; a time set
+on one before does nothing. Use **-u** to disable the client once it was
+unused for the given time. That takes a relative time; a client that was
+never used counts from when this was set.  
+Needs the ACL **edit:auto_disable**.
 
 ## The Access Group
 
@@ -581,8 +607,8 @@ Remove every entry of the changelog.
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
-refused. OTPme asks the token you are signed in with first, then the
-object.
+refused. A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 
 ## Policy Management
 
@@ -603,10 +629,11 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *client***  
-List the policies attached to the client. Use **--return-type** to
-select the attribute returned (**name**, **read_oid**, **full_oid**,
-**uuid**). Use **--policy-types** to list only policies of the given
-types; these are policy types, not policy names.  
+List the policies attached to the client, the disabled ones too, marked
+**(disabled)**. Use **--return-type** to select the attribute returned
+(**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
+to list only policies of the given types; these are policy types, not
+policy names.  
 Needs the ACL **view:policies**.
 
 ## ACL Management
@@ -619,9 +646,10 @@ ACLs exist, is under **ACLs** in **otpme**(7).
 
 **add_acl *client* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this client.  
-*owner_type* is **role** or **token**, and *owner* the path of that role
-or token. An ACL may carry a value, for example **view:secret**, and
-several are separated by commas.  
+*owner_type* is **role** or **token**. *owner* is the path of that role
+or token. An ACL can carry a value, for example **view:secret**. To give
+several ACLs at once, separate them with commas:
+**view:secret,view:status**.  
 Needs the ACL **add:acl**.
 
 **del_acl *client* *acl*\[,*acl*\]**  
@@ -635,23 +663,24 @@ Show the ACLs that lie on this client, i.e. who may do what with it.
 Needs the ACL **view:acl**.
 
 **enable_acl_inheritance *client***  
-Let the client inherit the default ACLs of the unit above it.
+Let a move of the client swap its default ACLs: what the old unit handed
+down is taken away, and what the new unit hands down is given. It does
+not by default; a move then leaves the ACLs of the client as they are.
 
-A client does not, and that is on purpose: whoever may change a unit
-full of other objects should not get the secret of a service by that
-alone.
+Only a move asks this. A new client gets the default ACLs of its unit,
+and **add_acl -a** or **-r** on a unit reach it either way. A move with
+**--keep-acls** leaves its ACLs alone all the same.
 
-Only default ACLs are inherited. An ordinary ACL on the unit never is.
-
-Moving the client into another unit then takes away the default ACLs of
-the old unit and applies those of the new one. While inheritance is off,
-a move leaves the ACLs of the client as they are.
+A move by somebody who does not hold **add:acl** and **delete:acl** on
+the client leaves its ACLs alone as well, and says so. Otherwise moving
+an object into a unit would be a way of handing yourself the default
+ACLs of that unit.
 
 Needs the ACL **enable:acl_inheritance**.
 
 **disable_acl_inheritance *client***  
-Stop inheriting them. Only the ACLs on the client itself count from then
-on. Needs the ACL **disable:acl_inheritance**.
+A move leaves the ACLs of the client as they are again.  
+Needs the ACL **disable:acl_inheritance**.
 
 ## Configuration
 
@@ -987,6 +1016,30 @@ though the access group would let more in.
 **otpme-client add_acl vpn role it-support view:secret**  
 The service desk may read the shared secret of the VPN, and nothing else
 about it.
+
+# AUTH ON ACTION HOOKS
+
+An auth on action policy can ask for a login again before these actions.
+See **Auth On Action Policy** in **otpme-policy**(1). A client has the
+hooks every object type has, and these:
+
+> add_address, add_oidc_grant_type, add_oidc_logout_redirect_uri,
+> add_oidc_redirect_uri, add_oidc_response_type, add_role, add_sso_logo,
+> add_token, change_access_group, change_auth_cache_timeout,
+> change_helper_url, change_login_url, change_oidc_auth_method,
+> change_oidc_backchannel_ca_cert, change_oidc_backchannel_logout_uri,
+> change_oidc_id_token_alg, change_oidc_sector_identifier_uri,
+> change_oidc_subject_type, change_secret, change_sso_name, del_address,
+> del_oidc_grant_type, del_oidc_logout_redirect_uri,
+> del_oidc_redirect_uri, del_oidc_response_type, del_sso_logo,
+> disable_auth_cache, disable_dot1x, disable_oidc,
+> disable_oidc_backchannel_tls_verify,
+> disable_oidc_force_backchannel_logout, disable_sso, disable_sso_popup,
+> dump_sso_logo, enable_auth_cache, enable_dot1x, enable_oidc,
+> enable_oidc_backchannel_tls_verify,
+> enable_oidc_force_backchannel_logout, enable_sso, enable_sso_popup,
+> limit_logins, remove_role, remove_token, set_config_parameter,
+> show_secret, unlimit_logins.
 
 # SEE ALSO
 

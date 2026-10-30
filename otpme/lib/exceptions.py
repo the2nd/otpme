@@ -226,6 +226,13 @@ class SyncDisabled(OTPmeException):
 class SiteMaintenance(SyncDisabled):
     pass
 
+# The peer node knows no master node yet, see status_codes.NO_MASTER_NODE.
+# A kind of PermissionDenied, as it was answered before, so whatever
+# passes that on passes this on as well; unlike it, it is over by itself
+# once the election is through.
+class NoMasterNode(PermissionDenied):
+    pass
+
 class EncryptException(OTPmeException):
     pass
 

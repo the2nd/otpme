@@ -27,6 +27,19 @@ up a new OTPme installation.
 **show \[*realm*\]**  
 Display realm information. Without arguments, shows all realms.
 
+<!-- -->
+
+**show_oid \[**--full**\] *realm***  
+Show the OID of the realm: **realm\|\<realm\>**. **--full** is accepted
+and shows the same.  
+Needs the ACL **view_public:object**.
+
+**show_uuid *realm***  
+Show the UUID of the realm.  
+Needs the ACL **view_public:object**.
+
+<!-- -->
+
 **list \[*regex*\]**  
 List realms, optionally filtered by regex pattern.
 
@@ -83,10 +96,11 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *realm***  
-List the policies attached to the realm. Use **--return-type** to select
-the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
-Use **--policy-types** to list only policies of the given types; these
-are policy types, not policy names.  
+List the policies attached to the realm, the disabled ones too, marked
+**(disabled)**. Use **--return-type** to select the attribute returned
+(**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
+to list only policies of the given types; these are policy types, not
+policy names.  
 Needs the ACL **view:policies**.
 
 ## ACL Management
@@ -173,8 +187,8 @@ Remove every entry of the changelog.
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
-refused. OTPme asks the token you are signed in with first, then the
-object.
+refused. A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 
 ## Import/Export
 
@@ -303,6 +317,15 @@ Initialize with 4096-bit CA keys
 
 **otpme-realm dump_ca_data myrealm**  
 Export CA certificates and CRLs
+
+# AUTH ON ACTION HOOKS
+
+An auth on action policy can ask for a login again before these actions.
+See **Auth On Action Policy** in **otpme-policy**(1). A realm has the
+hooks every object type has, and these:
+
+> add_site, disable_auth, disable_sync, enable_auth, enable_sync,
+> set_config_parameter, show_config_parameters, update_ca_data.
 
 # FILES
 

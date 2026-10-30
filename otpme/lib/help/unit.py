@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-unit show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [unit]'),
-                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show unit(s)'),
                                     '-a'                    : _('Show all units.'),
@@ -34,23 +34,23 @@ cmd_help = {
                                     '--sort-by <attribute>' : _('Sort output by <attribute>.'),
                                     '--raw'                 : _('Output table without any headers/borders.'),
                                     '--csv'                 : _('Output table as CSV.'),
-                                    '--csv-sep <separator>' : _('Output table as CSV.'),
+                                    '--csv-sep <separator>' : _('Separator between the CSV columns.'),
                                 },
                 },
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit list [--attribute attribute] [-a] [regex]'),
-                    'cmd'   :   '--attribute :attribute: -a :show_all=True: [search_regex]',
+                    'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List units.'),
                                     '-a'                        : _('List all units.'),
-                                    '--attribute <attribute>'   : _('Output given attribute.')
+                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
                                 },
                 },
 
     'show_config'      : {
                     '_cmd_usage_help' : _('Usage: otpme-unit show_config {unit} [parameter]'),
-                    'cmd'   :   '<|object|> [parameter]',
+                    'cmd'   :   '<|object|> ["parameter"]',
                     '_help' :   {
                                     'cmd'                   : _('Show unit\'s config parameters'),
                                 },
@@ -75,9 +75,24 @@ cmd_help = {
 
     'get_config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit get_config {unit} {parameter}'),
-                    'cmd'   :   '<|object|> <parameter>',
+                    'cmd'   :   '<|object|> <"parameter">',
                     '_help' :   {
                                     'cmd'                   : _('Get config parameter.'),
+                                },
+                },
+    'show_oid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-unit show_oid [--full] {unit}'),
+                    'cmd'   :   '--full :full=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the OID of the object.'),
+                                    '--full'                : _('Show the full OID.'),
+                                },
+                },
+    'show_uuid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-unit show_uuid {unit}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the UUID of the object.'),
                                 },
                 },
     'changelog'    : {
@@ -89,7 +104,7 @@ cmd_help = {
                 },
     'edit_changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit edit_changelog {unit} {entry_id} {comment}'),
-                    'cmd'   :   '<|object|> <entry_id> <comment>',
+                    'cmd'   :   '<|object|> <entry_id> <"comment">',
                     '_help' :   {
                                     'cmd'                   : _('Edit changelog entry comment.'),
                                 },
@@ -117,6 +132,14 @@ cmd_help = {
                                 },
                 },
 
+    'auto_disable'          : {
+                    '_cmd_usage_help' : _('Usage: otpme-unit auto_disable {unit} {time}'),
+                    'cmd'   :   '<|object|> <auto_disable>',
+                    '_help' :   {
+                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023", 0 removes it).'),
+                                },
+                },
+
     'enable'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit enable {unit}'),
                     'cmd'   :   '<|object|>',
@@ -135,7 +158,7 @@ cmd_help = {
 
     'rename'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit rename {unit} {new_name}'),
-                    'cmd'   :   '<|object|> <new_name>',
+                    'cmd'   :   '<|object|> <"new_name">',
                     '_help' :   {
                                     'cmd'                   : _('Rename unit'),
                                 },
@@ -143,7 +166,7 @@ cmd_help = {
 
      'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit config -d -a {unit} {param} [value]'),
-                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to unit.'),
                                     '-a'                    : _('Append value to config parameter.'),
@@ -153,7 +176,7 @@ cmd_help = {
 
      'add_extension'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit add_extension {unit} {extension}'),
-                    'cmd'   :   '<|object|> <extension>',
+                    'cmd'   :   '<|object|> <"extension">',
                     '_help' :   {
                                     'cmd'                   : _('Add extension to unit'),
                                 },
@@ -161,7 +184,7 @@ cmd_help = {
 
      'remove_extension'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit remove_extension {unit} {extension}'),
-                    'cmd'   :   '<|object|> <extension>',
+                    'cmd'   :   '<|object|> <"extension">',
                     '_help' :   {
                                     'cmd'                   : _('Remove extension from unit'),
                                 },
@@ -177,7 +200,7 @@ cmd_help = {
 
      'modify_attribute'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit modify_attribute {unit} {attribute} {old_value} {new_value}'),
-                    'cmd'   :   '<|object|> <attribute> <old_value> <new_value>',
+                    'cmd'   :   '<|object|> <"attribute"> <old_value> <new_value>',
                     '_help' :   {
                                     'cmd'                   : _('Modify (LDAP) attribute of unit'),
                                 },
@@ -193,7 +216,7 @@ cmd_help = {
 
      'add_object_class'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit add_object_class {unit} {object_class}'),
-                    'cmd'   :   '<|object|> <object_class>',
+                    'cmd'   :   '<|object|> <"object_class">',
                     '_help' :   {
                                     'cmd'                   : _('Add (LDAP) object class to unit'),
                                 },
@@ -201,7 +224,7 @@ cmd_help = {
 
      'del_object_class'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit del_object_class {unit} {object_class}'),
-                    'cmd'   :   '<|object|> <object_class>',
+                    'cmd'   :   '<|object|> <"object_class">',
                     '_help' :   {
                                     'cmd'                   : _('Delete (LDAP) object class from unit'),
                                 },
@@ -218,7 +241,7 @@ cmd_help = {
 
     'add_acl'   : {
                     '_cmd_usage_help' : _('Usage: otpme-unit add_acl [-r -a --objects <user,group,token> --procs <num>] {unit} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
-                    'cmd'   :   '-r :recursive_acls=True: -a :apply_default_acls=True: --objects :[object_types]: --procs :procs: <|object|> <owner_type> <owner_name> <[acls]>',
+                    'cmd'   :   '-r :recursive_acls=True: -a :apply_default_acls=True: --objects :[object_types]: --procs :procs: <|object|> <"owner_type"> <"owner_name"> <[acls]>',
                     '_help' :   {
                                     'cmd'                           : _('Add ACL to unit'),
                                     '-r'                            : _('Set ACL recursive'),
@@ -258,7 +281,7 @@ cmd_help = {
 
     'unsign_password_members'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit unsign_password_members [--signer <user>] {unit}'),
-                    'cmd'   :   '--signer :signer: <|object|>',
+                    'cmd'   :   '--signer :"signer": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Remove your signature of password_store_members of this unit.'),
                                     '--signer <user>'       : _('Remove the signature of this user instead.'),
@@ -294,7 +317,7 @@ cmd_help = {
 
     'move'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit move [-m] [-k] [-o user,group,...] [--keep-acls] [--skip-ca] {unit} {new_unit}'),
-                    'cmd'   :   '-m :merge=True: -k :keep_old_unit=True: --keep-acls :keep_acls=True: --skip-ca :skip_ca=True: -o :[object_types]: <|object|> <new_unit>',
+                    'cmd'   :   '-m :merge=True: -k :keep_old_unit=True: --keep-acls :keep_acls=True: --skip-ca :skip_ca=True: -o :[object_types]: <|object|> <"new_unit">',
                     '_help' :   {
                                     'cmd'                   : _('Change unit\'s unit.'),
                                     '-m'                    : _('Merge objects from src unit into dst unit.'),
@@ -307,7 +330,7 @@ cmd_help = {
 
 
     'remove_orphans'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-unit remove_orphans {unit}'),
+                    '_cmd_usage_help' : _('Usage: otpme-unit remove_orphans [-r] {unit}'),
                     'cmd'   :   '-r :recursive=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Remove orphan UUIDs'),
@@ -318,7 +341,7 @@ cmd_help = {
 
     'description'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit description {unit} [description]'),
-                    'cmd'   :   '<|object|> [description]',
+                    'cmd'   :   '<|object|> ["description"]',
                     '_help' :   {
                                     'cmd'                   : _('Set unit description'),
                                 },
@@ -326,7 +349,7 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit info {unit} [info]'),
-                    'cmd'   :   '--language :language: <|object|> [info]',
+                    'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set unit info'),
                                     '--language <lang>'     : _('Change info for language.'),
@@ -335,7 +358,7 @@ cmd_help = {
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit dump_info {unit}'),
-                    'cmd'   :   '--language :language: <|object|>',
+                    'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump unit info'),
                                     '--language <lang>'     : _('Dump info for language.'),
@@ -347,10 +370,6 @@ cmd_help = {
                 },
 
     '_list_valid_attributes'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_attributes'    : {
                     'cmd'   :   '<|object|>',
                 },
 
@@ -375,8 +394,8 @@ cmd_help = {
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-unit export --password <password> {unit}'),
-                    'cmd'   :   '--password :password: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-unit export [--password <password>] {unit}'),
+                    'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export unit config to stdout'),
                                     '--password <password>' : _('Encrypt object config with password.'),
@@ -385,7 +404,7 @@ cmd_help = {
 
     'add_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit add_policy {unit} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add policy to unit'),
                                 },
@@ -393,14 +412,14 @@ cmd_help = {
 
     'remove_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-unit remove_policy {unit} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove policy from unit'),
                                 },
                 },
     'list_policies'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-unit list_policies {unit}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-unit list_policies [--return-type <type>] [--policy-types <type1,type2>] {unit}'),
+                    'cmd'   :   '--return-type :"return_type": --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

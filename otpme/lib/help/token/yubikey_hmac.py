@@ -39,7 +39,7 @@ cmd_help = {
                     },
     'secret'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token secret {token} [secret]'),
-                    'cmd'   :   '<|object|> [secret]',
+                    'cmd'   :   '<|object|> ["secret"]',
                     '_help' :   {
                                     'cmd'                   : _('Change token secret.'),
                                 },
@@ -101,14 +101,6 @@ cmd_help = {
     #                            },
     #            },
 
-    'otp_format'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token otp_format {token} [otp_format]'),
-                    'cmd'   :   '<|object|> [otp_format]',
-                    '_help' :   {
-                                    'cmd'                   : _('Change token OTP format.'),
-                                },
-                },
-
     'validity_time'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token validity_time {token} [int]'),
                     'cmd'   :   '<|object|> [validity_time]',
@@ -127,7 +119,7 @@ cmd_help = {
 
     'mode'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token mode {token} {mode}'),
-                    'cmd'   :   '<|object|> <new_mode>',
+                    'cmd'   :   '<|object|> <"new_mode">',
                     '_help' :   {
                                     'cmd'                   : _('Change token operation mode.'),
                                 },
@@ -138,10 +130,6 @@ cmd_help = {
                 },
 
     '_list_card_types'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_list_otp_formats'    : {
                     'cmd'   :   '<|object|>',
                 },
     }

@@ -73,6 +73,20 @@ For reading with something other than your eyes: **--raw** leaves the
 header and the borders out, **--csv** prints one row per line with **;**
 between the columns, and **--csv-sep** uses another separator.
 
+<!-- -->
+
+**show_oid \[**--full**\] *role***  
+Show the OID of the role: **role\|\<realm\>/\<site\>/\<name\>**. With
+**--full** the full OID, which names the unit as well:
+**role\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
+Needs the ACL **view_public:object**.
+
+**show_uuid *role***  
+Show the UUID of the role.  
+Needs the ACL **view_public:object**.
+
+<!-- -->
+
 **list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
 List the role names, and with a regex only those that match it.  
 You get the roles you may change; **-a** adds those you may only look
@@ -118,6 +132,15 @@ the role as they are.
 
 **touch *role***  
 Re-index the object to fix potential index problems.
+
+**auto_disable *role* *time***  
+Set auto-disable time. It is either a relative time with a leading
+**+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
+The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
+**otpme**(7). A relative time counts from when it is set, and again from
+when the role is enabled. **0** removes it. It is refused for an object
+the realm or a site comes with, e.g. the admin user; a time set on one
+before does nothing.
 
 ## Token Assignment
 
@@ -445,10 +468,11 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *role***  
-List the policies attached to the role. Use **--return-type** to select
-the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
-Use **--policy-types** to list only policies of the given types; these
-are policy types, not policy names.  
+List the policies attached to the role, the disabled ones too, marked
+**(disabled)**. Use **--return-type** to select the attribute returned
+(**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
+to list only policies of the given types; these are policy types, not
+policy names.  
 Needs the ACL **view:policies**.
 
 ## ACL Management
@@ -467,9 +491,10 @@ The other direction, the ACLs this role holds on other objects, is
 
 **add_acl *role* *owner_type* *owner* *acl*\[**:***value*\]\[**,***acl*\[**:***value*\]\]**  
 Give a role or a token one or more ACLs on this role.  
-*owner_type* is **role** or **token**, and *owner* the path of that role
-or token. An ACL may carry a value, for example **view:tokens**, and
-several are separated by commas.  
+*owner_type* is **role** or **token**. *owner* is the path of that role
+or token. An ACL can carry a value, for example **view:tokens**. To give
+several ACLs at once, separate them with commas:
+**view:tokens,view:status**.  
 Needs the ACL **add:acl**.
 
 **del_acl *role* *acl*\[**,***acl*\]**  
@@ -483,14 +508,14 @@ Show the ACLs that lie on this role, i.e. who may do what with it. Needs
 the ACL **view:acl**.
 
 **enable_acl_inheritance *role***  
-Let the role inherit the default ACLs of the unit above it. It does not
-by default.
+Let a move of the role swap its default ACLs: what the old unit handed
+down is taken away, and what the new unit hands down is given. It does
+not by default; a move then leaves the ACLs of the role as they are.
 
-Only default ACLs are inherited. An ordinary ACL on the unit never is.
-
-Moving a role into another unit is the one place that asks something
-else as well: the site admin role **SITE_ADMIN** gets neither the
-default ACLs of the new unit nor loses those of the old one.
+Only a move asks this. A new role gets the default ACLs of its unit, and
+**add_acl -a** or **-r** on a unit reach it either way. A move with
+**--keep-acls** leaves its ACLs alone all the same, and so does a move
+of the site admin role **SITE_ADMIN**.
 
 A move by somebody who does not hold **add:acl** and **delete:acl** on
 the role leaves its ACLs alone as well, and says so. Otherwise moving an
@@ -500,8 +525,7 @@ of that unit.
 Needs the ACL **enable:acl_inheritance**.
 
 **disable_acl_inheritance *role***  
-Stop inheriting them. Only the ACLs on the role itself count from then
-on.  
+A move leaves the ACLs of the role as they are again.  
 Needs the ACL **disable:acl_inheritance**.
 
 ## Extensions and LDAP Attributes
@@ -660,8 +684,8 @@ Remove every entry of the changelog.
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
-refused. OTPme asks the token you are signed in with first, then the
-object.
+refused. A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 
 ## Export and Cleanup
 
@@ -816,6 +840,15 @@ for when they take effect.
 **otpme-role remove_orphans wlan-users**  
 Clean out what the role still points at although it is gone.
 
+# AUTH ON ACTION HOOKS
+
+An auth on action policy can ask for a login again before these actions.
+See **Auth On Action Policy** in **otpme-policy**(1). A role has the
+hooks every object type has, and these:
+
+> add_dynamic_group, add_role, add_token, remove_dynamic_group,
+> remove_role, remove_token, set_config_parameter.
+
 # FILES
 
 */var/lib/otpme/*  
@@ -824,7 +857,7 @@ created in. A host holds no full role, only the view it answers a login
 with: the UUIDs of the members, the login interfaces they may use, the
 dynamic groups and the policies on the role.
 
-*/var/cache/otpme/ssh/authorized_keys/*user/authorized_keys**  
+*/var/cache/otpme/ssh/authorized_keys/\<user\>/authorized_keys*  
 The SSH keys that may log in to this host, one file per user. A key is
 only written here while a role of the host holds the token — see
 **otpme-host**(1) and **add_role** there.

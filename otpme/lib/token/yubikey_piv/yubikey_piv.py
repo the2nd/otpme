@@ -13,6 +13,7 @@ except Exception:
 
 from otpme.lib import oid
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib import encryption
@@ -796,7 +797,7 @@ class YubikeypivToken(Token):
     @object_lock(full_lock=True)
     def pre_deploy(
         self,
-        pre_deploy_args: dict=None,
+        pre_deploy_args: Union[dict,None]=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -835,11 +836,11 @@ class YubikeypivToken(Token):
         encrypt_public_key: str,
         encrypt_key_type: str,
         add_user_key: bool=False,
-        ssh_public_key: str=None,
-        ssh_public_key_type: str=None,
-        dot1x_secret: str=None,
+        ssh_public_key: Union[str,None]=None,
+        ssh_public_key_type: Union[str,None]=None,
+        dot1x_secret: Union[str,None]=None,
         private_key_backup: Union[dict,None]=None,
-        serial: str=None,
+        serial: Union[str,None]=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -906,7 +907,7 @@ class YubikeypivToken(Token):
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Chow token config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

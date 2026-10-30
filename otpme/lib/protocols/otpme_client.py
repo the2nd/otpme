@@ -1914,7 +1914,7 @@ class OTPmeClient(OTPmeClientBase):
             answer = self.ask(paras)
             if answer.lower() != "y":
                 response = _('Default group {action} aborted by user.')
-                response.format(action=action)
+                response = response.format(action=action)
                 response = {'status':False, 'response':response}
                 return response
 

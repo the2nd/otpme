@@ -15,6 +15,7 @@ from otpme.lib import json
 from otpme.lib import cache
 from otpme.lib import stuff
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import connections
 from otpme.lib import multiprocessing
@@ -1213,7 +1214,8 @@ class OTPmeJoinP1(OTPmeServer1):
             join_access_group = result[0]
             join_acl = f"join:{host_type}"
             if not join_access_group.verify_acl(join_acl):
-                message, log_msg = _("Permission denied.", log=True)
+                message = denied_msg(join_access_group, join_acl)
+                log_msg = _("Permission denied.", log=True)[1]
                 self.logger.warning(log_msg)
                 status = False
                 return self.build_response(status, message)
@@ -1229,7 +1231,8 @@ class OTPmeJoinP1(OTPmeServer1):
             join_access_group = result[0]
             join_acl = f"leave:{host_type}"
             if not join_access_group.verify_acl(join_acl):
-                message, log_msg = _("Permission denied.", log=True)
+                message = denied_msg(join_access_group, join_acl)
+                log_msg = _("Permission denied.", log=True)[1]
                 self.logger.warning(log_msg)
                 status = False
                 return self.build_response(status, message)

@@ -26,6 +26,7 @@ from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.encoding.base import encode
 from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.host import update_ssl_files
@@ -149,6 +150,23 @@ commands = {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -490,14 +508,6 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_attributes',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_attributes'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'show_attributes',
                     'job_type'          : 'thread',
                     },
                 },
@@ -1182,7 +1192,7 @@ class Realm(OTPmeObject):
         """ Get realms CA data. """
         if verify_acls:
             if not self.verify_acl(acl="view:ca_data", check_admin_role=False):
-                msg = _("Permission denied.")
+                msg = denied_msg(self, "view:ca_data")
                 return callback.error(msg, exception=PermissionDenied)
         return callback.ok(self.ca_data)
 
@@ -1203,7 +1213,7 @@ class Realm(OTPmeObject):
         """ Update realm's ca data (e.g. cert chains and CRL's). """
         if verify_acls:
             if not self.verify_acl(acl="update_ca_data", check_admin_role=False):
-                msg = _("Permission denied.")
+                msg = denied_msg(self, "update_ca_data")
                 return callback.error(msg, exception=PermissionDenied)
 
         msg = _("Update CA data of realm '{realm_name}'?: ")
@@ -1318,7 +1328,7 @@ class Realm(OTPmeObject):
         id_ranges: Union[str,None]=None,
         no_dicts: bool=False,
         no_index_indices: bool=False,
-        dictionaries: List=None,
+        dictionaries: Union[List,None]=None,
         force: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -1628,14 +1638,17 @@ class Realm(OTPmeObject):
         # Set admin token as site admin token.
         master_site.admin_token_uuid = admin_token.uuid
 
-        # Add ACLs to view public realm infos.
+        # Add ACLs to view public realm infos. The site admins need one
+        # as well: show_config() of a realm does not take the admin
+        # role for an admin (check_admin_role=False). The group
+        # realmusers got one too, as "role:<its UUID>", which grants
+        # nothing: only roles and tokens own ACLs. Its members are realm
+        # users, who have the role REALM_USER.
         realm_user_role = backend.get_object(object_type="role",
                                     uuid=master_site.user_role_uuid)
         site_admin_role = backend.get_object(object_type="role",
                                     uuid=master_site.admin_role_uuid)
-        realm_users_group = backend.get_object(object_type="group",
-                                    uuid=master_site.realm_users_group_uuid)
-        view_objects = [ realm_user_role, site_admin_role, realm_users_group ]
+        view_objects = [ realm_user_role, site_admin_role ]
         view_acls = [f"role:{o.uuid}:view_public" for o in view_objects]
         self.add_acl(acls=view_acls,
                     force=True,
@@ -1733,8 +1746,7 @@ class Realm(OTPmeObject):
         own_realm = backend.get_object(object_type="realm",
                                     uuid=config.realm_uuid)
         if not own_realm.verify_acl(acl="add:realm", check_admin_role=False):
-            msg = _("Permission denied: {own_realm_name}")
-            msg = msg.format(own_realm_name=own_realm.name)
+            msg = denied_msg(own_realm, "add:realm")
             return callback.error(msg, exception=PermissionDenied)
 
         # Run parent class stuff e.g. add lock.
@@ -1770,8 +1782,8 @@ class Realm(OTPmeObject):
             if not self.verify_acl("delete:object"):
                 del_acl = f"delete:{self.type}"
                 if not parent_object.verify_acl(del_acl):
-                    msg = _("Permission denied: {self_name}")
-                    msg = msg.format(self_name=self.name)
+                    msg = denied_msg(self, "delete:object",
+                                    others=[(parent_object, del_acl)])
                     return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:
@@ -1792,7 +1804,7 @@ class Realm(OTPmeObject):
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show realm config. """
         if not self.verify_acl(acl="view_public:object", check_admin_role=False):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         realm_ca = ""

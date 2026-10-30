@@ -185,9 +185,15 @@ class OTPmeHostP1(OTPmeServer1):
         # reloads must only be callable by root. The hostd socket is
         # world-writable by design (local realm/site lookups), and
         # client_user is derived from SO_PEERCRED, so a root check is sound.
+        #
+        # No "sync_objects": the client asks for it after every add and
+        # del on a host (CommandHandler.handle_command()), and a user
+        # who added or deleted an object had the command fail with
+        # "Permission denied." after it was done. It is the incremental
+        # sync, and hostd keeps at most one of it waiting however often
+        # it is asked (sync_by_command), so it queues nothing up.
         root_only_commands = [
                             "sync_sites",
-                            "sync_objects",
                             "sync_nsscache",
                             "sync_token_data",
                             "resync_objects",

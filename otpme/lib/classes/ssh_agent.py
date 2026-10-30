@@ -25,7 +25,8 @@ class SSHAgent(object):
             try:
                 login_session_id = os.environ['OTPME_LOGIN_SESSION']
             except Exception:
-                raise Exception("Please set OTPME_LOGIN_SESSION variable.") from None
+                msg = _("No OTPme login session: OTPME_LOGIN_SESSION is not set.")
+                raise OTPmeException(msg) from None
         self.logger = config.logger
         self.username = username
         self.login_session_id = login_session_id
@@ -39,8 +40,10 @@ class SSHAgent(object):
         self.ssh_auth_sock = None
         self.ssh_agent_pid = None
         self.ssh_agent_name = None
+        self.script_output = None
 
-    def run_ssh_agent_script(self, command, verify_signs="auto", additional_opts=None):
+    def run_ssh_agent_script(self, command, verify_signs="auto",
+        additional_opts=None, allow_error=False):
         """ Run users SSH agent script. """
         if additional_opts is None:
             additional_opts = []
@@ -106,19 +109,22 @@ class SSHAgent(object):
         except Exception as e:
             msg = _("Error running SSH agent script: {e}")
             msg = msg.format(e=e)
-            raise Exception(msg) from e
+            raise OTPmeException(msg) from e
 
         # Make sure script output is string.
         if isinstance(agent_stdout, bytes):
             agent_stdout = agent_stdout.decode()
         if isinstance(agent_stderr, bytes):
             agent_stderr = agent_stderr.decode()
+        self.script_output = agent_stdout + agent_stderr
 
         if agent_returncode != 0:
-            agent_out = agent_stdout + agent_stderr
+            # e.g. "status" of a stopped agent.
+            if allow_error:
+                return False
             msg = _("SSH agent script returned error: {agent_out}")
-            msg = msg.format(agent_out=agent_out)
-            raise Exception(msg)
+            msg = msg.format(agent_out=self.script_output)
+            raise OTPmeException(msg)
 
         if command == "start":
             # Try to get agent variables from agent script.
@@ -215,4 +221,5 @@ class SSHAgent(object):
             additional_opts = []
         return self.run_ssh_agent_script(command="status",
                                     verify_signs=verify_signs,
-                                    additional_opts=additional_opts)
+                                    additional_opts=additional_opts,
+                                    allow_error=True)

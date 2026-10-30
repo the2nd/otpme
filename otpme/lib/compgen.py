@@ -42,6 +42,23 @@ OBJECT_PARAMETERS = ["|object|", "|objects|", "search_regex"]
 # Commands that build their completion further down on their own.
 OWN_COMPLETION_COMMANDS = ["add_acl", "del_acl"]
 
+# How an ACL group is put on an object of a type, see
+# OTPmeObject.check_supported_acl(): "@" on the object itself, and
+# handed down only by a site or a unit to what is below it ("+@",
+# "++@") and by a user to its tokens ("+@").
+ACLGROUP_ACL_PREFIXES = {
+                    'site'      : ["@", "+@", "++@"],
+                    'unit'      : ["@", "+@", "++@"],
+                    'user'      : ["@", "+@"],
+                    }
+
+# Commands that take away something the object holds, where the
+# command that lists it is not named after what it takes away, as
+# member_list_command() would have it.
+MEMBER_LIST_COMMANDS = {
+                    ('aclgroup', 'remove_entry')    : "get_acls",
+                    }
+
 # What a parameter of a command names. The key is the parameter as the
 # command syntax writes it with what wraps it taken off (see the
 # command_map comment in otpme/lib/help/__init__.py), the value the
@@ -50,6 +67,7 @@ OWN_COMPLETION_COMMANDS = ["add_acl", "del_acl"]
 # ("default_role") and others like a parameter ("role_name").
 PARAMETER_OBJECT_TYPES = {
                     'access_group'          : "accessgroup",
+                    'aclgroup_name'         : "aclgroup",
                     'agent_script'          : "script",
                     'auth_script'           : "script",
                     'client'                : "client",
@@ -414,6 +432,57 @@ def conf_job_args(job_type, action):
     args += list(x_action.get('oargs', []))
     return [f"{x}=" for x in args]
 
+def template_values(object_type):
+    """ The templates of this type one may add an object from: "list"
+    without -a takes the write ACLs, and "use" is one of them. """
+    from otpme.lib import config
+    from otpme.lib.classes.command_handler import CommandHandler
+    config.cli_object_type = "main"
+    command_handler = CommandHandler()
+    try:
+        templates = command_handler.handle_command(command=object_type,
+                                                command_line=["list", "-t"])
+    except Exception:
+        return []
+    if not isinstance(templates, str):
+        return []
+    return templates.split()
+
+def aclgroup_entry_values(object_type):
+    """ What an entry of an ACL group may be: <object_type>:<acl>, for
+    every type the tree holds. The same list check_entry() checks
+    against. """
+    from otpme.lib import config
+    from otpme.lib.classes.aclgroup import get_type_acls
+    entries = []
+    for x_type in config.tree_object_types:
+        try:
+            type_acls = get_type_acls(x_type)
+        except Exception:
+            # A type that cannot say what it supports is one we cannot
+            # complete, which is no reason to complete nothing at all.
+            continue
+        entries += [f"{x_type}:{x}" for x in sorted(type_acls)]
+    return entries
+
+def aclgroup_acl_values(object_type):
+    """ The ACL groups, as add_acl takes them on this type of object. """
+    from otpme.lib import config
+    from otpme.lib.classes.command_handler import CommandHandler
+    prefixes = ACLGROUP_ACL_PREFIXES.get(object_type, ["@"])
+    config.cli_object_type = "main"
+    command_handler = CommandHandler()
+    try:
+        # Naming a group in an ACL needs no right on the group itself,
+        # so the ones we may only see are offered as well.
+        aclgroups = command_handler.handle_command(command="aclgroup",
+                                                command_line=["list", "-a"])
+    except Exception:
+        return []
+    if not isinstance(aclgroups, str):
+        return []
+    return [f"{x}{y}" for x in prefixes for y in aclgroups.split()]
+
 # Parameters whose values are not a fixed list but can be worked out.
 # What builds the list is given the type of the object the command is
 # for, because the answer often depends on it.
@@ -434,6 +503,8 @@ PARAMETER_VALUE_SOURCES = {
                     'sort_by'               : table_header_values,
                     'token_type'            : token_type_values,
                     'token_types'           : token_type_values,
+                    'entries'               : aclgroup_entry_values,
+                    'template_name'         : template_values,
                     }
 
 def config_parameters(object_type):
@@ -794,6 +865,9 @@ def show_compgen():
                 parameter = cmd_parameters[len(positionals)]
             if parameter in PARAMETER_MEMBER_COMMANDS:
                 member_command = PARAMETER_MEMBER_COMMANDS[parameter]
+            elif (main_command, sub_command) in MEMBER_LIST_COMMANDS:
+                member_command = MEMBER_LIST_COMMANDS[(main_command,
+                                                        sub_command)]
             elif parameter in PARAMETER_OBJECT_TYPES and sub_command:
                 member_command = member_list_command(help_dict, sub_command)
             if member_command and not positionals:
@@ -822,7 +896,9 @@ def show_compgen():
         if parameter in PARAMETER_VALUES:
             print("\n".join(PARAMETER_VALUES[parameter]))
             return
-        if parameter in PARAMETER_VALUE_SOURCES:
+        if parameter in PARAMETER_VALUE_SOURCES and not member_command:
+            # What the object holds comes first: "remove_entry" takes one
+            # of the entries the group has, "add_entry" any there is.
             get_values = PARAMETER_VALUE_SOURCES[parameter]
             print("\n".join(get_values(object_type)))
             return
@@ -1131,6 +1207,8 @@ def show_compgen():
             for member_type in recursive_acl_types(object_type, comp_words):
                 all_acls = object_type_acls(member_type, all_acls)
 
+            all_acls += aclgroup_acl_values(object_type)
+
             all_acls = "\n".join(all_acls)
             print(all_acls)
             return
@@ -1189,6 +1267,11 @@ def show_compgen():
                 # type, which has no such thing.
                 config.cli_object_type = "main"
             cmd_line = ["list"]
+            # A command with no subcommand (otpme-shell) uses the object
+            # and does not change it, so what we may see is offered, not
+            # only what we may change.
+            if no_sub_command:
+                cmd_line.append("-a")
             if cur:
                 cmd_line.append(f"{cur}*")
             objects = command_handler.handle_command(command=x_type,

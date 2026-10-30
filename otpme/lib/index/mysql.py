@@ -530,12 +530,12 @@ def command(command):
         except NotRunning:
             pass
         start()
-        wait_for_start()
+        return wait_for_start()
     elif command == "reload":
         return _reload()
     elif command == "status":
         if not status():
-            msg = "Mysql not running"
+            msg = _("Mysql not running.")
             raise NotRunning(msg)
     elif command == "drop":
         if stuff.controld_status():
@@ -544,7 +544,7 @@ def command(command):
         return drop()
     elif command == "cli":
         if not status():
-            msg = "Mysql not running"
+            msg = _("Mysql not running.")
             raise NotRunning(msg)
         cli()
     else:

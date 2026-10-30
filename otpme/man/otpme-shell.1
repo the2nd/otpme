@@ -276,11 +276,11 @@ What came of a session.
 Says who got in, how the session ended and which keys were skipped.
 .SH FILES
 .TP
-.I /var/cache/otpme/ssh/authorized_keys/\fIuser\fI/authorized_keys
+\fI/var/cache/otpme/ssh/authorized_keys/<user>/authorized_keys\fR
 The keys the host allows, on the host.
 Written by \fBhostd\fR from the SSH tokens of the realm.
 .TP
-.I /var/log/otpme/confd/\fIjob_uuid\fI.log
+\fI/var/log/otpme/confd/<job_uuid>.log\fR
 The log of one session, on the host.
 Never what was said in the session.
 .SH NOTES

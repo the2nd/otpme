@@ -27,7 +27,7 @@ cmd_help = {
 
     'add_group'      : {
                     '_cmd_usage_help' : _('Usage: otpme-policy add_group {policy} {group}'),
-                    'cmd'   :   '<|object|> <group_name>',
+                    'cmd'   :   '<|object|> <"group_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add group.'),
                                 },
@@ -35,14 +35,14 @@ cmd_help = {
 
     'remove_group'   : {
                     '_cmd_usage_help' : _('Usage: otpme-policy remove_group {policy} {group}'),
-                    'cmd'   :   '<|object|> <group_name>',
+                    'cmd'   :   '<|object|> <"group_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove group.'),
                                 },
                 },
     'default_group'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-policy default_group {policy} {group}'),
-                    'cmd'   :   '<|object|> <group_name>',
+                    '_cmd_usage_help' : _('Usage: otpme-policy default_group {policy} {group|""}'),
+                    'cmd'   :   '<|object|> <"group_name">',
                     '_help' :   {
                                     'cmd'                   : _('Set default group.'),
                                 },

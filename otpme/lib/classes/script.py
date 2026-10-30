@@ -20,6 +20,7 @@ from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.encoding.base import decode
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
@@ -118,6 +119,23 @@ commands = {
                     },
                 },
             },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'edit_changelog'   : {
             'default'    : {
                 'exists'    : {
@@ -148,6 +166,15 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'auto_disable'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
                     'job_type'          : 'process',
                     },
                 },
@@ -838,14 +865,13 @@ class Script(OTPmeObject):
             if replace:
                 if self.exists():
                     if not self.verify_acl("edit:script"):
-                        msg = _("Permission denied.")
+                        msg = denied_msg(self, "edit:script")
                         return callback.error(msg, exception=PermissionDenied)
             else:
                 _unit = backend.get_object(object_type="unit",
                                         uuid=self.unit_uuid)
                 if not _unit.verify_acl("add:script"):
-                    msg = _("Permission denied: {path}")
-                    msg = msg.format(path=_unit.path)
+                    msg = denied_msg(_unit, "add:script")
                     return callback.error(msg, exception=PermissionDenied)
         check_exists = True
         if replace:
@@ -978,8 +1004,7 @@ class Script(OTPmeObject):
             dst_script = result[0]
             # Check if we have permissions to replace destination script.
             if not dst_script.verify_acl("edit:script"):
-                msg = _("{path}: Permission denied")
-                msg = msg.format(path=dst_script.rel_path)
+                msg = denied_msg(dst_script, "edit:script")
                 return callback.error(msg, exception=PermissionDenied)
             # Ask user for confirmation if needed.
             msg = _("Replace script '{name}'?: ")
@@ -1046,8 +1071,8 @@ class Script(OTPmeObject):
             if not self.verify_acl("delete:object"):
                 del_acl = f"delete:{self.type}"
                 if not parent_object.verify_acl(del_acl):
-                    msg = _("Permission denied: {name}")
-                    msg = msg.format(name=self.name)
+                    msg = denied_msg(self, "delete:object",
+                                    others=[(parent_object, del_acl)])
                     return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:
@@ -1068,7 +1093,7 @@ class Script(OTPmeObject):
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show script config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

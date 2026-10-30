@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-script show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [script]'),
-                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show script(s)'),
                                     '-a'                    : _('Show all scripts.'),
@@ -34,13 +34,13 @@ cmd_help = {
                                     '--sort-by <attribute>' : _('Sort output by <attribute>.'),
                                     '--raw'                 : _('Output table without any headers/borders.'),
                                     '--csv'                 : _('Output table as CSV.'),
-                                    '--csv-sep <separator>' : _('Output table as CSV.'),
+                                    '--csv-sep <separator>' : _('Separator between the CSV columns.'),
                                 },
                 },
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script list [-a] [regex]'),
-                    'cmd'   :   '-a :show_all=True: [search_regex]',
+                    'cmd'   :   '-a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List scripts.'),
                                     '-a'                        : _('List all scripts.'),
@@ -49,7 +49,7 @@ cmd_help = {
 
     'add'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script add [-r] {name} {script}'),
-                    'cmd'   :   '-r :replace=True: <|object|> <script>',
+                    'cmd'   :   '-r :replace=True: <|object|> <"script">',
                     '_help' :   {
                                     'cmd'                   : _('Add new script'),
                                     '-r'                    : _('Replace existing script and keep its UUID'),
@@ -68,7 +68,7 @@ cmd_help = {
 
     'copy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script copy {src_script} {dst_script}'),
-                    'cmd'   :   '<|object|> <destination_script>',
+                    'cmd'   :   '<|object|> <"destination_script">',
                     '_help' :   {
                                     'cmd'                   : _('Copy script and its signatures'),
                                 },
@@ -108,7 +108,7 @@ cmd_help = {
 
     'add_sign'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script add_sign [--tags tag1,tag2...] {name} {signature}'),
-                    'cmd'   :   '--tags :[tags]: <|object|> <signature>',
+                    'cmd'   :   '--tags :[tags]: <|object|> <"signature">',
                     '_help' :   {
                                     'cmd'                   : _('Add new signature to script'),
                                     '--tags'                : _('Tags included in the signature.'),
@@ -117,7 +117,7 @@ cmd_help = {
 
     'del_sign'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script del_sign [--user username] [--tags tag1,tag2...] {name}'),
-                    'cmd'   :   '--user :username: --tags :[tags]: <|object|>',
+                    'cmd'   :   '--user :"username": --tags :[tags]: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Delete signature from script'),
                                     '--user'                : _('Select signature by username.'),
@@ -128,7 +128,7 @@ cmd_help = {
 
     'verify_sign'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script verify_sign [--user username] [--tags tag1,tag2...] {name}'),
-                    'cmd'   :   '--user :username: --tags :[tags]: <|object|>',
+                    'cmd'   :   '--user :"username": --tags :[tags]: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Verify script signature(s)'),
                                     '--user'                : _('Select signature by username.'),
@@ -139,7 +139,7 @@ cmd_help = {
 
     'get_sign'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script get_sign [--user username] [--tags tag1,tag2...] {name}'),
-                    'cmd'   :   '--user :username: --tags :[tags]: <|object|>',
+                    'cmd'   :   '--user :"username": --tags :[tags]: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Get script signature(s)'),
                                     '--user'                : _('Select signature by username.'),
@@ -150,14 +150,14 @@ cmd_help = {
 
     'get_config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script get_config {script} {parameter}'),
-                    'cmd'   :   '<|object|> <parameter>',
+                    'cmd'   :   '<|object|> <"parameter">',
                     '_help' :   {
                                     'cmd'                   : _('Get config parameter.'),
                                 },
                 },
     'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script config -d -a {script} {param} [value]'),
-                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to script.'),
                                     '-a'                    : _('Append value to config parameter.'),
@@ -166,9 +166,24 @@ cmd_help = {
                 },
     'show_config'      : {
                     '_cmd_usage_help' : _('Usage: otpme-script show_config {script} [parameter]'),
-                    'cmd'   :   '<|object|> [parameter]',
+                    'cmd'   :   '<|object|> ["parameter"]',
                     '_help' :   {
                                     'cmd'                   : _('Show script config parameters'),
+                                },
+                },
+    'show_oid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-script show_oid [--full] {script}'),
+                    'cmd'   :   '--full :full=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the OID of the object.'),
+                                    '--full'                : _('Show the full OID.'),
+                                },
+                },
+    'show_uuid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-script show_uuid {script}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the UUID of the object.'),
                                 },
                 },
     'changelog'    : {
@@ -180,7 +195,7 @@ cmd_help = {
                 },
     'edit_changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script edit_changelog {script} {entry_id} {comment}'),
-                    'cmd'   :   '<|object|> <entry_id> <comment>',
+                    'cmd'   :   '<|object|> <entry_id> <"comment">',
                     '_help' :   {
                                     'cmd'                   : _('Edit changelog entry comment.'),
                                 },
@@ -208,6 +223,14 @@ cmd_help = {
                                 },
                 },
 
+    'auto_disable'          : {
+                    '_cmd_usage_help' : _('Usage: otpme-script auto_disable {script} {time}'),
+                    'cmd'   :   '<|object|> <auto_disable>',
+                    '_help' :   {
+                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023", 0 removes it).'),
+                                },
+                },
+
     'enable'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script enable {script}'),
                     'cmd'   :   '<|object|>',
@@ -226,7 +249,7 @@ cmd_help = {
 
     'rename'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script rename {script} {new_name}'),
-                    'cmd'   :   '<|object|> <new_name>',
+                    'cmd'   :   '<|object|> <"new_name">',
                     '_help' :   {
                                     'cmd'                   : _('Rename script'),
                                 },
@@ -235,7 +258,7 @@ cmd_help = {
 
     'add_acl'   : {
                     '_cmd_usage_help' : _('Usage: otpme-script add_acl {script} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
+                    'cmd'   :   '<|object|> <"owner_type"> <"owner_name"> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to script'),
                                 },
@@ -278,7 +301,7 @@ cmd_help = {
 
     'move'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script move [--keep-acls] {script} {unit}'),
-                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <new_unit>',
+                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <"new_unit">',
                     '_help' :   {
                                     'cmd'                   : _('Change script\'s unit'),
                                     '--keep-acls'           : _('Keep object ACLs.')
@@ -297,7 +320,7 @@ cmd_help = {
 
     'description'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script description {script} [description]'),
-                    'cmd'   :   '<|object|> [description]',
+                    'cmd'   :   '<|object|> ["description"]',
                     '_help' :   {
                                     'cmd'                   : _('Set script description'),
                                 },
@@ -305,7 +328,7 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script info {script} [info]'),
-                    'cmd'   :   '--language :language: <|object|> [info]',
+                    'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set script info'),
                                     '--language <lang>'     : _('Change info for language.'),
@@ -314,7 +337,7 @@ cmd_help = {
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script dump_info {script}'),
-                    'cmd'   :   '--language :language: <|object|>',
+                    'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump script info'),
                                     '--language <lang>'     : _('Dump info for language.'),
@@ -339,7 +362,7 @@ cmd_help = {
 
     'export'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script export --password <password> {script}'),
-                    'cmd'   :   '--password :password: <|object|>',
+                    'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export script config to stdout'),
                                     '--password <password>' : _('Encrypt object config with password.'),
@@ -348,7 +371,7 @@ cmd_help = {
 
     'add_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script add_policy {script} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add policy to script'),
                                 },
@@ -356,15 +379,15 @@ cmd_help = {
 
     'remove_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script remove_policy {script} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove policy from script'),
                                 },
                 },
 
     'list_policies'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-script list_policies {script}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-script list_policies [--return-type <type>] [--policy-types <type1,type2>] {script}'),
+                    'cmd'   :   '--return-type :"return_type": --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -396,7 +419,7 @@ cmd_help = {
     'run'   : {
                     '_ignore_unknown_opts'  : True,
                     '_cmd_usage_help' : _('Usage: otpme-script run --type key_script {script}'),
-                    'cmd'   :   '--type ::script_type:: <|object|>',
+                    'cmd'   :   '--type ::"script_type":: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Run script'),
                                     '--type'                : _('Run script as <type> script'),

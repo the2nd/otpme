@@ -118,6 +118,19 @@ certificates, the secrets, the CA, the admin role and the SSO hosts. A
 value you may not see is left empty. That needs the ACL
 **view_public:object**.
 
+<!-- -->
+
+**show_oid \[**--full**\] *site***  
+Show the OID of the site: **site\|\<realm\>/\<site\>**. **--full** is
+accepted and shows the same.  
+Needs the ACL **view_public:object**.
+
+**show_uuid *site***  
+Show the UUID of the site.  
+Needs the ACL **view_public:object**.
+
+<!-- -->
+
 **list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
 List the site names, and with a regex only those that match it. You get
 the sites you may change; **-a** adds those you may only look at.  
@@ -141,6 +154,16 @@ anywhere else all but a few commands are refused.
 **touch *site***  
 Re-index the object to fix potential index problems.  
 Needs the ACL **touch**.
+
+**auto_disable *site* *time***  
+Set auto-disable time. It is either a relative time with a leading
+**+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
+The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
+**otpme**(7). A relative time counts from when it is set, and again from
+when the site is enabled. **0** removes it. It is refused for an object
+the realm or a site comes with, e.g. the admin user; a time set on one
+before does nothing.  
+Needs the ACL **edit:auto_disable**.
 
 ## Site Configuration
 
@@ -199,13 +222,29 @@ The ACL is per parameter, **set:config:***parameter*.
 
 **upgrade \[**--all**\] \[**--procs** *NUM*\] *site***  
 Bring the site up to the OTPme version its nodes run. Run it after an
-update, when all nodes of the site run the new version. It does two
+update, when all nodes of the site run the new version. It does these
 things.
 
 It adds the config parameters the site is missing, with their defaults.
 A site gets every parameter when it is created, so one that a later
 OTPme version brings is not on an older site until this is run. A
 parameter that is already set is not changed.
+
+It adds the base ACL groups the site is missing, and gives the ones it
+has the ACLs this OTPme version says, see **otpme-aclgroup**(1).
+
+On a site from before the ACL group **realm_user** it takes away the
+ACLs the role **REALM_USER** had one by one on every object, and gives
+it **realm_user** instead. This walks the whole site twice, once to take
+the old ACLs away and once to give the group, and can take a while. It
+is done once: a second run finds nothing to do.
+
+It takes away two ACLs older versions gave that grant nothing:
+**view_public** of the role **SITE_ADMIN** on the site and on the units
+that got a copy of it, and on the realm an ACL for the group
+**realmusers**. A token of **SITE_ADMIN** is an admin and needs no ACL
+on its site, and a group cannot hold an ACL. **SITE_ADMIN** keeps
+**view_public** on the realm.
 
 It stores the objects of the site in the format of the new version. A
 new version may store an object in another way. The command writes every
@@ -426,7 +465,8 @@ its own is asked for.
 Print the private key of the site. With **-p** it is encrypted with that
 passphrase, which then stands on the command line for others on the
 machine to see.  
-Needs the ACL **view_all:cert_key**.
+Needs the ACL **view:key**, or **view_all**. A plain **view** does not
+open it.
 
 **dump_ca_chain *site***  
 Print the CA certificates the certificate of the site is checked with,
@@ -710,8 +750,8 @@ Needs the ACL **revoke:oidc_key**.
 Print the signing keys of the site, the active one and the retired ones,
 each under its *kid*.  
 This prints the keys whole, **the private parts included**.  
-Needs the ACL **view_all:oidc_keys**. A plain **view** does not open it;
-**view:oidc_keys** does, because it names these keys.
+Needs the ACL **view:oidc_keys**, or **view_all**. A plain **view** does
+not open it.
 
 **oidc_pairwise_secret *site* \[*secret*\]**  
 Change the secret the pairwise *sub* of a user is made from. Without
@@ -824,8 +864,8 @@ Remove every entry of the changelog.
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
-refused. OTPme asks the token you are signed in with first, then the
-object.
+refused. A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 
 ## Policy Management
 
@@ -850,10 +890,11 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *site***  
-List the policies attached to the site. Use **--return-type** to select
-the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
-Use **--policy-types** to list only policies of the given types; these
-are policy types, not policy names.  
+List the policies attached to the site, the disabled ones too, marked
+**(disabled)**. Use **--return-type** to select the attribute returned
+(**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
+to list only policies of the given types; these are policy types, not
+policy names.  
 Needs the ACL **view:policies**.
 
 ## ACL Management
@@ -873,9 +914,10 @@ option **-f** skips the question.
 
 **add_acl \[**-r**\] \[**-a**\] \[**--objects** *types*\] \[**--procs** *num*\] *site* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this site.  
-*owner_type* is **role** or **token**, and *owner* the path of that role
-or token. An ACL may carry a value, for example **view:trusts**, and
-several are separated by commas.  
+*owner_type* is **role** or **token**. *owner* is the path of that role
+or token. An ACL can carry a value, for example **view:trusts**. To give
+several ACLs at once, separate them with commas:
+**view:trusts,view:status**.  
 Without an option only the site is changed. A default ACL then reaches
 what is created from now on, and nothing that is already there.
 
@@ -945,15 +987,19 @@ attributes those classes allow. What **ldapd** serves and what
 A site has the extension **base**, which makes it an
 **organizationalUnit** with **ou** and **description**. The class allows
 more, an address or a phone number for example, and those can be set
-here.
+here. No other extension is for sites, and **base** cannot be removed,
+because **ou** names the entry.
 
 **add_extension *site* *extension***  
 Add an extension to the site. One that is not for sites is refused, and
-so is one the site already has.  
+so is one the site already has; for a site, that is every extension
+today.  
 Needs the ACL **add:extension**.
 
 **remove_extension *site* *extension***  
-Take it away again, with the classes and attributes it brought.  
+Take it away again, with the classes and attributes it brought. An
+extension that brings the attribute naming the entry cannot be removed,
+and for a site that is **base**.  
 Needs the ACL **remove:extension**.
 
 **add_attribute *site* *attribute***=**\[*value*\]**  
@@ -978,12 +1024,16 @@ neither can a read-only one. The ACL is
 **delete:attribute:***attribute*.
 
 **add_object_class *site* *class***  
-Add an LDAP object class to the site, beyond the ones its extensions
-brought.  
+Add an LDAP object class. Only a class an extension of the site knows is
+taken, and for a site that is **organizationalUnit**, which it has
+already.  
 Needs the ACL **add:object_class**.
 
 **del_object_class *site* *class***  
-Remove one again.  
+Remove an object class again, with the attributes only it allows. The
+class that allows the attribute naming the entry stays, unless another
+class of the site allows it too. For a site that is
+**organizationalUnit**, its only class.  
 Needs the ACL **delete:object_class**.
 
 **show_ldif *site* \[**-a** *attribute1,attribute2*\]**  
@@ -1006,7 +1056,8 @@ Remove references to objects that are gone: orphan ACLs, policies and
 signatures of the site, a trusted site that was deleted, and an SSO host
 that was deleted.  
 **-r** goes on through every unit of the site and the objects in them,
-and cleans those up as well.  
+and cleans those up as well. An object with nothing to clean up says
+nothing; one without the ACL is skipped with “Permission denied”.  
 It asks once for what it found on an object; the global option **-f**
 skips the question.  
 Needs the ACL **remove:orphans**.
@@ -1170,9 +1221,24 @@ the ones that come later.
 **otpme-site add_acl berlin role auditors view**  
 The role may look at the site object itself, and at nothing below it.
 
+# AUTH ON ACTION HOOKS
+
+An auth on action policy can ask for a login again before these actions.
+See **Auth On Action Policy** in **otpme-policy**(1). A site has the
+hooks every object type has, and these:
+
+> add_sso_host, add_sso_logo, add_trust, add_unit, change_address,
+> change_auth_fqdn, change_cluster_key, change_mgmt_fqdn,
+> change_radius_cert, change_radius_key, change_site_cert,
+> change_sso_cert, change_sso_csrf_secret, change_sso_fqdn,
+> change_sso_key, change_sso_secret, del_sso_logo, del_trust,
+> disable_auth, disable_oidc, disable_sync, dump_sso_logo, enable_auth,
+> enable_oidc, enable_sync, remove_sso_host, renew_cert,
+> set_config_parameter, show_config_parameters.
+
 # FILES
 
-*/etc/otpme/ssl/*realm***-***site***.pem***  
+*/etc/otpme/ssl/\<realm\>-\<site\>.pem*  
 The certificate of a site, as each node and host keeps it. It is not
 replaced by the sync, see **renew_cert**.
 

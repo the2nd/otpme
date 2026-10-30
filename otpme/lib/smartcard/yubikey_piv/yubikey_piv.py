@@ -608,10 +608,11 @@ class Yubikeypiv(object):
 
     def detect(self, debug=False, print_devices=False):
         """ Try to find yubikey PIV. """
-        x = piv.detect()
+        x = piv.detect(print_slot=print_devices)
+        # NoSmartcardFound: detect_smartcard() goes on with the next type.
         if not x:
             msg = _("No yubikey (PIV) found.")
-            raise OTPmeException(msg)
+            raise NoSmartcardFound(msg)
 
     def sign_challenge(self, challenge, pin, slot="AUTHENTICATION", **kwargs):
         """ Sign challenge with yubikey-piv."""

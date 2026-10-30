@@ -27,7 +27,7 @@ cmd_help = {
 
     'force_token_types'          : {
                     '_cmd_usage_help' : _('Usage: otpme-policy force_token_types {policy} {token_types}'),
-                    'cmd'   :   '<|object|> <token_types>',
+                    'cmd'   :   '<|object|> <"token_types">',
                     '_help' :   {
                                     'cmd'                   : _('Change list with allowed token types.'),
                                 },
@@ -35,7 +35,7 @@ cmd_help = {
 
     'force_pass_types'          : {
                     '_cmd_usage_help' : _('Usage: otpme-policy force_pass_types {policy} {pass_types}'),
-                    'cmd'   :   '<|object|> <pass_types>',
+                    'cmd'   :   '<|object|> <"pass_types">',
                     '_help' :   {
                                     'cmd'                   : _('Change list with allowed pass types.'),
                                 },

@@ -21,6 +21,7 @@ from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.otpme_object import OTPmeObject
@@ -56,7 +57,6 @@ read_value_acls = {
                                     "mac_address",
                                     "roles",
                                     "accessgroups",
-                                    "auto_disable",
                                 ],
                     # The other direction: not what this device holds,
                     # but who holds this device.
@@ -69,7 +69,6 @@ read_value_acls = {
 write_value_acls = {
                     "edit"    : [
                                     "mac_address",
-                                    "auto_disable",
                                 ],
             }
 
@@ -107,6 +106,23 @@ commands = {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -683,7 +699,7 @@ class OTPmeDevice(OTPmeObject):
         if config_lines is None:
             config_lines = []
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         if self.verify_acl("view:mac_address"):
@@ -876,8 +892,8 @@ class Device(OTPmeDevice):
             if not self.verify_acl("delete:object"):
                 del_acl = f"delete:{self.type}"
                 if not parent_object.verify_acl(del_acl):
-                    msg = _("Permission denied: {name}")
-                    msg = msg.format(name=self.name)
+                    msg = denied_msg(self, "delete:object",
+                                    others=[(parent_object, del_acl)])
                     return callback.error(msg, exception=PermissionDenied)
 
         exception = None

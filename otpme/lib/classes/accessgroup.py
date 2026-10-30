@@ -20,6 +20,7 @@ from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.cache import assigned_host_cache
@@ -160,6 +161,23 @@ commands = {
                     },
                 },
             },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'edit_changelog'   : {
             'default'    : {
                 'exists'    : {
@@ -190,6 +208,15 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'auto_disable'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
                     'job_type'          : 'process',
                     },
                 },
@@ -762,14 +789,6 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_attributes',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_attributes'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'show_attributes',
                     'job_type'          : 'thread',
                     },
                 },
@@ -1373,7 +1392,7 @@ class AccessGroup(OTPmeObject):
 
     def parents(
         self,
-        sessions: bool=None,
+        sessions: Union[bool,None]=None,
         recursive: bool=False,
         return_type: str='name',
         skip_disabled: bool=True,
@@ -1538,8 +1557,7 @@ class AccessGroup(OTPmeObject):
         if verify_acls:
             if not group.verify_acl("add:token") \
             and not group.verify_acl("add:role"):
-                msg = _("Permission denied: {group_name}")
-                msg = msg.format(group_name=group.name)
+                msg = denied_msg(group, ["add:token", "add:role"])
                 return callback.error(msg, exception=PermissionDenied)
 
         if group.uuid in self.childs(return_type="uuid"):
@@ -1752,7 +1770,7 @@ class AccessGroup(OTPmeObject):
 
         return self._cache(callback=callback)
 
-    def change_info(self, info: str=None,
+    def change_info(self, info: Union[str,None]=None,
         language: str=DEFAULT_INFO_LANGUAGE,
         callback=default_callback, **kwargs):
         """ Change object info.
@@ -2791,8 +2809,8 @@ class AccessGroup(OTPmeObject):
             if not self.verify_acl("delete:object"):
                 del_acl = f"delete:{self.type}"
                 if not parent_object.verify_acl(del_acl):
-                    msg = _("Permission denied: {name}")
-                    msg = msg.format(name=self.name)
+                    msg = denied_msg(self, "delete:object",
+                                    others=[(parent_object, del_acl)])
                     return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:
@@ -2941,7 +2959,7 @@ class AccessGroup(OTPmeObject):
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show accessgroup config. """
         if not self.verify_acl("view_public:object"):
-            msg = ("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         if self.verify_acl("view:tokens") \

@@ -79,6 +79,21 @@ prints one row per line with \fB;\fR between the columns, and
 .B \-\-csv\-sep
 uses another separator.
 .RE
+.na
+.nh
+.TP
+.B show_oid \fR[\fB\-\-full\fR] \fIrole\fR
+Show the OID of the role: \fB\%role|<realm>/<site>/<name>\fR.
+With \fB\-\-full\fR the full OID, which names the unit as well: \fB\%role|<realm>/<site>/<unit_path>/<name>\fR.
+.br
+Needs the ACL \fBview_public:object\fR.
+.TP
+.B show_uuid \fIrole\fR
+Show the UUID of the role.
+.br
+Needs the ACL \fBview_public:object\fR.
+.hy
+.ad
 .TP
 .B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
 List the role names, and with a regex only those that match it.
@@ -129,6 +144,15 @@ leaves the ACLs of the role as they are.
 .TP
 .B touch \fIrole\fR
 Re-index the object to fix potential index problems.
+.TP
+.B auto_disable \fIrole\fR \fItime\fR
+Set auto\-disable time.
+It is either a relative time with a leading \fB+\fR, e.g. \fB+30D\fR, or an absolute one, e.g. \fB"09:53 13.06.2023"\fR.
+The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
+.BR otpme (7).
+A relative time counts from when it is set, and again from when the role is enabled.
+\fB0\fR removes it.
+It is refused for an object the realm or a site comes with, e.g. the admin user; a time set on one before does nothing.
 .SS Token Assignment
 Putting a token into a role can sign the token.
 The signature says where the token belongs: the user it is for, this role, the roles above it, the access groups and the groups those roles are in, the interfaces of \fB\-i\fR and the \fItoken_options\fR.
@@ -449,7 +473,7 @@ Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR d
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
 .B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIrole\fR
-List the policies attached to the role.
+List the policies attached to the role, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
 .br
@@ -468,8 +492,10 @@ The other direction, the ACLs this role holds on other objects, is \fBfind_acls\
 .B add_acl \fIrole\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[\fB:\fIvalue\fR][\fB,\fIacl\fR[\fB:\fIvalue\fR]]
 Give a role or a token one or more ACLs on this role.
 .br
-\fIowner_type\fR is \fBrole\fR or \fBtoken\fR, and \fIowner\fR the path of that role or token.
-An ACL may carry a value, for example \fBview:tokens\fR, and several are separated by commas.
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
+\fIowner\fR is the path of that role or token.
+An ACL can carry a value, for example \fBview:tokens\fR.
+To give several ACLs at once, separate them with commas: \fB\%view:tokens,view:status\fR.
 .br
 Needs the ACL \fBadd:acl\fR.
 .TP
@@ -485,12 +511,13 @@ Show the ACLs that lie on this role, i.e. who may do what with it.
 Needs the ACL \fBview:acl\fR.
 .TP
 .B enable_acl_inheritance \fIrole\fR
-Let the role inherit the default ACLs of the unit above it. It does not by default.
+Let a move of the role swap its default ACLs: what the old unit handed down is taken away, and what the new unit hands down is given.
+It does not by default; a move then leaves the ACLs of the role as they are.
 .RS
 .PP
-Only default ACLs are inherited. An ordinary ACL on the unit never is.
-.PP
-Moving a role into another unit is the one place that asks something else as well: the site admin role \fBSITE_ADMIN\fR gets neither the default ACLs of the new unit nor loses those of the old one.
+Only a move asks this.
+A new role gets the default ACLs of its unit, and \fBadd_acl \-a\fR or \fB\-r\fR on a unit reach it either way.
+A move with \fB\-\-keep\-acls\fR leaves its ACLs alone all the same, and so does a move of the site admin role \fBSITE_ADMIN\fR.
 .PP
 A move by somebody who does not hold \fBadd:acl\fR and \fBdelete:acl\fR on the role leaves its ACLs alone as well, and says so.
 Otherwise moving an object into a unit would be a way of handing yourself the default ACLs of that unit.
@@ -499,8 +526,7 @@ Needs the ACL \fBenable:acl_inheritance\fR.
 .RE
 .TP
 .B disable_acl_inheritance \fIrole\fR
-Stop inheriting them.
-Only the ACLs on the role itself count from then on.
+A move leaves the ACLs of the role as they are again.
 .br
 Needs the ACL \fBdisable:acl_inheritance\fR.
 .SS Extensions and LDAP Attributes
@@ -648,7 +674,8 @@ This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
 has to allow it (see \fBotpme\fR(7)).
 It is true by default, but where no value is found at all, clearing is refused.
-OTPme asks the token you are signed in with first, then the object.
+A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 .SS Export and Cleanup
 Both write to stdout.
 There is no import on this page: reading an export back in is
@@ -792,6 +819,25 @@ Three types fit a role; see \fBPolicy Management\fR above for when they take eff
 .TP
 .B otpme-role remove_orphans wlan\-users
 Clean out what the role still points at although it is gone.
+.\" BEGIN AUTH ON ACTION HOOKS
+.\" Generated by update_hooks_man.py. Do not edit, the next run
+.\" overwrites it.
+.SH AUTH ON ACTION HOOKS
+An auth on action policy can ask for a login again before these actions.
+See
+.B Auth On Action Policy
+in
+.BR otpme\-policy (1).
+A role has the hooks every object type has, and these:
+.RS
+.PP
+.na
+.nh
+add_dynamic_group, add_role, add_token, remove_dynamic_group, remove_role, remove_token, set_config_parameter.
+.hy
+.ad
+.RE
+.\" END AUTH ON ACTION HOOKS
 .SH FILES
 .TP
 .I /var/lib/otpme/
@@ -799,7 +845,7 @@ The objects of the realm, on a node.
 A role lives in the unit it was created in.
 A host holds no full role, only the view it answers a login with: the UUIDs of the members, the login interfaces they may use, the dynamic groups and the policies on the role.
 .TP
-.I /var/cache/otpme/ssh/authorized_keys/\fIuser\fI/authorized_keys
+\fI/var/cache/otpme/ssh/authorized_keys/<user>/authorized_keys\fR
 The SSH keys that may log in to this host, one file per user.
 A key is only written here while a role of the host holds the token \(em see \fBotpme\-host\fR(1) and \fBadd_role\fR there.
 .SH SEE ALSO

@@ -72,6 +72,9 @@ CLUSTER_OUT_JOURNAL_NAME = "cluster_out_journal"
 CLUSTER_OUT_JOURNAL_DIR = os.path.join(config.spool_dir, CLUSTER_OUT_JOURNAL_NAME)
 
 TRASH_JOURNAL_DIR = os.path.join(CLUSTER_OUT_JOURNAL_DIR, "trash")
+# How long the initial sync waits for the node it elected to know a master
+# node (status_codes.NO_MASTER_NODE), before it counts as a failed try.
+NO_MASTER_NODE_WAIT = 60
 OBJECTS_JOURNAL_DIR = os.path.join(CLUSTER_OUT_JOURNAL_DIR, "objects")
 SESSIONS_JOURNAL_DIR = os.path.join(CLUSTER_OUT_JOURNAL_DIR, "sessions")
 
@@ -1354,7 +1357,8 @@ class ClusterDaemon(OTPmeDaemon):
         # Act only on our own PID.
         if os.getpid() != self.pid:
             return
-        log_msg = _("Received SIGTERM.", log=True)[1]
+        log_msg = _("Received {signal_name}.", log=True)[1]
+        log_msg = log_msg.format(signal_name=stuff.get_signal_name(_signal))
         self.logger.info(log_msg)
         if config.start_freeradius:
             self.stop_freeradius()
@@ -1366,7 +1370,11 @@ class ClusterDaemon(OTPmeDaemon):
             log_msg = _("Failed to close shared bool: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.warning(log_msg)
-        return super().signal_handler(_signal, frame)
+        # Our queues are closed now, so we go, whatever the signal. The
+        # base class acts on SIGTERM only, and on SIGINT (Ctrl+C in the
+        # foreground) we went back to receive on a closed queue.
+        self.close()
+        os._exit(0)
 
     @property
     def member_candidate(self):
@@ -2778,6 +2786,7 @@ class ClusterDaemon(OTPmeDaemon):
         self.logger.info(log_msg)
         max_tries = 3
         current_try = 0
+        no_master_node_until = None
         command_handler = CommandHandler()
         while True:
             if config.daemon_shutdown:
@@ -2800,6 +2809,24 @@ class ClusterDaemon(OTPmeDaemon):
                                                     skip_object_deletion=skip_deletions,
                                                     socket_uri=socket_uri,
                                                     check_connected_site=False)
+            except NoMasterNode as e:
+                # We elected it from the votes we got, and its own
+                # election has not made a master node yet. Not a failure:
+                # waited for, up to NO_MASTER_NODE_WAIT, and only then a
+                # failed try.
+                now = time.time()
+                if no_master_node_until is None:
+                    no_master_node_until = now + NO_MASTER_NODE_WAIT
+                if now < no_master_node_until:
+                    log_msg = _("Initial sync: {node} knows no master node yet, waiting for the election: {error}", log=True)[1]
+                    log_msg = log_msg.format(node=master_node, error=e)
+                    self.logger.info(log_msg)
+                    time.sleep(1)
+                    continue
+                sync_status = False
+                log_msg = _("Initial sync of objects failed: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
             except Exception as e:
                 config.raise_exception()
                 sync_status = False

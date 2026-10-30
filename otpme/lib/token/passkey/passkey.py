@@ -20,6 +20,7 @@ except Exception:
 from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
@@ -285,7 +286,7 @@ class PasskeyToken(Token):
     @backend.transaction
     def pre_deploy(
         self,
-        pre_deploy_args: dict=None,
+        pre_deploy_args: Union[dict,None]=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -428,7 +429,7 @@ class PasskeyToken(Token):
 
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
         lines = []
         lines.append(f'RP="{self.rp}"')

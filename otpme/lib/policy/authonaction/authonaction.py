@@ -13,6 +13,7 @@ except Exception:
 
 from otpme.lib import stuff
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.humanize import units
@@ -49,6 +50,38 @@ BASE_POLICY_NAME = "auth_on_action"
 REGISTER_BEFORE = ['otpme.lib.policy.defaultpolicies.defaultpolicies']
 # We need to register after all objects to be able to add this policy to all.
 REGISTER_AFTER = ['otpme.lib.classes']
+
+# Hooks that are valid for all object types we support.
+DEFAULT_HOOKS = [
+                'add',
+                'modify',
+                'rename',
+                'delete',
+                'add_acl',
+                'del_acl',
+                'enable',
+                'disable',
+                'change_unit',
+                'add_policy',
+                'remove_policy',
+                'add_attribute',
+                'del_attribute',
+                'add_extension',
+                'remove_extension',
+                'add_object_class',
+                'del_object_class',
+                'remove_orphans',
+                'change_description',
+                'disable_acl_inheritance',
+                'enable_acl_inheritance',
+                # Non-modify hooks.
+                'export',
+                'get_acls',
+                ]
+# Object types whose parent is not a unit (see get_parent_uuid()), a unit
+# never runs their pre_add_/post_add_ hooks: a realm has no parent, a
+# site is added to the realm and a token to its user.
+NOT_ADDED_TO_UNIT = ['realm', 'site', 'token']
 
 
 read_acls =  []
@@ -242,6 +275,25 @@ def register_hooks():
     config.register_auth_on_action_hook("policy", "change_reauth_timeout")
     config.register_auth_on_action_hook("policy", "show_config_parameters")
 
+def register_object_hooks():
+    """ The hooks every object type has, and the add hooks of units.
+
+    Called when a policy is loaded, by then every object type is
+    registered. update_hooks_man.py calls it too, to list the hooks in
+    the man pages.
+    """
+    # For units we have to support the "add" hook for each in-tree object.
+    for x in config.tree_object_types:
+        if x in NOT_ADDED_TO_UNIT:
+            continue
+        hook = f"pre_add_{x}"
+        config.register_auth_on_action_hook('unit', hook)
+        hook = f"post_add_{x}"
+        config.register_auth_on_action_hook('unit', hook)
+    for x in config.tree_object_types:
+        for hook in DEFAULT_HOOKS:
+            config.register_auth_on_action_hook(x, hook)
+
 def register_shared_objects():
     from otpme.lib.multiprocessing import register_shared_dict
     register_shared_dict("first_reauth")
@@ -303,46 +355,7 @@ class AuthonactionPolicy(Policy):
         # them on update_hooks().
         #self.removed_hooks = {}
         self.object_types = config.tree_object_types
-
-        # For units we have to support the "add" hook for each in-tree object.
-        for x in config.tree_object_types:
-            hook = f"pre_add_{x}"
-            config.register_auth_on_action_hook('unit', hook)
-            hook = f"post_add_{x}"
-            config.register_auth_on_action_hook('unit', hook)
-
-        # Hooks that are valid for all object types we support.
-        self.default_hooks = [
-                            'add',
-                            'modify',
-                            'rename',
-                            'delete',
-                            'add_acl',
-                            'del_acl',
-                            'enable',
-                            'disable',
-                            'change_unit',
-                            'add_policy',
-                            'remove_policy',
-                            'add_attribute',
-                            'del_attribute',
-                            'add_extension',
-                            'remove_extension',
-                            'add_object_class',
-                            'del_object_class',
-                            'remove_orphans',
-                            'change_description',
-                            'disable_acl_inheritance',
-                            'enable_acl_inheritance',
-                            # Non-modify hooks.
-                            'export',
-                            'get_acls',
-                            ]
-
-        for x in self.object_types:
-            # Add default hooks.
-            for hook in self.default_hooks:
-                config.register_auth_on_action_hook(x, hook)
+        register_object_hooks()
 
         # Timeout after a user is asked for reauth if no action was done which
         # normally requires a reauth. We use 30s by default to prevent repeatedly
@@ -494,7 +507,9 @@ class AuthonactionPolicy(Policy):
             role_whitelist = []
 
         if role_whitelist:
-            token_roles = config.auth_token.get_roles(return_type="uuid")
+            # A token in a role counts however deep the roles are nested.
+            token_roles = config.auth_token.get_roles(return_type="uuid",
+                                                    recursive=True)
             for role_uuid in token_roles:
                 if role_uuid in role_whitelist:
                     return callback.ok()
@@ -606,7 +621,8 @@ class AuthonactionPolicy(Policy):
             msg = msg.format(e=e)
             return callback.error(msg)
 
-        if self.reauth_timeout > 0:
+        # 0 is no expiry, and has to stay possible to go back to.
+        if self.reauth_timeout > 0 and reauth_expiry > 0:
             if self.reauth_timeout > reauth_expiry:
                 msg = _("Reauth expiry must be higher than reauth_timeout: {reauth_timeout}")
                 msg = msg.format(reauth_timeout=self.reauth_timeout)
@@ -973,7 +989,7 @@ class AuthonactionPolicy(Policy):
     def show_config(self, callback=default_callback, **kwargs):
         """ Show policy config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

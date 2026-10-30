@@ -198,7 +198,7 @@ def command(command):
     elif command == "status":
         msg = _("Redis not running.")
         if not status():
-            raise NotRunning()
+            raise NotRunning(msg)
     elif command == "restart":
         if stuff.controld_status():
             msg = _("Please stop otpme daemon first.")
@@ -209,7 +209,7 @@ def command(command):
             pass
         wait_for_shutdown()
         start()
-        wait_for_start()
+        return wait_for_start()
     elif command == "cli":
         if not status():
             msg = _("Redis not running.")

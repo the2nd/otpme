@@ -13,6 +13,7 @@ except Exception:
     pass
 
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import locking
 from otpme.lib import otpme_acl
@@ -56,8 +57,12 @@ read_value_acls = {
                 "view"      : [
                             "idrange",
                             "id_check",
+                            "id_range_recheck",
                             ],
             }
+
+# The attributes a range can be for: what the posix extension numbers.
+ID_ATTRIBUTES = ['uidNumber', 'gidNumber']
 
 write_value_acls = {
                 "add"      : [
@@ -220,6 +225,58 @@ def register_policy_object():
     # Register policy as default policy for new objects.
     config.register_default_policy("site", BASE_POLICY_NAME)
 
+def get_policy_for(attribute, unit=None, site=None):
+    """ The IDRange policy that numbers <attribute>.
+
+    The one of <unit> if it has a range for the attribute, else the one
+    of <site>. A unit policy with ranges for uidNumber only left groups
+    without a policy, the site was not asked. A unit further up does not
+    count.
+    """
+    for o in (unit, site):
+        if o is None:
+            continue
+        policies = o.get_policies(policy_type=POLICY_TYPE,
+                                return_type="instance")
+        for policy in policies:
+            if policy.id_ranges.get(attribute):
+                return policy
+    return None
+
+def parse_id_range(id_range):
+    """ Split "<attribute>:<type>:<start>-<end>" and check it.
+
+    Returns attribute, the range as stored ("<type>:<start>-<end>"),
+    start and end. Raises ValueError with what is wrong.
+    """
+    try:
+        attribute = id_range.split(":")[0]
+        idrange = ":".join(id_range.split(":")[1:])
+        range_split = idrange.split(":")[1]
+        range_start = int(range_split.split("-")[0])
+        range_end = int(range_split.split("-")[1])
+    except Exception:
+        msg = _("Unable to read ID range: {id_range}")
+        msg = msg.format(id_range=id_range)
+        raise ValueError(msg) from None
+    if not re.match('^[rs][:][0-9]+[-][0-9]+$', idrange):
+        msg = _("Invalid ID range: {idrange}")
+        msg = msg.format(idrange=idrange)
+        raise ValueError(msg)
+    if attribute not in ID_ATTRIBUTES:
+        msg = _("Invalid attribute for an ID range: {attribute}. Valid: {valid}")
+        msg = msg.format(attribute=attribute, valid=", ".join(ID_ATTRIBUTES))
+        raise ValueError(msg)
+    if range_start > range_end:
+        msg = _("ID range starts after its end: {id_range}")
+        msg = msg.format(id_range=id_range)
+        raise ValueError(msg)
+    return attribute, idrange, range_start, range_end
+
+def ranges_overlap(start, end, x_start, x_end):
+    """ Whether two ranges share a number. """
+    return start <= x_end and x_start <= end
+
 class IdrangePolicy(Policy):
     """ Class that implements OTPme ID range policy. """
     def __init__(self, object_id=None, name=None,
@@ -278,13 +335,6 @@ class IdrangePolicy(Policy):
                             ],
                         },
                     }
-
-    # Needed to allow copy.deepcopy()!
-    @property
-    def idrange_re(self):
-        # ID range format.
-        idrange_re = re.compile('^[rs][:][0-9]*[-][0-9]*$')
-        return idrange_re
 
     def _get_object_config(self):
         """ Merge policy config with config from parent class. """
@@ -475,19 +525,16 @@ class IdrangePolicy(Policy):
                                         template=True)
             # Make sure IDs are int.
             used_ids = [int(x) for x in used_ids]
-            # Get IDs of range.
+            # Get IDs of range. Sorted: a set of large numbers does not
+            # come out in order, and type s hands them out in order.
             x_range = list(range(range_start, range_end+1))
-            unused_ids = list(set(x_range) - set(used_ids))
+            unused_ids = sorted(set(x_range) - set(used_ids) - set(free_ids))
 
             if random_range:
-                while True:
-                    if len(x_range) == 0:
-                        break
-                    free_id = secrets.choice(x_range)
-                    try:
-                        x_range.remove(free_id)
-                    except ValueError:
-                        pass
+                # Out of the free ones, not the whole range.
+                while unused_ids:
+                    free_id = secrets.choice(unused_ids)
+                    unused_ids.remove(free_id)
                     free_ids.append(free_id)
                     if len(free_ids) == count:
                         break
@@ -563,6 +610,7 @@ class IdrangePolicy(Policy):
         id_ranges = self.id_ranges[attribute]
 
         id_range_rechecked = False
+        last_assigend = None
         while True:
             errors = []
             new_id = None
@@ -590,8 +638,12 @@ class IdrangePolicy(Policy):
                                                         attribute=attribute,
                                                         callback=callback)
                     start_id = last_assigend + 1
+                    # The re-check: nothing was free after the last one
+                    # handed out, so look at the gaps from the start.
+                    if id_range_rechecked:
+                        start_id = range_start
                     # Make sure start ID is within ID range.
-                    if start_id >= range_start and start_id <= range_end:
+                    elif start_id >= range_start and start_id <= range_end:
                         if not self.verify_new_id:
                             new_id = start_id
                             break
@@ -616,7 +668,8 @@ class IdrangePolicy(Policy):
                             continue
                         start_id = range_start
                         restart_on_end = True
-                if self.verify_new_id or random_range or restart_on_end:
+                if self.verify_new_id or random_range or restart_on_end \
+                or id_range_rechecked:
                     try:
                         ldif_attribute = f"ldif:{attribute}"
                         msg = _("Searching free ID for attribute: {attribute} (range {id_range})")
@@ -654,8 +707,9 @@ class IdrangePolicy(Policy):
             raise OTPmeException(msg)
 
         # For non-random ID range we need to remember the last
-        # assigned ID.
-        if last_assigend != new_id:
+        # assigned ID. random_range is that of the range the ID came
+        # from: the loop above stops there.
+        if not random_range and last_assigend != new_id:
             self.last_assigned_ids[attribute] = new_id
             self._write(no_transaction=True, callback=callback)
 
@@ -682,12 +736,7 @@ class IdrangePolicy(Policy):
 
         free_number = None
         if random:
-            random_range = list(range(range_end, range_start+1))
-            for x in used_ids:
-                try:
-                    random_range.remove(x)
-                except ValueError:
-                    pass
+            random_range = sorted(set(range(range_start, range_end+1)) - set(used_ids))
             if len(random_range) > 0:
                 free_number = secrets.choice(random_range)
         else:
@@ -730,7 +779,6 @@ class IdrangePolicy(Policy):
         overlap_attr = None
         overlap_policy = None
         overlap_range = False
-        test_range = list(range(range_start, range_end+1))
         for x_policy in id_policies:
             for x_attr in x_policy.id_ranges:
                 if x_attr != attribute:
@@ -740,12 +788,11 @@ class IdrangePolicy(Policy):
                     x_range_split = x.split(":")[1]
                     x_range_start = int(x_range_split.split("-")[0])
                     x_range_end = int(x_range_split.split("-")[1])
-                    found_overlap = False
-                    if x_range_start in test_range:
-                        found_overlap = True
-                    if x_range_end in test_range:
-                        found_overlap = True
-                    if found_overlap:
+                    # Also a new range that lies within an existing one:
+                    # only the ends of the existing one were looked for
+                    # in the new one.
+                    if ranges_overlap(range_start, range_end,
+                                    x_range_start, x_range_end):
                         overlap_range = x
                         overlap_policy = x_policy
                         overlap_attr = x_attr
@@ -766,6 +813,33 @@ class IdrangePolicy(Policy):
         if not id_range:
             return callback.error(_("Got empty ID range."))
 
+        # All of them are checked before anything is asked or changed: a
+        # wrong one in a list left the ones before it in the policy.
+        new_ranges = []
+        for x in id_range.split(","):
+            try:
+                attribute, idrange, range_start, range_end = parse_id_range(x)
+            except ValueError as e:
+                return callback.error(str(e))
+            # Check if range already exists in this policy.
+            if idrange in self.id_ranges.get(attribute, []):
+                return callback.error(_("ID range already exists."))
+            # Check for overlapping ID range.
+            try:
+                self.check_range_overlap(attribute, range_start, range_end)
+            except OverlapDetected as e:
+                msg = str(e)
+                return callback.error(msg)
+            # And with the ones before it in the list.
+            for y in new_ranges:
+                if y[0] != attribute:
+                    continue
+                if ranges_overlap(range_start, range_end, y[2], y[3]):
+                    msg = _("ID ranges overlap each other: {first}, {second}")
+                    msg = msg.format(first=f"{y[0]}:{y[1]}", second=x)
+                    return callback.error(msg)
+            new_ranges.append((attribute, idrange, range_start, range_end))
+
         msg = _("Add ID range '{id_range}' to policy '{policy_name}'?: ")
         msg = msg.format(id_range=id_range, policy_name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -782,35 +856,9 @@ class IdrangePolicy(Policy):
             except Exception:
                 return callback.error()
 
-        for x in id_range.split(","):
-            # Decode ID range.
-            try:
-                attribute = x.split(":")[0]
-                idrange = ":".join(x.split(":")[1:])
-                range_split = idrange.split(":")[1]
-                range_start = int(range_split.split("-")[0])
-                range_end = int(range_split.split("-")[1])
-            except Exception:
-                msg = _("Unable to read ID range: {idrange}")
-                msg = msg.format(idrange=idrange)
-                return callback.error(msg)
-            # Check for valid ID range.
-            if not self.idrange_re.match(idrange):
-                msg = _("Invalid ID range: {idrange}")
-                msg = msg.format(idrange=idrange)
-                return callback.error(msg)
-            # Check if range already exists in this policy.
+        for attribute, idrange, range_start, range_end in new_ranges:
             if not attribute in self.id_ranges:
                 self.id_ranges[attribute] = []
-            if idrange in self.id_ranges[attribute]:
-                return callback.error(_("ID range already exists."))
-            # Check for overlapping ID range.
-            try:
-                self.check_range_overlap(attribute, range_start, range_end)
-            except OverlapDetected as e:
-                msg = str(e)
-                return callback.error(msg)
-            # Add new ID range.
             self.id_ranges[attribute].append(idrange)
         return self._cache(callback=callback)
 
@@ -824,11 +872,6 @@ class IdrangePolicy(Policy):
         """ Delete ID range. """
         if not id_range:
             return callback.error(_("Got empty ID range."))
-
-        msg = _("Remove ID range '{id_range}' from policy '{policy_name}'?: ")
-        msg = msg.format(id_range=id_range, policy_name=self.name)
-        if not self.ask_change_confirmation(msg, force=force, callback=callback):
-            return callback.abort()
 
         try:
             attribute = id_range.split(":")[0]
@@ -847,6 +890,11 @@ class IdrangePolicy(Policy):
             msg = _("ID range does not exist: {idrange}")
             msg = msg.format(idrange=idrange)
             return callback.error(msg)
+
+        msg = _("Remove ID range '{id_range}' from policy '{policy_name}'?: ")
+        msg = msg.format(id_range=id_range, policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -889,7 +937,7 @@ class IdrangePolicy(Policy):
     def show_config(self, callback=default_callback, **kwargs):
         """ Show policy config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
         lines = []
         id_ranges = []
@@ -905,6 +953,11 @@ class IdrangePolicy(Policy):
         or self.verify_acl("enable:id_check") \
         or self.verify_acl("disable:id_check"):
             lines.append(f'VERIFY_NEW_ID="{self.verify_new_id}"')
+
+        if self.verify_acl("view:id_range_recheck") \
+        or self.verify_acl("enable:id_range_recheck") \
+        or self.verify_acl("disable:id_range_recheck"):
+            lines.append(f'RECHECK_ID_RANGES="{self.recheck_id_ranges}"')
 
         return Policy.show_config(self,
                                 config_lines=lines,

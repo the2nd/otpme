@@ -11,6 +11,7 @@ except Exception:
     pass
 
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
@@ -21,7 +22,7 @@ from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.policy import Policy
 from otpme.lib.policy import one_time_policy_run
 from otpme.lib.protocols.utils import register_commands
-from otpme.lib.token.password.password import PasswordToken
+from otpme.lib.token import get_module as get_token_module
 from otpme.lib.classes.unit import register_subtype_add_acl
 from otpme.lib.classes.unit import register_subtype_del_acl
 
@@ -186,6 +187,24 @@ def get_recursive_default_acls():
                                 policy_recursive_default_acls)
     return _acls
 
+def get_token_acls():
+    """ The ACLs any token type supports.
+
+    A policy is for all tokens of its users, whatever their type. So an
+    ACL only some types have (resync, generate:qrcode, ...) is valid
+    here, and each token gets the ones its type has, see
+    TokenaclsPolicy.get_supported().
+    """
+    acls = set()
+    for token_type in config.get_sub_object_types("token"):
+        token_module = get_token_module(token_type)
+        acls.update(token_module.get_acls())
+        value_acls = token_module.get_value_acls()
+        for acl in value_acls:
+            for value in value_acls[acl]:
+                acls.add(f"{acl}:{value}")
+    return acls
+
 def register():
     """ Registger policy type. """
     register_hooks()
@@ -313,6 +332,15 @@ class TokenaclsPolicy(Policy):
         """ Test the policy. """
         return callback.ok()
 
+    def get_supported(self, token, acls):
+        """ The ACLs of the given ones the type of the token supports.
+
+        The others would make add_acl()/del_acl() fail, and with them
+        adding or deleting the token.
+        """
+        supported_acls = token._get_supported_acls()
+        return [acl for acl in acls if acl in supported_acls]
+
     @one_time_policy_run
     def handle_user_acls(self, action, hook_object, token,
         acl_method, callback=default_callback):
@@ -354,6 +382,7 @@ class TokenaclsPolicy(Policy):
 
         # Get token ACLs from policy and token itself.
         token_acls = set(self.token_acls + token.token_acls)
+        token_acls = self.get_supported(token, token_acls)
 
         # Add ACL to new token to access itself.
         if token_acls:
@@ -383,12 +412,13 @@ class TokenaclsPolicy(Policy):
         if not x_token:
             return callback.ok()
 
-        if self.token_acls:
+        default_token_acls = self.get_supported(token, self.token_acls)
+        if default_token_acls:
             exception = _("Failed to {action} token ACL")
             exception = exception.format(action=action)
             # Add ACL to new token to be accessed by default token.
             try:
-                token_acl_method(acls=list(self.token_acls),
+                acl_status = token_acl_method(acls=default_token_acls,
                                 owner_uuid=x_token.uuid,
                                 owner_type="token",
                                 ignore_unknown_owner=True,
@@ -412,7 +442,8 @@ class TokenaclsPolicy(Policy):
         token_acl_method = getattr(token, acl_method)
 
         # Get user ACLs from policy and token itself.
-        creator_acls = self.creator_acls + token.creator_acls
+        creator_acls = set(self.creator_acls + token.creator_acls)
+        creator_acls = self.get_supported(token, creator_acls)
 
         # Add token creator ACLs.
         if creator_acls:
@@ -420,14 +451,13 @@ class TokenaclsPolicy(Policy):
             exception = exception.format(action=action)
             # Add ACL to new token to be accessed by token creator.
             try:
-                token_acl_method(acls=list(creator_acls),
+                acl_status = token_acl_method(acls=creator_acls,
                                 owner_uuid=config.auth_token.uuid,
                                 owner_type="token",
                                 ignore_unknown_owner=True,
                                 force=True,
                                 verify_acls=False,
                                 callback=callback)
-                acl_status = True
             except Exception as e:
                 acl_status = False
                 exception = f"{exception}: {e}"
@@ -436,6 +466,37 @@ class TokenaclsPolicy(Policy):
                 return callback.error(exception)
 
         return callback.ok()
+
+    def handle_owner_change(self, action, user, token,
+        callback=default_callback):
+        """ What this policy gives a token for being a token of <user>.
+
+        For a token that changes its user (Token.move()): "delete" takes
+        back what the old user's policy gave, "add" gives what the new
+        user's gives -- the ACLs on the user and those on the token,
+        for itself and for the default token of the user. Not the
+        creator ACLs: the token was made by whoever made it, and a move
+        does not change that. The hooks would hand them to whoever
+        moves it.
+        """
+        # No user and token ACLs for the TOKENSTORE, see handle_hook().
+        if user.name == config.token_store_user:
+            return callback.ok()
+        if action == "add":
+            acl_method = "add_acl"
+        else:
+            acl_method = "del_acl"
+        if not self.handle_user_acls(action,
+                                    hook_object=user,
+                                    token=token,
+                                    acl_method=acl_method,
+                                    callback=callback):
+            return callback.error()
+        return self.handle_token_acls(action,
+                                    hook_object=user,
+                                    token=token,
+                                    acl_method=acl_method,
+                                    callback=callback)
 
     def handle_hook(self, hook_object=None, child_object=None, hook_name=None,
         force=False, callback=default_callback, **kwargs):
@@ -529,6 +590,9 @@ class TokenaclsPolicy(Policy):
                 self.run_policies("modify",
                                 callback=callback,
                                 _caller=_caller)
+                self.run_policies("add_user_acl",
+                                callback=callback,
+                                _caller=_caller)
             except Exception:
                 return callback.error()
 
@@ -556,6 +620,9 @@ class TokenaclsPolicy(Policy):
         if run_policies:
             try:
                 self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("del_user_acl",
                                 callback=callback,
                                 _caller=_caller)
             except Exception:
@@ -619,15 +686,8 @@ class TokenaclsPolicy(Policy):
             msg = _("ACL already exists.")
             return callback.error(msg)
 
-        # Get supported ACLs from dummy token.
-        token = PasswordToken(realm=config.realm,
-                    site=config.site,
-                    user="dummyuser",
-                    name="dummytoken",
-                    dummy=True)
-        # Make sure ACL is suppoted.
-        supported_acls = token.get_supported_acls()
-        if acl not in supported_acls:
+        # Make sure some token type supports the ACL.
+        if acl not in get_token_acls():
             msg = _("Unknown ACL: {acl}")
             msg = msg.format(acl=acl)
             return callback.error(msg)
@@ -640,6 +700,9 @@ class TokenaclsPolicy(Policy):
         if run_policies:
             try:
                 self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies(f"add_{acl_type}_acl",
                                 callback=callback,
                                 _caller=_caller)
             except Exception:
@@ -677,6 +740,9 @@ class TokenaclsPolicy(Policy):
                 self.run_policies("modify",
                                 callback=callback,
                                 _caller=_caller)
+                self.run_policies(f"del_{acl_type}_acl",
+                                callback=callback,
+                                _caller=_caller)
             except Exception:
                 return callback.error()
 
@@ -692,7 +758,7 @@ class TokenaclsPolicy(Policy):
     def show_config(self, callback=default_callback, **kwargs):
         """ Show policy config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

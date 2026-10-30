@@ -811,7 +811,7 @@ class OTPmeLDIFHandler(object):
             if a in self.read_only_attributes[o.type]:
                 msg = _("Attribute '{attr}' is readonly.")
                 msg = msg.format(attr=a)
-                return callback.send(msg)
+                return callback.error(msg)
 
         if o.type not in self.object_types:
             msg = _("Unable to delete attribute from object type '{obj_type}'.")

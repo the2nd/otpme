@@ -379,11 +379,23 @@ Show a job and the state on each host: **ok**, **failed**, **refused**
 or **pending**. A **refused** line is only shown when there is one (see
 **Refused jobs**).
 
-**results \[**--host** *host*\] \[*job_uuid*\]**  
-Show the results of a job, or all results of a host. The header line of
-each result names the state, in the same colours as **list**: green when
-the job worked, yellow when the host refused it, red when it ran and did
-not work.
+**results \[**--host** *host*\] \[**--failed**\] \[**--watch**\] \[*job_uuid*\]**  
+Show the results of a job, or all results of a host. With both, the
+results of that host for that job. The header line of each result names
+the state, in the same colours as **list**: green when the job worked,
+yellow when the host refused it, red when it ran and did not work.
+
+**--failed** shows only the runs that did not work, for example to see
+which of many hosts need a look. A refusal is not a run that failed and
+is left out as well.
+
+**--watch** shows the results as the hosts send them, until no host is
+left to report, and then a count of how it went: **5 ok, 1 failed, 0
+refused, 0 pending**. It asks every 2 seconds. With **--host** it waits
+for that host only, and with **--failed** it shows only the runs that
+failed but still waits for all. A job that was taken back with
+**cancel** ends it, because the hosts that have not run it never will.
+Ctrl-C stops watching, and the job goes on. It needs a *job_uuid*.
 
 **ack *job_uuid***  
 Say that you have seen how a job went. Without this a job that failed,

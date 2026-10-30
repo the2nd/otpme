@@ -23,6 +23,7 @@ from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.otpme_object import OTPmeObject
@@ -135,6 +136,23 @@ commands = {
                     },
                 },
             },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'edit_changelog'   : {
             'default'    : {
                 'exists'    : {
@@ -165,6 +183,15 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'auto_disable'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
                     'job_type'          : 'process',
                     },
                 },
@@ -521,14 +548,6 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_attributes',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_attributes'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'show_attributes',
                     'job_type'          : 'thread',
                     },
                 },
@@ -993,10 +1012,10 @@ class Ca(OTPmeObject):
         cn: str,
         valid: int,
         self_signed: bool,
-        basic_constraints: List=None,
-        key_usage: List=None,
-        ext_key_usage: List=None,
-        cn_alt: List=None,
+        basic_constraints: Union[List,None]=None,
+        key_usage: Union[List,None]=None,
+        ext_key_usage: Union[List,None]=None,
+        cn_alt: Union[List,None]=None,
         key: Union[str,None]=None,
         cert_req: Union[str,None]=None,
         organization: Union[str,None]=None,
@@ -1005,9 +1024,9 @@ class Ca(OTPmeObject):
         locality: Union[str,None]=None,
         ou: Union[str,None]=None,
         email: Union[str,None]=None,
-        key_len: int=None,
-        sign_algo: str=None,
-        timezone: str=None,
+        key_len: Union[int,None]=None,
+        sign_algo: Union[str,None]=None,
+        timezone: Union[str,None]=None,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -1082,7 +1101,7 @@ class Ca(OTPmeObject):
         cn: str,
         self_signed: bool=False,
         key: Union[str,None]=None,
-        key_len: int=None,
+        key_len: Union[int,None]=None,
         cert_req: Union[str,None]=None,
         country: Union[str,None]=None,
         state: Union[str,None]=None,
@@ -1310,7 +1329,7 @@ class Ca(OTPmeObject):
             else:
                 acl = "create_node_cert"
             if not self.verify_acl(acl):
-                msg = ("Permission denied.")
+                msg = denied_msg(self, acl)
                 return callback.error(msg, exception=PermissionDenied)
 
         # Set default values.
@@ -1512,8 +1531,8 @@ class Ca(OTPmeObject):
     def revoke_cert(
         self,
         cert: str,
-        crl_sign_algo: str=None,
-        timezone: str=None,
+        crl_sign_algo: Union[str,None]=None,
+        timezone: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -1768,8 +1787,8 @@ class Ca(OTPmeObject):
             if not self.verify_acl("delete:object"):
                 del_acl = f"delete:{self.type}"
                 if not parent_object.verify_acl(del_acl):
-                    msg = _("Permission denied: {path}")
-                    msg = msg.format(path=parent_object.path)
+                    msg = denied_msg(self, "delete:object",
+                                    others=[(parent_object, del_acl)])
                     return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:
@@ -1796,7 +1815,7 @@ class Ca(OTPmeObject):
         ):
         """ Show CA config. """
         if not self.verify_acl("view_public:object"):
-            msg = ("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

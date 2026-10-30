@@ -21,8 +21,9 @@ cmd_help = {
     '_usage_help'   : _('Usage: otpme-shell [--user <user>] [--command <command>] [--expiry <time>] [--throwaway-key] {host}'),
     # The host by name and not as "|object|": a command with no
     # subcommand has no object type the completion could work out from
-    # its name, and "host_name" says it.
-    'cmd'   :   '--user :user: --command :command: --expiry :job_ttl: --throwaway-key :throwaway_key=True: <host_name>',
+    # its name, and "host" says it -- a host or a node, both take a
+    # shell. "host_name" is a host only (add_host and the like).
+    'cmd'   :   '--user :"user": --command :"command": --expiry :job_ttl: --throwaway-key :throwaway_key=True: <"host">',
     '_help' :   {
                     'cmd'                   : _('Get a shell on a host.'),
                     '--user <user>'         : _('Run the shell as this user. Default root.'),

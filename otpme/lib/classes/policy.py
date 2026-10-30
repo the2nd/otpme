@@ -19,6 +19,7 @@ from otpme.lib import backend
 from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.locking import object_lock
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
@@ -57,10 +58,8 @@ write_value_acls = {
                         ],
                 }
 
-default_acls = [
-                'add:policy',
-                'del:policy',
-            ]
+# Nothing lies below a policy to hand default ACLs to.
+default_acls = []
 
 recursive_default_acls = []
 
@@ -92,6 +91,23 @@ commands = {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -636,6 +652,11 @@ class Policy(OTPmeObject):
     def check_permissions(self, callback=default_callback):
         return True
 
+    def verify_object(self, o, callback=default_callback):
+        """ Whether this policy can be assigned to <o>, beyond its type
+        (object_types). Overridden by the policy types that need it. """
+        return callback.ok()
+
     def activate(self, hook_object, callback=default_callback, **kwargs):
         """ Activate policy by returning per object policy data """
         return {}
@@ -726,14 +747,14 @@ class Policy(OTPmeObject):
                 if not parent_object.verify_acl(del_acl):
                     sub_type = self.get_sub_type()
                     if not sub_type:
-                        msg = _("Permission denied: {name}")
-                        msg = msg.format(name=self.name)
+                        msg = denied_msg(self, "delete:object",
+                                        others=[(parent_object, del_acl)])
                         return callback.error(msg, exception=PermissionDenied)
                     sub_type_acl = f"delete:{self.type}:{sub_type}"
                     if not parent_object.verify_acl(sub_type_acl,
                                     need_exact_acl=True):
-                        msg = _("Permission denied: {name}")
-                        msg = msg.format(name=self.name)
+                        msg = denied_msg(self, "delete:object",
+                                others=[(parent_object, [del_acl, sub_type_acl])])
                         return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:
@@ -744,21 +765,20 @@ class Policy(OTPmeObject):
 
         exception_parts = []
         if not force and self.confirmation_policy != "force":
-            policy_users = backend.search(attribute="policy",
+            # Every object type the policy can be assigned to, not just
+            # users and tokens.
+            for object_type in self.object_types:
+                assigned = backend.search(attribute="policy",
                                         value=self.uuid,
-                                        object_type="user",
-                                        return_type="name")
-            policy_tokens = backend.search(attribute="policy",
-                                        value=self.uuid,
-                                        object_type="token",
+                                        object_type=object_type,
                                         return_type="rel_path")
-            if policy_users:
-                 msg = _("Policy '{name}' is assigned to the following users: {users}")
-                 exception_parts.append(msg.format(name=self.name, users=', '.join(policy_users)))
-
-            if policy_tokens:
-                 msg = _("Policy '{name}' is assigned to the following tokens: {tokens}")
-                 exception_parts.append(msg.format(name=self.name, tokens=', '.join(policy_tokens)))
+                if not assigned:
+                    continue
+                msg = _("Policy '{name}' is assigned to {object_type}: {objects}")
+                msg = msg.format(name=self.name,
+                                object_type=object_type,
+                                objects=', '.join(sorted(assigned)))
+                exception_parts.append(msg)
 
         exception = chr(10).join(exception_parts) if exception_parts else None
         if not self.ask_delete_confirmation(force=force, exception=exception, callback=callback):
@@ -772,7 +792,7 @@ class Policy(OTPmeObject):
 
     def show_config(
         self,
-        config_lines: List=None,
+        config_lines: Union[List,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):

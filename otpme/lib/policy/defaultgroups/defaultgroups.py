@@ -11,6 +11,7 @@ except Exception:
     pass
 
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
@@ -211,8 +212,10 @@ class DefaultgroupsPolicy(Policy):
                     'user'   : ['set_default_group', 'set_groups'],
                     }
 
-        # No realm, see Realm.add_policy().
-        self.object_types = ['site', 'unit']
+        # Only units: the hooks run on the parent of a new user, and that
+        # is always a unit, never a site (and no realm, see
+        # Realm.add_policy()).
+        self.object_types = ['unit']
 
         self.default_group = None
 
@@ -284,8 +287,7 @@ class DefaultgroupsPolicy(Policy):
             group = backend.get_object(uuid=self.default_group)
             if group:
                 if not group.verify_acl("add:default_group_user"):
-                    msg = _("Permission denied: {group}")
-                    msg = msg.format(group=group.name)
+                    msg = denied_msg(group, "add:default_group_user")
                     return callback.error(msg)
 
         for group_uuid in self.default_groups:
@@ -294,8 +296,7 @@ class DefaultgroupsPolicy(Policy):
                 continue
             if group.verify_acl("add:token"):
                 continue
-            msg = _("Permission denied: {group}")
-            msg = msg.format(group=group.name)
+            msg = denied_msg(group, "add:token")
             return callback.error(msg)
         return True
 
@@ -315,6 +316,7 @@ class DefaultgroupsPolicy(Policy):
                         try:
                             child_object.change_group(default_group,
                                                     force=True,
+                                                    verify_acls=False,
                                                     callback=callback)
                         except Exception as e:
                             msg = str(e)
@@ -334,14 +336,25 @@ class DefaultgroupsPolicy(Policy):
                                                     uuid=group_uuid)
                         if not group:
                             continue
+                        # add_token() answers a failure with False, not an
+                        # exception; raise_exception makes it one, as in
+                        # DefaultrolesPolicy, so it stops the add.
+                        old_exc_val = callback.raise_exception
+                        callback.raise_exception = True
                         try:
-                            group.add_token(default_token, force=True)
+                            group.add_token(default_token,
+                                            verify_acls=False,
+                                            force=True,
+                                            callback=callback)
                         except AlreadyExists:
                             continue
                         except Exception as e:
                             msg = _("Failed to add default token to group: {group_name}: {default_token}, {error}")
                             msg = msg.format(group_name=group.name, default_token=default_token, error=e)
-                            return callback.error(msg)
+                            callback.raise_exception = old_exc_val
+                            raise self.policy_exception(msg) from e
+                        finally:
+                            callback.raise_exception = old_exc_val
         else:
             msg = _("Unknown policy hook: {hook_name}")
             msg = msg.format(hook_name=hook_name)
@@ -358,10 +371,23 @@ class DefaultgroupsPolicy(Policy):
         """ Add default group. """
         # Unset default group.
         if group_name == "":
+            if self.default_group is None:
+                msg = _("No default group set.")
+                return callback.error(msg)
             msg = _("Unset default group of policy '{policy_name}'?: ")
             msg = msg.format(policy_name=self.name)
             if not self.ask_change_confirmation(msg, force=force, callback=callback):
                 return callback.abort()
+            if run_policies:
+                try:
+                    self.run_policies("modify",
+                                    callback=callback,
+                                    _caller=_caller)
+                    self.run_policies("change_default_group",
+                                    callback=callback,
+                                    _caller=_caller)
+                except Exception:
+                    return callback.error()
             self.default_group = None
             return self._cache(callback=callback)
         # Get group by name.
@@ -383,8 +409,7 @@ class DefaultgroupsPolicy(Policy):
             return callback.error(msg)
 
         if not group.verify_acl("add:default_group_user"):
-            msg = _("Permission denied: {group}")
-            msg = msg.format(group=group.name)
+            msg = denied_msg(group, "add:default_group_user")
             return callback.error(msg)
 
         msg = _("Change default group of policy '{policy_name}' to '{group_name}'?: ")
@@ -433,8 +458,7 @@ class DefaultgroupsPolicy(Policy):
             return callback.error(msg)
 
         if not group.verify_acl("add:token"):
-            msg = _("Permission denied: {group}")
-            msg = msg.format(group=group.name)
+            msg = denied_msg(group, "add:token")
             return callback.error(msg)
 
         msg = _("Add group '{group_name}' to policy '{policy_name}'?: ")
@@ -509,7 +533,7 @@ class DefaultgroupsPolicy(Policy):
     def show_config(self, callback=default_callback, **kwargs):
         """ Show policy config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

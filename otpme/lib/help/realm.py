@@ -22,7 +22,7 @@ cmd_help = {
 
     'init'      : {
                     '_cmd_usage_help' : _('Usage: otpme-realm init {realm} {site} {fqdn} [address]'),
-                    'cmd'   :   '--country :ca_country: --state :ca_state: --locality :ca_locality: --organization :ca_organization: --ou :ca_ou: --email :ca_email: --ca-valid :ca_valid: --ca-key-len :ca_key_len: --site-valid :site_valid: --site-key-len :site_key_len: --node-valid :node_valid: --node-key-len :node_key_len: --no-dicts :no_dicts=True: --dicts ::[dictionaries]:: --id-ranges ::id_ranges:: --no-index-indices :no_index_indices=True: <|object|> <realm_master> <site_fqdn> [site_address]',
+                    'cmd'   :   '--country :"ca_country": --state :"ca_state": --locality :"ca_locality": --organization :"ca_organization": --ou :"ca_ou": --email :"ca_email": --ca-valid :ca_valid: --ca-key-len :ca_key_len: --site-valid :site_valid: --site-key-len :site_key_len: --node-valid :node_valid: --node-key-len :node_key_len: --no-dicts :no_dicts=True: --dicts ::[dictionaries]:: --id-ranges ::"id_ranges":: --no-index-indices :no_index_indices=True: <|object|> <"realm_master"> <"site_fqdn"> ["site_address"]',
                     '_help' :   {
                                     'cmd'                               : _('Init realm'),
                                     '--ca-valid'                        : _('CA certificates validity in days.'),
@@ -46,7 +46,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-realm show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [realm]'),
-                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show realm(s)'),
                                     '-a'                    : _('Show all realms.'),
@@ -58,7 +58,7 @@ cmd_help = {
                                     '--sort-by <attribute>' : _('Sort output by <attribute>.'),
                                     '--raw'                 : _('Output table without any headers/borders.'),
                                     '--csv'                 : _('Output table as CSV.'),
-                                    '--csv-sep <separator>' : _('Output table as CSV.'),
+                                    '--csv-sep <separator>' : _('Separator between the CSV columns.'),
                                 },
                     #'job'   :   {
                     #                'object_missing' : {
@@ -84,11 +84,11 @@ cmd_help = {
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm list [--attribute attribute] [-a] [regex]'),
-                    'cmd'   :   '--attribute :attribute: -a :show_all=True: [search_regex]',
+                    'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List realms.'),
                                     '-a'                        : _('List all realms.'),
-                                    '--attribute <attribute>'   : _('Output given attribute.')
+                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
                                 },
                 },
 
@@ -110,9 +110,24 @@ cmd_help = {
 
     'get_config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm get_config {realm} {parameter}'),
-                    'cmd'   :   '<|object|> <parameter>',
+                    'cmd'   :   '<|object|> <"parameter">',
                     '_help' :   {
                                     'cmd'                   : _('Get config parameter.'),
+                                },
+                },
+    'show_oid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-realm show_oid [--full] {realm}'),
+                    'cmd'   :   '--full :full=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the OID of the object.'),
+                                    '--full'                : _('Show the full OID.'),
+                                },
+                },
+    'show_uuid'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-realm show_uuid {realm}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the UUID of the object.'),
                                 },
                 },
     'changelog'    : {
@@ -124,7 +139,7 @@ cmd_help = {
                 },
     'edit_changelog'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm edit_changelog {realm} {entry_id} {comment}'),
-                    'cmd'   :   '<|object|> <entry_id> <comment>',
+                    'cmd'   :   '<|object|> <entry_id> <"comment">',
                     '_help' :   {
                                     'cmd'                   : _('Edit changelog entry comment.'),
                                 },
@@ -154,7 +169,7 @@ cmd_help = {
 
      'add_extension'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm add_extension {realm} {extension}'),
-                    'cmd'   :   '<|object|> <extension>',
+                    'cmd'   :   '<|object|> <"extension">',
                     '_help' :   {
                                     'cmd'                   : _('Add extension to realm'),
                                 },
@@ -162,7 +177,7 @@ cmd_help = {
 
      'remove_extension'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm remove_extension {realm} {extension}'),
-                    'cmd'   :   '<|object|> <extension>',
+                    'cmd'   :   '<|object|> <"extension">',
                     '_help' :   {
                                     'cmd'                   : _('Remove extension from realm'),
                                 },
@@ -178,7 +193,7 @@ cmd_help = {
 
      'modify_attribute'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm modify_attribute {realm} {attribute} {old_value} {new_value}'),
-                    'cmd'   :   '<|object|> <attribute> <old_value> <new_value>',
+                    'cmd'   :   '<|object|> <"attribute"> <old_value> <new_value>',
                     '_help' :   {
                                     'cmd'                   : _('Modify (LDAP) attribute of realm'),
                                 },
@@ -194,7 +209,7 @@ cmd_help = {
 
      'add_object_class'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm add_object_class {realm} {object_class}'),
-                    'cmd'   :   '<|object|> <object_class>',
+                    'cmd'   :   '<|object|> <"object_class">',
                     '_help' :   {
                                     'cmd'                   : _('Add (LDAP) object class to realm'),
                                 },
@@ -202,7 +217,7 @@ cmd_help = {
 
      'del_object_class'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm del_object_class {realm} {object_class}'),
-                    'cmd'   :   '<|object|> <object_class>',
+                    'cmd'   :   '<|object|> <"object_class">',
                     '_help' :   {
                                     'cmd'                   : _('Delete (LDAP) object class from realm'),
                                 },
@@ -219,7 +234,7 @@ cmd_help = {
 
     'add_acl'   : {
                     '_cmd_usage_help' : _('Usage: otpme-realm add_acl {realm} {role|token} {role_path|token_path} {acl[:value][,acl[:value]]}'),
-                    'cmd'   :   '<|object|> <owner_type> <owner_name> <[acls]>',
+                    'cmd'   :   '<|object|> <"owner_type"> <"owner_name"> <[acls]>',
                     '_help' :   {
                                     'cmd'                   : _('Add ACL to realm'),
                                 },
@@ -253,7 +268,7 @@ cmd_help = {
 
     'description'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm description {realm} [description]'),
-                    'cmd'   :   '<|object|> [description]',
+                    'cmd'   :   '<|object|> ["description"]',
                     '_help' :   {
                                     'cmd'                   : _('Set realm description'),
                                 },
@@ -261,7 +276,7 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm info {realm} [info]'),
-                    'cmd'   :   '--language :language: <|object|> [info]',
+                    'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set realm info'),
                                     '--language <lang>'     : _('Change info for language.'),
@@ -270,7 +285,7 @@ cmd_help = {
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm dump_info {realm}'),
-                    'cmd'   :   '--language :language: <|object|>',
+                    'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump realm info'),
                                     '--language <lang>'     : _('Dump info for language.'),
@@ -282,10 +297,6 @@ cmd_help = {
                 },
 
     '_list_valid_attributes'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_attributes'    : {
                     'cmd'   :   '<|object|>',
                 },
 
@@ -335,7 +346,7 @@ cmd_help = {
 
     'export'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm export --password <password> {realm}'),
-                    'cmd'   :   '--password :password: <|object|>',
+                    'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export realm config to stdout'),
                                     '--password <password>' : _('Encrypt object config with password.'),
@@ -344,7 +355,7 @@ cmd_help = {
 
     'add_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm add_policy {realm} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add policy to realm'),
                                 },
@@ -352,15 +363,15 @@ cmd_help = {
 
     'remove_policy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm remove_policy {realm} {policy}'),
-                    'cmd'   :   '<|object|> <policy_name>',
+                    'cmd'   :   '<|object|> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove policy from realm'),
                                 },
                 },
 
     'list_policies'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm list_policies {realm}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-realm list_policies [--return-type <type>] [--policy-types <type1,type2>] {realm}'),
+                    'cmd'   :   '--return-type :"return_type": --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

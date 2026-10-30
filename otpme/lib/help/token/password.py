@@ -20,7 +20,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-token --type password {command} [token]"),
     'add'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token --type password add [-r] [--password <password>] [--weak-password] [--enable-mschap] {token}'),
-                    'cmd'   :   '-r :replace=True: --password :password: --weak-password :weak_password=True: --enable-mschap :enable_mschap=True: <|object|>',
+                    'cmd'   :   '-r :replace=True: --password :"password": --weak-password :weak_password=True: --enable-mschap :enable_mschap=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Add new token.'),
                                     '-r'                    : _('Replace existing token and keep its UUID.'),
@@ -32,7 +32,7 @@ cmd_help = {
 
     'password'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token password [--generate] [--weak-password] {token} [password]'),
-                    'cmd'   :   '--generate :auto_password=True: --weak-password :weak_password=True: <|object|> [password]',
+                    'cmd'   :   '--generate :auto_password=True: --weak-password :weak_password=True: <|object|> ["password"]',
                     '_help' :   {
                                     'cmd'                   : _('Change token password.'),
                                     '--generate'            : _('Generate password.'),
@@ -42,7 +42,7 @@ cmd_help = {
 
     'upgrade_pass_hash'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token upgrade_pass_hash {token} [hash_type] [arg1=val1,arg2=val2]'),
-                    'cmd'   :   '<|object|> [hash_type] [{hash_args}]',
+                    'cmd'   :   '<|object|> ["hash_type"] [{hash_args}]',
                     '_help' :   {
                                     'cmd'                   : _('Upgrade password hash.'),
                                 },
@@ -51,7 +51,7 @@ cmd_help = {
 
     '2f_token'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token 2f_token {token} {2f_token}'),
-                    'cmd'   :   '<|object|> <second_factor_token>',
+                    'cmd'   :   '<|object|> <"second_factor_token">',
                     '_help' :   {
                                     'cmd'                   : _('Change second factor token.'),
                                 },
@@ -76,7 +76,7 @@ cmd_help = {
 
     'enable_sso_deploy'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token enable_sso_deploy {token} [deploy_token_type]'),
-                    'cmd'   :   '<|object|> [deploy_token_type]',
+                    'cmd'   :   '<|object|> ["deploy_token_type"]',
                     '_help' :   {
                                     'cmd'                   : _('Enable deployment of token on first SSO login.'),
                                 },

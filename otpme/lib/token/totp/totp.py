@@ -18,6 +18,7 @@ except Exception:
 from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import qrcode
 from otpme.lib import backend
 from otpme.lib import otpme_acl
@@ -61,6 +62,9 @@ read_value_acls = {
                             # it, and it was in no list.
                             "server_secret",
                             "pin",
+                            # Shown once, when the token is added.
+                            "initial_secret",
+                            "initial_pin",
                             "auth_script",
                             "mode",
                             "offline_status",
@@ -403,7 +407,7 @@ class TotpToken(OathToken):
     def gen_otp(
         self,
         secret: Union[str,None]=None,
-        prefix_pin: str=False,
+        prefix_pin: Union[str,None]=None,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
@@ -441,7 +445,7 @@ class TotpToken(OathToken):
         mode: Union[str,None]=None,
         otp_includes_pin: bool=True,
         verify_pin: bool=True,
-        sft: bool=None,
+        sft: Union[bool,None]=None,
         recursive_use: bool=False,
         session_uuid: Union[str,None]=None,
         **kwargs,
@@ -723,12 +727,14 @@ class TotpToken(OathToken):
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token info. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
         lines = []
 
+        # A secret: plain view must not show it, see
+        # otpme_acl.check_acl().
         server_secret = ""
-        if self.verify_acl("view:server_secret"):
+        if self.verify_acl("view_all:server_secret"):
             server_secret = str(self.server_secret)
         lines.append(f'SERVER_SECRET="{server_secret}"')
 

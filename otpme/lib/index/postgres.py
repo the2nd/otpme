@@ -260,7 +260,8 @@ def get_socket_dir():
 def cli():
     from otpme.lib import system_command
     socket_dir = get_socket_dir()
-    cli_cmd = [config.psql_bin, "-h", socket_dir, "-s", DB_NAME]
+    # No "-s": that is --single-step, which asks before every query.
+    cli_cmd = [config.psql_bin, "-h", socket_dir, DB_NAME]
     return_code = system_command.run(command=cli_cmd,
                                 #user=config.user,
                                 #group=config.group,
@@ -499,10 +500,10 @@ def command(command):
         except NotRunning:
             pass
         start()
-        wait_for_start()
+        return wait_for_start()
     elif command == "status":
         if not status():
-            msg = "Postgres not running"
+            msg = _("Postgres not running.")
             raise NotRunning(msg)
     elif command == "drop":
         if stuff.controld_status():
@@ -511,7 +512,7 @@ def command(command):
         return drop()
     elif command == "cli":
         if not status():
-            msg = "Postgres not running"
+            msg = _("Postgres not running.")
             raise NotRunning(msg)
         cli()
     else:

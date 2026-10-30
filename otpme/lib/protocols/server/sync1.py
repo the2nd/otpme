@@ -76,6 +76,49 @@ def get_handout_checksum(sync_config):
     except KeyError:
         return None
 
+def get_master_sync_refusal(peer_type, sync_realm, sync_site):
+    """ Whether a node is refused the sync of another site, and how.
+
+    Only the master node syncs all sites to a node; a node of a cluster
+    with quorum that is not the master refuses. Two cases there:
+
+        - No master node at all: we have quorum and the election has
+          not made one yet (switch_master_node()). The peer elected us
+          before we did, as it happens when the nodes start at the same
+          time. It is to wait: NO_MASTER_NODE.
+        - Another node is the master, and the peer asked the wrong one:
+          PERMISSION_DENIED, with the name, so the log says where to.
+
+    Returns None, or (status code, response, log message).
+    """
+    if peer_type != "node":
+        return None
+    if not config.cluster_status:
+        return None
+    if sync_realm == config.realm and sync_site == config.site:
+        return None
+    # Read once: the election may change it while we answer.
+    master_node = config.get_master_node()
+    try:
+        this_node = config.host_data['name']
+    except Exception:
+        this_node = None
+    if master_node is not None and master_node == this_node:
+        return None
+    if master_node is None:
+        response, log_msg = _("No master node yet, election running: {realm}/{site}", log=True)
+        response = response.format(realm=sync_realm, site=sync_site)
+        log_msg = log_msg.format(realm=sync_realm, site=sync_site)
+        return status_codes.NO_MASTER_NODE, response, log_msg
+    response, log_msg = _("Permission denied: {realm}/{site}: the master node is {master_node}", log=True)
+    response = response.format(realm=sync_realm,
+                            site=sync_site,
+                            master_node=master_node)
+    log_msg = log_msg.format(realm=sync_realm,
+                            site=sync_site,
+                            master_node=master_node)
+    return status_codes.PERMISSION_DENIED, response, log_msg
+
 def add_sync_list_checksum(realm, site, peer_realm, peer_site, checksum,
     object_types=None, sync_time=None):
     """ Write down what the peer says it holds.
@@ -1778,24 +1821,14 @@ class OTPmeSyncP1(OTPmeServer1):
             return self.build_response(status, response)
 
         # Only realm/site master node is allowed to sync all sites to peer.
-        if self.peer.type == "node" \
-        and config.cluster_status \
-        and not config.master_node:
-            if sync_realm != config.realm:
-                response, log_msg = _("Permission denied: {realm}/{site}", log=True)
-                response = response.format(realm=sync_realm, site=sync_site)
-                log_msg = log_msg.format(realm=sync_realm, site=sync_site)
+        refusal = get_master_sync_refusal(self.peer.type, sync_realm, sync_site)
+        if refusal:
+            status, response, log_msg = refusal
+            if status == status_codes.NO_MASTER_NODE:
+                self.logger.info(log_msg)
+            else:
                 self.logger.warning(log_msg)
-                status = status_codes.PERMISSION_DENIED
-                return self.build_response(status, response)
-
-            if sync_site != config.site:
-                response, log_msg = _("Permission denied: {realm}/{site}", log=True)
-                response = response.format(realm=sync_realm, site=sync_site)
-                log_msg = log_msg.format(realm=sync_realm, site=sync_site)
-                self.logger.warning(log_msg)
-                status = status_codes.PERMISSION_DENIED
-                return self.build_response(status, response)
+            return self.build_response(status, response)
 
         # Get sync parameters of peer syncing with us.
         try:

@@ -20,6 +20,7 @@ from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.otpme_object import OTPmeObject
@@ -116,6 +117,23 @@ commands = {
                     },
                 },
             },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'edit_changelog'   : {
             'default'    : {
                 'exists'    : {
@@ -146,6 +164,15 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'auto_disable'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
                     'job_type'          : 'process',
                     },
                 },
@@ -567,14 +594,6 @@ commands = {
     #                },
     #            },
     #        },
-    #'_show_attributes'   : {
-    #        'default'    : {
-    #            'exists'    : {
-    #                'method'            : 'show_attributes',
-    #                'job_type'          : 'thread',
-    #                },
-    #            },
-    #        },
     #'_show_object_classes'   : {
     #        'default'    : {
     #            'exists'    : {
@@ -959,7 +978,7 @@ class Scope(OTPmeObject):
     @run_pre_post_add_policies()
     def add(
         self,
-        scope_id: str=None,
+        scope_id: Union[str,None]=None,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -1006,8 +1025,8 @@ class Scope(OTPmeObject):
             if not self.verify_acl("delete:object"):
                 del_acl = f"delete:{self.type}"
                 if not parent_object.verify_acl(del_acl):
-                    msg = _("Permission denied: {scope_name}")
-                    msg = msg.format(scope_name=self.name)
+                    msg = denied_msg(self, "delete:object",
+                                    others=[(parent_object, del_acl)])
                     return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:
@@ -1033,8 +1052,8 @@ class Scope(OTPmeObject):
     @object_changelog("add client {client_name}")
     def add_client(
         self,
-        client_name: str=None,
-        client_uuid: str=None,
+        client_name: Union[str,None]=None,
+        client_uuid: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -1187,8 +1206,8 @@ class Scope(OTPmeObject):
     @object_changelog("add group {group_name}")
     def add_group(
         self,
-        group_name: str=None,
-        group_uuid: str=None,
+        group_name: Union[str,None]=None,
+        group_uuid: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -1397,7 +1416,7 @@ class Scope(OTPmeObject):
         ):
         """ Show scope config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

@@ -1682,6 +1682,56 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         ldif_attribute = f"ldif:{ldif_attribute}"
         return ldif_attribute
 
+    def get_filter_attributes(self, filterObject):
+        """ The LDIF attributes a filter tests, by their names in the
+        LDIF (as view:attribute:<attr> names them). """
+        if filterObject is None:
+            return []
+        if isinstance(filterObject, (pureldap.LDAPFilter_and,
+                                    pureldap.LDAPFilter_or)):
+            attributes = []
+            for f in filterObject:
+                for x in self.get_filter_attributes(f):
+                    if x in attributes:
+                        continue
+                    attributes.append(x)
+            return attributes
+        attribute = self.decode_ldap_filter(filterObject)[0]
+        if attribute is None:
+            return []
+        ldif_attribute = self.get_ldif_attribute(attribute)
+        return [ldif_attribute.split(":", 1)[1]]
+
+    def filter_may_see(self, object_uuid, object_id, attributes, auth_token):
+        """ Whether we may see every attribute in <attributes> on the
+        object, and so whether the filter may have matched on it.
+
+        The filter is matched against the whole LDIF in the index, the
+        view:attribute ACL only takes attributes out of what we send
+        back. Without this, (mobile=0170*) found the users whose number
+        starts so, also for one who may not see mobile: a number could
+        be guessed digit by digit.
+        """
+        object_acls = None
+        try:
+            object_acls = global_ldif_cache[object_id.read_oid]['data']['acls']
+        except (KeyError, TypeError):
+            pass
+        if object_acls is None:
+            object_acls = get_object_acls(object_id)
+        for x_attr in attributes:
+            x_acl = f"view:attribute:{x_attr}"
+            if not otpme_acl.verify(uuid=object_uuid,
+                                    acl_list=object_acls,
+                                    acl=x_acl,
+                                    check_admin_role=True,
+                                    check_admin_user=True,
+                                    need_exact_acl=False,
+                                    auth_token=auth_token,
+                                    object_type=object_id.object_type):
+                return False
+        return True
+
     def decode_and_filter(self, filterObject, search_attributes=None):
         if search_attributes is None:
             search_attributes = {}
@@ -2051,7 +2101,8 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                         check_admin_role=True,
                                         check_admin_user=True,
                                         need_exact_acl=False,
-                                        auth_token=auth_token)
+                                        auth_token=auth_token,
+                                        object_type=object_type)
                 if result:
                     continue
                 object_ldif.pop(x_attr)
@@ -2129,6 +2180,13 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                                     "*:view_public:attribute:*",
                                                     ],
                                     }
+            # And the ACL groups that grant one of them on an object we
+            # serve (e.g. realm_user, which every realm user gets on
+            # the users, groups and units of a site).
+            ldap_types = [x for x in config.tree_object_types
+                        if config.get_ldap_settings(x)]
+            for x_uuid in otpme_acl.get_view_aclgroups(ldap_types):
+                search_attributes['acl']['values'].append(f"*:@{x_uuid}")
 
         # Add attribute and values.
         if attribute and value is not None:
@@ -2391,6 +2449,17 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                         log.msg(str(e), logLevel=logging.WARNING)
                         raise ldaperrors.LDAPSizeLimitExceeded() from e
 
+                # The attributes the filter tests that we may not see
+                # everywhere. On an object where we may not see one of
+                # them the filter did not match for us, see
+                # filter_may_see(). Here and not in the search: a hit
+                # from the shared cache comes through here as well.
+                hidden_filter_attributes = []
+                if verify_acls:
+                    hidden_filter_attributes = [x for x in
+                                    self.get_filter_attributes(filterObject)
+                                    if x not in self.whitelist_attributes]
+
                 result_objects = {}
                 for x_uuid in result_uuids:
                     object_dn = None
@@ -2404,6 +2473,12 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                     # Skip orphan objects.
                     if not object_id:
                         continue
+
+                    if hidden_filter_attributes:
+                        if not self.filter_may_see(x_uuid, object_id,
+                                                hidden_filter_attributes,
+                                                auth_token):
+                            continue
 
                     # Try to get entry from cache.
                     if auth_token:

@@ -362,13 +362,13 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                 group_site = ag_data[group_uuid]['site']
                 group_enabled = ag_data[group_uuid]['enabled']
                 if not group_enabled:
-                    group_status_string = "(D)"
+                    group_status_string = " (D)"
                 else:
                     if group_site == config.site:
                         if user_is_blocked(user_uuid=owner_uuid,
                                         access_group=group_name,
                                         realm=realm, site=site):
-                            group_status_string = "(B)"
+                            group_status_string = " (B)"
                         else:
                             group_failcount = user_failcount(owner_uuid, group_name)
                             if group_failcount > 0:
@@ -382,7 +382,7 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                     group_string = f"{group_name} ({group_site})"
 
                 if group_status_string:
-                    group_string = f"{group_string} {group_status_string}"
+                    group_string = f"{group_string}{group_status_string}"
 
                 if group_uuid in role_ags_result:
                     group_string = f"({group_string})"

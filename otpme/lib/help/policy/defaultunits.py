@@ -27,7 +27,7 @@ cmd_help = {
 
     'set_unit'      : {
                     '_cmd_usage_help' : _('Usage: otpme-policy set_unit {policy} {object_type} [unit]'),
-                    'cmd'   :   '<|object|> <object_type> [unit_path]',
+                    'cmd'   :   '<|object|> <"object_type"> ["unit_path"]',
                     '_help' :   {
                                     'cmd'                   : _('Set default unit.'),
                                 },

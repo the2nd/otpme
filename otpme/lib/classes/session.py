@@ -26,6 +26,7 @@ except Exception:
     pass
 
 from otpme.lib import cli
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import srp
 from otpme.lib import oid
 from otpme.lib import sotp
@@ -1336,12 +1337,12 @@ class Session(OTPmeLockObject):
     @object_lock()
     def create_child_sessions(
         self,
-        groups_processed: List=None,
+        groups_processed: Union[List,None]=None,
         offline_data_key: Union[str,None]=None,
         start_group: Union[object,None]=None,
         access_group: Union[str,None]=None,
-        timeout: int=None,
-        unused_timeout: int=None,
+        timeout: Union[int,None]=None,
+        unused_timeout: Union[int,None]=None,
         ):
         """
         Walk through all child groups and add child sessions
@@ -1447,8 +1448,8 @@ class Session(OTPmeLockObject):
     @object_lock()
     def add(
         self,
-        timeout: int=None,
-        unused_timeout: int=None,
+        timeout: Union[int,None]=None,
+        unused_timeout: Union[int,None]=None,
         offline_data_key: Union[str,None]=None
         ):
         """ Add a session. """
@@ -1515,7 +1516,7 @@ class Session(OTPmeLockObject):
         force: bool=False,
         recursive: bool=False,
         verify_acls: bool=True,
-        skip_backchannel_client: str=None,
+        skip_backchannel_client: Union[str,None]=None,
         skip_backchannel: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -1580,7 +1581,7 @@ class Session(OTPmeLockObject):
                                session_user=u.name,
                                method='delete',
                                required_acls='delete:session')
-                    msg = _("Permission denied.")
+                    msg = denied_msg(u, "delete:session")
                     return callback.error(msg, exception=PermissionDenied)
 
         # Get all child sessions.

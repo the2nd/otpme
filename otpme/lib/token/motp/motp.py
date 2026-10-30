@@ -14,6 +14,7 @@ except Exception:
 from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib import mschap_util
@@ -56,7 +57,11 @@ read_value_acls = {
                 "view"      : [
                             "secret",
                             "pin",
+                            # Shown once, when the token is added.
+                            "initial_secret",
+                            "initial_pin",
                             "auth_script",
+                            "mschap",
                             "validity_time",
                             "timedrift_tolerance",
                             "offline_status",
@@ -83,11 +88,13 @@ write_value_acls = {
                             "auth_script",
                             "offline",
                             "session_keep",
+                            "mschap",
                             ],
                 "disable"   : [
                             "auth_script",
                             "offline",
                             "session_keep",
+                            "mschap",
                             ],
                 }
 
@@ -340,7 +347,6 @@ class MotpToken(Token):
         self.pin_mandatory = True
         self.need_password = True
         self.send_password = True
-        #self.valid_otp_formats = [ '6digit" ]
         self.validity_time = None
         self.timedrift_tolerance = None
 
@@ -796,16 +802,22 @@ class MotpToken(Token):
 
         return_message = None
         if not no_token_infos:
-            if self.verify_acl("view:secret"):
+            # view:initial_secret and view:initial_pin show them now,
+            # when the token is made, but not later. Secrets: plain
+            # view must not show them, see otpme_acl.check_acl().
+            if self.verify_acl("view_all:secret") \
+            or self.verify_acl("view_all:initial_secret"):
                 return_message = _("Token secret: {secret}")
                 return_message = return_message.format(secret=self.secret)
-            if self.verify_acl("view:pin"):
+            else:
+                return_message = _("Token secret not shown. This needs the ACL view:initial_secret.")
+            if self.verify_acl("view_all:pin") \
+            or self.verify_acl("view_all:initial_pin"):
                 message = _("Token PIN: {pin}")
                 message = message.format(pin=self.pin)
-                if return_message:
-                    return_message = f"{return_message}\n{message}"
-                else:
-                    return_message = message
+            else:
+                message = _("Token PIN not shown. This needs the ACL view:initial_pin.")
+            return_message = f"{return_message}\n{message}"
 
         if return_message:
             return callback.ok(return_message)
@@ -815,7 +827,7 @@ class MotpToken(Token):
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token info. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

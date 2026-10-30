@@ -10,139 +10,294 @@ otpme-group \- manage OTPme groups
 manages POSIX/LDAP groups in the OTPme system. Groups have a GID number and can contain users, tokens, and roles. Each user has a default group, and groups are exposed via LDAP with standard attributes.
 .SH COMMANDS
 .SS Group Management
+.na
+.nh
 .TP
-.B add \fR[\fB\-\-attributes\fR \fIattr1=val1,attr2=val2\fR] \fIgroup\fR
-Create a new group, optionally with LDIF attributes.
+.B add \fR[\fB\-\-attributes\fR \fIattr=value,...\fR] \fIgroup\fR
+Add a group.
+With a path, e.g. \fBlinux/staff\fR, it goes into that unit; else into the unit a \fBdefaultunits\fR policy names, see
+.BR otpme\-policy (1),
+or into \fBgroups\fR.
+The name is unique in the realm, over all sites.
+.br
+\fB\-\-attributes\fR sets attributes of the posix extension, e.g. \fBgidNumber=5000\fR; one it does not have is refused.
+Without \fBgidNumber\fR the group gets the next free one, see \fBidrange\fR in
+.BR otpme\-policy (1).
+.br
+Needs \fBadd:group\fR on the unit.
 .TP
-.B del \fIgroup\fR
-Delete a group.
+.B del \fR[\fB\-\-no\-trash\fR] \fIgroup\fR
+Delete the group.
+It goes to the trash, see
+.BR otpme\-trash (1);
+\fB\-\-no\-trash\fR deletes it right away.
+.br
+A group that still has tokens or roles, or is the default group of a user, is not deleted; the refusal names them.
+\fB\-f\fR deletes it anyway, and what held it keeps a reference to something that is gone; \fBremove_orphans\fR clears it up.
+The groups the realm and the sites come with (\fBroot\fR, \fBrealmusers\fR and the group named like each site) cannot be deleted.
+.br
+Needs \fBdelete:object\fR on the group or \fBdelete:group\fR on the unit.
 .TP
-.B show \fR[\fIgroup\fR]
-Display group information. Without arguments, shows all groups.
-.TP
-.B list \fR[\fIregex\fR]
-List groups, optionally filtered by regex pattern.
-.TP
-.B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIgroup\fR
-Enable a disabled group.
+.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-token\-limit\fR \fIN\fR] [\fB\-\-host\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIgroup\fR]
+Without a group: a table of all of them, with their unit, status, roles, tokens, hosts, sync users, policies, ACL inheritance and description.
 .RS
 .TP
-.B \-\-share\-notify
-Send notification to all online hosts on new share permissions.
+.B \-a
+Also the groups you may only look at, not just the ones you may change.
 .TP
-.B \-\-no\-share\-notify
-Do not send notification to all online hosts on new share permissions.
+.B \-z \fIN\fR
+How many groups to print.
 .TP
-.B \-\-no\-persist\-mount
-Do not persist new share mounts on hosts.
+.B \-\-fields \fIF1,F2\fR
+Print these columns and no others, in the order they are named.
+A name with a \fB+\fR in front is added to the columns that are shown anyway, and one with a \fB\-\fR is left out of them.
+.TP
+.B \-\-limit \fIN\fR
+How many of each kind to print per group: roles, tokens, hosts, sync users, policies.
+.TP
+.B \-\-role\-limit \fIN\fR, \fB\-\-token\-limit \fIN\fR, \fB\-\-host\-limit \fIN\fR, \fB\-\-policy\-limit \fIN\fR
+The same for one of them.
+.TP
+.B \-\-sort\-by \fIfield\fR, \fB\-\-reverse\fR
+Which column to sort by, and the other way round.
+.TP
+.B \-\-raw\fR, \fB\-\-csv\fR, \fB\-\-csv\-sep\fR \fIsep\fR
+\fB\-\-raw\fR leaves the header and the borders out, \fB\-\-csv\fR prints one row per line with \fB;\fR between the columns, and \fB\-\-csv\-sep\fR uses another separator.
 .RE
+.IP
+A column you may not see says \fB\-\fR.
+With a group named, this prints the object itself instead of a table row, one value per line.
+A name that is no group is taken as a regex.
 .TP
-.B disable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIgroup\fR
-Disable a group without deleting it.
+.B show_oid \fR[\fB\-\-full\fR] \fIgroup\fR
+Show the OID of the group: \fB\%group|<realm>/<name>\fR.
+With \fB\-\-full\fR the full OID, which names the site and unit as well: \fB\%group|<realm>/<site>/<unit_path>/<name>\fR.
+.br
+Needs the ACL \fBview_public:object\fR.
+.TP
+.B show_uuid \fIgroup\fR
+Show the UUID of the group.
+.br
+Needs the ACL \fBview_public:object\fR.
+.TP
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
+List the group names, and with a regex only those that match it.
+You get the groups you may change; \fB\-a\fR adds those you may only look at.
+\fB\-\-attribute\fR matches the regex against that attribute instead of the name.
+.TP
+.B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIgroup\fR
+.TQ
+.B disable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIgroup\fR
+Only an enabled group counts for the shares it is on: its hosts are hosts of a share that is limited to hosts.
+Disabling it takes them away from there.
+Logins and the group on the hosts stay as they are.
+Tables show the status.
+.br
+Needs \fBenable:object\fR or \fBdisable:object\fR.
 .RS
 .TP
-.B \-\-share\-notify
-Send notification to all online hosts on revoked share permissions.
-.TP
-.B \-\-no\-share\-notify
-Do not send notification to all online hosts on revoked share permissions.
+.B \-\-share\-notify\fR, \fB\-\-no\-share\-notify
+Whether the users of those shares are told, so that their hosts mount or unmount.
+Without either the share decides (\fBshare_notifications\fR).
 .TP
 .B \-\-no\-persist\-mount
-Keep persisted share mounts on hosts (transient unmount only).
+Mount or unmount now, but leave the shares an offline login mounts as they are: after \fBenable\fR an offline login does not mount the share, after \fBdisable\fR it still does.
 .RE
 .TP
 .B rename \fIgroup\fR \fInew_name\fR
-Rename a group.
+Rename the group.
+The new name must not be in use anywhere in the realm.
+The groups the realm and the sites come with cannot be renamed.
+.br
+Needs \fBrename:object\fR.
 .TP
 .B move \fR[\fB\-\-keep\-acls\fR] \fIgroup\fR \fIunit\fR
-Move group to a different unit.
+Move the group into another unit.
+The group keeps its ACLs; where ACL inheritance is on for it (off for groups by default, see \fBenable_acl_inheritance\fR), the default ACLs of the old unit are taken away and those of the new one given.
+\fB\-\-keep\-acls\fR keeps all ACLs as they are.
+.br
+With a full path, \fI/<realm>/<site>/<unit>\fR, the group moves to that site; its policies go with it by name.
+The groups the realm and the sites come with cannot be moved.
+.br
+Needs \fBmove\fR on the group and \fBadd:group\fR on the unit.
 .TP
 .B touch \fIgroup\fR
-Re-index the object to fix potential index problems.
+Write the index entries of the group again.
+.br
+Needs \fBtouch\fR.
+.TP
+.B auto_disable \fIgroup\fR \fItime\fR
+Set auto\-disable time.
+It is either a relative time with a leading \fB+\fR, e.g. \fB+30D\fR, or an absolute one, e.g. \fB"09:53 13.06.2023"\fR.
+The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
+.BR otpme (7).
+A relative time counts from when it is set, and again from when the group is enabled.
+\fB0\fR removes it.
+It is refused for an object the realm or a site comes with, e.g. the admin user; a time set on one before does nothing.
+.br
+Needs \fBedit:auto_disable\fR.
+.hy
+.ad
 .SS Token and Role Assignment
+.na
+.nh
+A group's members are the owners of its tokens: on the hosts and in LDAP the group lists them (\fBmemberUid\fR).
+A role in the group counts with its tokens, and with those of the roles it holds.
+The users whose default group it is are members as well.
+A disabled token or role counts for nothing.
 .TP
-.B add_token \fR[\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] \fIgroup\fR \fItoken_path\fR
-Add a token to the group.
+.B add_token \fR[\fB\-\-sign\fR] [\fB\-\-tags\fR \fItag1,tag2\fR] [\fB\-\-no\-auto\-sign\fR] \fIgroup\fR \fItoken\fR
+Put a token (\fI<user>/<token>\fR) into the group.
+.br
+It is signed when you ask for it, or when auto_sign is on: for you, or as config parameter of the group.
+The signature is made with your login token and says the token is in this group.
+A token signer of a host that wants this tag (\fBotpme\-tool add_signer \-\-tag group:<group>\fR) lets only the SSH keys of signed members in, see
+.BR otpme\-tool (1).
+.br
+Needs \fBadd:token\fR.
+.RS
 .TP
-.B remove_token \fR[\fB\-\-keep\-sign\fR] \fIgroup\fR \fItoken_path\fR
-Remove a token from the group.
+.B \-\-sign
+Sign, where nothing above asked for it.
+On a token that cannot be signed this is an error.
 .TP
-.B list_tokens \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIgroup\fR
-List tokens assigned to the group.
-Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-token\-types\fR to limit the listing to the given token types.
+.B \-\-tags \fItag1,tag2\fR
+Put more tags into the signature.
+.TP
+.B \-\-no\-auto\-sign
+Do not sign this time.
+.RE
+.TP
+.B remove_token \fR[\fB\-\-keep\-sign\fR] \fIgroup\fR \fItoken\fR
+Take the token out of the group.
+The signatures made for this group go with it, each after a question; \fB\-\-keep\-sign\fR leaves them.
+A token that is gone is taken out by its UUID.
+.br
+Needs \fBremove:token\fR.
+.TP
+.B list_tokens \fR[\fB\-\-return\-type\fR \fItype\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIgroup\fR
+The tokens put into the group, disabled ones too; not those of its roles.
+\fB\-\-return\-type\fR picks what is printed: \fBrel_path\fR (default, \fI<user>/<token>\fR), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
+\fB\-\-token\-types\fR narrows it to those types, e.g. \fBhotp,totp\fR.
+.br
+Needs \fBview:tokens\fR.
 .TP
 .B add_role \fIgroup\fR \fIrole\fR
-Add a role to the group.
+Put a role into the group.
+One of another site is written as \fI<site>/<role>\fR.
+.br
+Needs \fBadd:role\fR.
 .TP
 .B remove_role \fIgroup\fR \fIrole\fR
-Remove a role from the group.
+Take the role out again.
+A role that is gone is taken out by its UUID.
+.br
+Needs \fBremove:role\fR.
 .TP
-.B list_roles \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIgroup\fR
-List roles assigned to the group.
-Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.B list_roles \fR[\fB\-\-return\-type\fR \fItype\fR] \fIgroup\fR
+The roles in the group, disabled ones too; one of another site as \fI<site>/<role>\fR.
+\fB\-\-return\-type\fR picks what is printed: \fBname\fR (default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
+.br
+Needs \fBview:roles\fR.
+.hy
+.ad
 .SS User Management
+.na
+.nh
+Who is a member of the group on the hosts is in its attribute \fBmemberUid\fR: \fBshow_ldif\fR \fIgroup\fR \fB\-a memberUid\fR, see \fBToken and Role Assignment\fR.
+The two lists here are parts of it, and they list disabled ones too.
 .TP
-.B list_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIgroup\fR
-List users in the group.
-Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.B list_users \fR[\fB\-\-return\-type\fR \fItype\fR] \fIgroup\fR
+The users the tokens put into the group belong to; one user with three tokens is named once.
+Not those that come through a role.
+\fB\-\-return\-type\fR picks what is printed: \fBname\fR (default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
+.br
+Needs \fBview:tokens\fR.
 .TP
-.B list_default_group_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIgroup\fR
-List users that have this group as their default group.
-Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.B list_default_group_users \fR[\fB\-\-return\-type\fR \fItype\fR] \fIgroup\fR
+The users whose default group this is.
+\fB\-\-return\-type\fR as above.
+.br
+Needs \fBview:default_group_users\fR.
+.hy
+.ad
 .SS Host Management
+.na
+.nh
+The hosts of a group count for one thing: on a share that is limited to hosts and has the group (\fBotpme\-share add_group\fR), they are hosts of the share, as long as the group is enabled.
+Logins and the group on the hosts do not depend on them.
 .TP
-.B add_host \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIgroup\fR \fIhost\fR
-Add a host to the group.
+.B add_host \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIgroup\fR \fIhost\fR
+Put a host into the group.
 Host names are unique in the realm, so the host is given by its name alone, whatever site it is in.
+A node cannot be put in.
+.br
+Needs \fBadd:host\fR.
 .RS
 .TP
-.B \-\-share\-notify
-Send notification to all online hosts on new share permissions.
-.TP
-.B \-\-no\-share\-notify
-Do not send notification to all online hosts on new share permissions.
+.B \-\-share\-notify\fR, \fB\-\-no\-share\-notify
+Whether the users of those shares are told, so that the host mounts the share.
+Without either the share decides (\fBshare_notifications\fR).
 .TP
 .B \-\-no\-persist\-mount
-Do not persist new share mounts on hosts.
+Mount now, but an offline login does not mount the share.
 .RE
 .TP
-.B remove_host \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIgroup\fR \fIhost\fR
-Remove a host from the group.
+.B remove_host \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIgroup\fR \fIhost\fR
+Take the host out again.
+On the shares it loses, it is told to unmount, unless it is still on the share some other way.
+A host that is gone is taken out by its UUID.
+.br
+Needs \fBremove:host\fR.
 .RS
 .TP
-.B \-\-share\-notify
-Send notification to all online hosts on revoked share permissions.
-.TP
-.B \-\-no\-share\-notify
-Do not send notification to all online hosts on revoked share permissions.
+.B \-\-share\-notify\fR, \fB\-\-no\-share\-notify
+As above, for the unmount.
 .TP
 .B \-\-no\-persist\-mount
-Keep persisted share mounts on hosts (transient unmount only).
+Unmount now, but an offline login still mounts the share.
 .RE
 .TP
-.B list_hosts \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIgroup\fR
-List hosts in the group.
-Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.B list_hosts \fR[\fB\-\-return\-type\fR \fItype\fR] \fIgroup\fR
+The hosts in the group, disabled ones too.
+\fB\-\-return\-type\fR picks what is printed: \fBname\fR (default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
+.br
+Needs \fBview:hosts\fR.
+.hy
+.ad
 .SS Sync User Management
+.na
+.nh
+A sync user is a user whose account is copied to a host without any token of theirs going with it.
+A group passes its sync users on to the hosts that name it as sync group (\fBotpme\-host add_sync_group\fR, with \fBenable_sync_groups\fR), together with the sync users of its roles and of the roles inside them.
+A sync user is no member of the group on the hosts.
 .TP
 .B add_sync_user \fIgroup\fR \fIuser\fR
-Add a sync user to the group.
+Have that user's account copied to those hosts.
+The user may be of any site.
 .br
-Needs the ACL \fBadd:sync_user\fR.
+Needs \fBadd:sync_user\fR.
 .TP
 .B remove_sync_user \fIgroup\fR \fIuser\fR
-Remove a sync user from the group.
+Stop that.
+A user who is gone is taken out by the UUID.
 .br
-Needs the ACL \fBremove:sync_user\fR.
+Needs \fBremove:sync_user\fR.
 .TP
-.B list_sync_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIgroup\fR
-List sync users in the group.
-Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.B list_sync_users \fR[\fB\-\-return\-type\fR \fItype\fR] \fIgroup\fR
+The sync users of the group, disabled ones too; not those of its roles.
+\fB\-\-return\-type\fR picks what is printed: \fBname\fR (default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
 .br
-Needs the ACL \fBview:sync_users\fR.
+Needs \fBview:sync_users\fR.
+.hy
+.ad
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
+.PP
+Unless the \fBchangelog\fR config parameter says otherwise.
+It is read along the cascade (group, unit, site), and nothing is written where it is off.
+Without any value anywhere it is on.
 .PP
 An \fIentry_id\fR is the number the listing shows in front of an entry, counted from 0.
 .PP
@@ -166,17 +321,21 @@ Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIgroup\fR
 Remove every entry of the changelog.
+Afterwards it holds one entry: that it was cleared.
 .br
 This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
 has to allow it (see \fBotpme\fR(7)).
 It is true by default, but where no value is found at all, clearing is refused.
-OTPme asks the token you are signed in with first, then the object.
+A value set on the token you are signed in with counts first.
+Without one, the value of the group counts, read along its cascade.
 .SS Policy Management
 A \fIpolicy\fR is the name of a policy, not a path.
 It is looked for in the site of the group.
 Which policies there are, and what each of them does, is in
 .BR otpme\-policy (1).
+.PP
+Two policy types fit a group: \fBauthonaction\fR and \fBautodisable\fR.
 .PP
 Attaching and detaching ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
@@ -184,7 +343,9 @@ Attaching and detaching ask before they change anything; the global option \fB\-
 Attach a policy to the group.
 .br
 A policy has a list of object types it is for; one that does not name \fBgroup\fR is refused.
-So is a second policy of a type that allows only one per object.
+So is a second policy of a type that allows only one per object, even when the first one is disabled, and a policy the group already has.
+.br
+An auto-disable policy with \fB\-u\fR is refused, because a group does not keep its last use.
 .br
 Needs the ACL \fBassign:policy\fR.
 .TP
@@ -195,27 +356,68 @@ Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR d
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
 .B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIgroup\fR
-List the policies attached to the group.
-Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+List the policies attached to the group, the disabled ones too, marked \fB(disabled)\fR.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR); without it the names.
+Only the names are marked.
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
 .br
 Needs the ACL \fBview:policies\fR.
 .SS ACL Management
+An ACL says what somebody may do with this group.
+The somebody is a role or a token, never a user.
+.PP
+What the three forms \fBacl\fR, \fB+acl\fR and \fB++acl\fR mean is under \fBACLs\fR in
+.BR otpme (7).
+Which ACLs a group knows is in
+.BR otpme\-acls (7).
+A group has no default ACLs, \fB+acl\fR and \fB++acl\fR: nothing lies in a group that could get them.
+.PP
+Adding and removing ask first; the global option \fB\-f\fR skips the question.
 .TP
-.B add_acl \fIgroup\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
-Add an access control entry.
+.B add_acl \fIgroup\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
+Give a role or a token one or more ACLs on this group.
+.br
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
+\fIowner\fR is the path of that role or token.
+An ACL can carry a value, for example \fBview:tokens\fR.
+To give several ACLs at once, separate them with commas: \fB\%view:tokens,add:token\fR.
+.br
+Needs the ACL \fBadd:acl\fR.
 .TP
-.B del_acl \fIgroup\fR \fIacl\fR
-Remove an access control entry.
+.B del_acl \fIgroup\fR \fIacl\fR[,\fIacl\fR]
+Take those ACLs away again.
+.br
+Here an \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fB\%role:berlin/helpdesk:view:tokens\fR.
+.br
+Needs the ACL \fBdelete:acl\fR.
 .TP
 .B list_acls \fIgroup\fR
-Display all ACLs for the group.
+Show the ACLs that lie on this group, i.e. who may do what with it.
+.br
+Needs the ACL \fBview:acl\fR.
 .TP
 .B enable_acl_inheritance \fIgroup\fR
-Enable ACL inheritance from parent objects.
+Let a move of the group swap its default ACLs: what the old unit handed down is taken away, and what the new unit hands down is given.
+It does not by default; a move then leaves the ACLs of the group as they are.
+.RS
+.PP
+Only a move asks this.
+A new group gets the default ACLs of its unit, and \fBadd_acl \-a\fR or \fB\-r\fR on a unit reach it either way.
+A move with \fB\-\-keep\-acls\fR leaves its ACLs alone all the same.
+.PP
+A move by somebody who does not hold \fBadd:acl\fR and \fBdelete:acl\fR on the group leaves its ACLs alone as well, and says so.
+Otherwise moving an object into a unit would be a way of handing yourself the default ACLs of that unit.
+.PP
+Groups had it on until config version 2, which switches it off for all of them (see \fBupgrade\fR in
+.BR otpme\-site (1)).
+.PP
+Needs the ACL \fBenable:acl_inheritance\fR.
+.RE
 .TP
 .B disable_acl_inheritance \fIgroup\fR
-Disable ACL inheritance.
+A move leaves the ACLs of the group as they are again.
+.br
+Needs the ACL \fBdisable:acl_inheritance\fR.
 .SS Configuration and Attributes
 .TP
 .B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIgroup\fR \fIparameter\fR \fR[\fIvalue\fR]
@@ -364,6 +566,25 @@ Show LDIF representation
 .TP
 .B otpme-group show_ldif developers \-a cn,gidNumber
 Show only specific LDAP attributes
+.\" BEGIN AUTH ON ACTION HOOKS
+.\" Generated by update_hooks_man.py. Do not edit, the next run
+.\" overwrites it.
+.SH AUTH ON ACTION HOOKS
+An auth on action policy can ask for a login again before these actions.
+See
+.B Auth On Action Policy
+in
+.BR otpme\-policy (1).
+A group has the hooks every object type has, and these:
+.RS
+.PP
+.na
+.nh
+add_host, add_role, add_token, move, remove_host, remove_role, remove_token, set_config_parameter.
+.hy
+.ad
+.RE
+.\" END AUTH ON ACTION HOOKS
 .SH FILES
 .TP
 .I /var/lib/otpme/

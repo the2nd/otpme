@@ -14,6 +14,7 @@ except Exception:
 from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.classes.token import Token
@@ -47,7 +48,10 @@ read_value_acls = {
                 "view"      : [
                             "auth_script",
                             "destination_token",
-                            "offline_status",
+                            # No offline_status, enable:offline or
+                            # disable:offline: a link token leaves
+                            # allow_offline at None, and Token refuses
+                            # offline use for it.
                             "offline_expiry",
                             "offline_unused_expiry",
                             "session_keep",
@@ -60,12 +64,10 @@ write_value_acls = {
                             ],
                 "enable"    : [
                             "auth_script",
-                            "offline",
                             "session_keep",
                             ],
                 "disable"   : [
                             "auth_script",
-                            "offline",
                             "session_keep",
                             ],
             }
@@ -262,7 +264,7 @@ class LinkToken(Token):
     def show_config(self, callback=default_callback, **kwargs):
         """ Show token info. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         if self.verify_acl("view:destination_token"):

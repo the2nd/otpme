@@ -20,18 +20,30 @@ def detect_smartcard(sc_types=None, detect_only=False, print_devices=False):
     log_msg = _("Starting smartcard detection...", log=True)[1]
     logger.debug(log_msg)
     smartcard = None
+    # With detect_only all types are searched: the first one found.
+    first_found = None
     supported_smartcards = config.get_supported_smartcards()
     for s in supported_smartcards:
+        # Said only for a type that was asked for.
+        print_error = print_devices and (not sc_types or s in sc_types)
+        # Without its class this type cannot be searched for. Going on
+        # used the class of the type before (or none at all).
         try:
             smartcard_class = get_class(s)
         except ImportError as e:
-            log_msg = _("Missing smartcard support: {error}", log=True)[1]
+            msg, log_msg = _("Missing smartcard support: {error}", log=True)
             log_msg = log_msg.format(error=e)
             logger.debug(log_msg)
+            if print_error:
+                print(msg.format(error=e))
+            continue
         except Exception as e:
-            log_msg = _("Problem loading smartcard module '{module}': {error}", log=True)[1]
+            msg, log_msg = _("Problem loading smartcard module '{module}': {error}", log=True)
             log_msg = log_msg.format(module=s, error=e)
             logger.warning(log_msg)
+            if print_error:
+                print(msg.format(module=s, error=e))
+            continue
         # Get smartcard instance.
         smartcard = smartcard_class(autodetect=False)
         # Check if we have to search for smartcard of this type.
@@ -60,6 +72,10 @@ def detect_smartcard(sc_types=None, detect_only=False, print_devices=False):
             # currently we only support one smartcard at a time
             if not detect_only:
                 break
+            if first_found is None:
+                first_found = smartcard
         except NoSmartcardFound:
             smartcard = None
+    if detect_only:
+        return first_found
     return smartcard

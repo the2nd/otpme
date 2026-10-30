@@ -23,6 +23,7 @@ from otpme.lib import cli
 from otpme.lib import json
 from otpme.lib import cache
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backup
 from otpme.lib import backend
 from otpme.lib import jwt as _jwt
@@ -37,6 +38,7 @@ from otpme.lib.protocols.utils import send_msg
 from otpme.lib.protocols.utils import register_protocol_commands
 from otpme.lib.protocols.otpme_server import OTPmeServer1
 from otpme.lib.classes.site import get_site_admin_blacklist
+from otpme.lib.policy.idrange.idrange import get_policy_for
 from otpme.lib.classes.data_objects.otpme_job import OTPmeTreeJob
 
 from otpme.lib.exceptions import *
@@ -46,6 +48,36 @@ default_callback = config.get_callback()
 
 sub_types = {}
 command_map = {}
+
+# The columns of a line of otpme-tool mass_object_add, per object type,
+# the type itself included (see mass_object_add()).
+MASS_ADD_COLUMNS = {
+                'user'  : 10,
+                'group' : 4,
+                'role'  : 5,
+                }
+
+def mass_add_summary(added, failures, verify_only=False,
+    callback=default_callback):
+    """ What otpme-tool mass_object_add ends with: how many objects were
+    added (or, with --verify-only, can be), and every line that was not,
+    with why. With failures it ends as an error, so a script running it
+    sees that something was left out. """
+    if verify_only:
+        msg = _("CSV checked: {count} object(s) can be added, {failed} cannot.")
+    else:
+        msg = _("Added {count} object(s), {failed} not added.")
+    msg = msg.format(count=added, failed=len(failures))
+    if not failures:
+        return callback.ok(msg)
+    lines = [msg, _("Not added:")]
+    lines += [f"  {x}" for x in failures]
+    return callback.error("\n".join(lines))
+
+# What otpme-tool search hands a user who is not an admin: what names an
+# object and nothing about what is in it. The others (ldif, path,
+# checksum, ...) are an admin's.
+SEARCH_PUBLIC_RETURN_TYPES = ["uuid", "name", "read_oid", "full_oid"]
 
 # All valid commands.
 valid_commands = [
@@ -637,6 +669,9 @@ class OTPmeMgmtP1(OTPmeServer1):
     def add_object(self, object_type, object_name,
         unit=None, callback=default_callback,
         force=False, **kwargs):
+        """ Add one object of a mass object add. Returns whether it was
+        added, and why not: (True, None) or (False, <error>). The error
+        is sent through the callback as well. """
 
         proctitle = setproctitle.getproctitle()
         proctitle = f"{proctitle}: Mass object add {object_type}: {object_name}"
@@ -658,7 +693,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             logger.warning(log_msg)
             msg = _("Error loading object class.")
             callback.error(msg)
-            return False
+            return False, msg
         try:
             o = oc(path=None,
                     name=object_name,
@@ -672,7 +707,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             logger.warning(log_msg)
             msg = _("Error loading object.")
             callback.error(msg)
-            return False
+            return False, msg
         # Add object.
         try:
             add_result = o.add(force=force, callback=callback, **kwargs)
@@ -682,19 +717,19 @@ class OTPmeMgmtP1(OTPmeServer1):
             logger.warning(log_msg)
             msg = msg.format(name=object_name, error=e)
             callback.error(msg)
-            return False
+            return False, msg
         finally:
             callback.only_errors = False
             multiprocessing.cleanup()
         if add_result:
             callback.write_modified_objects()
-            return True
+            return True, None
         msg, log_msg = _("Error adding object: {name} (See previous errors)", log=True)
         log_msg = log_msg.format(name=object_name)
         logger.warning(log_msg)
         msg = msg.format(name=object_name)
         callback.error(msg)
-        return False
+        return False, msg
 
     def mass_object_add(self, csv_data, procs=None, verify_csv=False,
         callback=default_callback, **kwargs):
@@ -725,11 +760,34 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         if procs is None:
             procs = int(os.cpu_count() / 2)
-        procs = min(procs, os.cpu_count())
+        # A number of at least one: 0 started no worker and every line
+        # was "lost", a word ended in a TypeError.
+        try:
+            procs = int(procs)
+        except (TypeError, ValueError):
+            msg = _("--procs needs a number: {procs}")
+            msg = msg.format(procs=procs)
+            return callback.error(msg)
+        procs = max(1, min(procs, os.cpu_count()))
 
         def parse_csv_entry(csv_entry):
-            #print(csv_entry)
             object_type = csv_entry[0]
+            # The columns a line of each type has. A short line ended in
+            # "list index out of range". The ldif_attributes of a role
+            # were taken and dropped: Role.add() has nothing to put them
+            # in, so the column is refused.
+            if object_type in MASS_ADD_COLUMNS:
+                columns = MASS_ADD_COLUMNS[object_type]
+                if object_type == "role" and len(csv_entry) == columns + 1:
+                    if csv_entry[columns]:
+                        msg = _("A role takes no ldif_attributes.")
+                        raise OTPmeException(msg)
+                    csv_entry = csv_entry[:columns]
+                if len(csv_entry) != columns:
+                    msg = _("{type} needs {columns} columns, got {count}")
+                    msg = msg.format(type=object_type, columns=columns,
+                                    count=len(csv_entry))
+                    raise OTPmeException(msg)
             if object_type == "user":
                 name = csv_entry[1]
                 unit = csv_entry[2]
@@ -783,7 +841,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                 unit = csv_entry[2]
                 groups = csv_entry[3]
                 roles = csv_entry[4]
-                ldif_attributes = csv_entry[5]
                 if groups:
                     groups = groups.split(",")
                 if roles:
@@ -798,8 +855,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                     method_kwargs['groups'] = groups
                 if roles:
                     method_kwargs['roles'] = roles
-                if ldif_attributes:
-                    method_kwargs['ldif_attributes'] = ldif_attributes.split(",")
             else:
                 msg = _("Unsupported object type: {type}")
                 msg = msg.format(type=object_type)
@@ -821,11 +876,69 @@ class OTPmeMgmtP1(OTPmeServer1):
                                 attribute="name",
                                 value="*",
                                 return_type="name")
+        # What was not added, and why: said as it happens, and all of it
+        # again at the end, so a run of thousands of lines does not need
+        # its output read back to find the few that failed.
+        failures = []
+        def fail(msg):
+            failures.append(msg)
+            callback.error(msg)
+
+        def get_idrange_policy(object_unit, attribute):
+            """ The IDRange policy that numbers <attribute> of a new user
+            or group in <object_unit>: the one of the unit if it has a
+            range for it, else of the site. """
+            try:
+                return id_range_cache[(object_unit, attribute)]
+            except KeyError:
+                pass
+            unit = get_unit(object_unit)
+            site = backend.get_object(object_type="site", uuid=config.site_uuid)
+            # The realm was asked after the site and cannot be: it
+            # carries no policy but auth on action (see
+            # Realm.add_policy()).
+            policy = get_policy_for(attribute, unit=unit, site=site)
+            if not policy:
+                msg = _("No IDRange policy with a range for {attribute} found for unit: {unit}")
+                msg = msg.format(attribute=attribute, unit=object_unit)
+                raise OTPmeException(msg)
+            id_range_cache[(object_unit, attribute)] = policy
+            return policy
+
+        def get_unit(object_unit):
+            """ The unit an object goes into. Asked before anything is
+            asked of it: an unknown one ended the whole run in an
+            AttributeError. """
+            try:
+                return unit_cache[object_unit]
+            except KeyError:
+                pass
+            unit_oid = oid.get(object_type="unit",
+                                rel_path=object_unit,
+                                realm=config.realm,
+                                site=config.site)
+            unit = backend.get_object(unit_oid)
+            if not unit:
+                msg = _("Unknown unit: {unit}")
+                msg = msg.format(unit=object_unit)
+                raise OTPmeException(msg)
+            unit_cache[object_unit] = unit
+            return unit
+
+        existing = {
+                'user'  : set(all_users),
+                'group' : set(all_groups),
+                'role'  : set(all_roles),
+                }
+        in_csv = {'user': set(), 'group': set(), 'role': set()}
         line = 0
-        callbacks = []
         objects_to_add = []
         id_range_cache = {}
-        objects_by_unit = {}
+        unit_cache = {}
+        # Per IDRange policy: how many users and groups need a number.
+        # Policies compare by OID, so two units that fall back to the
+        # site count together.
+        policy_object_count = {}
         for entry in csv_data:
             line += 1
             if not entry:
@@ -836,154 +949,63 @@ class OTPmeMgmtP1(OTPmeServer1):
                 object_unit, \
                 method_kwargs = parse_csv_entry(entry)
             except Exception as e:
-                msg = _("Error on line: {line}: {error}")
+                msg = _("Line {line}: {error}")
                 msg = msg.format(line=line, error=e)
-                callback.error(msg)
+                fail(msg)
                 continue
-            # Check if object exists.
-            if object_type == "user":
-                if object_name in all_users:
-                    msg = _("{type} already exists: {name}")
-                    msg = msg.format(type=object_type, name=object_name)
-                    callbacks.append(msg)
-                    continue
-            elif object_type == "group":
-                if object_name in all_groups:
-                    msg = _("{type} already exists: {name}")
-                    msg = msg.format(type=object_type, name=object_name)
-                    callbacks.append(msg)
-                    continue
-            elif object_type == "role":
-                if object_name in all_roles:
-                    msg = _("{type} already exists: {name}")
-                    msg = msg.format(type=object_type, name=object_name)
-                    callbacks.append(msg)
-                    continue
-            else:
-                msg = _("Invalid object type: {type}: {name}")
-                msg = msg.format(type=object_type, name=object_name)
-                return callback.error(msg)
+            # Check if object exists, or comes twice in the file.
+            if object_name in existing[object_type]:
+                msg = _("Line {line}: {type} already exists: {name}")
+                msg = msg.format(line=line, type=object_type, name=object_name)
+                fail(msg)
+                continue
+            if object_name in in_csv[object_type]:
+                msg = _("Line {line}: {type} {name} is in the file twice")
+                msg = msg.format(line=line, type=object_type, name=object_name)
+                fail(msg)
+                continue
+            in_csv[object_type].add(object_name)
 
+            # The default unit, said to the object as well: the number
+            # came out of the IDRange of this unit while the object went
+            # into the default unit of the config, which need not be the
+            # same.
             if not object_unit:
                 object_unit = self.get_default_unit(object_type)
+                method_kwargs['unit'] = object_unit
+            try:
+                get_unit(object_unit)
+            except OTPmeException as e:
+                msg = _("Line {line}: {error}")
+                msg = msg.format(line=line, error=e)
+                fail(msg)
+                continue
 
+            # A user or a group without its number gets one out of the
+            # IDRange of its unit or site, see below.
             idrange_policy = None
-            if object_type == "user":
+            id_attribute = {'user': "uidNumber", 'group': "gidNumber"}.get(object_type)
+            ldif_attributes = method_kwargs.get('ldif_attributes', [])
+            if id_attribute and not any(x.startswith(f"{id_attribute}=")
+                                        for x in ldif_attributes):
                 try:
-                    ldif_attributes = method_kwargs['ldif_attributes']
-                except KeyError:
-                    ldif_attributes = []
-                if not any(entry.startswith("uidNumber=") for entry in ldif_attributes):
-                    try:
-                        idrange_policy = id_range_cache[object_unit]
-                    except KeyError:
-                        unit_oid = oid.get(object_type="unit",
-                                            rel_path=object_unit,
-                                            realm=config.realm,
-                                            site=config.site)
-                        unit = backend.get_object(unit_oid)
-                        policies = unit.get_policies(policy_type="idrange",
-                                                    return_type="instance")
-                        if not policies:
-                            site = backend.get_object(object_type="site", uuid=config.site_uuid)
-                            policies = site.get_policies(policy_type="idrange",
-                                                        return_type="instance")
-                        # The realm was asked after the site and cannot
-                        # be: it carries no policy but auth on action
-                        # (see Realm.add_policy()).
-                        if not policies:
-                            msg = _("No IDRange policy found for {type} {name}.")
-                            msg = msg.format(type=object_type, name=object_name)
-                            return callback.error(msg)
-                        idrange_policy = policies[0]
-                        id_range_cache[object_unit] = idrange_policy
-
-                    try:
-                        by_unit_objects = objects_by_unit[object_unit]['objects'][object_type]
-                    except KeyError:
-                        by_unit_objects = []
-                        objects_by_unit[object_unit] = {}
-                        objects_by_unit[object_unit]['policy'] = idrange_policy
-                        objects_by_unit[object_unit]['objects'] = {}
-                        objects_by_unit[object_unit]['objects'][object_type] = by_unit_objects
-                    by_unit_objects.append((object_type, object_name))
-            if object_type == "group":
-                try:
-                    ldif_attributes = method_kwargs['ldif_attributes']
-                except KeyError:
-                    ldif_attributes = []
-                if not any(entry.startswith("gidNumber=") for entry in ldif_attributes):
-                    try:
-                        idrange_policy = id_range_cache[object_unit]
-                    except KeyError:
-                        unit_oid = oid.get(object_type="unit",
-                                            rel_path=object_unit,
-                                            realm=config.realm,
-                                            site=config.site)
-                        unit = backend.get_object(unit_oid)
-                        policies = unit.get_policies(policy_type="idrange",
-                                                    return_type="instance")
-                        if not policies:
-                            site = backend.get_object(object_type="site", uuid=config.site_uuid)
-                            policies = site.get_policies(policy_type="idrange",
-                                                        return_type="instance")
-                        # The realm was asked after the site and cannot
-                        # be: it carries no policy but auth on action
-                        # (see Realm.add_policy()).
-                        if not policies:
-                            msg = _("No IDRange policy found for {type} {name}.")
-                            msg = msg.format(type=object_type, name=object_name)
-                            return callback.error(msg)
-                        idrange_policy = policies[0]
-                        id_range_cache[object_unit] = idrange_policy
-
-                    try:
-                        by_unit_objects = objects_by_unit[object_unit]['objects'][object_type]
-                    except KeyError:
-                        by_unit_objects = []
-                        objects_by_unit[object_unit] = {}
-                        objects_by_unit[object_unit]['policy'] = idrange_policy
-                        objects_by_unit[object_unit]['objects'] = {}
-                        objects_by_unit[object_unit]['objects'][object_type] = by_unit_objects
-                    by_unit_objects.append((object_type, object_name))
+                    idrange_policy = get_idrange_policy(object_unit, id_attribute)
+                except OTPmeException as e:
+                    msg = _("Line {line}: {error}")
+                    msg = msg.format(line=line, error=e)
+                    fail(msg)
+                    continue
+                object_counters = policy_object_count.setdefault(idrange_policy,
+                                                            {'user': 0, 'group': 0})
+                object_counters[object_type] += 1
             objects_to_add.append((object_type, object_name, object_unit, method_kwargs, idrange_policy))
 
-        callbacks = "\n".join(callbacks)
-        callback.error(callbacks)
         if verify_csv:
-            return callback.ok()
+            return mass_add_summary(len(objects_to_add), failures,
+                                    verify_only=True, callback=callback)
 
         msg = _("Selecting object IDs...")
         callback.send(msg)
-
-        policy_object_count = {}
-        for object_unit in objects_by_unit:
-            idrange_policy = objects_by_unit[object_unit]['policy']
-            try:
-                object_counters = policy_object_count[idrange_policy]
-            except KeyError:
-                object_counters = {}
-                policy_object_count[idrange_policy] = object_counters
-            try:
-                unit_users = objects_by_unit[object_unit]['objects']['user']
-            except KeyError:
-                unit_users = []
-            try:
-                user_counter = object_counters['user']
-            except KeyError:
-                user_counter = 0
-            user_counter += len(unit_users)
-            object_counters['user'] = user_counter
-            try:
-                unit_groups = objects_by_unit[object_unit]['objects']['group']
-            except KeyError:
-                unit_groups = []
-            try:
-                group_counter = object_counters['group']
-            except KeyError:
-                group_counter = 0
-            group_counter += len(unit_groups)
-            object_counters['group'] = group_counter
 
         ldif_ids = {}
         for idrange_policy in policy_object_count:
@@ -1067,7 +1089,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                     except (KeyError, IndexError):
                         msg = _("Unable to get {attr} for {type}: {name}")
                         msg = msg.format(attr=attr, type=object_type, name=object_name)
-                        callback.error(msg)
+                        fail(msg)
                         continue
                     ldif_attributes = list(ldif_attributes) + [f'{attr}={new_id}']
                     method_kwargs['ldif_attributes'] = ldif_attributes
@@ -1075,11 +1097,14 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         objects_count = len(work_plan)
         objects_add_counter = 0
+        # Every result, failed ones included. The waiting below counted
+        # only the objects that were added, and one that failed kept it
+        # waiting for a result that had come long ago.
+        objects_done_counter = 0
         start_time = time.time()
 
         if objects_count == 0:
-            msg = _("Added {count} objects.").format(count=0)
-            return callback.ok(msg)
+            return mass_add_summary(0, failures, callback=callback)
 
         # Spawn worker pool exactly once. Workers loop on
         # work_queue.recv() and exit on a {"stop": True} sentinel.
@@ -1122,6 +1147,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             """Pull as many completed results as available; stream
             progress messages back through the callback."""
             nonlocal objects_add_counter
+            nonlocal objects_done_counter
             drained = 0
             while True:
                 # First call uses the requested timeout; subsequent
@@ -1137,15 +1163,16 @@ class OTPmeMgmtP1(OTPmeServer1):
                 if msg_in is None:
                     break
                 drained += 1
+                objects_done_counter += 1
                 x_oid_str = msg_in.get("oid")
                 ok = msg_in.get("ok", False)
                 err = msg_in.get("err")
                 x_oid = oid.get(object_id=x_oid_str)
                 if ok:
                     objects_add_counter += 1
-                    remaining = objects_count - objects_add_counter
+                    remaining = objects_count - objects_done_counter
                     callback.send(build_add_message(x_oid, start_time,
-                                                objects_add_counter,
+                                                objects_done_counter,
                                                 remaining))
                 else:
                     if x_oid is not None:
@@ -1155,7 +1182,12 @@ class OTPmeMgmtP1(OTPmeServer1):
                     else:
                         msg = _("Error in mass-add worker: {error}")
                         msg = msg.format(error=err)
-                    callback.error(msg)
+                    # Into the summary, and said now only where the
+                    # worker did not say it already.
+                    if msg_in.get("said"):
+                        failures.append(msg)
+                    else:
+                        fail(msg)
             return drained
 
         def _wait_until_drained(target_pushed):
@@ -1164,7 +1196,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             no further results will ever arrive — bail out and
             report the lost items)."""
             nonlocal last_keepalive
-            while objects_add_counter < target_pushed:
+            while objects_done_counter < target_pushed:
                 drained = _drain_results(timeout=0.5)
                 if drained == 0:
                     # Quiet result queue — verify at least one
@@ -1176,11 +1208,11 @@ class OTPmeMgmtP1(OTPmeServer1):
                         # final result arrived between the check and
                         # the worker's exit.
                         _drain_results(timeout=0)
-                        lost = target_pushed - objects_add_counter
+                        lost = target_pushed - objects_done_counter
                         if lost > 0:
                             msg = _("Lost {n} mass-add item(s): all workers exited unexpectedly.")
                             msg = msg.format(n=lost)
-                            callback.error(msg)
+                            fail(msg)
                         return False
                 if time.time() - last_keepalive >= 1:
                     last_keepalive = time.time()
@@ -1255,9 +1287,8 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         # Update data revision.
         config.update_data_revision()
-        msg = _("Added {count} objects.")
-        msg = msg.format(count=objects_add_counter)
-        return callback.ok(msg)
+        return mass_add_summary(objects_add_counter, failures,
+                                callback=callback)
 
     def _mass_add_worker_loop(self, work_queue, result_queue, force, callback):
         """ Long-lived worker: receive {"type", "name", "kwargs"}
@@ -1319,10 +1350,17 @@ class OTPmeMgmtP1(OTPmeServer1):
                     method_kwargs['verify_acls'] = False
                     method_kwargs['callback'] = callback
                     method_kwargs['force'] = force
-                    self.add_object(object_type, object_name, **method_kwargs)
+                    # What add_object() says: it reports a failure by
+                    # returning it, not by raising, and every object
+                    # was counted as added.
+                    added, error = self.add_object(object_type,
+                                                object_name,
+                                                **method_kwargs)
                     try:
-                        result_queue.send({"oid": x_oid_str, "ok": True,
-                                        "err": None}, timeout=5)
+                        # "said": add_object() sent the error itself.
+                        result_queue.send({"oid": x_oid_str, "ok": added,
+                                        "err": error, "said": True},
+                                        timeout=5)
                     except Exception:
                         pass
                 except Exception as e:
@@ -1528,8 +1566,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                     return self.build_response(status, message)
                 dst_unit = result[0]
                 if not dst_unit.verify_acl("add:user"):
-                    message = _("Permission denied: {path}")
-                    message = message.format(path=dst_unit.path)
+                    message = denied_msg(dst_unit, "add:user")
                     status = False
                     return self.build_response(status, message)
                 try:
@@ -1642,8 +1679,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                     return self.build_response(status, message)
                 dst_unit = result[0]
                 if not dst_unit.verify_acl("add:group"):
-                    message = _("Permission denied: {path}")
-                    message = message.format(path=dst_unit.path)
+                    message = denied_msg(dst_unit, "add:group")
                     status = False
                     return self.build_response(status, message)
                 try:
@@ -2185,10 +2221,40 @@ class OTPmeMgmtP1(OTPmeServer1):
                 password = command_args['password']
             except Exception:
                 password = None
+            # As text: the command line makes a number of a password
+            # that is only digits, and deriving the key from it ended in
+            # an AttributeError.
+            if password is not None:
+                password = str(password)
 
             # Decode object config and convert it to dict.
             object_config = command_args.pop("object_config")
             object_config = json.decode(object_config, encoding="base64")
+
+            # Only objects of our realm and site. An import writes the
+            # object as it is in the file, and one of another site would
+            # be written here past everything that site says about it.
+            # The OID of a user or token has no site, so the SITE (UUID)
+            # in the object counts too. It is not one of the encrypted
+            # values of an export.
+            #
+            # The realm and the sites themselves can be imported, as
+            # with restore: a site object names its own site, not ours.
+            try:
+                x_oid = oid.get(object_id=object_id)
+            except Exception as e:
+                return self.build_response(False, str(e))
+            foreign_object = x_oid.realm != config.realm
+            if x_oid.object_type not in ("realm", "site"):
+                if x_oid.site and x_oid.site != config.site:
+                    foreign_object = True
+                object_site = object_config.get('SITE')
+                if object_site and object_site != config.site_uuid:
+                    foreign_object = True
+            if foreign_object:
+                message = _("Only objects of this realm and site can be imported: {object_id}")
+                message = message.format(object_id=object_id)
+                return self.build_response(False, message)
 
             try:
                 key_salt = object_config.pop("ENC_SALT")
@@ -2253,10 +2319,40 @@ class OTPmeMgmtP1(OTPmeServer1):
                 return self.build_response(status, message)
             try:
                 object_data = command_args.pop('object_data')
+                object_id = object_data['object_id']
+                object_config = object_data['object_config']
             except Exception:
                 message = "MGMT_INCOMPLETE_COMMAND"
                 status = False
                 return self.build_response(status, message)
+
+            # Only objects of our realm and site, as with import. A
+            # restore writes the object as it is in the file, and one of
+            # another site would be written here past everything that
+            # site says about it. A whole node is restored with -d,
+            # which does not come here.
+            #
+            # The realm and the sites themselves stay restorable: they
+            # are what the objects of a site hang from, and a site
+            # object names its own site, not ours.
+            #
+            # The OID of a user or token has no site, so for those the
+            # site is the one in the object (SITE, its UUID).
+            try:
+                x_oid = oid.get(object_id=object_id)
+            except Exception as e:
+                return self.build_response(False, str(e))
+            foreign_object = x_oid.realm != config.realm
+            if x_oid.object_type not in ("realm", "site"):
+                if x_oid.site and x_oid.site != config.site:
+                    foreign_object = True
+                object_site = object_config.get('SITE')
+                if object_site and object_site != config.site_uuid:
+                    foreign_object = True
+            if foreign_object:
+                message = _("Only objects of this realm and site can be restored: {object_id}")
+                message = message.format(object_id=object_id)
+                return self.build_response(False, message)
 
             try:
                 _args = command_map['backup']['exists']['restore_object']['args']
@@ -2304,7 +2400,6 @@ class OTPmeMgmtP1(OTPmeServer1):
         if backend_command == "search":
             try:
                 search_command = command_args['search_command']
-                search_command = " ".join(search_command)
                 search_command = decode(search_command, "base64")
                 search_command = search_command.split("\0")
             except Exception:
@@ -2350,11 +2445,24 @@ class OTPmeMgmtP1(OTPmeServer1):
                 else:
                     acl = f"view_public:{attribute}"
                 verify_acls = [acl]
+                # The ACL is on the attribute searched for, and says
+                # nothing about what comes back. return_type=ldif handed
+                # out the whole LDIF of every object found, past the
+                # attribute by attribute check ldapd does.
+                if return_type not in SEARCH_PUBLIC_RETURN_TYPES:
+                    message = _("Permission denied: return_type={return_type}")
+                    message = message.format(return_type=return_type)
+                    return self.build_response(False, message)
 
             # Check for integer attribute.
             if attribute.startswith("ldif:"):
                 at = ":".join(attribute.split(":")[1:])
-                at_type = config.ldap_attribute_types[at].equality
+                try:
+                    at_type = config.ldap_attribute_types[at].equality
+                except KeyError:
+                    message = _("Unknown attribute: {attribute}")
+                    message = message.format(attribute=attribute)
+                    return self.build_response(False, message)
                 if at_type == "integerMatch":
                     value = int(value)
 
@@ -2386,7 +2494,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 status = False
             except Exception as e:
                 #config.raise_exception()
-                response = "Internal server error."
+                response = _("Internal server error.")
                 log_msg = _("Unhandled exception running search: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
                 logger.critical(log_msg)
@@ -2872,7 +2980,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         elif subcommand == "group":
             id_attribute = "ldif:gidNumber"
         else:
-            return self.build_response(False, "Need <user> or <group>.")
+            return self.build_response(False, _("Need <user> or <group>."))
         result = backend.search(object_type=subcommand,
                                 attribute=id_attribute,
                                 greater_than=-1,
@@ -2886,40 +2994,62 @@ class OTPmeMgmtP1(OTPmeServer1):
                 x_dup = all_uids[x_uid]
                 duplicates.append([x_uid, x_name, x_dup])
             all_uids[x_uid] = x_name
-        response = "No duplicate IDs found."
+        response = _("No duplicate IDs found.")
         if duplicates:
             response = pprint.pformat(duplicates)
         return self.build_response(True, response)
+
+    def raw_object_allowed(self, object_id):
+        """ Whether the caller may see or delete <object_id> as it is
+        stored: dump_object, dump_index and delete_object, which go past
+        the ACLs of the object.
+
+        An admin. One that is not the superuser not the realm, the sites
+        and the nodes, the admin user and its token, and what the site
+        keeps from its admins (site_admin_blacklist), the tokens of those
+        included. dump_object asked this and the other two did not: an
+        admin who could not dump the admin token could delete it.
+
+        Asked of the index for the UUID, so an entry without a file (what
+        delete_object is there for) is asked as well; its owner only where
+        there is a file to read it from.
+        """
+        if not self.is_admin:
+            return False
+        if not config.auth_token or config.auth_token.is_superuser():
+            return True
+        if object_id.object_type in ['realm', 'site', 'node']:
+            return False
+        if object_id.object_type == "user":
+            if object_id.name == config.admin_user_name:
+                return False
+        object_uuid = backend.get_uuid(object_id)
+        if object_uuid == config.admin_token_uuid:
+            return False
+        site_admin_blacklist = get_site_admin_blacklist()
+        if object_uuid in site_admin_blacklist:
+            return False
+        if object_id.object_type == "token" \
+        and backend.object_exists(object_id):
+            object_config = backend.read_config(object_id)
+            if object_config.get('OWNER') in site_admin_blacklist:
+                return False
+        return True
 
     def dump_object(self, subcommand, command_args):
         try:
             object_id = command_args['object_id']
             object_id = oid.get(object_id=object_id)
         except Exception as e:
-            return self.build_response(False, str(e) if str(e) else "Need OID.")
+            return self.build_response(False, str(e) if str(e) else _("Need OID."))
+        # Whether it exists is not for somebody who may not see it.
         if not self.is_admin:
             return self.build_response(False, _("Permission denied."))
-        if not config.auth_token.is_superuser():
-            no_dump_object_types = ['realm', 'site', 'node']
-            if object_id.object_type in no_dump_object_types:
-                return self.build_response(False, _("Permission denied."))
         if not backend.object_exists(object_id):
-            return self.build_response(False, "Object does not exist.")
+            return self.build_response(False, _("Object does not exist."))
+        if not self.raw_object_allowed(object_id):
+            return self.build_response(False, _("Permission denied."))
         object_config = backend.read_config(object_id)
-        if not config.auth_token.is_superuser():
-            if object_id.object_type == "user":
-                if object_id.name == config.admin_user_name:
-                    return self.build_response(False, _("Permission denied."))
-            object_uuid = object_config['UUID']
-            if object_uuid == config.admin_token_uuid:
-                return self.build_response(False, _("Permission denied."))
-            site_admin_blacklist = get_site_admin_blacklist()
-            if object_uuid in site_admin_blacklist:
-                return self.build_response(False, _("Permission denied."))
-            if object_id.object_type == "token":
-                owner_uuid = object_config['OWNER']
-                if owner_uuid in site_admin_blacklist:
-                    return self.build_response(False, _("Permission denied."))
         return self.build_response(True, object_config.copy())
 
     def _cmd_delete_object(self, subcommand, command_args):
@@ -2928,9 +3058,11 @@ class OTPmeMgmtP1(OTPmeServer1):
             object_id = oid.get(object_id=object_id)
             if not backend.index_get(object_id):
                 if not backend.object_exists(object_id):
-                    return callback.error("Object does not exist.")
+                    return callback.error(_("Object does not exist."))
+            if not self.raw_object_allowed(object_id):
+                return callback.error(_("Permission denied."))
             if not force:
-                ask = callback.ask("Delete object? ")
+                ask = callback.ask(_("Delete object? "))
                 if str(ask).lower() != "y":
                     return callback.abort()
             try:
@@ -2970,7 +3102,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         if not self.is_admin:
             return self.build_response(False, _("Permission denied."))
         if "csv_data" not in command_args:
-            return self.build_response(False, "Missing csv data.")
+            return self.build_response(False, _("Missing csv data."))
         try:
             status, \
             response = self.start_job(name="mass_object_add",
@@ -3013,6 +3145,8 @@ class OTPmeMgmtP1(OTPmeServer1):
             object_id = oid.get(object_id=object_id)
         except Exception as e:
             return self.build_response(False, str(e))
+        if not self.raw_object_allowed(object_id):
+            return self.build_response(False, _("Permission denied."))
         try:
             response = backend.index_dump(object_id=object_id,
                                         checksum_ready=True)
@@ -3600,12 +3734,23 @@ class OTPmeMgmtP1(OTPmeServer1):
                 if impersonate_token.uuid == auth_token.uuid:
                     message = _("Cannot impersonate own token.")
                     return self.build_response(False, message)
-                log_msg = _("User impersonated token: {token}", log=True)[1]
-                log_msg = log_msg.format(token=impersonate_token.rel_path)
-                self.logger.info(log_msg)
-                audit_logger = config.audit_logger
-                if audit_logger:
-                    audit_logger.info(log_msg)
+                # The client sends the token with every request of the
+                # connection, the ones that fetch the result of a job or
+                # answer its questions too. Logged where it starts or
+                # changes, not for each of them: one command gave two
+                # lines and more.
+                impersonating = False
+                if self.org_auth_token and config.auth_token:
+                    if config.auth_token.uuid == impersonate_token.uuid:
+                        impersonating = True
+                if not impersonating:
+                    log_msg = _("User impersonated token: {auth_token}: {token}", log=True)[1]
+                    log_msg = log_msg.format(auth_token=auth_token.rel_path,
+                                            token=impersonate_token.rel_path)
+                    self.logger.info(log_msg)
+                    audit_logger = config.audit_logger
+                    if audit_logger:
+                        audit_logger.info(log_msg)
                 if not self.org_auth_token:
                     self.org_auth_token = config.auth_token
                     self.org_auth_user = config.auth_user

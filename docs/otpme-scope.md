@@ -97,6 +97,20 @@ row: its scope ID and its roles, tokens, clients and groups, each line a
 value. A reference to an object that is gone is printed as the bare
 UUID, which is how **remove_orphans** has something to find.
 
+<!-- -->
+
+**show_oid \[**--full**\] *scope***  
+Show the OID of the scope: **scope\|\<realm\>/\<site\>/\<name\>**. With
+**--full** the full OID, which names the unit as well:
+**scope\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
+Needs the ACL **view_public:object**.
+
+**show_uuid *scope***  
+Show the UUID of the scope.  
+Needs the ACL **view_public:object**.
+
+<!-- -->
+
 **list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
 List the scope names, and with a regex only those that match it. You get
 the scopes you may change; **-a** adds those you may only look at.  
@@ -126,11 +140,11 @@ renamed.
 Needs the ACL **rename:object**.
 
 **move \[**--keep-acls**\] *scope* *unit***  
-Move the scope into another unit. Its ACLs move with it: the default
-ACLs of the old unit are taken away and those of the new one are
-applied. **--keep-acls** leaves the ACLs of the scope as they are.  
-A scope does not inherit ACLs by default, see **enable_acl_inheritance**
-below.
+Move the scope into another unit. Its ACLs stay as they are, unless
+**enable_acl_inheritance** (below) was switched on for it: then the
+default ACLs of the old unit are taken away and those of the new one are
+applied. **--keep-acls** leaves the ACLs of the scope as they are in any
+case.
 
 **scope_id *scope* *scope_id***  
 Set the name the application sends for this scope, see **THE SCOPE
@@ -140,6 +154,16 @@ Needs the ACL **edit:scope_id**.
 **touch *scope***  
 Re-index the object to fix potential index problems.  
 Needs the ACL **touch**.
+
+**auto_disable *scope* *time***  
+Set auto-disable time. It is either a relative time with a leading
+**+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
+The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
+**otpme**(7). A relative time counts from when it is set, and again from
+when the scope is enabled. **0** removes it. It is refused for an object
+the realm or a site comes with, e.g. the admin user; a time set on one
+before does nothing.  
+Needs the ACL **edit:auto_disable**.
 
 ## Who May Hand the Scope Out
 
@@ -250,8 +274,8 @@ Remove every entry of the changelog.
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
-refused. OTPme asks the token you are signed in with first, then the
-object.
+refused. A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 
 ## Policy Management
 
@@ -273,10 +297,11 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *scope***  
-List the policies attached to the scope. Use **--return-type** to select
-the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
-Use **--policy-types** to list only policies of the given types; these
-are policy types, not policy names.  
+List the policies attached to the scope, the disabled ones too, marked
+**(disabled)**. Use **--return-type** to select the attribute returned
+(**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
+to list only policies of the given types; these are policy types, not
+policy names.  
 Needs the ACL **view:policies**.
 
 ## ACL Management
@@ -289,9 +314,10 @@ ACLs exist, is under **ACLs** in **otpme**(7).
 
 **add_acl *scope* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this scope.  
-*owner_type* is **role** or **token**, and *owner* the path of that role
-or token. An ACL may carry a value, for example **view:clients**, and
-several are separated by commas.  
+*owner_type* is **role** or **token**. *owner* is the path of that role
+or token. An ACL can carry a value, for example **view:clients**. To
+give several ACLs at once, separate them with commas:
+**view:clients,view:status**.  
 Needs the ACL **add:acl**.
 
 **del_acl *scope* *acl*\[,*acl*\]**  
@@ -305,23 +331,24 @@ Show the ACLs that lie on this scope, i.e. who may do what with it.
 Needs the ACL **view:acl**.
 
 **enable_acl_inheritance *scope***  
-Let the scope inherit the default ACLs of the unit above it.
+Let a move of the scope swap its default ACLs: what the old unit handed
+down is taken away, and what the new unit hands down is given. It does
+not by default; a move then leaves the ACLs of the scope as they are.
 
-A scope does not, and that is on purpose: whoever may change a unit full
-of other objects should not get a say over who may hand out a scope by
-that alone.
+Only a move asks this. A new scope gets the default ACLs of its unit,
+and **add_acl -a** or **-r** on a unit reach it either way. A move with
+**--keep-acls** leaves its ACLs alone all the same.
 
-Only default ACLs are inherited. An ordinary ACL on the unit never is.
-
-Moving the scope into another unit then takes away the default ACLs of
-the old unit and applies those of the new one. While inheritance is off,
-a move leaves the ACLs of the scope as they are.
+A move by somebody who does not hold **add:acl** and **delete:acl** on
+the scope leaves its ACLs alone as well, and says so. Otherwise moving
+an object into a unit would be a way of handing yourself the default
+ACLs of that unit.
 
 Needs the ACL **enable:acl_inheritance**.
 
 **disable_acl_inheritance *scope***  
-Stop inheriting them. Only the ACLs on the scope itself count from then
-on. Needs the ACL **disable:acl_inheritance**.
+A move leaves the ACLs of the scope as they are again.  
+Needs the ACL **disable:acl_inheritance**.
 
 ## Configuration
 
@@ -643,6 +670,15 @@ nothing else about it.
 
 **otpme-scope remove_orphans profile**  
 Clear out the applications and tokens that were deleted since.
+
+# AUTH ON ACTION HOOKS
+
+An auth on action policy can ask for a login again before these actions.
+See **Auth On Action Policy** in **otpme-policy**(1). A scope has the
+hooks every object type has, and these:
+
+> add_client, add_group, add_role, add_token, remove_client,
+> remove_group, remove_role, remove_token, set_config_parameter.
 
 # SEE ALSO
 

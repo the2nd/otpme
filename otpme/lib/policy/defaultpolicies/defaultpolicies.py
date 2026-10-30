@@ -11,6 +11,7 @@ except Exception:
     pass
 
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
@@ -215,7 +216,10 @@ class DefaultpoliciesPolicy(Policy):
                             ],
                     }
 
-        self.object_types = config.tree_object_types
+        # A new object gets its default policies from the unit or site it
+        # is added to (OTPmeObject.add_default_policies()). On any other
+        # object this policy was accepted and did nothing.
+        self.object_types = ['site', 'unit']
 
         #self.default_policies = {}
 
@@ -305,7 +309,9 @@ class DefaultpoliciesPolicy(Policy):
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):
         """ Add default policy. """
-        if object_type not in self.object_types:
+        # Default policies can be set for every object type. Not
+        # object_types, which says where this policy can be assigned.
+        if object_type not in config.tree_object_types:
             msg = _("Invalid object type for this policy: {object_type}")
             msg = msg.format(object_type=object_type)
             return callback.error(msg)
@@ -323,10 +329,27 @@ class DefaultpoliciesPolicy(Policy):
 
         policy = result[0]
 
+        # Before asking anything: a policy the type cannot take is refused
+        # anyway.
+        if object_type not in policy.object_types:
+            msg = _("Policy not valid for object type: {object_type}: {policy_name}")
+            msg = msg.format(object_type=object_type, policy_name=policy.name)
+            return callback.error(msg)
+
         if object_type in self.default_policies:
             if policy.uuid in self.default_policies[object_type]:
-                return callback.error("Policy already added for "
-                                        "this object type.")
+                msg = _("Policy already added for this object type.")
+                return callback.error(msg)
+
+        # A new object gets it without a check of rights, so whoever adds
+        # it here needs what assigning it needs (as check_permissions()
+        # asks when this policy is assigned). The base policies of a new
+        # site come with verify_acls=False.
+        if kwargs.get('verify_acls', True):
+            if not policy.check_permissions(callback=callback):
+                msg = _("Permission denied: {policy}")
+                msg = msg.format(policy=policy.name)
+                return callback.error(msg)
 
         msg = _("Add default policy '{default_policy}' for {object_type} to policy '{policy_name}'?: ")
         msg = msg.format(default_policy=policy_name,
@@ -346,11 +369,6 @@ class DefaultpoliciesPolicy(Policy):
             except Exception:
                 return callback.error()
 
-        if object_type not in policy.object_types:
-            msg = _("Policy not valid for object type: {}: {}")
-            msg = msg.format(object_type, policy)
-            return callback.error(msg)
-
         if object_type not in self.default_policies:
             self.default_policies[object_type] = []
 
@@ -367,7 +385,7 @@ class DefaultpoliciesPolicy(Policy):
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):
         """ Remove default policy. """
-        if object_type not in self.object_types:
+        if object_type not in config.tree_object_types:
             msg = _("Invalid object type for this policy: {object_type}")
             msg = msg.format(object_type=object_type)
             return callback.error(msg)
@@ -385,9 +403,8 @@ class DefaultpoliciesPolicy(Policy):
 
         policy = result[0]
 
-        if object_type in self.default_policies:
-            if policy.uuid not in self.default_policies[object_type]:
-                return callback.error(_("Policy not added for this object type."))
+        if policy.uuid not in self.default_policies.get(object_type, []):
+            return callback.error(_("Policy not added for this object type."))
 
         msg = _("Remove default policy '{default_policy}' for {object_type} from policy '{policy_name}'?: ")
         msg = msg.format(default_policy=policy_name,
@@ -419,7 +436,7 @@ class DefaultpoliciesPolicy(Policy):
     def show_config(self, callback=default_callback, **kwargs):
         """ Show policy config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

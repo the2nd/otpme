@@ -22,7 +22,7 @@ cmd_help = {
 
     'add'    : {
                     '_cmd_usage_help' : _('Usage: otpme-deploy add [--host <host1,host2>] [--unit <unit>] [--recursive] [--role <role1,role2>] [--group <group1,group2>] [--arg <name=value>] [--file <path>] [--key <path>] [--expiry <time>] [--on-demand] [--return-uuid] {job_type} {action}'),
-                    'cmd'   :   '--host :hosts: --unit :units: --recursive :recursive=True: --role :roles: --group :groups: --arg :+job_args+: --file :file:job_file: --key :file:job_key: --expiry :job_ttl: --on-demand :on_demand=True: --return-uuid :return_uuid=True: <job_type> <action>',
+                    'cmd'   :   '--host :"hosts": --unit :"units": --recursive :recursive=True: --role :"roles": --group :"groups": --arg :+job_args+: --file :file:job_file: --key :file:job_key: --expiry :job_ttl: --on-demand :on_demand=True: --return-uuid :return_uuid=True: <"job_type"> <"action">',
                     '_help' :   {
                                     'cmd'                       : _('Add configuration management job.'),
                                     '--host <host1,host2>'      : _('Hosts (or nodes) the job is for.'),
@@ -41,7 +41,7 @@ cmd_help = {
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-deploy list [--host <host>] [--failed] [--pending]'),
-                    'cmd'   :   '--host :host: --failed :failed=True: --pending :pending=True:',
+                    'cmd'   :   '--host :"host": --failed :failed=True: --pending :pending=True:',
                     '_help' :   {
                                     'cmd'                       : _('List configuration management jobs.'),
                                     '--host <host>'             : _('Only jobs of this host.'),
@@ -52,24 +52,26 @@ cmd_help = {
 
     'show'    : {
                     '_cmd_usage_help' : _('Usage: otpme-deploy show {conf_job}'),
-                    'cmd'   :   '<conf_job>',
+                    'cmd'   :   '<"conf_job">',
                     '_help' :   {
                                     'cmd'                       : _('Show job with its hosts: done, failed, waiting.'),
                                 },
                 },
 
     'results'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-deploy results [--host <host>] [conf_job]'),
-                    'cmd'   :   '--host :host: [conf_job]',
+                    '_cmd_usage_help' : _('Usage: otpme-deploy results [--host <host>] [--failed] [--watch] [conf_job]'),
+                    'cmd'   :   '--host :"host": --failed :failed=True: --watch :watch=True: ["conf_job"]',
                     '_help' :   {
                                     'cmd'                       : _('Show what the hosts made of a job.'),
                                     '--host <host>'             : _('Results of this host.'),
+                                    '--failed'                  : _('Only the runs that failed.'),
+                                    '--watch'                   : _('Show the results as the hosts send them, until every host has reported.'),
                                 },
                 },
 
     'ack'    : {
                     '_cmd_usage_help' : _('Usage: otpme-deploy ack {conf_job}'),
-                    'cmd'   :   '<conf_job>',
+                    'cmd'   :   '<"conf_job">',
                     '_help' :   {
                                     'cmd'                       : _('Acknowledge a job that failed, so it can be cleaned up.'),
                                 },
@@ -77,7 +79,7 @@ cmd_help = {
 
     'cancel'    : {
                     '_cmd_usage_help' : _('Usage: otpme-deploy cancel {conf_job}'),
-                    'cmd'   :   '<conf_job>',
+                    'cmd'   :   '<"conf_job">',
                     '_help' :   {
                                     'cmd'                       : _('Take back a job. Hosts that have not run it never will.'),
                                 },

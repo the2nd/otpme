@@ -27,7 +27,7 @@ cmd_help = {
 
     'add_user_acl'      : {
                     '_cmd_usage_help' : _('Usage: otpme-policy add_user_acl {policy} {acl}'),
-                    'cmd'   :   '<|object|> <acl>',
+                    'cmd'   :   '<|object|> <"acl">',
                     '_help' :   {
                                     'cmd'                   : _('Add user ACL.'),
                                 },
@@ -35,7 +35,7 @@ cmd_help = {
 
     'del_user_acl'   : {
                     '_cmd_usage_help' : _('Usage: otpme-policy del_user_acl {policy} {acl}'),
-                    'cmd'   :   '<|object|> <acl>',
+                    'cmd'   :   '<|object|> <"acl">',
                     '_help' :   {
                                     'cmd'                   : _('Delete user ACL.'),
                                 },
@@ -43,7 +43,7 @@ cmd_help = {
 
     'add_token_acl'      : {
                     '_cmd_usage_help' : _('Usage: otpme-policy add_token_acl {policy} {acl}'),
-                    'cmd'   :   '<|object|> <acl>',
+                    'cmd'   :   '<|object|> <"acl">',
                     '_help' :   {
                                     'cmd'                   : _('Add token ACL.'),
                                 },
@@ -51,7 +51,7 @@ cmd_help = {
 
     'del_token_acl'   : {
                     '_cmd_usage_help' : _('Usage: otpme-policy del_token_acl {policy} {acl}'),
-                    'cmd'   :   '<|object|> <acl>',
+                    'cmd'   :   '<|object|> <"acl">',
                     '_help' :   {
                                     'cmd'                   : _('Delete token ACL.'),
                                 },
@@ -59,7 +59,7 @@ cmd_help = {
 
     'add_creator_acl'      : {
                     '_cmd_usage_help' : _('Usage: otpme-policy add_creator_acl {policy} {acl}'),
-                    'cmd'   :   '<|object|> <acl>',
+                    'cmd'   :   '<|object|> <"acl">',
                     '_help' :   {
                                     'cmd'                   : _('Add token creator ACL.'),
                                 },
@@ -67,7 +67,7 @@ cmd_help = {
 
     'del_creator_acl'   : {
                     '_cmd_usage_help' : _('Usage: otpme-policy del_creator_acl {policy} {acl}'),
-                    'cmd'   :   '<|object|> <acl>',
+                    'cmd'   :   '<|object|> <"acl">',
                     '_help' :   {
                                     'cmd'                   : _('Delete token creator ACL.'),
                                 },

@@ -13,6 +13,7 @@ except Exception:
 
 from otpme.lib import oid
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
@@ -286,10 +287,21 @@ class DefaultunitsPolicy(Policy):
             msg = msg.format(object_type)
             raise NoUnitFound(msg) from err
         unit_oid = backend.get_oid(unit_uuid)
+        # A deleted unit counts as none: the object goes to the usual
+        # unit of its type (remove_orphans drops the entry).
+        if not unit_oid:
+            log_msg = _("Default unit of policy '{policy_name}' for {object_type} does not exist anymore: {unit_uuid}", log=True)[1]
+            log_msg = log_msg.format(policy_name=self.name,
+                                    object_type=object_type,
+                                    unit_uuid=unit_uuid)
+            logger.warning(log_msg)
+            msg = _("Default unit does not exist anymore: {unit_uuid}")
+            msg = msg.format(unit_uuid=unit_uuid)
+            raise NoUnitFound(msg)
         unit_oid = oid.get(unit_oid)
         return unit_oid.rel_path
 
-    @check_acls(['add:default_unit'])
+    @check_acls(['add:default_unit', 'edit:default_unit', 'remove:default_unit'])
     @object_lock()
     @backend.transaction
     @audit_log()
@@ -297,6 +309,32 @@ class DefaultunitsPolicy(Policy):
     def set_default_unit(self, object_type, unit_path=None, force=False,
         run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Set default unit. """
+        # The types that go to a unit of their own; a template has its
+        # unit from the site.
+        valid_types = sorted([x for x in config.default_units if x != "template"])
+        if object_type not in valid_types:
+            msg = _("Invalid object type: {object_type}. Valid types: {valid_types}")
+            msg = msg.format(object_type=object_type,
+                            valid_types=", ".join(valid_types))
+            return callback.error(msg)
+
+        if unit_path is None:
+            if object_type not in self.default_units:
+                msg = _("No default unit set for {object_type}.")
+                msg = msg.format(object_type=object_type)
+                return callback.error(msg)
+            acl = "remove:default_unit"
+        elif object_type in self.default_units:
+            acl = "edit:default_unit"
+        else:
+            acl = "add:default_unit"
+        # Any of the three lets the decorator through, this one is the
+        # one that counts.
+        verify_acls = kwargs.get('verify_acls', True)
+        if verify_acls and not self.verify_acl(acl):
+            msg = denied_msg(self, acl)
+            return callback.error(msg, exception=PermissionDenied)
+
         if unit_path is None:
             msg = _("Unset default unit for {object_type} of policy '{policy_name}'?: ")
         else:
@@ -346,6 +384,28 @@ class DefaultunitsPolicy(Policy):
 
         return self._cache(callback=callback)
 
+    @object_lock()
+    @backend.transaction
+    def replace_unit(self, old_uuid, new_uuid, callback=default_callback,
+        **kwargs):
+        """ Name the unit new_uuid wherever old_uuid is named.
+
+        For Unit.move(): a moved unit is a new one with a new UUID, and
+        an entry for the old one fell back to the usual unit of its type.
+        No ACL check and no question: the move is the confirmed action.
+        Returns whether something changed.
+        """
+        changed = False
+        for object_type, unit_uuid in self.default_units.items():
+            if unit_uuid != old_uuid:
+                continue
+            self.default_units[object_type] = new_uuid
+            changed = True
+        if not changed:
+            return False
+        self._cache(callback=callback)
+        return True
+
     @object_lock(full_lock=True)
     def _add(self, callback=default_callback, **kwargs):
         """ Add a policy. """
@@ -354,7 +414,7 @@ class DefaultunitsPolicy(Policy):
     def show_config(self, callback=default_callback, **kwargs):
         """ Show policy config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

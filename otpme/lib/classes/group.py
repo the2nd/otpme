@@ -22,6 +22,7 @@ from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.register import register_module
 from otpme.lib.job.callback import JobCallback
@@ -55,6 +56,7 @@ read_value_acls = {
                                 "tokens",
                                 "hosts",
                                 "sync_users",
+                                "default_group_users",
                                 ],
                     # The other direction: not what this group holds,
                     # but who holds this group.
@@ -121,6 +123,23 @@ commands = {
                     },
                 },
             },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'edit_changelog'   : {
             'default'    : {
                 'exists'    : {
@@ -151,6 +170,15 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'auto_disable'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
                     'job_type'          : 'process',
                     },
                 },
@@ -289,7 +317,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['token_options', 'sign', 'tags'],
+                    'oargs'             : ['sign', 'tags', 'auto_sign'],
                     'job_type'          : 'process',
                     },
                 },
@@ -395,8 +423,8 @@ commands = {
                 'exists'    : {
                     'method'            : 'list_roles',
                     'job_type'          : 'process',
-                    'oargs'             : ['return_type', 'recursive'],
-                    'dargs'             : {'return_type':'name'},
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'return_type':'name', 'skip_disabled':False},
                     },
                 },
             },
@@ -625,14 +653,6 @@ commands = {
                     },
                 },
             },
-    '_show_attributes'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'show_attributes',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     '_show_object_classes'   : {
             'default'    : {
                 'exists'    : {
@@ -825,7 +845,7 @@ def register_backend():
         return backend.rebuild_object_index("group", objects, after)
     # Register object to config.
     config.register_object_type(object_type="group",
-                            version=1,
+                            version=2,
                             tree_object=True,
                             add_after=["dictionary"],
                             sync_before=["token", "user"],
@@ -897,8 +917,10 @@ class Group(OTPmeObject):
 
         self.token_options = {}
         self.token_login_interfaces = {}
-        # Groups should inherit ACLs by default.
-        self.acl_inheritance_enabled = True
+        # ACL inheritance is about a move (see get_move_acl_inheritance()),
+        # and a group that is moved keeps its ACLs unless it is switched
+        # on for it.
+        self.acl_inheritance_enabled = False
 
         self._sync_fields = {
                     'host'  : {
@@ -932,6 +954,20 @@ class Group(OTPmeObject):
                             ]
                         },
                     }
+
+    def upgrade_to_2(self, object_config):
+        """ Version 2: ACL inheritance is off.
+
+        It says whether a moved group swaps the default ACLs of its old
+        unit for those of the new one (see get_move_acl_inheritance()),
+        and on is a decision now. It was on for every group, as the
+        default and not because anybody said so.
+        """
+        self.set_config_acl_inheritance_off(object_config)
+
+    def downgrade_to_1(self, object_config):
+        """ Off is a value version 1 knows, and means the same there. """
+        pass
 
     def _get_object_config(self):
         """ Get object config dict """
@@ -1036,6 +1072,8 @@ class Group(OTPmeObject):
         self.del_index('user', user_uuid)
         return self._cache(callback=callback)
 
+    # It had no ACL at all: every user could list them for every group.
+    @check_acls(['view:default_group_users'])
     @object_lock()
     def list_default_group_users(
         self,
@@ -1087,10 +1125,10 @@ class Group(OTPmeObject):
     def add_host(
         self,
         *args,
-        host_name: str=None,
-        host_uuid: str=None,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        host_name: Union[str,None]=None,
+        host_uuid: Union[str,None]=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -1122,10 +1160,10 @@ class Group(OTPmeObject):
     def remove_host(
         self,
         *args,
-        host_name: str=None,
-        host_uuid: str=None,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        host_name: Union[str,None]=None,
+        host_uuid: Union[str,None]=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -1157,8 +1195,8 @@ class Group(OTPmeObject):
     def enable(
         self,
         *args,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -1191,8 +1229,8 @@ class Group(OTPmeObject):
     def disable(
         self,
         *args,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -1230,9 +1268,21 @@ class Group(OTPmeObject):
         **kwargs,
         ):
         """ Rename group. """
-        base_groups = config.get_base_objects("group")
-        if self.name in base_groups:
-            return callback.error(_("Cannot rename base group."))
+        if self.is_special_object():
+            msg = _("Cannot rename special group: {group_name}")
+            msg = msg.format(group_name=self.name)
+            return callback.error(msg)
+
+        # A group name is unique in the realm, as add() makes sure.
+        # _rename() only looks into the unit of the group.
+        result = backend.search(object_type="group",
+                                attribute="name",
+                                value=new_name,
+                                return_type="oid")
+        if result:
+            msg = _("Group already exists: {group_oid}")
+            msg = msg.format(group_oid=result[0])
+            return callback.error(msg)
 
         msg = _("Rename group '{group_name}' to '{new_name}'?: ")
         msg = msg.format(group_name=self.name, new_name=new_name)
@@ -1253,7 +1303,7 @@ class Group(OTPmeObject):
     def add(
         self,
         ldif_attributes: Union[str,None]=None,
-        default_attributes: dict=None,
+        default_attributes: Union[dict,None]=None,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -1277,29 +1327,37 @@ class Group(OTPmeObject):
         if result is False:
             return callback.error()
 
-        # Handle given LDIF attributes.
+        # Handle given LDIF attributes. One that no default extension
+        # has is refused: it used to be dropped without a word.
         if ldif_attributes:
-            try:
-                default_extensions = config.default_extensions[self.type]
-            except Exception:
-                default_extensions = []
-            for ext in default_extensions:
-                ext_attrs = config.get_ldif_attributes(ext, self.type)
-                for x in ldif_attributes:
+            default_extensions = config.get_default_extensions(self.type)
+            for x in ldif_attributes:
+                # The value may hold a "=" itself.
+                try:
+                    attr, value = x.split("=", 1)
+                except ValueError:
+                    msg = _("Invalid attribute: {attribute}")
+                    msg = msg.format(attribute=x)
+                    return callback.error(msg)
+                attr_ext = None
+                for ext in default_extensions:
+                    if attr in config.get_ldif_attributes(ext, self.type):
+                        attr_ext = ext
+                        break
+                if attr_ext is None:
+                    msg = _("Unknown attribute: {attribute}")
+                    msg = msg.format(attribute=attr)
+                    return callback.error(msg)
+                if attr == "gidNumber":
                     try:
-                        attr = x.split("=")[0]
-                        value = x.split("=")[1]
-                    except Exception:
-                        msg = _("Invalid attribute: {attribute}")
-                        msg = msg.format(attribute=x)
-                        return callback.error(msg)
-                    if attr not in ext_attrs:
-                        continue
-                    if ext not in default_attributes:
-                        default_attributes[ext] = {}
-                    if attr == "gidNumber":
                         value = int(value)
-                    default_attributes[ext][attr] = value
+                    except ValueError:
+                        msg = _("gidNumber must be a number: {value}")
+                        msg = msg.format(value=value)
+                        return callback.error(msg)
+                if attr_ext not in default_attributes:
+                    default_attributes[attr_ext] = {}
+                default_attributes[attr_ext][attr] = value
 
         # Add object using parent class.
         add_result = OTPmeObject.add(self, default_attributes=default_attributes,
@@ -1307,6 +1365,10 @@ class Group(OTPmeObject):
 
         return add_result
 
+    # The move ACL is checked here: a move to another site does not get to
+    # OTPmeObject.move(), which checks it too, and the other site checks
+    # only add:group on its unit.
+    @check_acls(acls=['move'])
     def move(self,
         *args,
         _caller: str="API",
@@ -1314,40 +1376,49 @@ class Group(OTPmeObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Move user to other unit. """
-        internal_groups = config.get_internal_objects("group")
-        if self.name in internal_groups:
-            msg = _("Moving internal group is not allowed.")
+        """ Move group to other unit. """
+        if self.is_special_object():
+            msg = _("Cannot move special group: {group_name}")
+            msg = msg.format(group_name=self.name)
             return callback.error(msg)
 
+        new_unit = kwargs['new_unit']
+        cross_site = False
+        if new_unit.startswith("/"):
+            path_data = oid.resolve_path(new_unit, object_type="group")
+            cross_site = path_data['site'] != self.site
+
         if run_policies:
+            # Within the site _move() runs "modify" itself.
+            hooks = ["move"]
+            if cross_site:
+                hooks = ["modify", "move"]
             try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("move",
-                                callback=callback,
-                                _caller=_caller)
+                for hook in hooks:
+                    self.run_policies(hook,
+                                    callback=callback,
+                                    _caller=_caller)
             except Exception as e:
                 msg = _("Error running policies: {error}")
                 msg = msg.format(error=e)
                 return callback.error(msg)
 
-        new_unit = kwargs['new_unit']
-        if new_unit.startswith("/"):
-            path_data = oid.resolve_path(new_unit, object_type="group")
-            new_site = path_data['site']
-            if new_site != self.site:
-                return self.cross_site_move(*args, path=new_unit,
-                                            callback=callback,
-                                            **kwargs)
+        if cross_site:
+            return self.cross_site_move(*args, path=new_unit,
+                                        callback=callback,
+                                        **kwargs)
 
-        move_result = super().move(*args, callback=callback, **kwargs)
+        move_result = super().move(*args,
+                                run_policies=run_policies,
+                                _caller=_caller,
+                                callback=callback,
+                                **kwargs)
         return move_result
 
     def cross_site_move(
         self,
         path: str,
+        force: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -1356,6 +1427,13 @@ class Group(OTPmeObject):
             msg = _("Cannot do cross-site move in API mode.")
             return callback.error(msg)
 
+        msg = _("Move {object_type} '{object_name}' to unit '{new_unit}'?: ")
+        msg = msg.format(object_type=self.type,
+                        object_name=self.name,
+                        new_unit=path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         path_data = oid.resolve_path(object_path=path,
                                     object_type="unit")
         dst_realm = path_data['realm']
@@ -1363,6 +1441,7 @@ class Group(OTPmeObject):
 
         object_ids = [(self.oid.full_oid, self.uuid)]
         group_policies = self.get_policies(ignore_hooks=True,
+                                        include_disabled=True,
                                         return_type="name")
         for policy_name in group_policies:
             self.remove_policy(policy_name=policy_name,
@@ -1437,7 +1516,7 @@ class Group(OTPmeObject):
         response_data = response['response']
 
         if not status:
-            msg = _("Object move failed: {response}")
+            msg = _("Object move failed: {response_data}")
             msg = msg.format(response_data=response_data)
             return callback.error(msg)
 
@@ -1508,8 +1587,8 @@ class Group(OTPmeObject):
             if not self.verify_acl("delete:object"):
                 del_acl = f"delete:{self.type}"
                 if not parent_object.verify_acl(del_acl):
-                    msg = _("Permission denied: {group_name}")
-                    msg = msg.format(group_name=self.name)
+                    msg = denied_msg(self, "delete:object",
+                                    others=[(parent_object, del_acl)])
                     return callback.error(msg, exception=PermissionDenied)
 
         if self.is_special_object(return_true_false=True):
@@ -1517,18 +1596,37 @@ class Group(OTPmeObject):
             msg = msg.format(group_name=self.name)
             return callback.error(msg)
 
+        # A group that is still in use is not deleted without -f, and the
+        # refusal names what uses it. -f does not ask, so naming them in
+        # the question came too late.
         if not force:
+            in_use = []
             if self.default_group_users:
-                msg = _("The group has default group users assigned.")
-                return callback.error(msg)
-
-            if self.tokens:
-                msg = _("The group has tokens assigned.")
-                return callback.error(msg)
-
+                user_list = backend.search(object_type="user",
+                                        attribute="uuid",
+                                        values=self.default_group_users,
+                                        return_type="name")
+                msg = _("Group '{group_name}' is the default group of: {user_list}")
+                in_use.append(msg.format(group_name=self.name,
+                                        user_list=', '.join(sorted(user_list))))
             if self.roles:
-                msg = _("The group has roles assigned.")
-                return callback.error(msg)
+                role_list = backend.search(object_type="role",
+                                        attribute="uuid",
+                                        values=self.roles,
+                                        return_type="name")
+                msg = _("Group '{group_name}' has member roles: {role_list}")
+                in_use.append(msg.format(group_name=self.name,
+                                        role_list=', '.join(sorted(role_list))))
+            if self.tokens:
+                token_list = backend.search(object_type="token",
+                                        attribute="uuid",
+                                        values=self.tokens,
+                                        return_type="rel_path")
+                msg = _("Group '{group_name}' has member tokens: {token_list}")
+                in_use.append(msg.format(group_name=self.name,
+                                        token_list=', '.join(sorted(token_list))))
+            if in_use:
+                return callback.error("\n".join(in_use))
 
         if run_policies:
             try:
@@ -1536,31 +1634,7 @@ class Group(OTPmeObject):
             except Exception as e:
                 return callback.error()
 
-        exception_parts = []
-        # List that will hold all roles of this group.
-        role_list = []
-        # Get all roles from this group.
-        for r_uuid in self.roles:
-            role = backend.get_object(object_type="role", uuid=r_uuid)
-            role_list.append(role.name)
-
-        if role_list:
-            msg = _("Group '{group_name}' has member roles: {role_list}")
-            exception_parts.append(msg.format(group_name=self.name, role_list=', '.join(role_list)))
-
-        # List that will hold all tokens that of this group.
-        token_list = []
-        # Get all tokens from this group.
-        for t_uuid in self.tokens:
-            token = backend.get_object(object_type="token", uuid=t_uuid)
-            token_list.append(token.rel_path)
-
-        if token_list:
-            msg = _("Group '{group_name}' has member tokens: {token_list}")
-            exception_parts.append(msg.format(group_name=self.name, token_list=', '.join(token_list)))
-
-        exception = chr(10).join(exception_parts) if exception_parts else None
-        if not self.ask_delete_confirmation(force=force, exception=exception, callback=callback):
+        if not self.ask_delete_confirmation(force=force, callback=callback):
             return callback.abort()
 
         # Delete object using parent class.
@@ -1600,7 +1674,7 @@ class Group(OTPmeObject):
         ):
         """ Show group config. """
         if not self.verify_acl("view_public:object"):
-            msg = (_("Permission denied."))
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

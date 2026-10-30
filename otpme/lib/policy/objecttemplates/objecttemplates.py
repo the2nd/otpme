@@ -12,6 +12,7 @@ except Exception:
     pass
 
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
@@ -163,6 +164,14 @@ def register_policy_object():
                                         }
                     }
         post_methods.append((method_kwargs,))
+    method_kwargs = {
+                'disable' : {
+                            'force'         : True,
+                            'verify_acls'   : False,
+                            'run_policies'  : False,
+                            }
+                }
+    post_methods.append((method_kwargs,))
     config.register_base_object(object_type="policy",
                                 post_methods=post_methods,
                                 name=BASE_POLICY_NAME,
@@ -196,8 +205,9 @@ class ObjecttemplatesPolicy(Policy):
                     'host'   : ['pre_add_host'],
                     }
 
-        # No realm, see Realm.add_policy().
-        self.object_types = ['site', 'unit']
+        # Units only: the hooks run on the parent of a new user or host,
+        # which is always a unit. No realm, see Realm.add_policy().
+        self.object_types = ['unit']
 
         #self.object_templates = {}
 
@@ -285,6 +295,21 @@ class ObjecttemplatesPolicy(Policy):
         object_template = result[0]
         return object_template
 
+    def check_permissions(self, callback=default_callback):
+        # A new object is made from the template without a check of
+        # rights, User.add() takes over its group as well. So who
+        # assigns the policy needs "use" on its templates.
+        for object_type in self.object_templates:
+            try:
+                template = self.get_object_template(object_type)
+            except UnknownTemplate:
+                continue
+            if template.verify_acl("use"):
+                continue
+            msg = denied_msg(template, "use")
+            return callback.error(msg)
+        return True
+
     def handle_hook(self, hook_name=None, callback=default_callback, **kwargs):
         """ Handle policy hooks. """
         if hook_name == "pre_add_user":
@@ -320,8 +345,9 @@ class ObjecttemplatesPolicy(Policy):
             return callback.ok(msg)
         # Set object template.
         child_object.template_name = object_template.name
-        msg = _("Using {} template: {}")
-        msg = msg.format(child_object.type, child_object.template_name)
+        msg = _("Using {object_type} template: {template}")
+        msg = msg.format(object_type=child_object.type,
+                    template=child_object.template_name)
         callback.send(msg)
         return callback.ok()
 
@@ -336,6 +362,9 @@ class ObjecttemplatesPolicy(Policy):
             return callback.ok()
         except UnknownTemplate as e:
             return callback.error(str(e))
+        if child_object.is_template():
+            msg = _("Not using template for template host.")
+            return callback.ok(msg)
         # Set object template.
         child_object.template_name = object_template.name
         msg = _("Using {} template: {}")
@@ -350,8 +379,57 @@ class ObjecttemplatesPolicy(Policy):
     @object_changelog("set {object_type} template {object_name}")
     def set_template(self, object_type, object_name=None, force=False,
         run_policies=True, callback=default_callback, _caller="API", **kwargs):
-        """ Set object template. """
-        if object_name is None:
+        """ Set object template. None or "" removes it. """
+        # Everything is checked before asking: the question and the
+        # policies (auth on action) are for a change that can be made.
+        if not config.get_object_template(object_type):
+            msg = _("Object type does not support templating: {}")
+            msg = msg.format(object_type)
+            return callback.error(msg)
+
+        try:
+            current_template_uuid = self.object_templates[object_type]
+        except KeyError:
+            current_template_uuid = None
+
+        template_uuid = None
+        if object_name:
+            # Only a template: the hooks look for one, and would else
+            # refuse every new object of the type.
+            search_attrs = {
+                            'name'      : {
+                                        'value'     : object_name,
+                                        },
+                            'template'  : {
+                                        'value'     : True,
+                                        },
+                            }
+            result = backend.search(object_type=object_type,
+                                    attributes=search_attrs,
+                                    return_type="uuid",
+                                    realm=self.realm,
+                                    site=self.site)
+            if not result:
+                msg = _("Unknown {object_type} template: {object_name}")
+                msg = msg.format(object_type=object_type,
+                                object_name=object_name)
+                return callback.error(msg)
+            template_uuid = result[0]
+            if template_uuid == current_template_uuid:
+                msg = _("Template already set.")
+                return callback.error(msg)
+            # What check_permissions() asks when the policy is assigned.
+            if kwargs.get('verify_acls', True):
+                template = backend.get_object(uuid=template_uuid)
+                if not template.verify_acl("use"):
+                    msg = denied_msg(template, "use")
+                    return callback.error(msg, exception=PermissionDenied)
+        elif current_template_uuid is None:
+            msg = _("No {object_type} template set.")
+            msg = msg.format(object_type=object_type)
+            return callback.error(msg)
+
+        if template_uuid is None:
             msg = _("Remove {object_type} template of policy '{policy_name}'?: ")
         else:
             msg = _("Set {object_type} template of policy '{policy_name}' to '{object_name}'?: ")
@@ -371,43 +449,11 @@ class ObjecttemplatesPolicy(Policy):
                                 _caller=_caller)
             except Exception:
                 return callback.error()
-        # Check if the given object type does support templating.
-        if not config.get_object_template(object_type):
-            msg = _("Object type does not support templating: {}")
-            msg = msg.format(object_type)
-            return callback.error(msg)
-        # Remove object template.
-        if object_name is None:
-            try:
-                self.object_templates.pop(object_type)
-            except KeyError:
-                pass
-            return self._cache(callback=callback)
 
-        # Get template by name.
-        result = backend.search(object_type=object_type,
-                                attribute="name",
-                                value=object_name,
-                                return_type="uuid",
-                                realm=config.realm,
-                                site=config.site)
-        if not result:
-            msg = _("Unknown {object_type} template: {object_name}")
-            msg = msg.format(object_type=object_type,
-                            object_name=object_name)
-            return callback.error(msg)
-
-        template_uuid = result[0]
-        try:
-            current_template_uuid = self.object_templates[object_type]
-        except Exception:
-            current_template_uuid = None
-
-        if template_uuid == current_template_uuid:
-            msg = _("Template already set.")
-            return callback.error(msg)
-
-        self.object_templates[object_type] = template_uuid
+        if template_uuid is None:
+            self.object_templates.pop(object_type)
+        else:
+            self.object_templates[object_type] = template_uuid
         return self._cache(callback=callback)
 
     @object_lock(full_lock=True)
@@ -418,7 +464,7 @@ class ObjecttemplatesPolicy(Policy):
     def show_config(self, callback=default_callback, **kwargs):
         """ Show policy config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []
@@ -427,7 +473,13 @@ class ObjecttemplatesPolicy(Policy):
             if self.object_templates:
                 object_templates = {}
                 for object_type in self.object_templates:
-                    object_template = self.get_object_template(object_type)
+                    # A deleted template stays until remove_orphans.
+                    try:
+                        object_template = self.get_object_template(object_type)
+                    except UnknownTemplate:
+                        template_uuid = self.object_templates[object_type]
+                        object_templates[object_type] = f"{template_uuid} (unknown)"
+                        continue
                     object_templates[object_type] = object_template.oid.full_oid
                 object_templates = pprint.pformat(object_templates)
 

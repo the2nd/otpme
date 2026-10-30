@@ -294,11 +294,11 @@ keys were skipped.
 
 # FILES
 
-*/var/cache/otpme/ssh/authorized_keys/*user/authorized_keys**  
+*/var/cache/otpme/ssh/authorized_keys/\<user\>/authorized_keys*  
 The keys the host allows, on the host. Written by **hostd** from the SSH
 tokens of the realm.
 
-*/var/log/otpme/confd/*job_uuid.log**  
+*/var/log/otpme/confd/\<job_uuid\>.log*  
 The log of one session, on the host. Never what was said in the session.
 
 # NOTES

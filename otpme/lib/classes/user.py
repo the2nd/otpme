@@ -37,6 +37,7 @@ from otpme.lib.changelog import object_changelog
 from otpme.lib import multiprocessing
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 from otpme.lib.encryption.rsa import RSAKey
@@ -90,35 +91,35 @@ write_acls = [
             "import_encrypt_key",
             "unblock",
             "set_temp_password",
+            # On a template: add a user with --template from it, and
+            # set it in an objecttemplates policy.
+            "use",
         ]
 
 read_value_acls = {
-            "view_all"      : [
+            "view"      : [
+                        # Which script a user has is no secret: "view"
+                        # shows them, as a plain "view" does.
                         "key_script",
                         "auth_script",
                         "agent_script",
                         "login_script",
-                        "used_pass_salt",
-                        ],
-            "view"      : [
                         # "tokens" and not "token": list_tokens() asks
                         # for "view:tokens", nothing asks for the
                         # singular, and a view ACL that shows a list
                         # is named in the plural.
                         "tokens",
                         "group",
-                        "failcount",
                         "session",
                         "auto_mount",
-                        "auto_disable",
                         "key_cache_time",
                         "key_caching",
                         ],
+            # A public key is for everybody, get_sign_key() and
+            # get_encrypt_key() ask only for the private one.
             "dump"      : [
                         "photo",
-                        "sign_public_key",
                         "sign_private_key",
-                        "encrypt_public_key",
                         "encrypt_private_key",
                         ],
             # The other direction: not what this user holds, but who
@@ -140,9 +141,6 @@ write_value_acls = {
                                 "photo",
                                 "session",
                                 ],
-                    "rename"    : [
-                                "token",
-                                ],
                     "deploy"    : [
                                 "token",
                                 ],
@@ -162,15 +160,15 @@ write_value_acls = {
                                 "auth_script",
                                 "agent_script",
                                 "login_script",
-                                "auto_disable",
                                 "language",
                                 ],
+                    # A token is enabled, disabled and renamed by the
+                    # ACLs on the token, not on its user.
                     "enable"    : [
                                 "disabled_login",
                                 "autosign",
                                 "auth_script",
                                 "login_script",
-                                "token",
                                 "auto_mount",
                                 "admin_access",
                                 "key_caching",
@@ -180,7 +178,6 @@ write_value_acls = {
                                 "autosign",
                                 "auth_script",
                                 "login_script",
-                                "token",
                                 "auto_mount",
                                 "admin_access",
                                 "key_caching",
@@ -197,7 +194,7 @@ commands = {
                 'missing'    : {
                     'method'            : 'add',
                     'args'              : [],
-                    'oargs'             : ['add_default_token', 'default_token', 'default_token_type', 'default_role', 'default_roles', 'groups', 'unit', 'group', 'template_object', 'template_name', 'gen_qrcode', 'no_token_infos', 'password', 'weak_password', 'ldif_attributes'],
+                    'oargs'             : ['add_default_token', 'default_token', 'default_token_type', 'default_role', 'default_roles', 'groups', 'unit', 'group', 'template_object', 'template_name', 'no_template', 'gen_qrcode', 'no_token_infos', 'password', 'weak_password', 'ldif_attributes'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
@@ -221,6 +218,23 @@ commands = {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -268,6 +282,7 @@ commands = {
                                         'attribute',
                                         'search_regex',
                                         'sort_by',
+                                        'show_templates',
                                         ],
                     'job_type'          : None,
                     },
@@ -279,6 +294,7 @@ commands = {
                                         'attribute',
                                         'search_regex',
                                         'sort_by',
+                                        'show_templates',
                                         ],
                     'job_type'          : None,
                     },
@@ -1057,14 +1073,6 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_attributes',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_attributes'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'show_attributes',
                     'job_type'          : 'thread',
                     },
                 },
@@ -2312,23 +2320,26 @@ class User(OTPmeObject):
 
     def _change_group(
         self,
-        group_uuid: str,
+        group_uuid: Union[str,None],
         verify_acls: bool=True,
         new_user: bool=False,
         callback: JobCallback=default_callback,
         ):
-        """ Change users group. """
+        """ Change users group. None takes it away (templates only, see
+        change_group()). """
         current_group_uuid = None
         # Get new group.
-        result = backend.search(object_type="group",
-                                attribute="uuid",
-                                value=group_uuid,
-                                return_type="instance")
-        if not result:
-            msg = _("Unknown group: {group_uuid}")
-            msg = msg.format(group_uuid=group_uuid)
-            raise UnknownObject(msg)
-        new_group = result[0]
+        new_group = None
+        if group_uuid is not None:
+            result = backend.search(object_type="group",
+                                    attribute="uuid",
+                                    value=group_uuid,
+                                    return_type="instance")
+            if not result:
+                msg = _("Unknown group: {group_uuid}")
+                msg = msg.format(group_uuid=group_uuid)
+                raise UnknownObject(msg)
+            new_group = result[0]
         # Check current group.
         if self._group_uuid:
             current_group_uuid = self._group_uuid
@@ -2359,7 +2370,14 @@ class User(OTPmeObject):
         cross_site_add = None
         cross_site_remove = None
         cross_site_change = None
-        if new_group.site == config.site:
+        if new_group is None:
+            # Only out of the old one.
+            if old_group:
+                if old_group.site == config.site:
+                    local_remove = True
+                else:
+                    cross_site_remove = True
+        elif new_group.site == config.site:
             local_add = True
             if old_group:
                 if old_group.site == config.site:
@@ -2445,8 +2463,12 @@ class User(OTPmeObject):
                 raise OTPmeException(msg)
 
         # Set new group UUID and update index and extensions.
-        self._group_uuid = new_group.uuid
-        self.update_index('group', self._group_uuid)
+        if new_group is None:
+            self._group_uuid = None
+            self.del_index('group')
+        else:
+            self._group_uuid = new_group.uuid
+            self.update_index('group', self._group_uuid)
         self.update_extensions("change_group", callback=callback)
 
         return self._cache(callback=callback)
@@ -2454,8 +2476,8 @@ class User(OTPmeObject):
     def cross_site_user_default_group_change(self,
         action: str,
         user: OTPmeObject,
-        old_group: OTPmeObject=None,
-        new_group: OTPmeObject=None,
+        old_group: Union[OTPmeObject,None]=None,
+        new_group: Union[OTPmeObject,None]=None,
         callback: JobCallback=default_callback,
         ):
         # Load JWT signing key.
@@ -2579,6 +2601,7 @@ class User(OTPmeObject):
     def cross_site_move(
         self,
         path: str,
+        force: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -2587,6 +2610,13 @@ class User(OTPmeObject):
             msg = "Cannot do cross-site move in API mode."
             return callback.error(msg)
 
+        msg = _("Move {object_type} '{object_name}' to unit '{new_unit}'?: ")
+        msg = msg.format(object_type=self.type,
+                        object_name=self.name,
+                        new_unit=path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         path_data = oid.resolve_path(object_path=path,
                                     object_type="unit")
         dst_realm = path_data['realm']
@@ -2594,6 +2624,7 @@ class User(OTPmeObject):
 
         object_ids = [(self.oid.full_oid, self.uuid)]
         user_policies = self.get_policies(ignore_hooks=True,
+                                        include_disabled=True,
                                         return_type="name")
         for policy_name in user_policies:
             self.remove_policy(policy_name=policy_name,
@@ -2613,6 +2644,7 @@ class User(OTPmeObject):
         for token in token_list:
             objects[token.oid.full_oid] = {}
             token_policies = token.get_policies(ignore_hooks=True,
+                                                include_disabled=True,
                                                 return_type="name")
             for policy_name in token_policies:
                 token.remove_policy(policy_name=policy_name,
@@ -2732,6 +2764,10 @@ class User(OTPmeObject):
 
         return callback.ok()
 
+    # The move ACL is checked here: a move to another site does not get to
+    # OTPmeObject.move(), which checks it too, and the other site checks
+    # only add:user on its unit.
+    @check_acls(acls=['move'])
     @audit_log()
     @object_changelog("move to {kwargs[new_unit]}")
     def move(self,
@@ -2750,31 +2786,40 @@ class User(OTPmeObject):
             msg = "Moving internal user is not allowed."
             return callback.error(msg)
 
+        new_unit = kwargs['new_unit']
+        cross_site = False
+        if new_unit.startswith("/"):
+            path_data = oid.resolve_path(new_unit, object_type="user")
+            cross_site = path_data['site'] != self.site
+        if cross_site:
+            if config.auth_user.uuid == self.uuid:
+                msg = "Cannot move own user while logged in."
+                return callback.error(msg)
+
         if run_policies:
+            # Within the site _move() runs "modify" itself.
+            hooks = ["move"]
+            if cross_site:
+                hooks = ["modify", "move"]
             try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("move",
-                                callback=callback,
-                                _caller=_caller)
+                for hook in hooks:
+                    self.run_policies(hook,
+                                    callback=callback,
+                                    _caller=_caller)
             except Exception as e:
                 msg = _("Error running policies: {e}")
                 msg = msg.format(e=e)
                 return callback.error(msg)
 
-        new_unit = kwargs['new_unit']
-        if new_unit.startswith("/"):
-            path_data = oid.resolve_path(new_unit, object_type="user")
-            new_site = path_data['site']
-            if new_site != self.site:
-                if config.auth_user.uuid == self.uuid:
-                    msg = "Cannot move own user while logged in."
-                    return callback.error(msg)
-                return self.cross_site_move(*args, path=new_unit,
-                                            callback=callback,
-                                            **kwargs)
-        move_result = super().move(*args, callback=callback, **kwargs)
+        if cross_site:
+            return self.cross_site_move(*args, path=new_unit,
+                                        callback=callback,
+                                        **kwargs)
+        move_result = super().move(*args,
+                                run_policies=run_policies,
+                                _caller=_caller,
+                                callback=callback,
+                                **kwargs)
         token_list = self.get_tokens(return_type="instance")
         for token in token_list:
             token._write(callback=callback)
@@ -3243,29 +3288,40 @@ class User(OTPmeObject):
         self,
         new_group: str,
         force: bool=False,
+        verify_acls: bool=True,
         verbose_level: int=0,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
-        """ Change object group. """
-        if new_group == "":
-            msg = _("Missing group.")
-            return callback.error(msg)
+        """ Change object group. "" takes a template's group away. """
+        if new_group in (None, ""):
+            # Only a template may be without a group: a user made from
+            # it then gets the group a policy or the site gives.
+            if not self.is_template():
+                msg = _("Missing group.")
+                return callback.error(msg)
+            if not self.group_uuid:
+                msg = _("Template '{template_name}' has no group.")
+                msg = msg.format(template_name=self.name)
+                return callback.error(msg)
+            group_uuid = None
+            msg = _("Remove the group of template '{template_name}'?: ")
+            msg = msg.format(template_name=self.name)
+        else:
+            result = backend.search(object_type="group",
+                                    attribute="name",
+                                    value=new_group,
+                                    return_type="uuid")
+            if not result:
+                msg = _("Unknown group: {new_group}")
+                msg = msg.format(new_group=new_group)
+                return callback.error(msg)
+            group_uuid = result[0]
+            msg = _("Change group of user '{user_name}' to '{new_group}'?: ")
+            msg = msg.format(user_name=self.name, new_group=new_group)
 
-        result = backend.search(object_type="group",
-                                attribute="name",
-                                value=new_group,
-                                return_type="uuid")
-        if not result:
-            msg = _("Unknown group: {new_group}")
-            msg = msg.format(new_group=new_group)
-            return callback.error(msg)
-        group_uuid = result[0]
-
-        msg = _("Change group of user '{user_name}' to '{new_group}'?: ")
-        msg = msg.format(user_name=self.name, new_group=new_group)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
 
@@ -3284,7 +3340,7 @@ class User(OTPmeObject):
 
         try:
             change_result = self._change_group(group_uuid,
-                                            verify_acls=True,
+                                            verify_acls=verify_acls,
                                             callback=callback)
         except UnknownObject as e:
             msg = str(e)
@@ -3429,7 +3485,7 @@ class User(OTPmeObject):
         if check_acl:
             acl = "edit:sign_public_key"
             if not self.verify_acl(acl):
-                msg = _("Permission denied.")
+                msg = denied_msg(self, acl)
                 return callback.error(msg)
         return self._change_public_key("sign", public_key, force,
                                         run_policies, callback, _caller)
@@ -3494,7 +3550,7 @@ class User(OTPmeObject):
         if check_acl:
             acl = "edit:encrypt_public_key"
             if not self.verify_acl(acl):
-                msg = _("Permission denied.")
+                msg = denied_msg(self, acl)
                 return callback.error(msg)
         return self._change_public_key("encrypt", public_key, force,
                                         run_policies, callback, _caller)
@@ -3642,12 +3698,10 @@ class User(OTPmeObject):
             check_acl = False
         if private and self.key_mode == "server":
             check_acl = True
+        # Only the private key is checked: check_acl is set for it alone.
         if check_acl:
-            acl = "dump:sign_public_key"
-            if private:
-                acl = "dump:sign_private_key"
-            if not self.verify_acl(acl):
-                msg = _("Permission denied.")
+            if not self.verify_acl("dump:sign_private_key"):
+                msg = denied_msg(self, "dump:sign_private_key")
                 return callback.error(msg)
         return self._get_key_dispatch("sign", private, decrypt, aes_key,
                                         callback, _caller)
@@ -3674,12 +3728,10 @@ class User(OTPmeObject):
             check_acl = False
         if private and self.key_mode == "server":
             check_acl = True
+        # Only the private key is checked: check_acl is set for it alone.
         if check_acl:
-            acl = "dump:encrypt_public_key"
-            if private:
-                acl = "dump:encrypt_private_key"
-            if not self.verify_acl(acl):
-                msg = _("Permission denied.")
+            if not self.verify_acl("dump:encrypt_private_key"):
+                msg = denied_msg(self, "dump:encrypt_private_key")
                 return callback.error(msg)
         return self._get_key_dispatch("encrypt", private, decrypt, aes_key,
                                         callback, _caller)
@@ -4020,7 +4072,7 @@ class User(OTPmeObject):
                 check_acl = False
         if check_acl:
             if not self.verify_acl("edit:sign_private_key"):
-                msg = _("Permission denied.")
+                msg = denied_msg(self, "edit:sign_private_key")
                 return callback.error(msg)
         return self._import_key("sign", private_key, encrypt_key, aes_key,
                                 aes_key_enc, force,
@@ -4054,7 +4106,7 @@ class User(OTPmeObject):
                 check_acl = False
         if check_acl:
             if not self.verify_acl("edit:encrypt_private_key"):
-                msg = _("Permission denied.")
+                msg = denied_msg(self, "edit:encrypt_private_key")
                 return callback.error(msg)
         return self._import_key("encrypt", private_key, encrypt_key, aes_key,
                                 aes_key_enc, force,
@@ -4382,7 +4434,7 @@ class User(OTPmeObject):
         acls: List,
         recursive_acls: bool=False,
         apply_default_acls: bool=False,
-        object_types: List=None,
+        object_types: Union[List,None]=None,
         verify_acls: bool=True,
         force: bool=False,
         verbose_level: int=0,
@@ -4422,13 +4474,12 @@ class User(OTPmeObject):
             if not token:
                 continue
 
-            # Only for the ACLs a token holds by itself. What comes
-            # down from the unit is not that: it was asked for, and it
-            # goes to the token whether or not the token follows its
-            # user on its own (see the force below).
-            if not force and not apply_default_acls:
-                if not token.acl_inheritance_enabled:
-                    continue
+            # ACL inheritance is not asked here. It says whether the
+            # token takes the default ACLs of its new user when it is
+            # moved, and nothing else: -r and -a were asked for and
+            # reach every token. It used to keep a token out of -r
+            # without -a, unless -f was given, which is "do not ask"
+            # and nothing more.
 
             if recursive_acls:
                 # All apply IDs at once, as raw ACLs, see
@@ -4844,9 +4895,17 @@ class User(OTPmeObject):
                         }
         return_attributes = ['uuid', return_type]
         # The ACL above says who may ask about this user, not which
-        # objects the asker may see. Those are of any type, so we ask
-        # the index for the one ACL every type has.
-        verify_acls = ['view']
+        # objects the asker may see. Those are of any type: we ask for
+        # the signatures, which a plain "view" or "all" covers. Not for
+        # "view", which otpme_acl.get_raw_acls() widens to
+        # view:attribute -- and realm_user gives every user that on the
+        # users, groups, units and the site.
+        verify_acls = ['view:signatures']
+        # The types are what an ACL group grants by, see get_raw_acls():
+        # without them a group would grant nothing here. Signatures are
+        # on objects of the tree.
+        if not object_types:
+            object_types = list(config.tree_object_types)
         if config.auth_token and config.auth_token.is_admin():
             verify_acls = None
         if config.use_api and not config.auth_token:
@@ -5206,7 +5265,7 @@ class User(OTPmeObject):
         replace: bool=False,
         deploy_data: Union[str,None]=None,
         pre_deploy: bool=False,
-        pre_deploy_args: dict=None,
+        pre_deploy_args: Union[dict,None]=None,
         force: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
@@ -5269,7 +5328,7 @@ class User(OTPmeObject):
         else:
             if pre_deploy:
                 if not self.verify_acl("deploy:token"):
-                    msg = ("Permission denied.")
+                    msg = denied_msg(self, "deploy:token")
                     return callback.error(msg, exception=PermissionDenied)
             if _caller == "CLIENT" and verbose_level > 0:
                 msg = _("Creating new token of type '{token_type}' to deploy token: {token_type_second}")
@@ -5395,7 +5454,7 @@ class User(OTPmeObject):
         password: Union[str,None]=None,
         replace: bool=False,
         gen_qrcode: bool=True,
-        mode: str=None,
+        mode: Union[str,None]=None,
         no_token_infos: bool=False,
         enable_mschap: bool=False,
         force: bool=False,
@@ -5680,19 +5739,20 @@ class User(OTPmeObject):
         if not token:
             return callback.error("Token does not exist.")
 
-        # FIXME: do we need this??? how to handle ACLs on token delete???
-        # Check if the authenticated user tries to delete one of its own tokens.
-        check_acls = False
-        if verify_acls:
-            if config.auth_token:
-                if config.auth_token.owner_uuid != self.uuid:
-                    check_acls = False
+        # A user may delete their own tokens; the tokens of others need
+        # delete:token on the user or delete:object on the token. This
+        # was never asked: check_acls was set to False in both branches,
+        # so everybody could delete the tokens of everybody.
+        check_acls = verify_acls
+        if config.auth_token:
+            if config.auth_token.owner_uuid == self.uuid:
+                check_acls = False
 
         if check_acls:
             if not self.verify_acl("delete:token"):
                 if not token.verify_acl("delete:object"):
-                    msg = _("Permission denied: {token}")
-                    msg = msg.format(token=token)
+                    msg = denied_msg(self, "delete:token",
+                                    others=[(token, "delete:object")])
                     return callback.error(msg, exception=PermissionDenied)
 
         # Check for default token
@@ -6676,8 +6736,8 @@ class User(OTPmeObject):
     def enable(
         self,
         *args,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -6714,8 +6774,8 @@ class User(OTPmeObject):
     def disable(
         self,
         *args,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -6818,10 +6878,11 @@ class User(OTPmeObject):
         self,
         group: Union[str,None]=None,
         default_role: Union[str,None]=None,
-        add_default_token: bool=None,
+        add_default_token: Union[bool,None]=None,
         default_token: Union[str,None]=None,
         default_token_type: Union[str,None]=None,
         template_name: Union[str,None]=None,
+        no_template: bool=False,
         template_object: Union[str,None]=None,
         gen_qrcode: bool=True,
         no_token_infos: bool=False,
@@ -6833,7 +6894,7 @@ class User(OTPmeObject):
         groups: Union[List,None]=None,
         default_roles: Union[List,None]=None,
         ldif_attributes: Union[str,None]=None,
-        default_attributes: dict=None,
+        default_attributes: Union[dict,None]=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -6856,8 +6917,19 @@ class User(OTPmeObject):
         # LDIF attributes to ignore.
         ignore_missing_attributes = []
 
-        # Get template name set by policy.
-        if template_name is None:
+        # A template the caller names needs "use" on it. The one of the
+        # objecttemplates policy does not: who set it there had to have
+        # it, see ObjecttemplatesPolicy.check_permissions().
+        check_template_use = template_name is not None
+
+        # Get template name set by policy. With no_template there is
+        # none: run_pre_post_add_policies() kept the policy from
+        # setting one.
+        if no_template:
+            if template_name:
+                msg = _("Use either --template or --no-template.")
+                return callback.error(msg)
+        elif template_name is None:
             template_name = self.template_name
 
         if self.template_object and template_name:
@@ -6918,8 +6990,7 @@ class User(OTPmeObject):
                 _group = result[0]
                 if verify_acls:
                     if not _group.verify_acl("add:token"):
-                        msg = _("Group: {group_name}: Permission denied")
-                        msg = msg.format(group_name=group_name)
+                        msg = denied_msg(_group, "add:token")
                         return callback.error(msg)
                 # Acquire lock.
                 #_group._cache(callback=callback)
@@ -6945,8 +7016,7 @@ class User(OTPmeObject):
                 _role = result[0]
                 if verify_acls:
                     if not _role.verify_acl("add:token"):
-                        msg = _("Role: {role_name}: Permission denied")
-                        msg = msg.format(role_name=role_name)
+                        msg = denied_msg(_role, "add:token")
                         return callback.error(msg)
                 _default_roles.append(_role)
 
@@ -6989,12 +7059,21 @@ class User(OTPmeObject):
                 msg = _("Unknown template: {template_name}")
                 msg = msg.format(template_name=template_name)
                 return callback.error(msg)
+            if verify_acls and check_template_use:
+                if not template.verify_acl("use"):
+                    msg = denied_msg(template, "use")
+                    return callback.error(msg, exception=PermissionDenied)
 
         # If no group is given but a template, prever templates group
-        # over any defaultgroups policy.
+        # over any defaultgroups policy. It comes with the template, so
+        # "use" on the template is all it takes, not "add:default_group_user"
+        # on the group.
+        group_from_template = False
         if group is None:
             if template:
                 group = template.group
+                if group is not None:
+                    group_from_template = True
 
         run_group_policies = False
         if group is None:
@@ -7085,9 +7164,12 @@ class User(OTPmeObject):
         if self.group is None:
             if default_group.realm == config.realm and default_group.site == config.site:
                 try:
+                    change_verify_acls = verify_acls
+                    if group_from_template:
+                        change_verify_acls = False
                     self._change_group(default_group.uuid,
                                         new_user=True,
-                                        verify_acls=verify_acls,
+                                        verify_acls=change_verify_acls,
                                         callback=callback)
                 except UnknownObject as e:
                     msg = str(e)
@@ -7168,13 +7250,13 @@ class User(OTPmeObject):
 
         # Add object using parent class BEFORE adding any token etc.
         add_result = super().add(template=template,
-                                        run_policies=False,
-                                        inherit_acls=False,
-                                        verify_acls=verify_acls,
-                                        default_attributes=default_attributes,
-                                        ignore_missing_attributes=ignore_missing_attributes,
-                                        verbose_level=verbose_level,
-                                        callback=callback, **kwargs)
+                                run_policies=False,
+                                inherit_acls=False,
+                                verify_acls=verify_acls,
+                                default_attributes=default_attributes,
+                                ignore_missing_attributes=ignore_missing_attributes,
+                                verbose_level=verbose_level,
+                                callback=callback, **kwargs)
         if not add_result:
             return add_result
 
@@ -7184,10 +7266,11 @@ class User(OTPmeObject):
             return callback.ok()
 
         # Make sure user has displayName attribute.
-        self.add_attribute(attribute="displayName",
-                        force=True,
-                        verify_acls=verify_acls,
-                        callback=callback)
+        if not self.add_attribute(attribute="displayName",
+                                    force=True,
+                                    verify_acls=False,
+                                    callback=callback):
+            return callback.error()
 
         # Set default key script.
         default_key_script = None
@@ -7272,9 +7355,11 @@ class User(OTPmeObject):
             # Set login script enabled status.
             if template and template.login_script_enabled != self.login_script_enabled:
                 if template.login_script_enabled:
-                    self.enable_login_script(force=True)
+                    self.enable_login_script(force=True,
+                                            verify_acls=False)
                 else:
-                    self.disable_login_script(force=True)
+                    self.disable_login_script(force=True,
+                                            verify_acls=False)
 
         # Set default auth script.
         default_auth_script = None
@@ -7304,16 +7389,23 @@ class User(OTPmeObject):
                                     callback=callback)
             if template and template.auth_script_enabled != self.auth_script_enabled:
                 if template.auth_script_enabled:
-                    self.enable_auth_script(force=True)
+                    self.enable_auth_script(force=True,
+                                            verify_acls=False)
                 else:
-                    self.disable_auth_script(force=True)
+                    self.disable_auth_script(force=True,
+                                            verify_acls=False)
 
         # Handle auto sign setting
         if template and template.autosign_enabled != self.autosign_enabled:
+            # As the template has it: this was the wrong way round.
             if template.autosign_enabled:
-                self.disable_autosign(force=True, callback=callback)
+                self.enable_autosign(force=True,
+                                    verify_acls=False,
+                                    callback=callback)
             else:
-                self.enable_autosign(force=True, callback=callback)
+                self.disable_autosign(force=True,
+                                    verify_acls=False,
+                                    callback=callback)
 
         self._cache(callback=callback)
 
@@ -7486,14 +7578,11 @@ class User(OTPmeObject):
             if not self.verify_acl("delete:object"):
                 del_acl = f"delete:{self.type}"
                 if not parent_object.verify_acl(del_acl):
-                    msg = _("Permission denied: {self_name}")
-                    msg = msg.format(self_name=self.name)
+                    msg = denied_msg(self, "delete:object",
+                                    others=[(parent_object, del_acl)])
                     return callback.error(msg, exception=PermissionDenied)
-                # FIXME: do we need this check? allow deletion of user without permission to tokens???
-                if not self.verify_acl("delete:token"):
-                    msg = _("Permission denied: {self_name}")
-                    msg = msg.format(self_name=self.name)
-                    return callback.error(msg, exception=PermissionDenied)
+                # No delete:token on top: who may delete the user may
+                # delete their tokens with them, as with delete:object.
 
         if not self.exists():
             return callback.error("User does not exist.")
@@ -7611,15 +7700,12 @@ class User(OTPmeObject):
     def _remove_orphans_recursive(self, force=False, verbose_level=0,
         recursive=False, callback=default_callback, **kwargs):
         """ Recurse into the user's (non-orphan) tokens. """
-        object_changed = False
         for x_uuid in list(self.tokens):
             token = backend.get_object(object_type="token", uuid=x_uuid)
             if not token:
                 continue
-            if token.remove_orphans(force=force, verbose_level=verbose_level,
-                                    callback=callback):
-                object_changed = True
-        return object_changed
+            token.remove_orphans(force=force, verbose_level=verbose_level,
+                                report_nothing=False, callback=callback)
 
     def show(
         self,
@@ -7640,7 +7726,7 @@ class User(OTPmeObject):
         if not view_public_acl:
            if not view_acl:
                 if not edit_acl:
-                    msg = ("Permission denied.")
+                    msg = denied_msg(self, ["view_public", "view", "edit"])
                     return callback.error(msg, exception=PermissionDenied)
 
         if token_name:
@@ -7675,9 +7761,9 @@ class User(OTPmeObject):
             unused_disable = f"\tunused-disable:\t\t{self.unused_disable}\n"
             lines.append(unused_disable)
         else:
-            auto_disable = "\tauto-disable:\t\t\tPermission denied\n"
+            auto_disable = "\tauto-disable:\t\t-\n"
             lines.append(auto_disable)
-            unused_disable = "\tunused-disable:\t\t\tPermission denied\n"
+            unused_disable = "\tunused-disable:\t\t-\n"
             lines.append(unused_disable)
 
         lines.append(f"\trealm:\t\t\t{self.realm}\n")
@@ -7692,30 +7778,38 @@ class User(OTPmeObject):
         else:
             lines.append("\tgroup:\t\t\t\n")
 
-        if view_acl or edit_acl:
+        if self.verify_acl("view:auto_mount") or edit_acl:
             auto_mount = "Disabled"
             if self.auto_mount:
                 auto_mount = "Enabled"
             lines.append(f"\tauto-mount:\t\t{auto_mount}\n")
+        else:
+            lines.append("\tauto-mount:\t\t-\n")
 
         if view_acl or edit_acl:
             autosign = "Disabled"
             if self.autosign_enabled:
                 autosign = "Enabled"
             lines.append(f"\tauto-sign:\t\t{autosign}\n")
+        else:
+            lines.append("\tauto-sign:\t\t-\n")
 
         if view_acl or edit_acl:
             lines.append(f"\tkey-mode:\t\t{self.key_mode}\n")
+        else:
+            lines.append("\tkey-mode:\t\t-\n")
 
-        if view_acl or edit_acl:
+        if self.verify_acl("view:key_cache_time") or edit_acl:
             if self.key_cache_time == 0:
                 key_cache_time = "unlimited"
             else:
                 key_cache_time = units.int2time(self.key_cache_time,
                                                 time_unit="s")[0]
             lines.append(f"\tkey-cache-time:\t\t{key_cache_time}\n")
+        else:
+            lines.append("\tkey-cache-time:\t\t-\n")
 
-        if view_acl or edit_acl:
+        if self.verify_acl("view:key_caching") or edit_acl:
             # Where the key mode says nothing, key caching cannot do
             # anything either (see enable_key_caching()), so it says
             # that instead of "Disabled".
@@ -7726,20 +7820,32 @@ class User(OTPmeObject):
             else:
                 key_caching = "Disabled"
             lines.append(f"\tkey-caching:\t\t{key_caching}\n")
+        else:
+            lines.append("\tkey-caching:\t\t-\n")
 
         if view_acl or edit_acl:
+            sign_key = "N/A"
             if self.sign_public_key:
-                lines.append(f"\tsign-key:\t\t{self.sign_key_type}\n")
+                sign_key = self.sign_key_type
+            lines.append(f"\tsign-key:\t\t{sign_key}\n")
+        else:
+            lines.append("\tsign-key:\t\t-\n")
 
         if view_acl or edit_acl:
+            encryption_key = "N/A"
             if self.encrypt_public_key:
-                lines.append(f"\tencryption-key:\t\t{self.encrypt_key_type}\n")
+                encryption_key = self.encrypt_key_type
+            lines.append(f"\tencryption-key:\t\t{encryption_key}\n")
+        else:
+            lines.append("\tencryption-key:\t\t-\n")
 
         if view_acl or edit_acl:
             allow_disabled_login = "Disabled"
             if self.allow_disabled_login:
                 allow_disabled_login = "Enabled"
             lines.append(f"\tallow-disabled-login:\t{allow_disabled_login}\n")
+        else:
+            lines.append("\tallow-disabled-login:\t-\n")
 
         if view_acl or edit_acl:
             if self.admin_access_available():
@@ -7750,12 +7856,12 @@ class User(OTPmeObject):
             else:
                 admin_access = "N/A"
             lines.append(f"\tadmin-access:\t\t{admin_access}\n")
+        else:
+            lines.append("\tadmin-access:\t\t-\n")
 
-        # "view_all", which is where read_value_acls keeps the scripts.
-        # These gates said "view:auth_script" and so on, which is in no
-        # list: whoever was given "view_all:auth_script" saw nothing
-        # here, and only an admin did.
-        if self.verify_acl("view_all:auth_script") \
+        # The scripts are no secret: "view" shows them, not only
+        # "view_all".
+        if self.verify_acl("view:auth_script") \
         or self.verify_acl("enable:auth_script") \
         or self.verify_acl("disable:auth_script"):
             auth_script = "N/A"
@@ -7772,8 +7878,10 @@ class User(OTPmeObject):
                         auth_script_options = " ".join(self.auth_script_options)
                         auth_script = f"{auth_script} {auth_script_options}"
             lines.append(f"\tauth_script:\t\t{auth_script} ({auth_script_status})\n")
+        else:
+            lines.append("\tauth_script:\t\t-\n")
 
-        if self.verify_acl("view_all:key_script"):
+        if self.verify_acl("view:key_script"):
             key_script = "N/A"
             if self.key_script:
                 x = backend.get_object(object_type="script", uuid=self.key_script)
@@ -7783,8 +7891,10 @@ class User(OTPmeObject):
                         key_script_options = " ".join(self.key_script_options)
                         key_script = f"{key_script} {key_script_options}"
             lines.append(f"\tkey_script:\t\t{key_script}\n")
+        else:
+            lines.append("\tkey_script:\t\t-\n")
 
-        if self.verify_acl("view_all:agent_script"):
+        if self.verify_acl("view:agent_script"):
             agent_script = "N/A"
             if self.agent_script:
                 x = backend.get_object(object_type="script", uuid=self.agent_script)
@@ -7794,8 +7904,10 @@ class User(OTPmeObject):
                         agent_script_options = " ".join(self.agent_script_options)
                         agent_script = f"{agent_script} {agent_script_options}"
             lines.append(f"\tagent_script:\t\t{agent_script}\n")
+        else:
+            lines.append("\tagent_script:\t\t-\n")
 
-        if self.verify_acl("view_all:login_script") \
+        if self.verify_acl("view:login_script") \
         or self.verify_acl("enable:login_script") \
         or self.verify_acl("disable:login_script"):
             login_script = "N/A"
@@ -7812,6 +7924,8 @@ class User(OTPmeObject):
                         login_script_options = " ".join(self.login_script_options)
                         login_script = f"{login_script} {login_script_options}"
             lines.append(f"\tlogin_script:\t\t{login_script} ({login_script_status})\n")
+        else:
+            lines.append("\tlogin_script:\t\t-\n")
 
         if self.acl_inheritance_enabled:
             lines.append("\tinherit_acls:\t\tEnabled\n")
@@ -7872,13 +7986,15 @@ class User(OTPmeObject):
         lines.append("\n")
         lines.append("User tokens:\n")
 
+        # As "otpme-token show <user>/*": the ACLs of each token decide
+        # what is shown of it. verify_acls=False fetched none, and showed
+        # everybody but an admin "-" in every column.
         token_lines = []
         search_regex = f"{self.name}/*"
         show_tokens = cli.show_getter("token")
         token_list = show_tokens(realm=self.realm,
                                 site=self.site,
                                 show_all=True,
-                                verify_acls=False,
                                 search_regex=search_regex,
                                 id_attr="name")
         for l in token_list.split("\n"):

@@ -1416,6 +1416,11 @@ class FileTransaction(BaseTransaction):
                     config_file = journal_entry['config_file']
                     object_config = journal_entry['object_config']
                     full_data_update = journal_entry['full_data_update']
+                    # The create_dir entry before this one is gone once
+                    # it was done, whether the directory got created or
+                    # not. Without it a replay could never write here.
+                    if self._replay:
+                        self._create_dir(os.path.dirname(config_file))
                     self._write_object_file(config_file, object_config,
                                             full_data_update=full_data_update)
             elif action == "move":

@@ -16,6 +16,7 @@ except Exception:
 from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import qrcode
 from otpme.lib import backend
 from otpme.lib import otpme_acl
@@ -59,6 +60,9 @@ read_value_acls = {
                             "secret",
                             "server_secret",
                             "pin",
+                            # Shown once, when the token is added.
+                            "initial_secret",
+                            "initial_pin",
                             "auth_script",
                             "counter_check_range",
                             "mode",
@@ -531,7 +535,7 @@ class HotpToken(OathToken):
     def gen_otp(
         self,
         secret: Union[str,None]=None,
-        prefix_pin: str=False,
+        prefix_pin: Union[str,None]=None,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
@@ -571,7 +575,7 @@ class HotpToken(OathToken):
         otp: str,
         secret: Union[str,None]=None,
         handle_used_otps: bool=True,
-        mode: str=None,
+        mode: Union[str,None]=None,
         otp_includes_pin: bool=True,
         verify_pin: bool=True,
         sft: Union[bool,None]=None,
@@ -1072,7 +1076,7 @@ class HotpToken(OathToken):
         secret_len: int,
         pin: str,
         secret_encoding: str,
-        serial: str=None,
+        serial: Union[str,None]=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -1117,7 +1121,7 @@ class HotpToken(OathToken):
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token info. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
         lines = []
 
@@ -1133,8 +1137,10 @@ class HotpToken(OathToken):
             counter_sync_time = str(self.counter_sync_time)
         lines.append(f'COUNTER_SYNC_TIME="{counter_sync_time}"')
 
+        # A secret: plain view must not show it, see
+        # otpme_acl.check_acl().
         server_secret = ""
-        if self.verify_acl("view:server_secret"):
+        if self.verify_acl("view_all:server_secret"):
             server_secret = str(self.server_secret)
         lines.append(f'SERVER_SECRET="{server_secret}"')
 

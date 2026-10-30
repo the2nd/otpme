@@ -27,6 +27,7 @@ modules = [
         'otpme.lib.classes.device',
         'otpme.lib.classes.scope',
         'otpme.lib.classes.vlan',
+        'otpme.lib.classes.aclgroup',
         'otpme.lib.classes.otpme_password',
         ]
 

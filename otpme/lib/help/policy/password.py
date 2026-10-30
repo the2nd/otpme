@@ -43,7 +43,7 @@ cmd_help = {
 
     'strength_checker'   : {
                     '_cmd_usage_help' : _('Usage: otpme-policy strength_checker {policy} {strength_checker}'),
-                    'cmd'   :   '<|object|> <strength_checker>',
+                    'cmd'   :   '<|object|> <"strength_checker">',
                     '_help' :   {
                                     'cmd'                   : _('Change strength checker.'),
                                 },
@@ -143,7 +143,7 @@ cmd_help = {
                 },
     'test'          : {
                     '_cmd_usage_help' : _('Usage: otpme-policy test [--password <password>] [--pin <pin>] {policy}'),
-                    'cmd'   :   '--password :password: --pin :pin: <|object|>',
+                    'cmd'   :   '--password :"password": --pin :"pin": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Test policy.'),
                                     '--password'            : _('Password to test.'),

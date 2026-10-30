@@ -354,7 +354,7 @@ Directory for logfiles (default: /var/log/otpme).
 
 **MOUNT_ROOT_DIR**  
 Mount root directory (default: /otpme). A share is mounted below it as
-*user***/***realm***/***site***/***share*.
+*\<user\>/\<realm\>/\<site\>/\<share\>*.
 
 **SHARE_ROOT**  
 Overrides the **share_root** config parameter.

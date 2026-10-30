@@ -35,6 +35,7 @@ from otpme.lib.changelog import object_changelog
 from otpme.lib.cache import config_cache
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.classes.role import get_roles
 from otpme.lib.classes.realm import ADMIN_USER
 from otpme.lib.job.callback import JobCallback
@@ -82,12 +83,15 @@ read_value_acls = {
                         "hosts",
                         "nodes",
                         "roles",
-                        "shares",
                         "scopes",
+                        "pass_type",
                         "pin",
                         "pin_status",
+                        # The hashes of the password and of a temporary
+                        # one, asked as view_all:password.
+                        "password",
+                        "temp_password_expire",
                         "used_otp_salt",
-                        "auto_disable",
                         "auth_script",
                         "dynamic_groups",
                         "token_data",
@@ -119,7 +123,6 @@ write_value_acls = {
                                 "pin",
                                 "password",
                                 "device_name",
-                                "auto_disable",
                                 "token_data",
                             ],
                 }
@@ -151,6 +154,23 @@ commands = {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -310,6 +330,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'change_auto_disable',
                     'args'              : ['auto_disable'],
+                    'oargs'             : ['unused'],
                     'job_type'          : 'process',
                     },
                 },
@@ -328,7 +349,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'move',
                     'args'              : ['new_token_path'],
-                    'oargs'             : ['replace'],
+                    'oargs'             : ['replace', 'keep_acls'],
                     'job_type'          : 'process',
                     },
                 },
@@ -685,14 +706,6 @@ commands = {
                     },
                 },
             },
-    '_list_otp_formats'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_otp_formats',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     '_list_modes'   : {
             'default'    : {
                 'exists'    : {
@@ -843,7 +856,6 @@ def register_hooks():
     config.register_auth_on_action_hook("token", "disable_auth_script")
     config.register_auth_on_action_hook("token", "change_auth_script")
     config.register_auth_on_action_hook("token", "change_password")
-    config.register_auth_on_action_hook("token", "change_otp_format")
     config.register_auth_on_action_hook("token", "add_dynamic_group")
     config.register_auth_on_action_hook("token", "remove_dynamic_group")
     config.register_auth_on_action_hook("token", "set_temp_password")
@@ -2629,7 +2641,7 @@ class Token(OTPmeObject):
     @object_changelog("enable SSO deploy")
     def enable_sso_deploy(
         self,
-        deploy_token_type: str=True,
+        deploy_token_type: Union[str,bool]=True,
         run_policies: bool=True,
         force: bool=False,
         quiet: bool=False,
@@ -2971,7 +2983,7 @@ class Token(OTPmeObject):
     @object_changelog("change device name to {device_name}")
     def change_device_name(
         self,
-        device_name: str=None,
+        device_name: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -3536,7 +3548,7 @@ class Token(OTPmeObject):
 
         if verify_acls:
             if not self.verify_acl("edit:password"):
-                msg = _("Permission denied.")
+                msg = denied_msg(self, "edit:password")
                 return callback.error(msg, exception=PermissionDenied)
 
         # Run policies on password change (e.g. auth_on_action).
@@ -3600,7 +3612,7 @@ class Token(OTPmeObject):
                         if not weak_password:
                             return callback.error()
                         if not self.verify_acl("force_password"):
-                            msg = _("You are not allowed to force a unsecure password.")
+                            msg = denied_msg(self, "force_password")
                             return callback.error(msg)
                         password_checked = True
                     break
@@ -3623,7 +3635,7 @@ class Token(OTPmeObject):
                 if not weak_password:
                     return callback.error()
                 if not self.verify_acl("force_password"):
-                    msg = _("You are not allowed to force a unsecure password.")
+                    msg = denied_msg(self, "force_password")
                     return callback.error(msg)
 
         # Create password hash.
@@ -3695,8 +3707,8 @@ class Token(OTPmeObject):
             if not self.verify_acl("set_temp_password"):
                 parent_object = self.get_parent_object()
                 if not parent_object.verify_acl("set_temp_password"):
-                    msg = _("Permission denied: {token_path}")
-                    msg = msg.format(token_path=self.rel_path)
+                    msg = denied_msg(self, "set_temp_password",
+                            others=[(parent_object, "set_temp_password")])
                     return callback.error(msg, exception=PermissionDenied)
 
         if remove:
@@ -4106,57 +4118,6 @@ class Token(OTPmeObject):
         """ This method must be overridden by the token child class """
         return callback.error(_("Token does not have different operation modes."))
 
-    @check_acls(['edit:otp_format'])
-    @object_lock()
-    @backend.transaction
-    @audit_log()
-    @object_changelog("change OTP format to {otp_format}")
-    def change_otp_format(
-        self,
-        otp_format: str,
-        run_policies: bool=True,
-        callback: JobCallback=default_callback,
-        _caller: str="API",
-        **kwargs,
-        ):
-        """ Change token OTP format. """
-        try:
-            if otp_format not in self.valid_otp_formats:
-                msg = _("Unknown format: {otp_format}")
-                msg = msg.format(otp_format=otp_format)
-                return callback.error(msg)
-        except Exception:
-            return callback.error(_("Token does not support different OTP formats."))
-
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("change_otp_format",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
-
-        self.otp_format = otp_format
-        return self._cache(callback=callback)
-
-    def get_otp_formats(
-        self,
-        _caller: str="API",
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Get valid token OTP formats """
-        try:
-            otp_formats = self.valid_otp_formats
-        except Exception:
-            otp_formats = []
-        if _caller == "CLIENT":
-            otp_formats = "\n".join(otp_formats)
-        return callback.ok(otp_formats)
-
     def get_modes(
         self,
         _caller: str="API",
@@ -4260,6 +4221,25 @@ class Token(OTPmeObject):
         if result is False:
             return callback.error()
 
+        # Inherit ACLs before _add(): it asks them, whether the secret
+        # and the PIN of the new token may be shown (view_all:secret).
+        # Not by moving super().add() up: it writes the object, and
+        # _add() sets what a write wants, the password and the push
+        # script of an otp_push token.
+        try:
+            inherit_status = self.inherit_acls(force=True,
+                                            verify_acls=False,
+                                            verbose_level=verbose_level,
+                                            callback=callback)
+            inherit_error = ""
+        except Exception as e:
+            config.raise_exception()
+            inherit_status = False
+            inherit_error = _("WARNING: Unable to inherit ACLs from parent object: {e}")
+            inherit_error = inherit_error.format(e=e)
+        if not inherit_status:
+            return callback.error(inherit_error)
+
         # Call child class method (to do token specific stuff).
         token_add_status = self._add(owner_uuid=owner_uuid,
                                     force=force,
@@ -4274,6 +4254,7 @@ class Token(OTPmeObject):
         add_status = super().add(verbose_level=verbose_level,
                                             force=force,
                                             write=write,
+                                            inherit_acls=False,
                                             callback=callback,
                                             **kwargs)
         if not add_status:
@@ -4360,8 +4341,8 @@ class Token(OTPmeObject):
     def enable(
         self,
         *args,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -4399,8 +4380,8 @@ class Token(OTPmeObject):
     def disable(
         self,
         *args,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -4466,6 +4447,11 @@ class Token(OTPmeObject):
 
         return self._rename(new_oid, callback=callback, _caller=_caller, **kwargs)
 
+    # The move ACL of the token, as every other object type asks it in
+    # OTPmeObject.move(). This one asked nothing on the side of the token:
+    # only add:token of the new user, so a token of somebody else could
+    # be taken over by anybody who may add tokens to themselves.
+    @check_acls(acls=['move'])
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
@@ -4475,6 +4461,7 @@ class Token(OTPmeObject):
         new_token_path: str,
         force: bool=False,
         replace: bool=False,
+        keep_acls: bool=False,
         run_policies: bool=True,
         verify_acls: bool=True,
         verbose_level: int=0,
@@ -4577,21 +4564,51 @@ class Token(OTPmeObject):
             if not del_status:
                 return del_status
 
-        # Remove token from old owner.
+        # Remove token from old owner. The move ACL above decides that.
         try:
-            owner.del_token(token_name=self.name,
-                            force=True,
-                            keep_token=True,
-                            remove_default_token=True,
-                            _caller=_caller,
-                            callback=callback)
+            del_result = owner.del_token(token_name=self.name,
+                                        force=True,
+                                        keep_token=True,
+                                        remove_default_token=True,
+                                        verify_acls=False,
+                                        _caller=_caller,
+                                        callback=callback)
         except Exception as e:
             msg = _("Failed to remove token from user: {owner}: {error}")
             msg = msg.format(owner=self.owner, error=e)
             return callback.error(msg)
+        if not del_result:
+            return callback.error()
 
         # Reload token config e.g. to get new ACLs after calling del_token().
         self._load()
+
+        # Whether the token gives up the default ACLs of its old user
+        # and takes those of the new one, as an object that changes its
+        # unit does.
+        inherit_acls, \
+        inherit_acls_message = self.get_move_acl_inheritance(keep_acls)
+
+        # What the token ACLs policy of the old user gave the token for
+        # being its token goes, whatever the inheritance says: it is not
+        # a default ACL, it is ownership, and kept it would leave the old
+        # user and their default token a hold on a token of somebody else.
+        if not self.handle_owner_policy_acls("delete", owner,
+                                            callback=callback):
+            return callback.error()
+
+        if inherit_acls:
+            callback.send(_("* Removing default ACLs of old user..."))
+            # From the owner it still has, see inherit_acls() above.
+            if not self.inherit_acls(remove=True,
+                                    force=True,
+                                    verbose_level=verbose_level,
+                                    callback=callback):
+                return callback.error()
+        elif inherit_acls_message:
+            msg = _("* NOT applying/removing default ACLs of new/old user: {inherit_acls_message}")
+            msg = msg.format(inherit_acls_message=inherit_acls_message)
+            callback.send(msg)
 
         # FIXME: A token move is mostly a move in the backend. This will change
         #        when we support cross site moves.
@@ -4624,6 +4641,20 @@ class Token(OTPmeObject):
         self.set_oid(new_oid=new_oid, switch_lock=True, lock_caller="move")
         # Set new paths.
         self.set_path()
+
+        if inherit_acls:
+            callback.send(_("* Applying default ACLs of new user..."))
+            # From the new owner now, see inherit_acls() above.
+            if not self.inherit_acls(force=True,
+                                    verbose_level=verbose_level,
+                                    callback=callback):
+                return callback.error()
+
+        # And what the token ACLs policy of the new user gives, see above.
+        if not self.handle_owner_policy_acls("add", new_owner,
+                                            callback=callback):
+            return callback.error()
+
         # Update object config.
         self.update_object_config()
 
@@ -4662,6 +4693,20 @@ class Token(OTPmeObject):
             callback.send(msg)
 
         return self._write(callback=callback)
+
+    def handle_owner_policy_acls(self, action, user, callback=default_callback):
+        """ Take back ("delete") or give ("add") what the token ACLs
+        policies of <user> give a token of it, see
+        TokenaclsPolicy.handle_owner_change(). """
+        policies = user.get_policies(policy_type="tokenacls",
+                                    return_type="instance")
+        for policy in policies:
+            if not policy.handle_owner_change(action,
+                                            user=user,
+                                            token=self,
+                                            callback=callback):
+                return False
+        return True
 
     def _del_token_counter(self):
         """ Forget every counter this token has.
@@ -4728,8 +4773,8 @@ class Token(OTPmeObject):
             if not self.verify_acl("delete:object"):
                 del_acl = f"delete:{self.type}"
                 if not parent_object.verify_acl(del_acl):
-                    msg = _("Permission denied: {token_path}")
-                    msg = msg.format(token_path=self.rel_path)
+                    msg = denied_msg(self, "delete:object",
+                                    others=[(parent_object, del_acl)])
                     return callback.error(msg, exception=PermissionDenied)
 
         check_default_token = False
@@ -4829,7 +4874,7 @@ class Token(OTPmeObject):
 
     def show_config(
         self,
-        config_lines: List=None,
+        config_lines: Union[List,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -4923,7 +4968,8 @@ class Token(OTPmeObject):
 
         auth_script = ""
         auth_script_options = ""
-        if self.verify_acl("view_all:auth_script") \
+        # Which script a token has is no secret: "view" shows it.
+        if self.verify_acl("view:auth_script") \
         or self.verify_acl("edit:auth_script"):
             if self.auth_script:
                 x = backend.get_object(object_type="script", uuid=self.auth_script)

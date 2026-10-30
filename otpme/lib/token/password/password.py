@@ -14,6 +14,7 @@ except Exception:
 
 from otpme.lib import oid
 from otpme.lib import config
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
@@ -61,18 +62,20 @@ read_value_acls = {
                             "2ftoken_status",
                             "nt_hash",
                             "auth_script",
-                            "password_hash",
                             "offline_status",
                             "offline_expiry",
                             "offline_unused_expiry",
                             "session_keep",
+                            "sso_deploy",
+                            # The password we made up, shown once,
+                            # when the token is added.
+                            "initial_secret",
                             ],
         }
 
 write_value_acls = {
                 "edit"      : [
                             "password",
-                            "password_hash",
                             "auth_script",
                             "2ftoken",
                             "offline_expiry",
@@ -84,6 +87,7 @@ write_value_acls = {
                             "session_keep",
                             "mschap",
                             "2ftoken",
+                            "sso_deploy",
                             ],
                 "disable"   : [
                             "auth_script",
@@ -91,6 +95,7 @@ write_value_acls = {
                             "session_keep",
                             "mschap",
                             "2ftoken",
+                            "sso_deploy",
                             ],
                 "remove"  : [
                             "nt_hash",
@@ -813,6 +818,12 @@ class PasswordToken(Token):
 
         token_pass_msg = _("Token password: {password}")
         token_pass_msg = token_pass_msg.format(password=new_pass)
+        # A password we made up is shown to who may see it now, when the
+        # token is made. Nobody can see it later, only its hash is kept.
+        # A given password the creator knows already.
+        if password is None:
+            if not self.verify_acl("view_all:initial_secret"):
+                token_pass_msg = _("Token password not shown. This needs the ACL view:initial_secret.")
         if return_message:
             return_message = f"{return_message}\n{token_pass_msg}"
         else:
@@ -823,7 +834,7 @@ class PasswordToken(Token):
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []

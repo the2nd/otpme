@@ -172,7 +172,13 @@ def object_changelog(text=None):
             comment = config.changelog
             if not action and not detail and not comment:
                 return result
-            callback = f_kwargs.get("callback")
+            # The default callback where the caller gave none, as the other
+            # decorators do: None is no JobCallback, and the type check of
+            # add_changelog_entry() refuses it.
+            try:
+                callback = f_kwargs['callback']
+            except KeyError:
+                callback = config.get_callback()
             self.add_changelog_entry(action=action,
                                     detail=detail,
                                     comment=comment,

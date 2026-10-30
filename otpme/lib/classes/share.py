@@ -23,6 +23,7 @@ from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.classes.realm import ADMIN_USER
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
@@ -195,11 +196,38 @@ commands = {
                     },
                 },
             },
+    'auto_disable'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
+                    'oargs'             : ['unused'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'changelog'   : {
             'default'    : {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'show_oid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_oid',
+                    'oargs'             : ['full'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_uuid'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_uuid',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -888,14 +916,6 @@ commands = {
                     },
                 },
             },
-    '_show_attributes'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'show_attributes',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     '_show_object_classes'   : {
             'default'    : {
                 'exists'    : {
@@ -1555,15 +1575,15 @@ class Share(OTPmeObject):
         self,
         home_share: bool=False,
         home_share_uid: bool=False,
-        force_group: str=None,
-        force_create_mode: str=None,
-        force_directory_mode: str=None,
+        force_group: Union[str,None]=None,
+        force_create_mode: Union[str,None]=None,
+        force_directory_mode: Union[str,None]=None,
         encrypted: bool=False,
         key_len: int=32,
         block_size: int=4096,
         no_key_gen: bool=False,
-        restore_share: str=None,
-        restore_token: str=None,
+        restore_share: Union[str,None]=None,
+        restore_token: Union[str,None]=None,
         no_mount_token: bool=False,
         verify_acls: bool=True,
         verbose_level: int=0,
@@ -1878,8 +1898,8 @@ class Share(OTPmeObject):
     @object_changelog("force group {group_name}")
     def force_group(
         self,
-        group_name: str=None,
-        group_uuid: str=None,
+        group_name: Union[str,None]=None,
+        group_uuid: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         verify_acls: bool=True,
@@ -2139,8 +2159,7 @@ class Share(OTPmeObject):
         # module variable above and was in no ACL list, so only an
         # admin could make a share read only.
         if not self.verify_acl("enable:read_only"):
-            msg = _("Permission denied: {self}")
-            msg = msg.format(self=self)
+            msg = denied_msg(self, "enable:read_only")
             return callback.error(msg, exception=PermissionDenied)
 
         if self.read_only:
@@ -2186,8 +2205,7 @@ class Share(OTPmeObject):
         ):
         """ Let the share be written to again. """
         if not self.verify_acl("disable:read_only"):
-            msg = _("Permission denied: {self}")
-            msg = msg.format(self=self)
+            msg = denied_msg(self, "disable:read_only")
             return callback.error(msg, exception=PermissionDenied)
 
         if not self.read_only:
@@ -2765,8 +2783,8 @@ class Share(OTPmeObject):
         return False
 
     def _notify_share_token(self, event_type, token_path,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         callback: JobCallback=default_callback):
         """ Send a share_mount/share_unmount event for a single token.
 
@@ -2826,8 +2844,8 @@ class Share(OTPmeObject):
     def add_root_mount_token(
         self,
         token_path: str,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -2927,8 +2945,8 @@ class Share(OTPmeObject):
     def remove_root_mount_token(
         self,
         token_path: str,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -3047,7 +3065,7 @@ class Share(OTPmeObject):
     def add_no_mount_token(
         self,
         token_path: str,
-        share_key: str=None,
+        share_key: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -3204,9 +3222,9 @@ class Share(OTPmeObject):
     def remove_no_mount_token(
         self,
         token_path: str,
-        keep_share_key: bool=None,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        keep_share_key: Union[bool,None]=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -3330,9 +3348,9 @@ class Share(OTPmeObject):
     def add_token(
         self,
         token_path: str,
-        share_key: str=None,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        share_key: Union[str,None]=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         run_policies: bool=True,
         _caller: str="API",
         verbose_level: int=0,
@@ -3517,9 +3535,9 @@ class Share(OTPmeObject):
     def remove_token(
         self,
         token_path: str,
-        keep_share_key: bool=None,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        keep_share_key: Union[bool,None]=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -3660,10 +3678,10 @@ class Share(OTPmeObject):
     @object_changelog("add role {role_name}")
     def add_role(
         self,
-        role_name: str=None,
-        role_uuid: str=None,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        role_name: Union[str,None]=None,
+        role_uuid: Union[str,None]=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         *args,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -3779,9 +3797,9 @@ class Share(OTPmeObject):
     @object_changelog("remove role {role_name}")
     def remove_role(
         self,
-        role_name: str=None,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        role_name: Union[str,None]=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         *args,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -4057,8 +4075,7 @@ class Share(OTPmeObject):
         """ Adds a pool to objects pool list. """
         if verify_acls:
             if not self.verify_acl("add:pool"):
-                msg = _("Permission denied: {self}")
-                msg = msg.format(self=self)
+                msg = denied_msg(self, "add:pool")
                 return callback.error(msg, exception=PermissionDenied)
 
         pool = backend.get_object(object_type="pool",
@@ -4122,8 +4139,7 @@ class Share(OTPmeObject):
         """ Removes a pool from objects pools list. """
         if verify_acls:
             if not self.verify_acl("remove:pool"):
-                msg = _("Permission denied: {self}")
-                msg = msg.format(self=self)
+                msg = denied_msg(self, "remove:pool")
                 return callback.error(msg, exception=PermissionDenied)
 
         pool = backend.get_object(object_type="pool",
@@ -4185,10 +4201,10 @@ class Share(OTPmeObject):
     @object_changelog("add group {group_name}")
     def add_group(
         self,
-        group_name: str=None,
-        group_uuid: str=None,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        group_name: Union[str,None]=None,
+        group_uuid: Union[str,None]=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -4257,8 +4273,8 @@ class Share(OTPmeObject):
     def remove_group(
         self,
         group_name: str,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -4399,10 +4415,10 @@ class Share(OTPmeObject):
     def add_host(
         self,
         *args,
-        host_name: str=None,
-        host_uuid: str=None,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        host_name: Union[str,None]=None,
+        host_uuid: Union[str,None]=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -4430,10 +4446,10 @@ class Share(OTPmeObject):
     def remove_host(
         self,
         *args,
-        host_name: str=None,
-        host_uuid: str=None,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        host_name: Union[str,None]=None,
+        host_uuid: Union[str,None]=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -4574,8 +4590,8 @@ class Share(OTPmeObject):
     @object_changelog("limit hosts")
     def limit_hosts(
         self,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
@@ -4622,8 +4638,8 @@ class Share(OTPmeObject):
     @object_changelog("unlimit hosts")
     def unlimit_hosts(
         self,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
@@ -4668,9 +4684,9 @@ class Share(OTPmeObject):
     GRANTING_EVENTS = ("share_mount", "share_add_host")
 
     def _notify_share_metadata_change(self, event_type, callback,
-                                      host_uuid: str=None,
-                                      persist_mount: bool=None,
-                                      share_notifications: bool=None):
+                                      host_uuid: Union[str,None]=None,
+                                      persist_mount: Union[bool,None]=None,
+                                      share_notifications: Union[bool,None]=None):
         """ Send a share_mount / share_unmount event to every user
         reachable through the share so each agent re-evaluates against
         the share's current metadata. Caller picks the event type
@@ -5077,8 +5093,8 @@ class Share(OTPmeObject):
     def enable(
         self,
         *args,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -5175,8 +5191,8 @@ class Share(OTPmeObject):
     def disable(
         self,
         *args,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -5267,7 +5283,7 @@ class Share(OTPmeObject):
 
         return result
 
-    def _get_share_unmount_data(self, persist_mount: bool=None):
+    def _get_share_unmount_data(self, persist_mount: Union[bool,None]=None):
         """ Build the share_unmount notification data per user.
 
         Everything is resolved right away instead of in the post method
@@ -5341,8 +5357,8 @@ class Share(OTPmeObject):
         force: bool=False,
         run_policies: bool=True,
         verify_acls: bool=True,
-        persist_mount: bool=None,
-        share_notifications: bool=None,
+        persist_mount: Union[bool,None]=None,
+        share_notifications: Union[bool,None]=None,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -5359,8 +5375,8 @@ class Share(OTPmeObject):
             if not self.verify_acl("delete:object"):
                 del_acl = f"delete:{self.type}"
                 if not parent_object.verify_acl(del_acl):
-                    msg = _("Permission denied: {share_name}")
-                    msg = msg.format(share_name=self.name)
+                    msg = denied_msg(self, "delete:object",
+                                    others=[(parent_object, del_acl)])
                     return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:
@@ -5422,7 +5438,7 @@ class Share(OTPmeObject):
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show share config. """
         if not self.verify_acl("view_public:object"):
-            msg = _("Permission denied.")
+            msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
         token_list = []

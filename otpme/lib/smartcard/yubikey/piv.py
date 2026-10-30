@@ -561,21 +561,24 @@ def _slot_has_cert(piv: PivSession, slot: SLOT) -> bool:
         return False
 
 
-def detect(serial: int = None, slot: str = "AUTHENTICATION"):
+def detect(serial: int = None, slot: str = "AUTHENTICATION", print_slot=False):
+    """ True if a YubiKey has a key in the PIV slot. Prints it only when
+    asked: on login (PAM) it went to the terminal of the user. """
     slot = slot_map[slot]
     try:
-        conn = _open_piv(serial)
-        piv = PivSession(conn)
-        try:
-            meta = piv.get_slot_metadata(slot)
-            if meta:
+        with _open_piv(serial) as conn:
+            piv = PivSession(conn)
+            try:
+                meta = piv.get_slot_metadata(slot)
+            except Exception:
+                return False
+            if not meta:
+                return False
+            if print_slot:
                 print(f"Slot {slot.name}: {meta.key_type.name}, touch={meta.touch_policy.name}")
-                return conn
-        except Exception:
-            pass
+            return True
     except Exception:
-        pass
-    return False
+        return False
 
 
 def list_keys(serial: int = None):

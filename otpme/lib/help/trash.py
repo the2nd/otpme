@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-trash show [--fields <field1,field2,field3>] [-z <size_limit>]'),
-                    'cmd'   :   '--fields :output_fields: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: -z :max_len:',
+                    'cmd'   :   '--fields :"output_fields": --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": -z :max_len:',
                     '_help' :   {
                                     'cmd'                   : _('Show trash.'),
                                 },
@@ -40,7 +40,7 @@ cmd_help = {
 
     'dump'    : {
                     '_cmd_usage_help' : _('Usage: otpme-trash dump {trash_id} {object_id}'),
-                    'cmd'   :   '[|object|] <object_id>',
+                    'cmd'   :   '[|object|] <"object_id">',
                     '_help' :   {
                                     'cmd'                   : _('Dump object to stdout.'),
                                 },

@@ -212,6 +212,20 @@ row: one value per line. That is where the home share settings, the
 scripts, and the master password, root mount and no mount tokens are,
 which the table does not show.
 
+<!-- -->
+
+**show_oid \[**--full**\] *share***  
+Show the OID of the share: **share\|\<realm\>/\<site\>/\<name\>**. With
+**--full** the full OID, which names the unit as well:
+**share\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
+Needs the ACL **view_public:object**.
+
+**show_uuid *share***  
+Show the UUID of the share.  
+Needs the ACL **view_public:object**.
+
+<!-- -->
+
 **list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
 List the share names, and with a regex only those that match it. You get
 the shares you may change; **-a** adds those you may only look at.  
@@ -255,6 +269,18 @@ Needs the ACL **move** on the share and **add:share** on the new unit.
 **touch *share***  
 Re-index the object to fix potential index problems.  
 Needs the ACL **touch**.
+
+**auto_disable \[**-u**\] *share* *time***  
+Set auto-disable time. It is either a relative time with a leading
+**+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
+The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
+**otpme**(7). A relative time counts from when it is set, and again from
+when the share is enabled. **0** removes it. It is refused for an object
+the realm or a site comes with, e.g. the admin user; a time set on one
+before does nothing. Use **-u** to disable the share once it was unused
+for the given time. That takes a relative time; a share that was never
+used counts from when this was set.  
+Needs the ACL **edit:auto_disable**.
 
 ## Share Configuration
 
@@ -782,10 +808,11 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *share***  
-List the policies attached to the share. Use **--return-type** to select
-the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
-Use **--policy-types** to list only policies of the given types; these
-are policy types, not policy names.  
+List the policies attached to the share, the disabled ones too, marked
+**(disabled)**. Use **--return-type** to select the attribute returned
+(**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
+to list only policies of the given types; these are policy types, not
+policy names.  
 Needs the ACL **view:policies**.
 
 ## ACL Management
@@ -801,9 +828,10 @@ skips the question.
 
 **add_acl *share* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this share.  
-*owner_type* is **role** or **token**, and *owner* the path of that role
-or token. An ACL may carry a value, for example **view:tokens**, and
-several are separated by commas.  
+*owner_type* is **role** or **token**. *owner* is the path of that role
+or token. An ACL can carry a value, for example **view:tokens**. To give
+several ACLs at once, separate them with commas:
+**view:tokens,view:status**.  
 Needs the ACL **add:acl**.
 
 **del_acl *share* *acl*\[,*acl*\]**  
@@ -817,20 +845,24 @@ Show the ACLs that lie on this share, i.e. who may do what with it.
 Needs the ACL **view:acl**.
 
 **enable_acl_inheritance *share***  
-Let the share inherit the default ACLs of the unit above it. It does not
-by default.
+Let a move of the share swap its default ACLs: what the old unit handed
+down is taken away, and what the new unit hands down is given. It does
+not by default; a move then leaves the ACLs of the share as they are.
 
-Only default ACLs are inherited. An ordinary ACL on the unit never is.
+Only a move asks this. A new share gets the default ACLs of its unit,
+and **add_acl -a** or **-r** on a unit reach it either way. A move with
+**--keep-acls** leaves its ACLs alone all the same.
 
-Moving the share into another unit then takes away the default ACLs of
-the old unit and applies those of the new one. While inheritance is off,
-a move leaves the ACLs of the share as they are.
+A move by somebody who does not hold **add:acl** and **delete:acl** on
+the share leaves its ACLs alone as well, and says so. Otherwise moving
+an object into a unit would be a way of handing yourself the default
+ACLs of that unit.
 
 Needs the ACL **enable:acl_inheritance**.
 
 **disable_acl_inheritance *share***  
-Stop inheriting them. Only the ACLs on the share itself count from then
-on. Needs the ACL **disable:acl_inheritance**.
+A move leaves the ACLs of the share as they are again.  
+Needs the ACL **disable:acl_inheritance**.
 
 ## Object Changelog
 
@@ -863,8 +895,8 @@ Remove every entry of the changelog.
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
-refused. OTPme asks the token you are signed in with first, then the
-object.
+refused. A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
 
 ## Export and Cleanup
 
@@ -1019,6 +1051,23 @@ dirs
 **otpme-share add --restore myshare --restore-token alice/login myshare-backups**  
 A restore share that shows the backups of "myshare"; alice/login may
 mount it
+
+# AUTH ON ACTION HOOKS
+
+An auth on action policy can ask for a login again before these actions.
+See **Auth On Action Policy** in **otpme-policy**(1). A share has the
+hooks every object type has, and these:
+
+> add_group, add_host, add_master_password_token, add_no_mount_token,
+> add_pool, add_root_mount_token, add_share_key, change_add_script,
+> change_mount_script, change_mount_timeout, del_share_key,
+> disable_mount_script, disable_ro, disable_sotp_signing,
+> enable_mount_script, enable_ro, enable_sotp_signing,
+> force_create_mode, force_directory_mode, force_group, get_share_key,
+> limit_hosts, remove_group, remove_host, remove_master_password_token,
+> remove_no_mount_token, remove_pool, remove_root_mount_token,
+> set_config_parameter, set_home_share_permissions, set_root_dir,
+> show_config_parameters, unlimit_hosts, update_sign_public_keys.
 
 # SEE ALSO
 

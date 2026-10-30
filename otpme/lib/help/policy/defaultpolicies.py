@@ -27,7 +27,7 @@ cmd_help = {
 
     'add_default_policy'      : {
                     '_cmd_usage_help' : _('Usage: otpme-policy add_default_policy {policy} {object_type} {policy}'),
-                    'cmd'   :   '<|object|> <object_type> <policy_name>',
+                    'cmd'   :   '<|object|> <"object_type"> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add default policy to be added to object of type <object_type>.'),
                                 },
@@ -35,7 +35,7 @@ cmd_help = {
 
     'remove_default_policy'   : {
                     '_cmd_usage_help' : _('Usage: otpme-policy remove_default_policy {policy} {object_type} {policy}'),
-                    'cmd'   :   '<|object|> <object_type> <policy_name>',
+                    'cmd'   :   '<|object|> <"object_type"> <"policy_name">',
                     '_help' :   {
                                     'cmd'                   : _('Remove default policy.'),
                                 },

@@ -245,6 +245,7 @@ data_files = [
                         "otpme/man/otpme-unit.1",
                         "otpme/man/otpme-user.1",
                         "otpme/man/otpme-vlan.1",
+                        "otpme/man/otpme-aclgroup.1",
                     ]
                 ),
                 ('/usr/share/man/man5',

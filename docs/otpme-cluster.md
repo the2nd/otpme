@@ -316,7 +316,7 @@ is read from.
 Says that this node has synced with the master at all. Without it the
 node serves nothing, see **VOTES AND QUORUM**.
 
-*/var/spool/otpme/cluster_out_journal/, */var/spool/otpme/cluster_in_journal/**  
+*/var/spool/otpme/cluster_out_journal/*, */var/spool/otpme/cluster_in_journal/*  
 The writes on their way to the other nodes, and the ones that came from
 them. See **otpme-node**(1).
 

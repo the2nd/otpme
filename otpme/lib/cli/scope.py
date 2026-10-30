@@ -159,9 +159,9 @@ def row_getter(realm, site, scope_order, scope_data, acls,
                     if not x_role_enabled:
                         role_status_string = " (D)"
                     if x_role_site == config.site:
-                        role_string = f"{x_role_name} {role_status_string}"
+                        role_string = f"{x_role_name}{role_status_string}"
                     else:
-                        role_string = f"{x_role_name} ({x_role_site}) {role_status_string}"
+                        role_string = f"{x_role_name} ({x_role_site}){role_status_string}"
                     role_roles.append(role_string)
                     processed_roles = len(role_roles)
                     if processed_roles == max_roles:
