@@ -1515,6 +1515,7 @@ class HostDaemon(OTPmeDaemon):
                                             resync=resync,
                                             offline=offline,
                                             sync_last_used=sync_last_used,
+                                            max_tries=config.hostd_sync_retry_count,
                                             ignore_changed_objects=ignore_changed_objects)
                 except SiteMaintenance as e:
                     # Not a failure, and over by itself: the next run
@@ -1833,9 +1834,12 @@ class HostDaemon(OTPmeDaemon):
             if crl_age < 86400:
                 continue
             callback = config.get_callback()
+            # The daily run is no change anybody made: it goes neither to
+            # the audit log nor to the changelog of the CA.
             ca.update_crl(force=True,
                         verify_acls=False,
                         no_audit_log=True,
+                        changelog=False,
                         callback=callback)
             if not config.master_node:
                 continue
@@ -2011,10 +2015,12 @@ class HostDaemon(OTPmeDaemon):
             self.logger.info(log_msg)
             callback = config.get_callback()
             callback.disable()
+            # No changelog entry every sync_interval, see Resolver.run().
             resolver.run(daemon_run=True,
                         interactive=False,
                         force=True,
                         verify_acls=False,
+                        changelog=False,
                         callback=callback)
         # Do some cleanup.
         multiprocessing.cleanup(keep_queues=True)

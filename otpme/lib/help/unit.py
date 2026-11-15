@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-unit {command} [unit]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-unit show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [unit]'),
+                    '_cmd_usage_help' : _('Usage: otpme-unit show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [unit]'),
                     'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show unit(s)'),
@@ -39,12 +39,12 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-unit list [--attribute attribute] [-a] [regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-unit list [--attribute attribute] [-a] [pattern]'),
                     'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List units.'),
                                     '-a'                        : _('List all units.'),
-                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
+                                    '--attribute <attribute>'   : _('Match the pattern against this attribute instead of the name.')
                                 },
                 },
 
@@ -165,7 +165,7 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-unit config -d -a {unit} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-unit config [-d] [-a] {unit} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to unit.'),
@@ -231,7 +231,7 @@ cmd_help = {
                 },
 
      'show_ldif'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-unit show_ldif {unit} -a attribute1,attribute2'),
+                    '_cmd_usage_help' : _('Usage: otpme-unit show_ldif {unit} [-a attribute1,attribute2]'),
                     'cmd'   :   '<|object|> -a :[attributes]:',
                     '_help' :   {
                                     'cmd'                   : _('Show LDIF representation of unit'),
@@ -348,7 +348,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-unit info {unit} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-unit info [--language <language>] {unit} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set unit info'),
@@ -357,7 +357,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-unit dump_info {unit}'),
+                    '_cmd_usage_help' : _('Usage: otpme-unit dump_info [--language <language>] {unit}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump unit info'),
@@ -374,18 +374,6 @@ cmd_help = {
                 },
 
     '_show_object_classes'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
                     'cmd'   :   '<|object|>',
                 },
 

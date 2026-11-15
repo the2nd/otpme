@@ -1,30 +1,90 @@
-.TH OTPME-DICTIONARY 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.TH OTPME-DICTIONARY 1 "2026-11-01" "OTPme 0.3.0a288" "OTPme Manual"
 .SH NAME
-otpme-dictionary \- manage OTPme dictionaries
+otpme-dictionary \- the word lists a password policy checks passwords against
 .SH SYNOPSIS
 .B otpme-dictionary
 .I command
 [\fIoptions\fR] [\fIdictionary\fR]
 .SH DESCRIPTION
-.B otpme-dictionary
-manages dictionaries in the OTPme system. Dictionaries are word lists used by password policies for password strength checking and passphrase generation. Supported dictionary types are
-.BR list ,
-.BR sorted-list ,
-and
-.BR guessing .
-.SH COMMANDS
-.SS Dictionary Management
-.TP
-.B add \fIdictionary\fR \fR[\fIdict_type\fR]
-Create a new dictionary, optionally with a specific type.
-.TP
-.B del \fIdictionary\fR
-Delete a dictionary.
-.TP
-.B show \fR[\fIdictionary\fR]
-Display dictionary information. Without arguments, shows all dictionaries.
 .na
 .nh
+.B otpme-dictionary
+manages dictionaries: lists of words that make a password easy to guess.
+.PP
+A password policy with the strength checker \fBspsc\fR looks the parts of a password up in the dictionaries of its \fBdict_order\fR, see
+.BR otpme\-policy (1).
+A part it finds counts as guessed with as many tries as the dictionary says, and the password gets a lower score.
+The first dictionary in \fBdict_order\fR that has the part counts.
+A dictionary that is in no \fBdict_order\fR does nothing.
+.PP
+A dictionary belongs to a site, and a policy uses only those of its own site.
+Every site comes with a set of them, see \fBFILES\fR.
+.PP
+There are three types of dictionary; the type is chosen with \fBadd\fR and cannot be changed:
+.RS
+.IP \(bu 2
+\fBlist\fR: words in no order.
+A word found in it counts as one of 10000 tries, however long the list is.
+.IP \(bu 2
+\fBsorted\-list\fR: words in the order of how often they are used, the most common first.
+A word found in it counts as many tries as its place in the list, so the first word is the weakest.
+Capital letters raise the count: two to five times for a common spelling like \fBBerlin\fR or \fBBERLIN\fR, far more for an odd one like \fBbErLin\fR.
+.IP \(bu 2
+\fBguessing\fR: no words, but the pieces of three characters that words begin, go on and end with, learned from a file of words with \fBword_learning\fR.
+A part of the password that is made of letters only, and begins, goes on and ends like those words, counts as a word even when no list has it.
+It counts as many tries as the dictionary has entries.
+.RE
+.hy
+.ad
+.SH COMMANDS
+.SS Dictionary Management
+.na
+.nh
+.TP
+.B add \fIdictionary\fR \fR[\fIdict_type\fR]
+Add an empty dictionary; \fBword_import\fR or \fBword_learning\fR fill it.
+\fIdict_type\fR is \fBlist\fR (the default), \fBsorted\-list\fR or \fBguessing\fR, see \fBDESCRIPTION\fR.
+.br
+With a path, e.g. \fBwordlists/german\fR, it goes into that unit; else into the unit a \fBdefaultunits\fR policy names, or into \fBdictionaries\fR.
+.br
+Needs \fBadd:dictionary\fR on the unit.
+.TP
+.B del \fR[\fB\-\-no\-trash\fR] \fIdictionary\fR
+Delete the dictionary.
+It goes to the trash, see
+.BR otpme\-trash (1);
+\fB\-\-no\-trash\fR deletes it right away.
+.br
+A password policy that names it skips it from then on, and \fBremove_orphans\fR of the policy takes it off the list.
+.br
+Needs \fBdelete:object\fR on the dictionary or \fBdelete:dictionary\fR on the unit.
+.TP
+.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIdictionary\fR]
+Without a dictionary: a table of them, with their unit, type, status, size, policies, ACL inheritance and description.
+The size is the memory its words take.
+.RS
+.TP
+.B \-a
+Also the dictionaries you may only look at, not just the ones you may change.
+.TP
+.B \-z \fIN\fR
+How many dictionaries to print.
+.TP
+.B \-\-fields \fIF1,F2\fR
+Print these columns and no others, in the order they are named.
+.TP
+.B \-\-limit \fIN\fR, \fB\-\-policy\-limit \fIN\fR
+How many policies to print per dictionary.
+.TP
+.B \-\-sort\-by \fIfield\fR, \fB\-\-reverse\fR
+Which column to sort by, and the other way round.
+.TP
+.B \-\-raw\fR, \fB\-\-csv\fR, \fB\-\-csv\-sep\fR \fIsep\fR
+\fB\-\-raw\fR leaves the header and the borders out, \fB\-\-csv\fR prints one row per line with \fB;\fR between the columns, and \fB\-\-csv\-sep\fR uses another separator.
+.RE
+.IP
+A column you may not see says \fB\-\fR.
+With a dictionary named, this prints the object itself instead of a table row, one value per line, its type and size among them.
 .TP
 .B show_oid \fR[\fB\-\-full\fR] \fIdictionary\fR
 Show the OID of the dictionary: \fB\%dictionary|<realm>/<site>/<name>\fR.
@@ -36,26 +96,39 @@ Needs the ACL \fBview_public:object\fR.
 Show the UUID of the dictionary.
 .br
 Needs the ACL \fBview_public:object\fR.
-.hy
-.ad
 .TP
-.B list \fR[\fIregex\fR]
-List dictionaries, optionally filtered by regex pattern.
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+List the dictionary names, and with a pattern only those that match it, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
+You get the dictionaries you may change; \fB\-a\fR adds those you may only look at.
+\fB\-\-attribute\fR matches the pattern against that attribute instead of the name.
 .TP
 .B enable \fIdictionary\fR
-Enable a disabled dictionary.
-.TP
+.TQ
 .B disable \fIdictionary\fR
-Disable a dictionary without deleting it.
+A password policy checks only against enabled dictionaries; a disabled one stays on its list and is skipped.
+.br
+Needs \fBenable:object\fR or \fBdisable:object\fR.
 .TP
 .B rename \fIdictionary\fR \fInew_name\fR
-Rename a dictionary.
+Rename the dictionary.
+A password policy knows it by its UUID, so it keeps it.
+.br
+Needs \fBrename\fR.
 .TP
 .B move \fR[\fB\-\-keep\-acls\fR] \fIdictionary\fR \fIunit\fR
-Move dictionary to a different unit.
+Move the dictionary into another unit of the same site.
+It keeps its ACLs; where ACL inheritance is on for it, the default ACLs of the old unit are taken away and those of the new one given.
+\fB\-\-keep\-acls\fR keeps all ACLs as they are.
+.br
+Needs \fBmove\fR on the dictionary and \fBadd:dictionary\fR on the unit.
 .TP
 .B touch \fIdictionary\fR
-Re-index the object to fix potential index problems.
+Write the index entries of the dictionary again.
+.br
+Needs \fBtouch\fR.
 .TP
 .B auto_disable \fIdictionary\fR \fItime\fR
 Set auto\-disable time.
@@ -64,23 +137,57 @@ The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, 
 .BR otpme (7).
 A relative time counts from when it is set, and again from when the dictionary is enabled.
 \fB0\fR removes it.
-It is refused for an object the realm or a site comes with, e.g. the admin user; a time set on one before does nothing.
+It is refused for a dictionary OTPme comes with, e.g. \fBgerman\fR; a time set on one before does nothing.
+.br
+Needs \fBedit:auto_disable\fR.
+.hy
+.ad
 .SS Word Management
+.na
+.nh
+The file is read on your side, also as \fI.gz\fR, and only its entries go to the node.
+New entries go after those the dictionary has; one it has already is skipped.
+To replace them, \fBclear\fR first.
+The commands that change something ask first; the global option \fB\-f\fR skips the question.
 .TP
 .B word_import \fIdictionary\fR \fIfile\fR
-Import words from a file into the dictionary.
+Add the words of \fIfile\fR to a dictionary of type \fBlist\fR or \fBsorted\-list\fR.
+.br
+The first word of each line is taken, in small letters, if it has 3 characters at least.
+The words keep the order of the file, and for a \fBsorted\-list\fR that is their rank: the first line is the most common word.
+A dictionary of type \fBguessing\fR is refused.
+.br
+Needs the ACL \fBadd:words\fR.
 .TP
 .B word_learning \fIdictionary\fR \fIfile\fR
-Analyze words from a file and build a guessing dictionary with character sequence patterns and their frequencies.
+Build the entries of a dictionary of type \fBguessing\fR from the words of \fIfile\fR, those with 4 characters at least.
+.br
+Every word is cut into pieces of three characters: its start (\fBabc:\fR), the pieces in its middle (\fB:abc:\fR) and its end (\fB:abc\fR).
+A piece that comes 3 times at least is kept, the most common first.
+Every three letters that come in no middle at all are kept as well, as \fB\-abc\-\fR.
+A dictionary of another type is refused.
+.br
+Needs the ACL \fBadd:words\fR.
 .TP
 .B word_export \fIdictionary\fR
-Export all words to stdout.
+The entries of the dictionary to stdout, one per line, in their order.
+.br
+Needs the ACL \fBdump\fR.
 .TP
 .B clear \fIdictionary\fR
-Remove all words from the dictionary.
+Remove all entries of the dictionary.
+.br
+Needs the ACL \fBdelete:words\fR.
+.hy
+.ad
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
+The first entry is the one of \fBadd\fR.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
+.PP
+Nothing is written where the \fBchangelog\fR config parameter is off.
+It is read along the cascade (dictionary, unit, site).
+Without any value anywhere it is on.
 .PP
 An \fIentry_id\fR is the number the listing shows in front of an entry, counted from 0.
 .PP
@@ -90,20 +197,23 @@ What was done and by whom stays as it is.
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIdictionary\fR
-Show the changelog of the dictionary.
+Show the changelog of the dictionary, one entry per line: its \fIentry_id\fR, the time, who made the change and what was done, then a detail in round brackets and the comment in square brackets where there are any.
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fIdictionary\fR \fIentry_id\fR \fIcomment\fR
 Set the comment of that entry, or replace the one it has.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B del_changelog \fIdictionary\fR \fIentry_id\fR
 Remove the comment of that entry.
 The entry itself stays, and an entry without a comment is refused.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIdictionary\fR
 Remove every entry of the changelog.
+Afterwards it holds one entry: that it was cleared.
 .br
 This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
@@ -117,13 +227,22 @@ It is looked for in the site of the dictionary.
 Which policies there are, and what each of them does, is in
 .BR otpme\-policy (1).
 .PP
+Two policy types fit a dictionary:
+.IP \(bu 2
+\fBauthonaction\fR asks for a login again before the actions of the dictionary, see \fBAUTH ON ACTION HOOKS\fR.
+.IP \(bu 2
+\fBautodisable\fR disables the dictionary after a while.
+A password policy skips a disabled dictionary: passwords are no longer checked against it.
+It is refused for the dictionaries a site comes with.
+One set with \fBauto_disable \-u\fR (unused for) is refused too: a dictionary does not keep its last use.
+.PP
 Attaching and detaching ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
 .B add_policy \fIdictionary\fR \fIpolicy\fR
 Attach a policy to the dictionary.
 .br
 A policy has a list of object types it is for; one that does not name \fBdictionary\fR is refused.
-So is a second policy of a type that allows only one per object.
+So is a second policy of a type that allows only one per object, even when the first one is disabled, and a policy the dictionary already has.
 .br
 Needs the ACL \fBassign:policy\fR.
 .TP
@@ -135,20 +254,43 @@ Detaching a policy takes away what it enforces, so it must not be cheaper than a
 .TP
 .B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIdictionary\fR
 List the policies attached to the dictionary, the disabled ones too, marked \fB(disabled)\fR.
-Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR); without it the names.
+Only the names are marked.
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
 .br
 Needs the ACL \fBview:policies\fR.
 .SS ACL Management
+An ACL says what somebody may do with this dictionary.
+The somebody is a role or a token, never a user.
+.PP
+What the three forms \fBacl\fR, \fB+acl\fR and \fB++acl\fR mean is under \fBACLs\fR in
+.BR otpme (7).
+Tab completion after \fBadd_acl\fR offers the ACLs a dictionary knows.
+A dictionary has no default ACLs, \fB+acl\fR and \fB++acl\fR: nothing lies in a dictionary that could get them.
+.PP
+Adding and removing ask first; the global option \fB\-f\fR skips the question.
 .TP
-.B add_acl \fIdictionary\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
-Add an access control entry.
+.B add_acl \fIdictionary\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
+Give a role or a token one or more ACLs on this dictionary.
+.br
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
+\fIowner\fR names it the way \fBlist_acls\fR prints it: a role as \fIsite/name\fR, or by its name alone on its own site; a token as \fI\%user/token\fR.
+An ACL can carry a value, for example \fBadd:words\fR.
+To give several ACLs at once, separate them with commas: \fB\%add:words,delete:words\fR.
+.br
+Needs the ACL \fBadd:acl\fR.
 .TP
-.B del_acl \fIdictionary\fR \fIacl\fR
-Remove an access control entry.
+.B del_acl \fIdictionary\fR \fIacl\fR[,\fIacl\fR]
+Take those ACLs away again.
+.br
+Here an \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fB\%role:berlin/helpdesk:add:words\fR.
+.br
+Needs the ACL \fBdelete:acl\fR.
 .TP
 .B list_acls \fIdictionary\fR
-Display all ACLs for the dictionary.
+Show the ACLs that lie on this dictionary, i.e. who may do what with it.
+.br
+Needs the ACL \fBview:acl\fR.
 .TP
 .B enable_acl_inheritance \fIdictionary\fR
 Let a move of the dictionary swap its default ACLs: what the old unit handed down is taken away, and what the new unit hands down is given.
@@ -170,86 +312,114 @@ A move leaves the ACLs of the dictionary as they are again.
 .br
 Needs the ACL \fBdisable:acl_inheritance\fR.
 .SS Configuration
+.na
+.nh
+A dictionary has two config parameters: \fBchangelog\fR and \fBallow_changelog_clearing\fR, see \fBObject Changelog\fR above and
+.BR otpme (7).
+A parameter is looked up at the dictionary, then at its unit and the units above it, then at the site.
 .TP
-.B description \fIdictionary\fR \fR[\fIdescription\fR]
-Set dictionary description.
+.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIdictionary\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set a parameter on the dictionary.
+.RS
 .TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIdictionary\fR \fR[\fIinfo\fR]
-Set free-form info text. If \fIinfo\fR is omitted, the current info text is
-opened in the editor specified by the \fBEDITOR\fR environment variable.
-.TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIdictionary\fR
-Dump the info text to stdout.
-.SS Import/Export
-.TP
-.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIdictionary\fR
-Export dictionary configuration.
-.SH OPTIONS
-.SS Display Options
+.B \-d
+Remove the parameter from the dictionary, or with a value only that one value from a list.
+It is not set back to a default: what applies afterwards is what the units or the site say.
 .TP
 .B \-a
-Show all dictionaries (across all units).
+Append the value to a parameter that holds a list, instead of replacing what is there.
+.RE
+.IP
+The ACL is per parameter, \fBset:config:<parameter>\fR.
 .TP
-.B \-z \fISIZE\fR
-Limit output size.
+.B show_config \fIdictionary\fR \fR[\fIparameter\fR]
+The parameters set on the dictionary itself, or only the one named.
+Nothing is shown for a parameter that the dictionary gets from a unit or from the site.
 .TP
-.B \-\-fields \fIFIELD1,FIELD2\fR
-Display only specified fields.
+.B get_config \fIdictionary\fR \fIparameter\fR
+What the parameter comes to for the dictionary, once the dictionary, its units and the site have been looked at.
+So this answers what applies, where \fBshow_config\fR answers what was set here.
 .TP
-.B \-\-policy\-limit \fIN\fR
-Limit number of policies shown.
+.B description \fIdictionary\fR \fR[\fIdescription\fR]
+Set the description.
+Without one OTPme asks and offers the current text for editing.
+Needs \fBedit:description\fR.
 .TP
-.B \-\-limit \fIN\fR
-Limit number of items shown per object.
+.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIdictionary\fR \fR[\fIinfo\fR]
+Set free-form info text.
+If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
+Needs \fBedit:info\fR.
+.br
+Without \fB\-\-language\fR the text is the administrator's own note.
+Nothing shows the info of a dictionary to a user, so a text for a language stays a note as well.
 .TP
-.B \-\-sort\-by \fIFIELD\fR
-Sort output by field.
+.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIdictionary\fR
+Write one of those texts to stdout.
+\fB\-\-language\fR picks which one; without it you get the note of the administrator.
+Needs \fBview:info\fR.
+.hy
+.ad
+.SS Export and Cleanup
 .TP
-.B \-\-reverse
-Reverse sort order.
+.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIdictionary\fR
+Write the whole object of the dictionary to stdout, as JSON: its type, its entries (compressed), ACLs, policies, config parameters and the rest.
+\fBotpme\-tool import\fR reads it back.
+.br
+A dictionary holds no key and no secret, so \fB\-\-password\fR has nothing to encrypt: the output is in clear either way.
+\fBword_export\fR is the command for the entries alone.
+.br
+Needs the ACL \fBexport\fR.
 .TP
-.B \-\-raw
-Output without headers/borders.
-.TP
-.B \-\-csv
-Output as CSV.
-.TP
-.B \-\-csv\-sep \fISEP\fR
-CSV separator character.
-.TP
-.B \-\-attribute \fIATTR\fR
-Of \fBlist\fR: match the regex against this attribute instead of the name.
-.SS General Options
-.TP
-.B \-\-keep\-acls
-Preserve ACLs when moving dictionary.
-.TP
-.B \-\-password \fIPASS\fR
-Password for encrypting exports.
+.B remove_orphans \fIdictionary\fR
+Remove references to objects that are gone: orphan ACLs and policies of the dictionary.
+.br
+It asks once for what it found; the global option \fB\-f\fR skips the question.
+.br
+Needs the ACL \fBremove:orphans\fR.
+.SH OPTIONS
+Every option belongs to one command and is described with that command above.
 .PP
-Global options are available for all commands. See
-.BR otpme (1)
-for details.
+Global options work with every command, see
+.BR otpme (1).
 .SH EXAMPLES
-.SS Managing Dictionaries
+.na
+.nh
+.SS Words of your own
 .TP
-.B otpme-dictionary add english list
-Create a word list dictionary
+.B otpme-dictionary add products
+.TQ
+.B otpme-dictionary word_import products products.txt
+A dictionary of type \fBlist\fR with the product names of the company, one per line in \fIproducts.txt\fR.
+It goes into the unit \fBdictionaries\fR.
 .TP
-.B otpme-dictionary add english_guessing guessing
-Create a guessing dictionary
+.B otpme-policy \-\-type password strength_checker_opts password_strength \(dqmin_score=2;dict_order=products,common\-passwords,german,english\(dq
+The password policy of the site looks the passwords up in it, before the others.
+Each call replaces all options of the checker, so name every dictionary that should still be used.
+.SS Replacing the words
 .TP
-.B otpme-dictionary word_import english /usr/share/dict/words
-Import words from a file
+.B otpme-dictionary clear products
+.TQ
+.B otpme-dictionary word_import products products.txt
+\fBword_import\fR only adds; to drop the old words, clear first.
+.SS A guessing dictionary
 .TP
-.B otpme-dictionary word_learning english_guessing /usr/share/dict/words
-Build guessing patterns from a word file
+.B otpme-dictionary add products\-guessing guessing
+.TQ
+.B otpme-dictionary word_learning products\-guessing products.txt
+The pieces of three characters the product names are made of.
+.SS Looking at a dictionary
 .TP
-.B otpme-dictionary word_export english
-Export all words to stdout
+.B otpme-dictionary show german
+Its type, its size and the rest.
 .TP
-.B otpme-dictionary clear english
-Remove all words from the dictionary
+.B otpme-dictionary word_export german | head
+Its first entries.
+.SS Not using a dictionary for a while
+.TP
+.B otpme-dictionary disable abbreviations\-it
+The password policy skips it until it is enabled again, without changing its \fBdict_order\fR.
+.hy
+.ad
 .\" BEGIN AUTH ON ACTION HOOKS
 .\" Generated by update_hooks_man.py. Do not edit, the next run
 .\" overwrites it.
@@ -259,16 +429,42 @@ See
 .B Auth On Action Policy
 in
 .BR otpme\-policy (1).
-A dictionary has the hooks every object type has, and no others.
+A dictionary has the hooks every object type has, and these; a command of another name is in brackets:
+.RS
+.PP
+.na
+.nh
+add_words\ (word_import), dump.
+.hy
+.ad
+.RE
 .\" END AUTH ON ACTION HOOKS
 .SH FILES
+.na
+.nh
 .TP
-.I /var/lib/otpme/
-OTPme data directory
+\fI/var/lib/otpme/tree/\fR
+The objects of the realm, on the nodes and, by sync, on the hosts.
+A dictionary is the directory \fI<name>.dictionary\fR in the directory of its unit, e.g. \fI<realm>.realm/<site>.site/dictionaries.unit/german.dictionary/\fR.
+Its entries are in \fIobject.json\fR, with the rest of its settings.
+Change them with the commands above, not in the file.
+.TP
+\fI/etc/otpme/dicts/<name>.gz\fR
+The words of the dictionaries a site comes with.
+A file is read once, when the site adds its dictionary; changing the file later does not change the dictionary.
+.hy
+.ad
 .SH SEE ALSO
+.na
+.nh
+.BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
-.BR otpme-policy (1)
+.BR otpme\-policy (1),
+.BR otpme\-unit (1),
+.BR otpme\-trash (1),
+.BR otpme\-tool (1)
+.hy
+.ad
 
 .SH AUTHOR
 the2nd <the2nd@otpme.org>

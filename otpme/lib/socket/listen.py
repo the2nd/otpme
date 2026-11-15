@@ -30,16 +30,24 @@ from otpme.lib import multiprocessing
 
 from otpme.lib.exceptions import *
 
-# Worker scoreboard: two bytes per worker slot in a shared mmap. The
-# first byte is written only by the worker itself, the second only by
-# the parent. One writer per byte means the whole thing needs no lock
-# and no shared dict (which would be a redis/memcached round trip per
-# connection, see multiprocessing.get_dict()).
-SCOREBOARD_SLOT_SIZE = 2
+# Worker scoreboard: three bytes per worker slot in a shared mmap. The
+# first and the third byte are written only by the worker itself, the
+# second only by the parent. One writer per byte means the whole thing
+# needs no lock and no shared dict (which would be a redis/memcached
+# round trip per connection, see multiprocessing.get_dict()).
+SCOREBOARD_SLOT_SIZE = 3
+# First byte: what the worker is doing.
 WORKER_IDLE = 0
 WORKER_BUSY = 1
+# Second byte: what the parent wants.
 WORKER_RUN = 0
 WORKER_EXIT = 1
+# Third byte: whether the worker has left its accept loop. From then on
+# a stop request cannot be taken back: the worker only waits for its
+# threads and exits. Without it the parent took a stop back that was
+# already under way, and took the worker's exit for a death.
+WORKER_IN_LOOP = 0
+WORKER_LEFT_LOOP = 1
 # One slot past the workers carries the state of the pool as a whole.
 # Only the supervisor writes it, every worker reads it, so it keeps the
 # one-writer-per-byte rule the rest of the scoreboard lives by.
@@ -551,6 +559,18 @@ class ListenSocket(object):
             return WORKER_RUN
         return self.scoreboard[worker_idx * SCOREBOARD_SLOT_SIZE + 1]
 
+    def set_worker_left_loop(self, worker_idx):
+        """ Tell the parent we will not accept again. Called by the worker. """
+        if self.scoreboard is None:
+            return
+        self.scoreboard[worker_idx * SCOREBOARD_SLOT_SIZE + 2] = WORKER_LEFT_LOOP
+
+    def worker_left_loop(self, worker_idx):
+        """ Whether a worker is on its way out. Called by the parent. """
+        if self.scoreboard is None:
+            return False
+        return self.scoreboard[worker_idx * SCOREBOARD_SLOT_SIZE + 2] == WORKER_LEFT_LOOP
+
     def set_pool_state(self, state):
         """ Tell the workers how the pool is doing. Called by the parent. """
         if self.scoreboard is None:
@@ -569,6 +589,10 @@ class ListenSocket(object):
         """ Fork one worker for the given scoreboard slot. """
         self.set_worker_state(worker_idx, WORKER_IDLE)
         self.set_worker_command(worker_idx, WORKER_RUN)
+        # The worker's byte, but nobody else uses the slot before the
+        # fork: the one that had it before is gone.
+        if self.scoreboard is not None:
+            self.scoreboard[worker_idx * SCOREBOARD_SLOT_SIZE + 2] = WORKER_IN_LOOP
         worker_name = f"{self.name}-worker-{worker_idx}"
         return multiprocessing.start_process(name=worker_name,
                                         target=self._worker_loop,
@@ -595,12 +619,14 @@ class ListenSocket(object):
             proc.join()
             if self.shutdown:
                 return
-            if self.get_worker_command(worker_idx) == WORKER_EXIT:
+            if self.get_worker_command(worker_idx) == WORKER_EXIT \
+            or self.worker_left_loop(worker_idx):
                 # Went away because we asked it to.
                 self.worker_procs[worker_idx] = None
                 continue
-            log_msg = _("Worker {idx} died, respawning.", log=True)[1]
-            log_msg = log_msg.format(idx=worker_idx)
+            # A negative exit code is the signal that killed it.
+            log_msg = _("Worker {idx} died (exit code {exitcode}), respawning.", log=True)[1]
+            log_msg = log_msg.format(idx=worker_idx, exitcode=proc.exitcode)
             self.logger.warning(log_msg)
             self.worker_procs[worker_idx] = self.start_worker(worker_idx)
 
@@ -648,7 +674,14 @@ class ListenSocket(object):
             pass
         else:
             self.last_saturated = now
-            if leaving_slots:
+            # Only the ones still in their accept loop can be kept. One
+            # that has left it saw the request already and only waits
+            # for its threads: it takes nothing any more, and taking
+            # the request back would just make its exit look like a
+            # death.
+            keep_slots = [i for i in leaving_slots
+                        if not self.worker_left_loop(i)]
+            if keep_slots:
                 # Load came back while we were handing workers back.
                 # Keep them: they are still alive and still accepting,
                 # so taking the request back costs nothing, while
@@ -656,11 +689,11 @@ class ListenSocket(object):
                 # cache each. One that is gone already has its slot
                 # free and gets forked again below. Give them this
                 # round before growing any further.
-                for worker_idx in leaving_slots:
+                for worker_idx in keep_slots:
                     self.set_worker_command(worker_idx, WORKER_RUN)
                 log_msg = _("All {running} workers busy, keeping {count} we were about to stop: {uri}", log=True)[1]
                 log_msg = log_msg.format(running=running,
-                                        count=len(leaving_slots),
+                                        count=len(keep_slots),
                                         uri=self.socket_uri)
                 self.logger.info(log_msg)
                 return
@@ -982,6 +1015,10 @@ class ListenSocket(object):
             # Reset process title.
             new_proctitle = f"{self.proctitle} Worker: {worker_idx}"
             setproctitle.setproctitle(new_proctitle)
+
+        # From here on we accept nothing, whatever the parent asks: see
+        # supervise_workers(), which must not count on us any more.
+        self.set_worker_left_loop(worker_idx)
 
         # Give the connections we handed to threads their chance to
         # finish. os._exit() below takes them down mid request, and for
@@ -1616,8 +1653,12 @@ class Connection(object):
             if timeout is not None and self.connected:
                 self.set_timeout(org_timeout)
 
-    def recv(self, recv_buffer=config.max_request_size, timeout=None):
+    def recv(self, recv_buffer=None, timeout=None):
         """ Receive data from connection. """
+        # Read at call time: a default argument would keep the value
+        # from import over a config reload.
+        if recv_buffer is None:
+            recv_buffer = config.max_request_size
         org_timeout = self.timeout
         if timeout is not None:
             self.set_timeout(timeout)

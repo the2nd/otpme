@@ -1,229 +1,347 @@
 # NAME
 
-pam_otpme - PAM module for OTPme authentication with offline login
-support
+pam_otpme - PAM module that logs users in to an OTPme realm, also
+offline
 
 # SYNOPSIS
 
     auth [success=1 default=ignore] pam_python.so pam_otpme.py [options...]
+    session required pam_python.so pam_otpme.py
 
 # DESCRIPTION
 
-**pam_otpme** is a PAM module that authenticates users against an OTPme
-realm. It is loaded via **pam_python.so** and supports online
-authentication against the OTPme daemon as well as fully offline logins
-using locally cached credentials.
+**pam_otpme** logs a user of the realm in on this host. It is a Python
+script that **pam_python.so** runs, see INSTALLATION.
 
-When a user logs in online, the module can cache the user's token
-credentials on the local host so that subsequent logins succeed even
-when the OTPme server is unreachable. Offline caching must be enabled
-individually for each token on the server:
+**auth**  
+Checks the login at the nodes, with a password, an OTP, a smartcard or
+an SSH key, see OPTIONS, and starts the OTPme agent, which holds the
+login session. On a screen unlock it only checks the user again. Then
+PAM sets the credentials, and pam_otpme adds the user to the dynamic
+groups, see **ALLOW_DYNAMIC_GROUPS** in **otpme.conf**(5).
 
-    otpme-token enable_offline <token>
+**session**  
+Starts the SSH agent when the session starts, see **start_ssh_agent**.
+When the session ends, it stops the SSH agent and the OTPme agent.
 
-Offline credentials are protected by a key derivation function (KDF)
-whose parameters can be tuned based on the strength of the user's
-password.
+**account**  
+Lets every user through: who may log in is checked by **auth**.
 
-In addition to offline tokens, the module supports *offline session
-keeping*. When enabled for a token, the login session is cached
-alongside the offline credentials and automatically restored on the next
-offline login. Session keeping is enabled per token on the server:
+## Offline logins
 
-    otpme-token enable_session_keep <token>
+When the nodes do not answer, a user can log in with an offline copy of
+the login token. The host writes one at a login with
+**cache_login_tokens**, if the token allows it:
 
-If the user has shares configured and auto-mount is enabled, shares are
-mounted automatically when a session is restored from cache:
+> **otpme-token enable_offline *token***
 
-    otpme-user enable_auto_mount <user>
+The copy is encrypted with a key made from the password, see
+**offline_key_func**.
 
-The module also supports hardware smartcards (e.g. YubiKey HMAC-SHA1)
-and SSH key authentication via an SSH agent (e.g. YubiKey with GPG
-applet combined with an OTPme **ssh** token).
+With session keeping, the copy also holds the login session, and an
+offline login takes it up again instead of starting a new one:
+
+> **otpme-token enable_session_keep *token***
+
+## Shares
+
+At a login, the shares of the user are mounted, also when an offline
+login takes up a kept session. It is on by default; to turn it off for a
+user:
+
+> **otpme-user disable_auto_mount *user***
 
 # INSTALLATION
 
-**pam_python.so** must be installed before **pam_otpme** can be used. On
-Debian and Ubuntu install the distribution package:
+**pam_otpme** is a Python script that **pam_python.so** runs, with the
+Python of the system. That Python has to be the version OTPme is
+installed for, e.g. 3.11.
 
-    apt-get install libpam-python
+1\. pam_python  
+On Debian and Ubuntu:
 
-The **pam_otpme.py** script is installed as part of OTPme and is
-typically located in the OTPme Python package directory.
+**apt-get install libpam-python**
+
+2\. The script  
+It comes with OTPme as *etc/otpme/deploy/pam/pam-python/pam_otpme.py*
+below the *site-packages* directory, and is in
+*/etc/otpme/deploy/pam/pam-python/* once *etc/otpme* is copied to */etc*
+(see *README.md*). **pam_python.so** looks for a script without a path
+in */lib/security/*, so link it there:
+
+**ln -s /etc/otpme/deploy/pam/pam-python/pam_otpme.py /lib/security/**
+
+3\. The path to OTPme  
+The script reads */etc/otpme/PYTHONPATH*, one directory per line, to
+find OTPme in its virtual environment, e.g.:
+
+**/opt/otpme/lib/python3.11/site-packages/**
+
+4\. The PAM config  
+*/etc/otpme/deploy/pam/* has *otpme-auth*, *otpme-account* and
+*otpme-session*. Copy them to */etc/pam.d/* and, in the PAM config of a
+service, replace **@include common-auth** and the others with **@include
+otpme-auth** and so on. *deploy/pam/examples/sshd* in the sources of
+OTPme shows it for SSH.
 
 # OPTIONS
 
-Options are passed as space-separated arguments after **pam_otpme.py**
-on the PAM configuration line.
+The options go after **pam_otpme.py** on the PAM line, separated by
+spaces. An option it does not know is ignored, a value it does not know
+gives a warning in the log and the default stays.
 
 **cache_login_tokens**  
-Cache login tokens that are configured for offline usage on the server.
-This enables subsequent offline logins after a successful online
-authentication.
+After an online login, keep the login token on this host for offline
+logins, if it may be kept: see **enable_offline** in **otpme-token**(1).
 
 **try_first_pass**  
-Try to reuse the password supplied by a previously stacked PAM module.
-If no password is available, prompt the user.
+Take the password a PAM module above this one asked for; without one,
+ask.
 
 **use_first_pass**  
-Use the password supplied by a previously stacked PAM module. Fail
-immediately if no password is available.
+Take the password a PAM module above this one asked for; without one,
+the login fails.
+
+Without either of them, pam_otpme asks for the password itself.
 
 **nullok**  
-Allow authentication with an empty password.
+Allow an empty password, e.g. for a **fido2** token that needs none.
 
 **send_password=***auto\|false*  
-Controls whether the user's password is sent to the OTPme server.
-Values: **auto** - send the password only if the server requests it
-(default); **false** - never send the password to the server (useful for
-token types that do not require the password on the server side, e.g.
-SSH tokens).
+Whether the password goes to the nodes. **auto** (default): if the token
+of the user needs it there. **false**: never, e.g. for a token that is
+checked with an SSH key, so the password does not leave the host.
 
 **use_smartcard=***auto\|true\|false*  
-Controls smartcard usage (e.g. YubiKey HMAC-SHA1). Values: **auto** -
-use a locally connected smartcard if one is detected (default);
-**true** - require a smartcard, login without one is not possible;
-**false** - ignore any connected smartcard.
+Use a smartcard, e.g. the HMAC-SHA1 slot of a YubiKey. **auto**
+(default): if one is plugged in. **true**: always; without one the login
+fails. **false**: never.
 
 **use_ssh_agent=***auto\|true\|false*  
-Controls authentication via SSH key from an SSH agent (e.g. YubiKey with
-GPG applet used together with an OTPme **ssh** token). Values:
-**auto** - use the SSH agent if a suitable key is available (default);
-**true** - require a valid SSH key from the agent, login without one is
-not possible; **false** - do not use and do not start an SSH agent.
+Log in with an SSH key from an SSH agent, e.g. a YubiKey with the GPG
+applet for an **ssh** token of OTPme. **auto** (default): if the agent
+has a key the nodes know. **true**: always, and start the agent; without
+a key the login fails. **false**: never, and do not start the agent.
 
 **start_ssh_agent=***auto\|true\|false*  
-Controls whether an SSH agent is started at login. Values: **auto** -
-decide based on public keys received from the server (default);
-**true** - always start an SSH agent; **false** - never start an SSH
-agent.
+Start an SSH agent at login. **auto** (default): if the nodes send SSH
+keys of the user. **true**: always. **false**: never. When it is not
+set, **use_ssh_agent=true** and **false** set it to the same.
 
 **unlock_via_offline_token**  
-When set, screen unlock uses the locally cached offline token and does
-not send an authentication request to the OTPme server.
+On a screen unlock, check the password against the offline copy of the
+login token, if this host has one, and ask no node.
 
-**do_dot1x=***auto\|force*  
-Perform 802.1x port authentication on login. Requires a Network Manager
-dummy connection to be configured beforehand. The **ca-cert** and
-**domain-suffix-match** options are required so the supplicant validates
-the RADIUS server before sending credentials. All OTPme nodes share the
-site certificate whose SAN is *\<site\>.\<realm\>*, so one
-**domain-suffix-match** covers every RADIUS node. Example:
+**do_dot1x=***auto\|force\|false*  
+Log the network port in with 802.1X at login, through a NetworkManager
+connection (default: **false**). pam_otpme writes the user name and the
+password or OTP into that connection, see **dot1x_token_types**, and
+brings it up. Nothing happens when the interface of the connection has
+no link, e.g. on WLAN. **auto**: only when the default gateway does not
+answer a ping. **force**: always; the connection goes down and up again.
+On a screen unlock, when the gateway does not answer, the connection is
+brought up again with what the login wrote into it, because the user may
+not change the connection. That works with the OTP of **yubikey_piv**
+only when the access group the RADIUS server checks the port login
+against has sessions, see **enable_sessions** in
+**otpme-accessgroup**(1): then the OTP of the login may be used again
+while the session lasts.
 
-<!-- -->
+The connection has to exist. **ca-cert** and **domain-suffix-match**
+make the supplicant check the RADIUS server before it sends anything.
+All nodes of a site have the certificate of the site, with
+*\<site\>.\<realm\>* as its name, so one **domain-suffix-match** covers
+every RADIUS node. Identity and password are only placeholders here:
 
     nmcli connection add type ethernet con-name "dot1x-lan" ifname enp0s25 \
         802-1x.eap ttls \
         802-1x.phase2-auth pap \
         802-1x.ca-cert /etc/otpme/ssl/ca.pem \
-        802-1x.domain-suffix-match <site>.<realm> \
-        802-1x.anonymous-identity "anonymous@<realm>" \
+        802-1x.domain-suffix-match berlin.example.org \
+        802-1x.anonymous-identity "anonymous@example.org" \
         802-1x.identity "user" \
         802-1x.password "pass"
 
-> Values: **auto** - perform dot1x authentication only when the default
-> gateway is unreachable (ICMP ping must be allowed); **force** - always
-> perform dot1x authentication on login (restarts the network
-> connection). The option **dot1x_token_types** must also be set.
-
 **dot1x_connection=***name*  
-Name of the Network Manager connection to use for 802.1x port
-authentication. Defaults to **dot1x-lan**.
+The NetworkManager connection (default: **dot1x-lan**).
 
-**dot1x_token_types=***type*  
-Comma separated list of Token types used to generate the OTP for 802.1x
-port authentication. Currently supported types: **yubikey_piv** and
-**password**.
+**dot1x_token_types=***type\[,type...\]*  
+What the password of the connection is made from; without it,
+**do_dot1x** does nothing and says so in the log. **yubikey_piv**: an
+OTP derived by the YubiKey, which asks for its PIN; used when one is
+plugged in. **password**: the password of the login.
 
 **dot1x_timeout=***seconds*  
-Number of seconds to wait for the 802.1x port authentication to
-complete.
+How long to wait for the connection to come up (default: **10**).
 
-**offline_key_func=***func***\[;***opt***=***val***,...\]**  
-Key derivation function used to encrypt the locally cached offline
-token. The function name and its options are separated by **;**,
-individual options by **,**, and key/value pairs by **:**. The only
-supported function is **Argon2_i**. Available options: **iterations** -
-number of iterations (default: 3); **min_mem** - minimum memory in KiB
-(default: 65536); **max_mem** - maximum memory in KiB (default: 262144);
-**threads** - number of threads (default: 4). Example:
+**offline_key_func=***func\[;opt:val,...\]*  
+How the key that encrypts the offline copy of the login token is made
+from the password, see **cache_login_tokens** (default: **Argon2_i**).
+**Argon2_i**, **Argon2_d** and **Argon2_id** work; another function
+gives a warning in the log and the default stays. After **;** come
+options as *opt***:***val*, separated by **,**; an option not given
+keeps its default:
 
-<!-- -->
+**iterations**  
+(default: **3**)
 
-    offline_key_func=Argon2_i;min_mem:65536,max_mem:262144,iterations:6,threads:4
+**memory**  
+In KiB (default: between **min_mem** and **max_mem**, by the free memory
+of the host).
 
-**check_offline_pass_strength=***policy***;***score***:***iterations***\[,...\]**  
-Dynamically adjust the number of KDF iterations based on the strength of
-the user's password. A weaker password receives more iterations; a
-stronger password needs fewer. The first parameter specifies the OTPme
-password policy used to calculate the strength score. Use **auto** to
-use the policy assigned to the host. The second parameter (after **;**)
-is a comma-separated list of *score***:***iterations* pairs that map a
-strength score to a number of KDF iterations. Example:
+**min_mem**  
+In KiB (default: **65536**).
 
-<!-- -->
+**max_mem**  
+In KiB (default: **262144**).
 
-    check_offline_pass_strength=password_strength;0:6,1:6,2:6,3:5,4:5,5:5,6:3,7:3,8:3,9:3,10:3
+**threads**  
+(default: **4**)
 
-**offline_greeting**  
-Display a greeting message after a successful offline login.
+    offline_key_func=Argon2_id;max_mem:524288,threads:2
+
+**check_offline_pass_strength\[=***policy\[;score:iterations,...\]\]*  
+A weak password gets more **iterations** of **offline_key_func**, so its
+offline copy takes longer to guess. A password policy gives the password
+a score from 0 (weak) to 10 (strong), and the score picks the
+iterations. **iterations** given to **offline_key_func** is then not
+used.
+
+*policy*  
+The password policy, see **otpme-policy**(1) (default: **auto**, the
+password policy of the host). Without a policy the score is 0, and the
+log says so.
+
+*score:iterations*  
+How many iterations a score gets. The pairs you give replace these of
+the default:
+
+    0:6,1:6,2:6,3:5,4:5,5:5,6:3,7:3,8:3,9:3,10:3
+
+So a score of 0 to 2 gets 6 iterations, 3 to 5 gets 5, and 6 to 10 gets
+3.
+
+    check_offline_pass_strength=password_strength;0:8,1:8,2:8
 
 **online_greeting**  
-Display a greeting message after a successful online login.
+After a login to the realm, show "You are logged in to REALM
+'\<realm\>'.".
 
-**message_timeout=***seconds*  
-Duration in seconds for which PAM messages are displayed. Default:
-**2**.
+**offline_greeting**  
+After a login with the offline copy of the token, show "You are logged
+in offline!".
 
 **show_errors**  
-Show OTPme-specific login error messages to the user via the PAM
-conversation interface.
+When the login fails, show why, e.g. "Login failed: Host disabled".
+Without it, the reason is only in the log.
+
+**message_timeout=***seconds*  
+How long to wait after each message pam_otpme shows, so it can be read
+(default: **2**).
 
 **connect_timeout=***seconds*  
-Timeout in seconds when establishing a connection to the OTPme server.
-Default: **3**.
+How long to wait for the connection to the nodes at login (default:
+**3**).
 
 **connection_timeout=***seconds*  
-Timeout in seconds when waiting for a response from the OTPme server.
-Default: **30**.
+How long to wait for an answer of the nodes at login (default: **30**).
 
 **create_home**  
-Create the user's home directory on first login if it does not exist.
+Create the home directory of the user if it does not exist, with
+mode 0700. That happens before the password is checked, because the
+OTPme agent that the login starts keeps its files there.
 
 **home_skel=***path*  
-Path to a skeleton directory used when creating a new home directory.
-Requires **create_home**.
+Copy the new home directory from this directory, e.g. */etc/skel*.
+Without **create_home** it does nothing.
 
 **debug**  
-Enable verbose debug logging.
+Write debug messages to the log.
 
 # EXAMPLES
 
-A typical PAM entry that enables offline caching, smartcard and SSH
-agent support, adaptive KDF iterations and debug output:
+## Login with offline copies
+
+*/etc/otpme/deploy/pam/otpme-auth* has these lines. When pam_otpme lets
+the user in, **success=1** skips **pam_deny**; else **pam_deny** ends
+the login:
 
     auth [success=1 default=ignore] pam_python.so pam_otpme.py \
-        try_first_pass \
-        cache_login_tokens \
-        use_smartcard=auto \
-        use_ssh_agent=auto \
-        offline_key_func=Argon2_i;min_mem:65536,max_mem:262144,iterations:6,threads:4 \
-        check_offline_pass_strength=password_strength;0:6,1:6,2:6,3:5,4:5,5:5,6:3,7:3,8:3,9:3,10:3 \
-        debug
+        try_first_pass cache_login_tokens \
+        use_smartcard=auto use_ssh_agent=auto start_ssh_agent=auto \
+        create_home home_skel=/etc/skel \
+        check_offline_pass_strength=password_strength;0:6,1:6,2:6,3:5,4:5,5:5,6:3,7:3,8:3,9:3,10:3
+    auth requisite pam_deny.so
+    auth required pam_permit.so
 
-A minimal entry for online-only authentication:
+## A stronger key for the offline copies
 
-    auth [success=1 default=ignore] pam_python.so pam_otpme.py try_first_pass
+Argon2_id with up to 512 MiB, and the iterations from the strength of
+the password, scored by the password policy of the host:
+
+    auth [success=1 default=ignore] pam_python.so pam_otpme.py \
+        try_first_pass cache_login_tokens \
+        offline_key_func=Argon2_id;max_mem:524288 \
+        check_offline_pass_strength
+
+## No new offline copies
+
+Without **cache_login_tokens** no new offline copy is written, so a
+login without the nodes works only with a copy from before.
+**show_errors** shows why a login fails:
+
+    auth [success=1 default=ignore] pam_python.so pam_otpme.py try_first_pass show_errors
+
+## The session
+
+*/etc/otpme/deploy/pam/otpme-session* has pam_otpme in the session part.
+When the session starts, it starts the SSH agent, see
+**start_ssh_agent**. When the session ends, it stops the SSH agent and
+the OTPme agent, which logs the user out when needed:
+
+    session required pam_python.so pam_otpme.py
 
 # FILES
 
-*/var/cache/otpme/offline/*  
-Directory where offline token credentials and cached login sessions are
-stored.
+*/lib/security/pam_otpme.py*  
+The link to the script, see INSTALLATION.
+
+*/etc/otpme/PYTHONPATH*  
+Directories the script puts in front of the Python path, one per line,
+e.g. the *site-packages* of the virtual environment of OTPme. Without
+it, the script finds OTPme only when it runs from the sources.
+
+*/etc/otpme/deploy/pam/*  
+*otpme-auth*, *otpme-account* and *otpme-session*, to copy to
+*/etc/pam.d/*. They are there once *etc/otpme* from *site-packages* is
+copied to */etc*, see INSTALLATION.
+
+*/etc/otpme/otpme.conf*  
+Where pam_otpme logs to, see PAM LOGGING in **otpme.conf**(5).
+
+*/var/log/otpme/pam.log*  
+The log with **PAM_USE_LOGFILE**, see **PAM_LOGFILE** in
+**otpme.conf**(5).
+
+*/var/cache/otpme/offline/\<user uuid\>/*  
+The offline copies of the tokens of a user, see **cache_login_tokens**,
+and the login session kept with them, see **enable_session_keep** in
+**otpme-token**(1).
+
+*/var/cache/otpme/env/\<user\>/*  
+What a login of the user leaves for later, e.g. for the SSH agent when
+the session ends.
+
+The two directories in */var/cache/otpme/* move with **CACHE_DIR** in
+**otpme.conf**(5).
 
 # SEE ALSO
 
-**otpme-tool**(1), **otpme.conf**(5), **pam**(7), **pam_python**(8)
+**otpme-token**(1), **otpme-user**(1), **otpme-accessgroup**(1),
+**otpme-policy**(1), **otpme-tool**(1), **otpme.conf**(5),
+**pam.conf**(5), **pam**(7)
+
+pam_python is described in the Debian package **libpam-python-doc**.
 
 # AUTHOR
 

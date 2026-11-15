@@ -221,6 +221,37 @@ def do_hostd_init(load_host_data=True):
                     mgmt_fqdn=site_mgmt_fqdn,
                     sso_fqdn=site_sso_fqdn)
 
+def raise_rlimit(limit, wanted):
+    """ Raise a resource limit to wanted.
+
+    Only ever raise, never lower: a deployment that already set a
+    higher limit through its init system keeps it. Lifting the hard
+    limit needs privileges; without them the soft limit is taken as
+    high as the hard one allows, which is what an unprivileged process
+    can do, and we carry on -- running with less beats not starting.
+    """
+    try:
+        soft, hard = resource.getrlimit(limit)
+        if hard == resource.RLIM_INFINITY:
+            hard_reached = True
+        else:
+            hard_reached = hard >= wanted
+        if soft == resource.RLIM_INFINITY:
+            return
+        if soft >= wanted and hard_reached:
+            return
+        new_soft = max(soft, wanted)
+        new_hard = hard if hard_reached else wanted
+        try:
+            resource.setrlimit(limit, (new_soft, new_hard))
+        except (ValueError, PermissionError):
+            # Only lifting a finite hard limit can fail here.
+            if soft < hard:
+                resource.setrlimit(limit, (hard, hard))
+    except (ValueError, OSError):
+        pass
+
+
 def init_otpme(use_backend=None, load_host_data=True):
     """ Init OTPme. """
     from otpme.lib import backend
@@ -264,39 +295,15 @@ def init_otpme(use_backend=None, load_host_data=True):
     else:
         config.posix_msgsize_max = config._posix_msgsize_max
 
-    # Set posix message queue size limit.
-    try:
-        resource.setrlimit(resource.RLIMIT_MSGQUEUE,
-                        (config.rlimit_msgqueue,
-                        config.rlimit_msgqueue))
-    except ValueError:
-        pass
+    # Raise the posix message queue size limit, the same way.
+    raise_rlimit(resource.RLIMIT_MSGQUEUE, config.rlimit_msgqueue)
 
     # Raise the open file limit. A daemon started by an init system gets
     # the kernel default of 1024, and limits.conf does not apply to it --
     # that file is read by pam_limits, which only runs for a PAM session.
     # With a socket per connection across ten daemons, plus the cluster,
     # redis and the index DB, 1024 runs out.
-    #
-    # Only ever raise, never lower: a deployment that already set a
-    # higher limit through its init system keeps it.
-    try:
-        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-        wanted = config.rlimit_nofile
-        if soft < wanted or hard < wanted:
-            new_hard = max(hard, wanted)
-            try:
-                resource.setrlimit(resource.RLIMIT_NOFILE,
-                                (max(soft, wanted), new_hard))
-            except (ValueError, PermissionError):
-                # Not privileged to lift the hard limit. Take the soft
-                # one as high as the hard one allows, which is what an
-                # unprivileged process can do, and carry on -- running
-                # with fewer file descriptors beats not starting.
-                if soft < hard:
-                    resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
-    except (ValueError, OSError):
-        pass
+    raise_rlimit(resource.RLIMIT_NOFILE, config.rlimit_nofile)
 
     # Always need to use the backed in API mode but not on realm init.
     if config.use_api and not config.realm_init:

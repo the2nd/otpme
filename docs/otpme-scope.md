@@ -111,12 +111,13 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
-List the scope names, and with a regex only those that match it. You get
-the scopes you may change; **-a** adds those you may only look at.  
-**--attribute** matches the regex against that attribute instead of the
-name: **list --attribute scope_id email** lists the scope an application
-asks for as **email**.
+**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+List the scope names, and with a pattern only those that match it, see
+**SELECTING OBJECTS** in **otpme**(1). You get the scopes you may
+change; **-a** adds those you may only look at.  
+**--attribute** matches the pattern against that attribute instead of
+the name: **list --attribute scope_id email** lists the scope an
+application asks for as **email**.
 
 **enable *scope***  
 Enable a disabled scope.  
@@ -259,18 +260,23 @@ Only the comment of an entry can be changed or removed. What was done
 and by whom stays as it is.
 
 **changelog *scope***  
-Show the changelog of the scope. Needs the ACL **view:changelog**.
+Show the changelog of the scope, one entry per line: its *entry_id*, the
+time, who made the change and what was done, then a detail in round
+brackets and the comment in square brackets where there are any. Needs
+the ACL **view:changelog**.
 
 **edit_changelog *scope* *entry_id* *comment***  
-Set the comment of that entry, or replace the one it has. Needs the ACL
-**edit:changelog**.
+Set the comment of that entry, or replace the one it has. That writes an
+entry of its own. Needs the ACL **edit:changelog**.
 
 **del_changelog *scope* *entry_id***  
 Remove the comment of that entry. The entry itself stays, and an entry
-without a comment is refused. Needs the ACL **edit:changelog**.
+without a comment is refused. That writes an entry of its own. Needs the
+ACL **edit:changelog**.
 
 **clear_changelog *scope***  
-Remove every entry of the changelog.  
+Remove every entry of the changelog. Afterwards it holds one entry: that
+it was cleared.  
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
@@ -314,10 +320,11 @@ ACLs exist, is under **ACLs** in **otpme**(7).
 
 **add_acl *scope* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this scope.  
-*owner_type* is **role** or **token**. *owner* is the path of that role
-or token. An ACL can carry a value, for example **view:clients**. To
-give several ACLs at once, separate them with commas:
-**view:clients,view:status**.  
+*owner_type* is **role** or **token**. *owner* names it the way
+**list_acls** prints it: a role as *site/name*, or by its name alone on
+its own site; a token as *user/token*. An ACL can carry a value, for
+example **view:clients**. To give several ACLs at once, separate them
+with commas: **view:clients,view:status**.  
 Needs the ACL **add:acl**.
 
 **del_acl *scope* *acl*\[,*acl*\]**  
@@ -400,8 +407,10 @@ Needs the ACL **edit:description**.
 Set free-form info text. If *info* is omitted, the current text is
 opened in the editor named by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note about
-the object, which no user is ever shown. With a language it is text for
-the users in that language.  
+the object, which no user is ever shown. A text can be written for a
+language as well, for the places that show such a text to a user;
+nothing shows the info of a scope, so for a scope it stays a note either
+way.  
 Needs the ACL **edit:info**.
 
 **dump_info \[**--language** *LANG*\] *scope***  
@@ -427,7 +436,7 @@ A token, a role, a group or a client that is deleted leaves its UUID
 behind in every scope that held it. Nothing is handed out to it any more
 — the UUID resolves to nothing — but it stays in the object and **show**
 prints it as a bare UUID. This clears those out, together with orphan
-ACLs, policies and signatures.  
+ACLs and policies.  
 It asks once for everything it found; the global option **-f** skips the
 question.  
 Needs the ACL **remove:orphans**.
@@ -675,14 +684,16 @@ Clear out the applications and tokens that were deleted since.
 
 An auth on action policy can ask for a login again before these actions.
 See **Auth On Action Policy** in **otpme-policy**(1). A scope has the
-hooks every object type has, and these:
+hooks every object type has, and these; a command of another name is in
+brackets:
 
 > add_client, add_group, add_role, add_token, remove_client,
-> remove_group, remove_role, remove_token, set_config_parameter.
+> remove_group, remove_role, remove_token, set_config_parameter
+> (config).
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-client**(1),
+**otpme**(1), **otpme**(7), **otpme-client**(1),
 **otpme-accessgroup**(1), **otpme-group**(1), **otpme-role**(1),
 **otpme-token**(1), **otpme-user**(1), **otpme-site**(1),
 **otpme-unit**(1), **otpme-policy**(1), **otpme-trash**(1)

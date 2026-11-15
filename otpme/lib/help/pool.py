@@ -21,8 +21,8 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-pool {command} [pool]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-pool show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [pool]'),
-                    'cmd'   :   '--fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": --node-limit :max_nodes: --token-limit :max_tokens: --role-limit :max_roles: --policy-limit :max_policies: --limit :limit: [|object|]',
+                    '_cmd_usage_help' : _('Usage: otpme-pool show [--policy-limit <limit>] [--node-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [pool]'),
+                    'cmd'   :   '--fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": --node-limit :max_nodes: --policy-limit :max_policies: --limit :limit: [|object|]',
                     '_help' :   {
                                     'cmd'                           : _('Show pool(s)'),
                                     '-a'                            : _('Show all pools.'),
@@ -34,19 +34,18 @@ cmd_help = {
                                     '--csv'                         : _('Output table as CSV.'),
                                     '--csv-sep <separator>'         : _('Separator between the CSV columns.'),
                                     '--node-limit <limit>'          : _('Output <limit> member nodes.'),
-                                    '--token-limit <limit>'         : _('Output <limit> member tokens.'),
-                                    '--role-limit <limit>'          : _('Output <limit> member roles.'),
                                     '--policy-limit <limit>'        : _('Output <limit> assigned policies.'),
                                     '--limit <limit>'               : _('Limit number of items shown per object.'),
                                 },
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-pool list [--attribute attribute] [-a] [regex]'),
-                    'cmd'   :   '-a :show_all=True: ["search_regex"]',
+                    '_cmd_usage_help' : _('Usage: otpme-pool list [--attribute attribute] [-a] [pattern]'),
+                    'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List pools.'),
                                     '-a'                        : _('List all pools.'),
+                                    '--attribute <attribute>'   : _('Match the pattern against this attribute instead of the name.')
                                 },
                 },
 
@@ -75,7 +74,7 @@ cmd_help = {
                                 },
                 },
     'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-pool config -d -a {pool} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-pool config [-d] [-a] {pool} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to pool.'),
@@ -245,7 +244,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-pool info {pool} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-pool info [--language <language>] {pool} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set pool info'),
@@ -254,7 +253,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-pool dump_info {pool}'),
+                    '_cmd_usage_help' : _('Usage: otpme-pool dump_info [--language <language>] {pool}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump pool info'),
@@ -262,24 +261,12 @@ cmd_help = {
                                 },
                 },
 
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
     '_show_config'    : {
                     'cmd'   :   '<|object|>',
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-pool export --password <password> {pool}'),
+                    '_cmd_usage_help' : _('Usage: otpme-pool export [--password <password>] {pool}'),
                     'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export pool config to stdout.'),
@@ -320,8 +307,11 @@ cmd_help = {
                 },
 
     'list_nodes'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-pool list_nodes {pool}'),
+                    '_cmd_usage_help' : _('Usage: otpme-pool list_nodes [--return-type <type>] {pool}'),
                     'cmd'   :   '--return-type :"return_type": [|object|]',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
                     '_help' :   {
                                     'cmd'                       : _('List assigned nodes.'),
                                     '--return-type'             : _('Attribute to return.'),

@@ -123,8 +123,6 @@ register_global_opt("-f", "Do not ask any questions: every confirmation counts a
 register_global_opt("--no-pager", "Do not use a pager (less) on command output larger than the terminal size.")
 register_global_opt("--changelog <text>", "Add custom text to the object changelog.")
 register_global_opt("-u <username>", "User used for authentication (e.g. realm join)")
-register_global_opt("--no-dns", "Do not resolve OTPme site address via DNS")
-register_global_opt("--use-dns", "Resolve OTPme site address via DNS")
 register_global_opt("--login-no-dns", "Do not resolve OTPme login point via DNS")
 register_global_opt("--login-use-dns", "Resolve OTPme login point via DNS")
 register_global_opt("--use-ssh-agent <y|n>", "Use ssh-agent for authentication")
@@ -585,12 +583,6 @@ def _get_main_opts(clear_cache=False, mod_name=None):
             sys.argv.pop(0)
         elif sys.argv[0] == "--color-logs":
             main_opts['color_logs'] = True
-            sys.argv.pop(0)
-        elif sys.argv[0] == "--no-dns":
-            main_opts['use_dns'] = False
-            sys.argv.pop(0)
-        elif sys.argv[0] == "--use-dns":
-            main_opts['use_dns'] = True
             sys.argv.pop(0)
         elif sys.argv[0] == "--login-no-dns":
             main_opts['login_use_dns'] = False

@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-site {command} [site]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-site show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [site]'),
+                    '_cmd_usage_help' : _('Usage: otpme-site show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [site]'),
                     'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show site(s)'),
@@ -39,12 +39,12 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-site list [--attribute attribute] [-a] [regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-site list [--attribute attribute] [-a] [pattern]'),
                     'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List sites.'),
                                     '-a'                        : _('List all sites.'),
-                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
+                                    '--attribute <attribute>'   : _('Match the pattern against this attribute instead of the name.')
                                 },
                 },
 
@@ -57,8 +57,8 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-site add {site} {node_name} {site_fqdn} [site_address]'),
-                    'cmd'   :   '--country :"ca_country": --state :"ca_state": --locality :"ca_locality": --organization :"ca_organization": --ou :"ca_ou": --email :"ca_email": --no-dicts :no_dicts=True: --dicts :[dictionaries]: --id-ranges ::id_ranges:: --trust :[trusted_sites]: <|object|> <"node_name"> <"site_fqdn"> ["site_address"]',
+                    '_cmd_usage_help' : _('Usage: otpme-site add [--country <country>] [--state <state>] [--locality <locality>] [--organization <organization>] [--ou <ou>] [--email <email>] [--dicts <dict1,dict2>] [--id-ranges <id_ranges>] [--trust <site1,site2>] {site} {node_name} {site_fqdn} [site_address]'),
+                    'cmd'   :   '--country :"ca_country": --state :"ca_state": --locality :"ca_locality": --organization :"ca_organization": --ou :"ca_ou": --email :"ca_email": --dicts :[dictionaries]: --id-ranges ::id_ranges:: --trust :[trusted_sites]: <|object|> <"node_name"> <"site_fqdn"> ["site_address"]',
                     '_help' :   {
                                     'cmd'                               : _('Add new site.'),
                                     '--country'                         : _('Set CA certificate <country> field.'),
@@ -67,7 +67,6 @@ cmd_help = {
                                     '--organization'                    : _('Set CA certificate <organization> field.'),
                                     '--ou'                              : _('Set CA certificate <ou> field.'),
                                     '--email'                           : _('Set CA certificate <email> field.'),
-                                    '--no-dicts'                        : _('Do not add any word dictionaries (strength checker).'),
                                     '--dicts <dict1,dict2>'             : _('Add the given word dictionaries (strength checker).'),
                                     '--id-ranges <id_range_1,id_range2>': _('ID ranges to add.'),
                                     '--trust <site1,site2>'             : _('Sites the new site trusts.'),
@@ -168,7 +167,7 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-site config -d -a {site} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-site config [-d] [-a] {site} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to site.'),
@@ -252,7 +251,7 @@ cmd_help = {
                 },
 
      'show_ldif'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-site show_ldif {site} -a attribute1,attribute2'),
+                    '_cmd_usage_help' : _('Usage: otpme-site show_ldif {site} [-a attribute1,attribute2]'),
                     'cmd'   :   '<|object|> -a :[attributes]:',
                     '_help' :   {
                                     'cmd'                   : _('Show LDIF representation of site'),
@@ -337,7 +336,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-site info {site} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-site info [--language <language>] {site} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set site info'),
@@ -346,7 +345,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-site dump_info {site}'),
+                    '_cmd_usage_help' : _('Usage: otpme-site dump_info [--language <language>] {site}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump site info'),
@@ -363,18 +362,6 @@ cmd_help = {
                 },
 
     '_show_object_classes'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
                     'cmd'   :   '<|object|>',
                 },
 

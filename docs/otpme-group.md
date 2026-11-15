@@ -1,6 +1,7 @@
 # NAME
 
-otpme-group - manage OTPme groups
+otpme-group - manage groups: the POSIX groups of the users, in LDAP and
+on the hosts
 
 # SYNOPSIS
 
@@ -8,10 +9,30 @@ otpme-group - manage OTPme groups
 
 # DESCRIPTION
 
-**otpme-group** manages POSIX/LDAP groups in the OTPme system. Groups
-have a GID number and can contain users, tokens, and roles. Each user
-has a default group, and groups are exposed via LDAP with standard
-attributes.
+**otpme-group** adds, changes and deletes groups. A group is a POSIX
+group: it has a name and a **gidNumber**, and in LDAP and on the hosts
+it lists its members.
+
+The members are the owners of the tokens put into the group, also of
+those in its roles, and the users whose default group it is, see **Token
+and Role Assignment**. A user is never put in directly. Every user has a
+default group, its primary group on the hosts. A new user gets the one
+of **--group**, else the one of its template, else the one a
+**defaultgroups** policy names, else the group named like the site.
+**otpme-user group** changes it, see **otpme-user**(1).
+
+A group has two more uses:
+
+> -   Its hosts are hosts of the shares that are limited to hosts and
+>     have the group, see **Host Management**.
+>
+> -   Its sync users are copied to the hosts that name it as sync group,
+>     see **Sync User Management**.
+
+A new group goes into the unit **groups**, unless a **defaultunits**
+policy names another. The groups the realm and the sites come with
+(**root**, **realmusers** and the group named like each site) cannot be
+deleted, moved or renamed.
 
 # COMMANDS
 
@@ -70,8 +91,10 @@ row per line with **;** between the columns, and **--csv-sep** uses
 another separator.
 
 A column you may not see says **-**. With a group named, this prints the
-object itself instead of a table row, one value per line. A name that is
-no group is taken as a regex.
+object itself instead of a table row, one value per line. **show**
+*group***$** prints that one group as a table row. A name that is no
+group is a pattern with **\***, not a regex, see **SELECTING OBJECTS**
+in **otpme**(1).
 
 **show_oid \[**--full**\] *group***  
 Show the OID of the group: **group\|\<realm\>/\<name\>**. With
@@ -83,11 +106,11 @@ Needs the ACL **view_public:object**.
 Show the UUID of the group.  
 Needs the ACL **view_public:object**.
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
-List the group names, and with a regex only those that match it. You get
-the groups you may change; **-a** adds those you may only look at.
-**--attribute** matches the regex against that attribute instead of the
-name.
+**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+List the group names, and with a pattern only those that match it, see
+**SELECTING OBJECTS** in **otpme**(1). You get the groups you may
+change; **-a** adds those you may only look at. **--attribute** matches
+the pattern against that attribute instead of the name.
 
 **enable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *group***  
 **disable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *group***  
@@ -291,15 +314,19 @@ A command that changes something asks first; the global option **-f**
 skips the question.
 
 **changelog *group***  
-Show the changelog of the group. Needs the ACL **view:changelog**.
+Show the changelog of the group, one entry per line: its *entry_id*, the
+time, who made the change and what was done, then a detail in round
+brackets and the comment in square brackets where there are any. Needs
+the ACL **view:changelog**.
 
 **edit_changelog *group* *entry_id* *comment***  
-Set the comment of that entry, or replace the one it has. Needs the ACL
-**edit:changelog**.
+Set the comment of that entry, or replace the one it has. That writes an
+entry of its own. Needs the ACL **edit:changelog**.
 
 **del_changelog *group* *entry_id***  
 Remove the comment of that entry. The entry itself stays, and an entry
-without a comment is refused. Needs the ACL **edit:changelog**.
+without a comment is refused. That writes an entry of its own. Needs the
+ACL **edit:changelog**.
 
 **clear_changelog *group***  
 Remove every entry of the changelog. Afterwards it holds one entry: that
@@ -351,8 +378,8 @@ An ACL says what somebody may do with this group. The somebody is a role
 or a token, never a user.
 
 What the three forms **acl**, **+acl** and **++acl** mean is under
-**ACLs** in **otpme**(7). Which ACLs a group knows is in
-**otpme-acls**(7). A group has no default ACLs, **+acl** and **++acl**:
+**ACLs** in **otpme**(7). Tab completion after **add_acl** offers the
+ACLs a group knows. A group has no default ACLs, **+acl** and **++acl**:
 nothing lies in a group that could get them.
 
 Adding and removing ask first; the global option **-f** skips the
@@ -360,10 +387,11 @@ question.
 
 **add_acl *group* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this group.  
-*owner_type* is **role** or **token**. *owner* is the path of that role
-or token. An ACL can carry a value, for example **view:tokens**. To give
-several ACLs at once, separate them with commas:
-**view:tokens,add:token**.  
+*owner_type* is **role** or **token**. *owner* names it the way
+**list_acls** prints it: a role as *site/name*, or by its name alone on
+its own site; a token as *user/token*. An ACL can carry a value, for
+example **view:tokens**. To give several ACLs at once, separate them
+with commas: **view:tokens,add:token**.  
 Needs the ACL **add:acl**.
 
 **del_acl *group* *acl*\[,*acl*\]**  
@@ -399,186 +427,256 @@ Needs the ACL **enable:acl_inheritance**.
 A move leaves the ACLs of the group as they are again.  
 Needs the ACL **disable:acl_inheritance**.
 
-## Configuration and Attributes
+## Group Configuration
+
+A group has three config parameters: **changelog**,
+**allow_changelog_clearing** and **auto_sign**, see **CONFIG
+PARAMETERS**. A parameter is looked up at the group, then at each unit
+above it, then at the site.
 
 **config \[**-d**\] \[**-a**\] *group* *parameter* \[*value*\]**  
-Set a configuration parameter. Use **-d** to delete (reset to default)
-or **-a** to append the value to a list-typed parameter.
+Set a parameter on the group.
+
+**-d**  
+Remove the parameter from the group, or with a value only that one value
+from a list. It is not set back to a default: what applies afterwards is
+what a unit above or the site says.
+
+**-a**  
+Append the value to a parameter that holds a list, instead of replacing
+what is there.
+
+The ACL is per parameter, **set:config:\<parameter\>**.
 
 **show_config *group* \[*parameter*\]**  
-Show all configuration parameters.
+The parameters set on the group itself, or only the one named. Nothing
+is shown for a parameter that the group gets from a unit or from the
+site.
 
 **get_config *group* *parameter***  
-Show the value of a single configuration parameter.
+What the parameter comes to for the group, once the group, the units
+above and the site have been looked at. So this answers what applies,
+where **show_config** answers what was set here.
 
 **description *group* \[*description*\]**  
-Set group description.
+Set the description. Without one OTPme asks and offers the current text
+for editing. Needs **edit:description**.
 
 **info \[**--language** *LANG*\] *group* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
-opened in the editor specified by the **EDITOR** environment variable.
+opened in the editor named by the **EDITOR** environment variable. Needs
+**edit:info**.  
+Without **--language** the text is the administrator's own note. Nothing
+shows the info of a group to a user, so a text for a language stays a
+note as well.
 
 **dump_info \[**--language** *LANG*\] *group***  
-Dump the info text to stdout.
+Write one of those texts to stdout. **--language** picks which one;
+without it you get the note of the administrator. Needs **view:info**.
+
+## Extensions and LDAP Attributes
+
+A group is also an LDAP entry, **cn=***group* under its unit, for
+example **cn=developers,ou=groups,ou=berlin,dc=example,dc=org**. An
+extension is what gives it one: the object classes it is of, and the
+attributes those classes allow. What **ldapd** serves and what
+**show_ldif** prints comes from them. On a host, the members of a group
+are in the NSS files as well.
+
+A group has the extensions **base** and **posix**. **posix** makes it a
+**posixGroup** with **cn**, **gidNumber** and **memberUid**, and it
+needs **base**. Neither can be removed: **posix** brings **cn**, which
+names the entry, and **posix** needs **base**. No other extension is for
+groups.
+
+OTPme fills in two attributes itself:
+
+> **gidNumber**  
+> Taken from the ID range policy of the unit or the site when the group
+> is added, see **otpme-policy**(1). A number you set yourself must be
+> in that range and must not be used by another group. When it changes,
+> the users with this group as their primary group get the new number as
+> well.
+>
+> **memberUid**  
+> The users of the group: the owners of its tokens, also of the tokens
+> in its roles, and the users with this group as their primary group.
+> OTPme writes it when the members change, so it is read-only.
+> **show_ldif -a memberUid** lists the members.
+
+The commands that change something ask first; the global option **-f**
+skips the question.
 
 **add_extension *group* *extension***  
-Add an extension to the group.
+Add an extension to the group. One that is not for groups is refused,
+and so is one the group already has; for a group, that is every
+extension today.  
+Needs the ACL **add:extension**.
 
 **remove_extension *group* *extension***  
-Remove an extension.
+Take it away again, with the classes and attributes it brought. For a
+group, both extensions stay, see above.  
+Needs the ACL **remove:extension**.
 
-**add_attribute *group* *attribute*=*value***  
-Add an LDAP attribute.
+**add_attribute *group* *attribute***=**\[*value*\]**  
+Set an LDAP attribute of the group.
 
-**del_attribute *group* *attribute*=*value***  
-Remove an LDAP attribute.
+Only an attribute **posixGroup** allows. **cn** is read-only: it is the
+name of the group. **memberUid** is read-only as well, see above.
+**userPassword** is refused: a group is no account to log in with. An
+attribute can hold more than one value, so this adds one and leaves the
+others.
+
+Everything after the first **=** is the value. Without a value OTPme
+fills in its own where it has one: for **description**, the description
+of the group.
+
+The ACL is per attribute, **add:attribute:***attribute*, and a plain
+**add:attribute** covers all of them.
+
+**modify_attribute *group* *attribute* *old_value* *new_value***  
+Put *new_value* in the place of *old_value*, and leave the other values
+of the attribute alone. An *old_value* the group does not have is an
+error. This is the way to give a group another **gidNumber**.  
+The ACL is **edit:attribute:***attribute*.
+
+**del_attribute *group* *attribute***=**\[*value*\]**  
+Remove that value, or the whole attribute where no value is given.
+**cn** and **memberUid** cannot be removed.  
+The ACL is **delete:attribute:***attribute*.
 
 **add_object_class *group* *class***  
-Add an LDAP object class.
+Add an LDAP object class. Only a class an extension of the group knows
+is taken, and for a group that is **posixGroup**, which it has
+already.  
+Needs the ACL **add:object_class**.
 
 **del_object_class *group* *class***  
-Remove an LDAP object class.
+Remove an object class again, with the attributes only it allows. The
+class that allows the attribute naming the entry stays, and for a group
+that is **posixGroup**, its only class.  
+Needs the ACL **delete:object_class**.
 
 **show_ldif *group* \[**-a** *attribute1,attribute2*\]**  
-Show LDIF representation of the group. Use **-a** to show only given
-attributes.
+The group as LDAP sees it. **-a** prints only those attributes.
 
-## Import/Export
+## Export and Cleanup
 
-**export \[**--password** *PASS*\] *group***  
-Export group configuration.
+**export \[**--password** *password*\] *group***  
+Write the whole object of the group to stdout, as JSON: its tokens,
+roles, ACLs, policies, config parameters, LDAP attributes and the rest.
+**otpme-tool import** reads it back.  
+A group holds no key and no secret, so **--password** has nothing to
+encrypt: the output is in clear either way.  
+Needs the ACL **export**.
 
 **remove_orphans *group***  
-Remove orphaned object references.
+Remove references to objects that are gone: tokens and roles of the
+group that were deleted, orphan ACLs and policies.  
+It asks once for what it found; the global option **-f** skips the
+question.  
+Needs the ACL **remove:orphans**.
 
 # OPTIONS
 
-## Display Options
+Every option belongs to one command and is described with that command
+above.
 
-**-a**  
-Show all groups (across all units).
-
-**-z *SIZE***  
-Limit output size.
-
-**--fields *FIELD1,FIELD2***  
-Display only specified fields.
-
-**--role-limit *N***  
-Limit number of roles shown.
-
-**--token-limit *N***  
-Limit number of tokens shown.
-
-**--host-limit *N***  
-Limit number of hosts shown.
-
-**--policy-limit *N***  
-Limit number of policies shown.
-
-**--limit *N***  
-Limit number of items shown per object.
-
-**--sort-by *FIELD***  
-Sort output by field.
-
-**--reverse**  
-Reverse sort order.
-
-**--raw**  
-Output without headers/borders.
-
-**--csv**  
-Output as CSV.
-
-**--csv-sep *SEP***  
-CSV separator character.
-
-**--attribute *ATTR***  
-Of **list**: match the regex against this attribute instead of the name.
-
-## Token Options
-
-**--sign**  
-Sign the object with default tags.
-
-**--tags *tag1,tag2***  
-Add tags to signature.
-
-**--no-auto-sign**  
-Do not automatically sign when adding a token.
-
-**--keep-sign**  
-Do not remove any signature when removing a token.
-
-## General Options
-
-**--keep-acls**  
-Preserve ACLs when moving group.
-
-**--password *PASS***  
-Password for encrypting exports.
-
-Global options are available for all commands. See **otpme**(1) for
-details.
+Global options work with every command, see **otpme**(1).
 
 # CONFIG PARAMETERS
 
-Configuration parameters can be set with the **config** command and
-displayed with **show_config**. For a complete description of all
-available parameters and their applicable object types, see
-**otpme**(7).
+A group takes these. What each of them does, and how a parameter is
+resolved, is in **otpme**(7).
+
+**auto_sign (bool, default: false)**  
+Whether **add_token** signs the token it puts into the group, as
+**--sign** does, see above. One set on your login token itself comes
+first and counts for everything you change. **enable_autosign** of your
+user signs as well, see **otpme-user**(1). **--no-auto-sign** skips it
+for one call.
+
+**changelog (bool, default: true)**  
+Whether the commands on this group are written to its changelog.
+
+**allow_changelog_clearing (bool, default: true)**  
+Whether that changelog may be cleared.
 
 # EXAMPLES
 
-## Managing Groups
+## A group for the developers
 
 **otpme-group add developers**  
-Create a new group
+The group goes into the unit **groups** and gets the next free
+**gidNumber**.
 
-**otpme-group add --attributes gidNumber=1001 developers**  
-Create group with specific GID
+**otpme-group add_token developers alice/login**  
+**alice** is a member: the name is in **memberUid**, on the hosts as
+well.
+
+**otpme-group add_role developers devops**  
+Everybody with a token in the role **devops** is a member too.
 
 **otpme-group list_users developers**  
-List users in the group
+The users whose tokens are in the group; not those that come through a
+role.
 
 **otpme-group list_default_group_users developers**  
-List users with this as default group
+Who has it as primary group.
 
-## Assigning Tokens and Roles
+## A group with a fixed GID
 
-**otpme-group add_token developers alice/totp**  
-Add a token to the group
+**otpme-group add --attributes gidNumber=5000 staff**  
+The number must be in the ID range of the unit or the site.
 
-**otpme-group add_role developers DEV_ROLE**  
-Add a role to the group
+**otpme-group modify_attribute staff gidNumber 5000 5001**  
+A new number; the users with **staff** as primary group get it as well.
 
-## LDAP
+## SSH only for signed members
 
-**otpme-group show_ldif developers**  
-Show LDIF representation
+**otpme-group add_token --sign developers alice/ssh**  
+The token of **alice** is signed for the group.
 
-**otpme-group show_ldif developers -a cn,gidNumber**  
-Show only specific LDAP attributes
+**otpme-tool add_signer --signer-type token --tag group:developers 'role\|example.org/berlin/admins'**  
+On a host: an SSH key is let in only with a signature of an admin that
+carries the tag of the group, see **otpme-tool**(1).
+
+## On a host
+
+**otpme-group show_ldif developers -a memberUid**  
+The members as LDAP sees them.
+
+**getent group developers**  
+The same through NSS on a host.
 
 # AUTH ON ACTION HOOKS
 
 An auth on action policy can ask for a login again before these actions.
 See **Auth On Action Policy** in **otpme-policy**(1). A group has the
-hooks every object type has, and these:
+hooks every object type has, and these; a command of another name is in
+brackets:
 
 > add_host, add_role, add_token, move, remove_host, remove_role,
-> remove_token, set_config_parameter.
+> remove_token, set_config_parameter (config).
 
 # FILES
 
-*/var/lib/otpme/*  
-OTPme data directory
+*/var/lib/otpme/tree/*  
+The objects of the realm, on the nodes and, by sync, on the hosts. A
+group is the directory *\<group\>.group* in the directory of its unit,
+e.g. *\<realm\>.realm/\<site\>.site/groups.unit/developers.group/*, with
+its settings in *object.json*. Change them with the commands above, not
+in the file.
+
+*/var/cache/otpme/nsscache/group.cache*  
+The groups with their **gidNumber** and **memberUid**, as NSS reads them
+on a host or node. */etc/group.cache* points to it.
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-user**(1),
-**otpme-role**(1), **otpme-token**(1), **otpme-policy**(1)
+**otpme**(1), **otpme**(7), **otpme-unit**(1), **otpme-user**(1),
+**otpme-token**(1), **otpme-role**(1), **otpme-policy**(1),
+**otpme-trash**(1), **otpme-tool**(1)
 
 # AUTHOR
 

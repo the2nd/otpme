@@ -62,7 +62,6 @@ write_acls = [
 
 read_value_acls = {
                 "view"      : [
-                            "secret",
                             "status",
                             "auth",
                             "sync",
@@ -83,12 +82,6 @@ write_value_acls = {
                 "disable"   : [
                             "auth",
                             "sync",
-                            ],
-                "set"       : [
-                            "config",
-                            ],
-                "edit"      : [
-                            "secret",
                             ],
 }
 
@@ -115,7 +108,6 @@ commands = {
                                             'site_valid',
                                             'node_key_len',
                                             'node_valid',
-                                            'no_dicts',
                                             'no_index_indices',
                                             'dictionaries',
                                             'id_ranges',
@@ -131,16 +123,6 @@ commands = {
                 'missing'    : {
                     'method'            : 'add',
                     'args'              : ['realm_address'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'get_config'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_config_parameter',
-                    'args'              : ['parameter'],
-                    'dargs'             : {'verify_acls':True},
                     'job_type'          : 'process',
                     },
                 },
@@ -537,32 +519,6 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     }
 
 def get_acls(**kwargs):
@@ -571,7 +527,6 @@ def get_acls(**kwargs):
 def get_value_acls(split=False, **kwargs):
     from otpme.lib.extensions import utils
     result = _get_value_acls(read_value_acls, write_value_acls, split=split, **kwargs)
-    config_params = config.get_config_parameters("realm")
     if split:
         read_acls = result[0]['view']
         add_acls = result[1]['add']
@@ -584,10 +539,10 @@ def get_value_acls(split=False, **kwargs):
         edit_acls = result['edit']
         set_acls = result['set']
         del_acls = result['delete']
-    for x in config_params:
-        acl = f"config:{x}"
-        read_acls.append(acl)
-        set_acls.append(acl)
+    # A realm holds no config parameters: it has no command to set or
+    # read one, and the objects below it stop their lookup at the site.
+    # So neither set:config nor config:<parameter> is ever asked for.
+    set_acls.remove("config")
     # Get extension value ACLs.
     value_acls = utils.get_value_acls("realm")
     for a in value_acls:
@@ -664,7 +619,13 @@ def register():
     register_module("otpme.lib.policy")
 
 def register_hooks():
-    config.register_auth_on_action_hook("realm", "add_site")
+    # A site is a child of the realm (see get_parent_uuid()), and adding
+    # one runs these on the realm, as a unit runs them for its objects
+    # (run_pre_post_add_policies()). "add_site" was registered instead,
+    # and nothing ran it: a reauth before "otpme-site add" could not be
+    # asked for.
+    config.register_auth_on_action_hook("realm", "pre_add_site")
+    config.register_auth_on_action_hook("realm", "post_add_site")
     config.register_auth_on_action_hook("realm", "enable_sync")
     config.register_auth_on_action_hook("realm", "disable_sync")
     config.register_auth_on_action_hook("realm", "enable_auth")
@@ -914,13 +875,6 @@ class Realm(OTPmeObject):
                                             'type'      : str,
                                             'required'  : False,
                                             'encoding'  : 'BASE64',
-                                        },
-
-            'SECRET'                   : {
-                                            'var_name'  : 'secret',
-                                            'type'      : str,
-                                            'required'  : False,
-                                            'encryption': config.disk_encryption,
                                         },
 
             'AUTH_ENABLED'              : {
@@ -1216,11 +1170,6 @@ class Realm(OTPmeObject):
                 msg = denied_msg(self, "update_ca_data")
                 return callback.error(msg, exception=PermissionDenied)
 
-        msg = _("Update CA data of realm '{realm_name}'?: ")
-        msg = msg.format(realm_name=self.name)
-        if not self.ask_change_confirmation(msg, force=force, callback=callback):
-            return callback.abort()
-
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1231,6 +1180,11 @@ class Realm(OTPmeObject):
                                 _caller=_caller)
             except Exception as e:
                 return callback.error()
+
+        msg = _("Update CA data of realm '{realm_name}'?: ")
+        msg = msg.format(realm_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if not self.ca:
             if config.realm_init:
@@ -1326,7 +1280,6 @@ class Realm(OTPmeObject):
         node_key_len: Union[int,None]=None,
         node_valid: Union[int,None]=None,
         id_ranges: Union[str,None]=None,
-        no_dicts: bool=False,
         no_index_indices: bool=False,
         dictionaries: Union[List,None]=None,
         force: bool=False,
@@ -1388,7 +1341,7 @@ class Realm(OTPmeObject):
             if result:
                 site_address = result[0]
 
-        # We always need a site address as floaging cluster IP.
+        # We always need a site address as floating cluster IP.
         if not site_address:
             msg = _("Unable to resolve: {site_fqdn}")
             msg = msg.format(site_fqdn=site_fqdn)
@@ -1396,7 +1349,7 @@ class Realm(OTPmeObject):
 
         if site_address != "127.0.0.1":
             # Make sure we got a valid site address.
-            msg = _("Verifying floaging IP: {site_address}")
+            msg = _("Verifying floating IP: {site_address}")
             msg = msg.format(site_address=site_address)
             callback.send(msg)
             try:
@@ -1406,7 +1359,7 @@ class Realm(OTPmeObject):
             except AddressAlreadyAssigned as e:
                 raise
             except Exception as e:
-                msg = _("Unable to configure floaging IP: {site_address}: {error}")
+                msg = _("Unable to configure floating IP: {site_address}: {error}")
                 msg = msg.format(site_address=site_address, error=e)
                 raise OTPmeException(msg) from e
             # Deconfigure floating IP after testing.
@@ -1472,7 +1425,6 @@ class Realm(OTPmeObject):
                                     no_node=True,
                                     verify_acls=False,
                                     id_ranges=id_ranges,
-                                    no_dicts=no_dicts,
                                     dictionaries=dictionaries,
                                     callback=callback,
                                     **kwargs)
@@ -1656,6 +1608,11 @@ class Realm(OTPmeObject):
                     apply_default_acls=False,
                     verify_acls=False)
 
+        # The table of "otpme-realm show" reads them from the index, as
+        # Site.add() puts them there for a site.
+        self.update_index("auth_enabled", self.auth_enabled)
+        self.update_index("sync_enabled", self.sync_enabled)
+
         # Finally write the realm config.
         self._write(callback=callback)
 
@@ -1736,6 +1693,8 @@ class Realm(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
+    @audit_log()
+    @object_changelog("add")
     def add(self, verbose_level=0, callback=default_callback, **kwargs):
         """ Add a realm. """
         # Check if we have our own realm before adding realm trust relationship.

@@ -36,6 +36,31 @@ REGISTER_AFTER = []
 
 CONTROLD_QUEUE_NAME = "otpme-controld-commq"
 
+# The daemons of a node, in the order we start them.
+NODE_DAEMONS = (
+            'hostd',
+            'mgmtd',
+            'joind',
+            'scriptd',
+            'syncd',
+            'authd',
+            'ssod',
+            'clusterd',
+            'httpd',
+            'fsd',
+            'backupd',
+            'confd',
+            )
+# The daemons of a host. httpd and backupd come after them where
+# SSO_SERVER and BACKUP_SERVER are set.
+HOST_DAEMONS = ('hostd', 'confd')
+# Started and stopped by clusterd when the cluster is ready and when
+# this node takes or gives up the master role. Not on the lists above,
+# so configure() must not take a running one for one we no longer want.
+ON_DEMAND_DAEMONS = ('ldapd', 'idled', 'racd')
+# Every daemon we know, for "otpme-controld restart|reload <daemon>".
+KNOWN_DAEMONS = NODE_DAEMONS + ON_DEMAND_DAEMONS
+
 # Seconds a child daemon gets to shut down on its own before we take it
 # down ourselves. In seconds, and measured as such: this used to be a
 # count of 1ms sleeps, which reads like a timeout without being one --
@@ -292,11 +317,8 @@ class ControlDaemon(UnixDaemon):
         self.child_comm_id = "controld"
         # Set full name.
         self.full_name = f"{config.my_name.lower()}-{self.name}"
-        # Inter-daemon communication timeout.
-        self.daemon_msg_timeout = config.inter_daemon_comm_timeout
         # Indicates that there is an ongoing config reload.
         self.loading = False
-        self.need_restart = False
         # Indicates that our signal handler already started the
         # shutdown, so a second signal does not run it again.
         self.shutdown_started = False
@@ -403,6 +425,9 @@ class ControlDaemon(UnixDaemon):
 
         # Stop all child daemons.
         self.stop_all_childs()
+        # We started FreeRADIUS, and clusterd that asked us to cannot
+        # stop it: it runs as another user.
+        self.stop_freeradius()
         # Close and remove message queues.
         self.comm_queue.close()
         self.comm_queue.unlink()
@@ -565,6 +590,59 @@ class ControlDaemon(UnixDaemon):
             self.start_haproxy()
         config.cluster_ip = True
 
+    def start_freeradius(self):
+        """ Start FreeRADIUS. """
+        from otpme.lib.freeradius.utils import start
+        from otpme.lib.freeradius.utils import status
+        try:
+            status()
+        except Exception:
+            pass
+        else:
+            return
+        try:
+            start()
+        except Exception as e:
+            log_msg = _("Failed to start freeradius: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
+        else:
+            log_msg = _("Started freeradius.", log=True)[1]
+            self.logger.info(log_msg)
+
+    def stop_freeradius(self):
+        """ Stop FreeRADIUS. """
+        from otpme.lib.freeradius.utils import stop
+        from otpme.lib.freeradius.utils import status
+        try:
+            status()
+        except Exception:
+            return
+        try:
+            stop()
+        except Exception as e:
+            log_msg = _("Failed to stop freeradius: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
+        else:
+            log_msg = _("Stopped freeradius.", log=True)[1]
+            self.logger.info(log_msg)
+
+    def reload_freeradius(self):
+        """ Let FreeRADIUS pick up changed clients and certificates. """
+        from otpme.lib.freeradius.utils import reload
+        try:
+            reload()
+        except NotRunning:
+            return
+        except Exception as e:
+            log_msg = _("Failed to reload radius: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
+        else:
+            log_msg = _("Freeradius reloaded.", log=True)[1]
+            self.logger.info(log_msg)
+
     def start_haproxy(self):
         """ Start the LDAP load balancer. """
         from otpme.lib.haproxy.utils import start
@@ -641,61 +719,19 @@ class ControlDaemon(UnixDaemon):
             msg = msg.format(hostname=config.host_data['name'])
             raise OTPmeException(msg)
 
-        child_daemons = {}
+        # Daemons we have to handle and their start order.
         if config.host_data['type'] == "node":
-            # Daemons we have to handle and its start order.
-            self.daemons = [
-                    'hostd',
-                    'mgmtd',
-                    'joind',
-                    'scriptd',
-                    'syncd',
-                    'authd',
-                    'ssod',
-                    'clusterd',
-                    'httpd',
-                    'fsd',
-                    'backupd',
-                    'confd',
-                    #'idled',
-                    #'racd',
-                    #'ldapd',
-                    ]
-
-            # Set child daemons.
-            child_daemons["fsd"] = {}
-            child_daemons["authd"] = {}
-            child_daemons["hostd"] = {}
-            child_daemons["joind"] = {}
-            child_daemons["httpd"] = {}
-            child_daemons["mgmtd"] = {}
-            child_daemons["syncd"] = {}
-            child_daemons["scriptd"] = {}
-            child_daemons["ssod"] = {}
-            child_daemons["clusterd"] = {}
-            child_daemons["backupd"] = {}
-            child_daemons["confd"] = {}
-            #child_daemons["ldapd"] = {}
-            #child_daemons["idled"] = {}
-            #child_daemons["racd"] = {}
-
+            self.daemons = list(NODE_DAEMONS)
         if config.host_data['type'] == "host":
-            # Daemons we have to handle and its start order.
-            self.daemons = [ 'hostd', 'confd' ]
+            self.daemons = list(HOST_DAEMONS)
             if config.sso_server:
                 self.daemons.append("httpd")
             if config.backup_server:
                 self.daemons.append("backupd")
-            # Set child daemons.
-            child_daemons['hostd'] = ""
-            child_daemons["confd"] = {}
-            if config.sso_server:
-                child_daemons["httpd"] = {}
-            if config.backup_server:
-                child_daemons["backupd"] = {}
+        child_daemons = list(self.daemons)
 
         # Stop child daemons not needed anymore.
-        all_childs = set(list(self.childs) + list(child_daemons))
+        all_childs = set(list(self.childs) + child_daemons)
         for x in all_childs:
             if x in child_daemons:
                 if x not in self.childs:
@@ -703,10 +739,20 @@ class ControlDaemon(UnixDaemon):
                 continue
             if x not in self.childs:
                 continue
-            # The daemons we start on demand (ldapd and idled, started
-            # by clusterd when we join the cluster) are on purpose not
-            # in child_daemons, and the list above does not carry them
-            # either. Forgetting a running one here would leave a
+            # One we no longer want, e.g. httpd on a host after
+            # SSO_SERVER was unset. Left running it would keep serving,
+            # and be watched for good: a reload kept every daemon that
+            # still ran, because of the ones below.
+            if x not in ON_DEMAND_DAEMONS:
+                log_msg = _("Stopping child daemon that is no longer configured: {daemon}", log=True)[1]
+                log_msg = log_msg.format(daemon=x)
+                self.logger.info(log_msg)
+                self.stop_child(x)
+                self.childs.pop(x)
+                continue
+            # The daemons we start on demand (ldapd, idled and racd,
+            # started by clusterd) are on purpose not on the lists
+            # above. Forgetting a running one here would leave a
             # process that nobody stops and nobody watches: these two
             # lists are what stop_all_childs() and ensure_daemons()
             # walk. So keep it, and put it back on the list a reload
@@ -951,8 +997,6 @@ class ControlDaemon(UnixDaemon):
         # Configure ourselves.
         try:
             self.configure()
-        except DaemonRestart:
-            pass
         except Exception as e:
             log_msg = _("Failed to configure controld: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
@@ -1149,12 +1193,21 @@ class ControlDaemon(UnixDaemon):
             elif command == "deconfigure_floating_ip":
                 self.deconfigure_floating_ip()
                 self.comm_handler.send(sender, command="ip_deconfigured")
-                #self.need_restart = True
             elif command == "reload_haproxy":
                 # A member node came or went, so the balancer has to
                 # learn about it.
                 if config.start_haproxy:
                     self.reload_haproxy()
+            elif command == "start_freeradius":
+                # clusterd decides, but runs as the OTPme user: FreeRADIUS
+                # is started as root and changes to FREERADIUS_USER itself.
+                if config.start_freeradius:
+                    self.start_freeradius()
+            elif command == "stop_freeradius":
+                self.stop_freeradius()
+            elif command == "reload_freeradius":
+                if config.start_freeradius:
+                    self.reload_freeradius()
             elif command == "reload":
                 try:
                     daemon_name = data['daemon']
@@ -1463,29 +1516,12 @@ class ControlDaemon(UnixDaemon):
         config.reload()
         # Re-init.
         init_otpme()
-        # Check for config changes.
-        try:
-            self.configure()
-            restart_childs = False
-        except DaemonRestart:
-            restart_childs = True
-
-        if self.need_restart:
-            restart_childs = True
-            self.need_restart = False
-
-        if restart_childs:
-            self.stop_all_childs()
-            # Over a copy: a daemon that fails to start takes itself out
-            # of self.childs again (see add_child()), which we must not
-            # do while we walk it.
-            for x in list(self.childs):
-                self.start_daemon(x)
-        else:
-            # Reload child daemons.
-            # Send reload command to child daemons.
-            for x in self.daemons:
-                self._reload_child(x)
+        # Check for config changes: stops the daemons we no longer
+        # want, the new ones are started by the next keepalive.
+        self.configure()
+        # Send reload command to child daemons.
+        for x in self.daemons:
+            self._reload_child(x)
 
         # Reload DB.
         self._reload_index()

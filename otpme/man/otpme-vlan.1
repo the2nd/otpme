@@ -6,92 +6,122 @@ otpme-vlan \- manage OTPme VLANs
 .I command
 [\fIoptions\fR] [\fIvlan\fR]
 .SH DESCRIPTION
-.B otpme-vlan
-manages VLAN objects in the OTPme system. A VLAN object is the assignable
-representation of a network VLAN. Its value is returned as
-.B Tunnel\-Private\-Group\-Id
-during 802.1x or MAB port authentication.
-.PP
-There are two ways to assign a VLAN. The VLAN can be named on the object,
-through the
-.B vlans
-config parameter of sites, units, hosts, devices, users and tokens. Or the
-object can be named on the VLAN, by adding it as a member with
-.BR add_token ", " add_role ", " add_host " or " add_device .
-.PP
-Membership is the way to keep assignments where the network is. It only ever
-applies to VLANs of the site answering the RADIUS request, so a site makes
-all of its own assignments without touching objects that are owned somewhere
-else, and without any of the cross site rules further down: the member list
-lives on the VLAN object, which only its own site can edit. Member lists are
-not synced to other sites.
-.PP
-The more specific assignment wins. A VLAN naming the object itself comes
-first, then one naming a role the object is in, then one naming a role that
-role is in, and so on up the nesting. So a single token can be moved out of
-the VLAN of its role, and a role nested in another can have a VLAN of its
-own. All of them win over the
-.B vlans
-config parameter, which is only looked at when no VLAN of our site names the
-object.
-.PP
-Where two VLANs name the object at the same distance -- it is in two roles
-of the same nesting level, each in a different VLAN -- there is nothing to
-tell them apart. The VLAN whose name sorts first is used, so the answer is
-at least the same every time, and a warning naming both is logged.
-.PP
-An object can only be a member of one VLAN per site. Adding it to a second
-one is refused, naming the VLAN it is already in. Only membership entered
-directly counts here: a role in another VLAN is not a conflict, it is what a
-more specific entry is meant to override.
-.PP
-The rest of this section is about the
-.B vlans
-config parameter. Assigning a VLAN that way requires the
-.B assign
-ACL on the VLAN object. This makes VLAN assignment delegable per VLAN: an
-operator can be allowed to hand out the guest VLAN without being able to put
-anybody into the server VLAN.
-.PP
-VLANs are site local objects, but they can be assigned across sites by
-prefixing the site name (\fIsite\fB/\fIvlan\fR). This is needed when users
-are created on the master site only while each site runs its own VLANs.
-.PP
-An object can have one VLAN per site assigned, because an object may be used
-at more than one site. The site answering the RADIUS request returns its own
-VLAN. If none of the assigned VLANs belongs to it, it returns the first one
-its
-.B vlan_trusts
-allow, in the order of those entries.
-.PP
-A cross site assignment is honoured only if the site answering the RADIUS
-request lists it under
-.BR vlan_trusts ,
-as \fIsite\fR[\fB:\fIvlan_site\fR[\fB/\fIvlan\fR]] (see
-.BR otpme (7)).
-The VLAN is switched in that site's network, whichever site owns the VLAN
-object, so that site decides. The
-.B assign
-ACL alone is not enough here, because it is checked by the site making the
-assignment against its own copy of the VLAN, so a site holding the users
-cannot put them into a VLAN of a network that did not agree.
-.PP
-A VLAN object carries an optional VLAN ID. If a VLAN ID is set it is sent to
-the switch. Without a VLAN ID the VLAN name is sent instead, which is what
-switches configured with named VLANs (e.g. Cisco) expect.
-.SH COMMANDS
-.SS VLAN Management
-.TP
-.B add \fIvlan\fR \fR[\fIvlan_id\fR]
-Create a new VLAN, optionally with a VLAN ID.
-.TP
-.B del \fIvlan\fR
-Delete a VLAN. Asks for confirmation according to the confirmation policy, saying how many members it still has. Members lose their VLAN with it, nothing is left behind. Objects that name the VLAN in their \fBvlans\fR config parameter keep an unresolvable assignment, they are not listed because that parameter is not indexed.
-.TP
-.B show \fR[\fIvlan\fR]
-Display VLAN information.
 .na
 .nh
+.B otpme-vlan
+adds, changes and deletes VLANs.
+A VLAN says which network a port is put into.
+When a switch or an access point asks a node for a port, the answer carries the VLAN as \fBTunnel\-Private\-Group\-Id\fR: the VLAN ID if one is set, otherwise the name of the VLAN, which is what switches with named VLANs (e.g. Cisco) expect.
+.RS
+.IP \(bu 2
+802.1X: the switch is a client with \fBenable_dot1x\fR, see
+.BR otpme\-client (1),
+and the user logs in with a password token or a PIV token.
+The answer carries the VLAN of that token.
+.IP \(bu 2
+MAB: the switch asks with the MAC address of a host or a device.
+The answer carries the VLAN of that host or device.
+.RE
+.PP
+There are two ways to give an object a VLAN: make it a member of the VLAN, or name the VLAN in the \fBvlans\fR config parameter of the object.
+A member wins over the config parameter.
+.PP
+A VLAN that is disabled is passed over, as if it named nobody, and a warning is logged.
+.SS Membership
+\fBadd_token\fR, \fBadd_role\fR, \fBadd_host\fR and \fBadd_device\fR make an object a member.
+A VLAN counts on its own site only: the node that answers looks at the VLANs of its site.
+The members are kept on the VLAN, not on the objects.
+So a site can put objects of another site, e.g. the tokens of users added there, into its own VLANs without changing them.
+It needs no \fBvlan_trusts\fR for that, because the VLAN and the network are its own.
+If a switch of another site asks, the membership does nothing there: that site looks at its own VLANs, then at the \fBvlans\fR config parameter.
+If neither gives a VLAN, the answer has none, and the switch uses the VLAN set on the port.
+.PP
+The closest one wins.
+First a VLAN that names the object itself, then one that names a role the object is in, then one that names a role that role is in, and so on up.
+So a single token can get another VLAN than its role, and a role nested in another role can have a VLAN of its own.
+If two VLANs are equally close, e.g. the object is in two roles of the same level, each in another VLAN, the VLAN whose name sorts first is used, and a warning names both.
+.PP
+An object can be a member of one VLAN per site.
+Adding it to a second one is refused, with the VLAN it is in.
+Only direct members count here: a role in another VLAN is no conflict, the member is meant to override it.
+.SS The vlans config parameter
+It can be set on sites, units, users, tokens, hosts and devices.
+It counts only when no VLAN of the site names the object or one of its roles.
+To name a VLAN in it, you need \fBassign\fR on the VLAN.
+So you can let someone give out the VLAN guests without letting them put anybody into the VLAN servers.
+.PP
+An object can name one VLAN per site, as \fIsite/vlan\fR for a VLAN of another site.
+This is for objects used at more than one site, e.g. users added on one site while every site runs its own VLANs.
+The node that answers uses the VLAN of its own site.
+If there is none, it uses the first VLAN its \fBvlan_trusts\fR allow, in the order of the entries.
+.SS Across sites
+A VLAN of another site, or a VLAN for an object of another site, is used only if the site that answers allows it in its \fBvlan_trusts\fR, as \fIsite\fR[\fB:\fIvlan_site\fR[\fB/\fIvlan\fR]], see
+.BR otpme (7).
+The port is in the network of that site, so that site decides.
+\fBassign\fR alone is not enough: the site that names the VLAN checks it on its own copy of the VLAN.
+.hy
+.ad
+.SH COMMANDS
+.SS VLAN Management
+.na
+.nh
+.TP
+.B add \fIvlan\fR [\fIvlan_id\fR]
+Create a VLAN.
+With a path, e.g. \fBvlans/office/guest\fR, it goes into that unit; else into the unit a \fBdefaultunits\fR policy names, see
+.BR otpme\-policy (1),
+or into \fBvlans\fR.
+The name goes to the switch as it is, so its case is kept.
+It is unique in the site, whatever unit it is in, and may be \fBmax_vlan_name_len\fR long (64 by default).
+.br
+\fIvlan_id\fR sets the VLAN ID at once, see \fBVLAN ID\fR; a VLAN ID that is not 1 to 4094, or that another VLAN of the site has, is refused before the VLAN is made.
+.br
+Needs \fBadd:vlan\fR on the unit.
+.TP
+.B del \fR[\fB\-\-no\-trash\fR] \fIvlan\fR
+Delete the VLAN.
+It goes to the trash, see
+.BR otpme\-trash (1);
+\fB\-\-no\-trash\fR deletes it right away.
+.br
+The question says how many members it still has.
+They lose their VLAN with it: the member list is on the VLAN, so nothing is left behind.
+Objects that name the VLAN in their \fBvlans\fR config parameter keep a reference to something that is gone.
+They are not listed, because that parameter is not in the index.
+.br
+Needs \fBdelete:object\fR on the VLAN or \fBdelete:vlan\fR on the unit.
+.TP
+.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] [\fIvlan\fR]
+Without a VLAN: a table of all of them, with their unit, status, VLAN ID, tokens, roles, hosts, devices, policies, ACL inheritance and description.
+A member of another site has its site after it, a disabled one \fB(D)\fR.
+.RS
+.TP
+.B \-a
+Also the VLANs you may only look at, not just the ones you may change.
+.TP
+.B \-z \fIN\fR
+How many VLANs to print.
+.TP
+.B \-\-fields \fIF1,F2\fR
+Print these columns and no others.
+The names are the ones in the header of the table.
+.TP
+.B \-\-limit \fIN\fR
+How many of each kind to print per VLAN: tokens, roles, hosts, devices, policies.
+.TP
+.B \-\-policy\-limit \fIN\fR
+The same for the policies only.
+.TP
+.B \-\-sort\-by \fIfield\fR, \fB\-\-reverse\fR
+Which column to sort by, and the other way round.
+.TP
+.B \-\-raw\fR, \fB\-\-csv\fR, \fB\-\-csv\-sep\fR \fIsep\fR
+\fB\-\-raw\fR leaves the header and the borders out, \fB\-\-csv\fR prints one row per line with \fB;\fR between the columns, and \fB\-\-csv\-sep\fR uses another separator.
+.RE
+.IP
+A column you may not see says \fB\-\fR.
+With a VLAN named, this prints the VLAN itself, one value per line: \fBVLAN_ID\fR, \fBTOKENS\fR, \fBROLES\fR, \fBHOSTS\fR and \fBDEVICES\fR; one you may not see is empty.
+That needs \fBview_public:object\fR.
 .TP
 .B show_oid \fR[\fB\-\-full\fR] \fIvlan\fR
 Show the OID of the VLAN: \fB\%vlan|<realm>/<site>/<name>\fR.
@@ -103,27 +133,44 @@ Needs the ACL \fBview_public:object\fR.
 Show the UUID of the VLAN.
 .br
 Needs the ACL \fBview_public:object\fR.
-.hy
-.ad
 .TP
-.B list \fR[\fIregex\fR]
-List VLANs, optionally filtered by regex pattern.
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] [\fIpattern\fR]
+List the VLAN names, and with a pattern only those that match it, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
+You get the VLANs you may change; \fB\-a\fR adds those you may only look at.
+\fB\-\-attribute\fR matches the pattern against that attribute instead of the name.
 .TP
 .B enable \fIvlan\fR
-Enable a disabled VLAN. A disabled VLAN is not handed out on authentication.
-.TP
+.TQ
 .B disable \fIvlan\fR
-Disable a VLAN without deleting it.
+A disabled VLAN is not handed out.
+The next assignment counts instead: a VLAN that names a role the object is in, or the \fBvlans\fR config parameter.
+The log says "Ignoring disabled VLAN", as it looks the same as no assignment from outside.
+Tables show the status.
+.br
+Needs \fBenable:object\fR or \fBdisable:object\fR.
 .TP
 .B rename \fIvlan\fR \fInew_name\fR
-Rename a VLAN. Existing assignments are kept, because they reference the
-VLAN by UUID.
+Rename the VLAN.
+The new name must not be in use in the site.
+Members and the \fBvlans\fR config parameters keep it: they name it by its UUID.
+Without a VLAN ID the switch gets the new name from then on.
+.br
+Needs \fBrename:object\fR.
 .TP
 .B move \fR[\fB\-\-keep\-acls\fR] \fIvlan\fR \fIunit\fR
-Move VLAN to a different unit.
+Move the VLAN into another unit.
+It keeps its ACLs; where ACL inheritance is on for it (off for VLANs by default, see \fBenable_acl_inheritance\fR), the default ACLs of the old unit are taken away and those of the new one given.
+\fB\-\-keep\-acls\fR keeps all ACLs as they are.
+.br
+Needs \fBmove\fR on the VLAN and \fBadd:vlan\fR on the unit.
 .TP
 .B touch \fIvlan\fR
-Re-index the object to fix potential index problems.
+Write the index entries of the VLAN again.
+.br
+Needs \fBtouch\fR.
 .TP
 .B auto_disable \fIvlan\fR \fItime\fR
 Set auto\-disable time.
@@ -132,47 +179,96 @@ The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, 
 .BR otpme (7).
 A relative time counts from when it is set, and again from when the VLAN is enabled.
 \fB0\fR removes it.
-It is refused for an object the realm or a site comes with, e.g. the admin user; a time set on one before does nothing.
+.br
+Needs \fBedit:auto_disable\fR.
+.hy
+.ad
 .SS Members
+A member is named by the VLAN, see \fBDESCRIPTION\fR.
+An object can be a member of one VLAN per site; adding it to a second one is refused, and the message names the one it is in.
+That is checked after the ACL, so only somebody who may add it here is told.
+.na
+.nh
 .TP
-.B add_token \fIvlan\fR \fIuser\fB/\fItoken\fR
-Add a token to the VLAN. Refused if the token is already a member of another
-VLAN of this site.
+.B add_token \fIvlan\fR \fIuser/token\fR
+Put a token into the VLAN, for 802.1X: the token logs in, and its VLAN is sent to the switch.
+User names are unique in the realm, so the token may belong to a user of any site.
+The token is not signed, whatever auto-sign says: nothing checks a signature for a VLAN.
+.br
+Needs \fBadd:token\fR.
 .TP
-.B remove_token \fIvlan\fR \fIuser\fB/\fItoken\fR
-Remove a token from the VLAN.
+.B remove_token \fIvlan\fR \fIuser/token\fR
+Take the token out of the VLAN.
+A UUID is taken as well, which is how a token that is gone is cleared out.
+.br
+Needs \fBremove:token\fR.
 .TP
 .B add_role \fIvlan\fR \fIrole\fR
-Add a role to the VLAN. Every token, host and device of the role is then in
-the VLAN, and so is every role nested in it, unless a VLAN names one of them
-more closely.
+Put a role into the VLAN.
+Every token, host and device of the role is then in the VLAN, and so is every role nested in it, unless a VLAN names one of them more closely.
 .br
-The role is looked for in the site of the VLAN, or written as \fIsite\fB/\fIrole\fR to take one from another site of the realm.
+The role is looked for in the site of the VLAN, or written as \fIsite/role\fR to take one from another site of the realm.
+.br
+Needs \fBadd:role\fR.
 .TP
 .B remove_role \fIvlan\fR \fIrole\fR
-Remove a role from the VLAN.
-A UUID is taken as well, which is how a reference to a role that is gone is cleared out.
+Take the role out of the VLAN.
+It is named as for \fBadd_role\fR, or by its UUID, which is how a role that is gone is cleared out.
+.br
+Needs \fBremove:role\fR.
 .TP
 .B add_host \fIvlan\fR \fIhost\fR
-Add a host to the VLAN. Used for MAB port authentication.
+Put a host into the VLAN, for MAB: the switch asks with the MAC address of the host.
 Host names are unique in the realm, so the host is given by its name alone, whatever site it is in.
+.br
+Needs \fBadd:host\fR.
 .TP
 .B remove_host \fIvlan\fR \fIhost\fR
-Remove a host from the VLAN.
+Take the host out of the VLAN.
+A UUID is taken as well, for a host that is gone.
+.br
+Needs \fBremove:host\fR.
 .TP
 .B add_device \fIvlan\fR \fIdevice\fR
-Add a device to the VLAN. Used for MAB port authentication.
+Put a device into the VLAN, for MAB, as for a host.
+Device names are unique in the realm.
+.br
+Needs \fBadd:device\fR.
 .TP
 .B remove_device \fIvlan\fR \fIdevice\fR
-Remove a device from the VLAN.
+Take the device out of the VLAN.
+A UUID is taken as well, for a device that is gone.
+.br
+Needs \fBremove:device\fR.
+.hy
+.ad
 .SS VLAN ID
+What the switch gets is \fBTunnel\-Private\-Group\-Id\fR, with \fBTunnel\-Type\fR VLAN and \fBTunnel\-Medium\-Type\fR IEEE\-802.
+It is the VLAN ID where one is set, else the name of the VLAN, which is what a switch with named VLANs expects.
+.na
+.nh
 .TP
-.B vlan_id \fIvlan\fR \fR[\fIvlan_id\fR]
-Set the 802.1Q VLAN ID (1-4094). Without \fIvlan_id\fR the VLAN ID is
-removed and the VLAN name is sent to the switch instead.
+.B vlan_id \fIvlan\fR [\fIvlan_id\fR]
+Set the 802.1Q VLAN ID, a number from 1 to 4094; anything else is refused.
+It is read as a number, so \fB010\fR is \fB10\fR.
+A VLAN ID that another VLAN of the site has is refused as well, and the message names that VLAN: two VLANs with one ID would be two names for one network.
+Without \fIvlan_id\fR the VLAN ID is removed, and the switch gets the name from then on.
+.br
+The nodes of other sites get the VLAN ID as well: a site may hand out a VLAN of another one, see \fBvlan_trusts\fR in
+.BR otpme (7).
+.br
+Tables show it to whoever has \fBview:vlan_id\fR or \fBedit:vlan_id\fR.
+.br
+Needs \fBedit:vlan_id\fR.
+.hy
+.ad
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
+.PP
+Unless the \fBchangelog\fR config parameter says otherwise.
+It is read along the cascade (VLAN, unit, site), and nothing is written where it is off.
+Without any value anywhere it is on.
 .PP
 An \fIentry_id\fR is the number the listing shows in front of an entry, counted from 0.
 .PP
@@ -182,20 +278,23 @@ What was done and by whom stays as it is.
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIvlan\fR
-Show the changelog of the VLAN.
+Show the changelog of the VLAN, one entry per line: its \fIentry_id\fR, the time, who made the change and what was done, then a detail in round brackets and the comment in square brackets where there are any.
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fIvlan\fR \fIentry_id\fR \fIcomment\fR
 Set the comment of that entry, or replace the one it has.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B del_changelog \fIvlan\fR \fIentry_id\fR
 Remove the comment of that entry.
 The entry itself stays, and an entry without a comment is refused.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIvlan\fR
 Remove every entry of the changelog.
+Afterwards it holds one entry: that it was cleared.
 .br
 This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
@@ -209,13 +308,20 @@ It is looked for in the site of the VLAN.
 Which policies there are, and what each of them does, is in
 .BR otpme\-policy (1).
 .PP
+Two policy types fit a VLAN:
+.IP \(bu 2
+\fBauthonaction\fR asks for a login again before the actions of the VLAN, see \fBAUTH ON ACTION HOOKS\fR.
+.IP \(bu 2
+\fBautodisable\fR disables the VLAN after a while; it is then no longer handed out, see \fBdisable\fR.
+One set with \fBauto_disable \-u\fR (unused for) is refused: a VLAN does not keep its last use.
+.PP
 Attaching and detaching ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
 .B add_policy \fIvlan\fR \fIpolicy\fR
 Attach a policy to the VLAN.
 .br
 A policy has a list of object types it is for; one that does not name \fBvlan\fR is refused.
-So is a second policy of a type that allows only one per object.
+So is a second policy of a type that allows only one per object, even when the first one is disabled, and a policy the VLAN already has.
 .br
 Needs the ACL \fBassign:policy\fR.
 .TP
@@ -227,21 +333,57 @@ Detaching a policy takes away what it enforces, so it must not be cheaper than a
 .TP
 .B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIvlan\fR
 List the policies attached to the VLAN, the disabled ones too, marked \fB(disabled)\fR.
-Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR); without it the names.
+Only the names are marked.
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
 .br
 Needs the ACL \fBview:policies\fR.
 .SS ACL Management
+An ACL says what somebody may do with this VLAN.
+The somebody is a role or a token, never a user.
+.PP
+What the three forms \fBacl\fR, \fB+acl\fR and \fB++acl\fR mean is under \fBACLs\fR in
+.BR otpme (7).
+Tab completion after \fBadd_acl\fR offers the ACLs a VLAN knows.
+A VLAN has no default ACLs, \fB+acl\fR and \fB++acl\fR are refused: nothing lies in a VLAN that could get them.
+.PP
+Besides the ACLs every object has, these matter for a VLAN:
+.RS
 .TP
-.B add_acl \fIvlan\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
-Add an access control entry. Use the \fBassign\fR ACL to allow assigning
-this VLAN to other objects.
+.B assign
+Name this VLAN in the \fBvlans\fR config parameter of an object, see \fBDESCRIPTION\fR.
 .TP
-.B del_acl \fIvlan\fR \fIacl\fR
-Remove an access control entry.
+.B edit:vlan_id\fR, \fBview:vlan_id
+Change and see the VLAN ID, see \fBVLAN ID\fR.
+.TP
+.B add:token\fR, \fBadd:role\fR, \fBadd:host\fR, \fBadd:device
+Add members, see \fBMembers\fR.
+\fBremove:\fR with the same values takes them out again, \fBview:\fR with the plural (\fBview:tokens\fR, ...) lists them.
+.RE
+.PP
+Adding and removing ask first, once for the whole command; the global option \fB\-f\fR skips the question.
+.TP
+.B add_acl \fIvlan\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
+Give a role or a token one or more ACLs on this VLAN.
+.br
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
+\fIowner\fR names it the way \fBlist_acls\fR prints it: a role as \fIsite/name\fR, e.g. \fBmunich/helpdesk\fR, or by its name alone on its own site; a token as \fI\%user/token\fR, e.g. \fBalice/login\fR.
+An ACL can carry a value, for example \fBview:vlan_id\fR.
+To give several ACLs at once, separate them with commas: \fB\%assign,view:vlan_id\fR.
+.br
+Needs the ACL \fBadd:acl\fR.
+.TP
+.B del_acl \fIvlan\fR \fIacl\fR[,\fIacl\fR]
+Take those ACLs away again.
+.br
+Here an \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fB\%role:munich/helpdesk:assign\fR.
+.br
+Needs the ACL \fBdelete:acl\fR.
 .TP
 .B list_acls \fIvlan\fR
-Display all ACLs for the VLAN.
+Show the ACLs that lie on this VLAN, i.e. who may do what with it.
+.br
+Needs the ACL \fBview:acl\fR.
 .TP
 .B enable_acl_inheritance \fIvlan\fR
 Let a move of the VLAN swap its default ACLs: what the old unit handed down is taken away, and what the new unit hands down is given.
@@ -263,107 +405,142 @@ A move leaves the ACLs of the VLAN as they are again.
 .br
 Needs the ACL \fBdisable:acl_inheritance\fR.
 .SS Configuration
+.na
+.nh
+A VLAN has two config parameters, see \fBCONFIG PARAMETERS\fR.
 .TP
-.B config \fR[\fB\-a\fR] [\fB\-d\fR] \fIvlan\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set, append to or delete a config parameter.
+.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIvlan\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set a parameter on the VLAN.
+.RS
 .TP
-.B get_config \fIvlan\fR \fIparameter\fR
-Show a config parameter.
-.TP
-.B description \fIvlan\fR \fR[\fIdescription\fR]
-Set VLAN description.
-.TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIvlan\fR \fR[\fIinfo\fR]
-Set free-form info text. If \fIinfo\fR is omitted, the current info text is
-opened in the editor specified by the \fBEDITOR\fR environment variable.
-.TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIvlan\fR
-Dump the info text to stdout.
-.SS Import/Export
-.TP
-.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIvlan\fR
-Export VLAN configuration.
-.TP
-.B remove_orphans \fIvlan\fR
-Remove orphaned object references.
-.SH OPTIONS
-.SS Display Options
+.B \-d
+Remove the parameter from the VLAN, or with a value only that one value from a list.
+It is not set back to a default: what applies afterwards is what the units or the site say.
 .TP
 .B \-a
-Show all VLANs.
+Append the value to a parameter that holds a list, instead of replacing what is there.
+.RE
+.IP
+Needs the ACL \fBset:config:<parameter>\fR.
 .TP
-.B \-z \fISIZE\fR
-Limit output size.
+.B show_config \fIvlan\fR \fR[\fIparameter\fR]
+The parameters set on the VLAN itself, or only the one named.
+Nothing is shown for a parameter that the VLAN gets from a unit or from the site.
+.br
+Needs the ACL \fBview:config:<parameter>\fR.
 .TP
-.B \-\-fields \fIFIELD1,FIELD2\fR
-Display only specified fields.
+.B get_config \fIvlan\fR \fIparameter\fR
+What the parameter comes to for the VLAN, once the VLAN, its units and the site have been looked at.
+So this answers what applies, where \fBshow_config\fR answers what was set here.
+.br
+Needs the ACL \fBview:config:<parameter>\fR.
 .TP
-.B \-\-policy\-limit \fIN\fR
-Limit number of policies shown.
+.B description \fIvlan\fR \fR[\fIdescription\fR]
+Set the description.
+Without one OTPme asks and offers the current text for editing.
+.br
+Needs the ACL \fBedit:description\fR.
 .TP
-.B \-\-limit \fIN\fR
-Limit number of items shown per object.
+.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIvlan\fR \fR[\fIinfo\fR]
+Set free-form info text.
+If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
+.br
+Without \fB\-\-language\fR the text is the administrator's own note.
+Nothing shows the info of a VLAN to a user, so a text for a language stays a note as well.
+.br
+Needs the ACL \fBedit:info\fR.
 .TP
-.B \-\-sort\-by \fIFIELD\fR
-Sort output by field.
+.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIvlan\fR
+Write one of those texts to stdout.
+\fB\-\-language\fR picks which one; without it you get the note of the administrator.
+.br
+Needs the ACL \fBview:info\fR.
+.hy
+.ad
+.SS Export and Cleanup
 .TP
-.B \-\-reverse
-Reverse sort order.
+.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIvlan\fR
+Write the whole object of the VLAN to stdout, as JSON: its VLAN ID, members, ACLs, policies, config parameters and the rest.
+\fBotpme\-tool import\fR reads it back.
+.br
+A VLAN holds no key and no secret, so \fB\-\-password\fR has nothing to encrypt: the output is in clear either way.
+.br
+Needs the ACL \fBexport\fR.
 .TP
-.B \-\-raw
-Output without headers/borders.
-.TP
-.B \-\-csv
-Output as CSV.
-.TP
-.B \-\-csv\-sep \fISEP\fR
-CSV separator character.
-.SS General Options
-.TP
-.B \-\-keep\-acls
-Preserve ACLs when moving VLAN.
-.TP
-.B \-\-password \fIPASS\fR
-Password for encrypting exports.
+.B remove_orphans \fIvlan\fR
+Remove references to objects that are gone: members of the VLAN that were deleted (tokens, roles, hosts and devices), orphan ACLs and policies.
+.br
+It asks once for what it found; the global option \fB\-f\fR skips the question.
+.br
+Needs the ACL \fBremove:orphans\fR.
+.SH OPTIONS
+Every option belongs to one command and is described with that command above.
 .PP
-Global options are available for all commands. See
-.BR otpme (1)
-for details.
+Global options work with every command, see
+.BR otpme (1).
+.SH CONFIG PARAMETERS
+Set them with \fBconfig\fR, see \fBConfiguration\fR.
+A value is looked up on the VLAN, then on its unit and the units above it, then on the site; the first one found counts.
+A parameter the site names in \fBforce_site_config_parameters\fR is taken from the site, whatever the VLAN or its units say.
+The full descriptions are in
+.BR otpme (7).
+.TP
+.B changelog \fR(bool, default: true)
+Whether the commands that change the VLAN write an entry into its changelog, see \fBObject Changelog\fR.
+.TP
+.B allow_changelog_clearing \fR(bool, default: true)
+Whether \fBclear_changelog\fR is allowed on the VLAN.
+A value on the token you are signed in with counts first, see \fBObject Changelog\fR.
+.PP
+Set on the site or a unit, not on the VLAN:
+.TP
+.B max_vlan_name_len \fR(int, default: 64)
+The longest name a VLAN may get, checked by \fBadd\fR and \fBrename\fR.
+.PP
+The \fBvlans\fR parameter that assigns a VLAN is not one of the VLAN: it is set on the object that gets it, see \fBDESCRIPTION\fR.
 .SH EXAMPLES
+.na
+.nh
+.SS Setting up VLANs
 .TP
 .B otpme-vlan add guests 100
-Create a VLAN with VLAN ID 100
+Add the VLAN \fBguests\fR with the VLAN ID 100; the ID is what the switch gets.
 .TP
 .B otpme-vlan add printers
-Create a VLAN without a VLAN ID. The name "printers" is sent to the switch.
+Add a VLAN without an ID; the switch gets the name \fBprinters\fR instead.
 .TP
 .B otpme-vlan vlan_id guests 110
-Change the VLAN ID
-.TP
-.B otpme-vlan add_acl guests role netadmins assign
-Allow the role "netadmins" to assign this VLAN
+Change the VLAN ID; you are asked first.
+.SS Members
 .TP
 .B otpme-vlan add_role guests employees
-Put every token, host and device of the role "employees" into the VLAN
-.TP
-.B otpme-vlan add_token servers joe/login
-Put a single token into another VLAN, no matter which VLAN its roles are in
+Every token, host and device in the role \fBemployees\fR, or in a role nested in it, gets the VLAN.
 .TP
 .B otpme-vlan add_role servers admins
-Give a role nested in "employees" a VLAN of its own. Its members get it
-instead of the VLAN of "employees", which stays with everyone else
+\fBadmins\fR is nested in \fBemployees\fR: its members get \fBservers\fR, and everyone else in \fBemployees\fR keeps \fBguests\fR.
 .TP
-.B otpme-vlan add_host printers hp\-lj\-01
-Put a host into the VLAN, for MAB port authentication
+.B otpme-vlan add_token servers alice/login
+A single token gets \fBservers\fR, whatever VLAN its roles are in.
 .TP
-.B otpme-token config joe/login vlans guests
-Assign the VLAN to a token
+.B otpme-vlan add_host printers printer1
+A host, for MAB: the switch asks with the MAC address of \fBprinter1\fR.
+.SS The vlans config parameter
 .TP
-.B otpme-host config myhost vlans berlin/guests
-Assign a VLAN of another site to a host
+.B otpme-vlan add_acl guests role helpdesk assign
+Let the role \fBhelpdesk\fR name \fBguests\fR in the \fBvlans\fR config parameter of an object.
 .TP
-.B otpme-site config berlin vlan_trusts master:berlin/guests
-Allow objects of the site "master" to get the VLAN "guests" of berlin
+.B otpme-token config alice/login vlans guests
+Name the VLAN on the token instead; this needs \fBassign\fR on the VLAN.
+It only counts where no VLAN of the site names the token or one of its roles.
+.SS Across sites
+.TP
+.B otpme-host config client1 vlans berlin/guests
+Give \fBclient1\fR, a host of site \fBmunich\fR, the VLAN \fBguests\fR of site \fBberlin\fR.
+.TP
+.B otpme-site config berlin vlan_trusts munich:berlin/guests
+Berlin answers for its network, so \fBberlin\fR has to agree: objects of \fBmunich\fR may get \fBguests\fR, and no other VLAN of \fBberlin\fR.
+.hy
+.ad
 .\" BEGIN AUTH ON ACTION HOOKS
 .\" Generated by update_hooks_man.py. Do not edit, the next run
 .\" overwrites it.
@@ -373,27 +550,42 @@ See
 .B Auth On Action Policy
 in
 .BR otpme\-policy (1).
-A vlan has the hooks every object type has, and these:
+A vlan has the hooks every object type has, and these; a command of another name is in brackets:
 .RS
 .PP
 .na
 .nh
-change_vlan_id, set_config_parameter.
+add_device, add_host, add_role, add_token, change_vlan_id\ (vlan_id), remove_device, remove_host, remove_role, remove_token, set_config_parameter\ (config).
 .hy
 .ad
 .RE
 .\" END AUTH ON ACTION HOOKS
 .SH FILES
+.na
+.nh
 .TP
-.I /var/lib/otpme/
-OTPme data directory
+\fI/var/lib/otpme/tree/\fR
+The objects of the realm.
+A VLAN is the directory \fI<name>.vlan\fR in the directory of its unit, e.g. \fI<realm>.realm/<site>.site/vlans.unit/guests.vlan/\fR, with its settings in \fIobject.json\fR, on the nodes of every site, never on a host.
+Change them with the commands above, not in the files.
+.hy
+.ad
 .SH SEE ALSO
+.na
+.nh
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
-.BR otpme-token (1),
-.BR otpme-host (1),
-.BR otpme-device (1)
+.BR otpme\-site (1),
+.BR otpme\-unit (1),
+.BR otpme\-role (1),
+.BR otpme\-token (1),
+.BR otpme\-host (1),
+.BR otpme\-device (1),
+.BR otpme\-policy (1),
+.BR otpme\-trash (1),
+.BR otpme\-tool (1)
+.hy
+.ad
 
 .SH AUTHOR
 the2nd <the2nd@otpme.org>

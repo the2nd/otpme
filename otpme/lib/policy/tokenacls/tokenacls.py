@@ -574,7 +574,7 @@ class TokenaclsPolicy(Policy):
                     name="dummyuser",
                     dummy=True)
         # Make sure ACL is suppoted.
-        supported_acls = user.get_supported_acls()
+        supported_acls = user._get_supported_acls()
         if acl not in supported_acls:
             msg = _("Unknown ACL: {acl}")
             msg = msg.format(acl=acl)

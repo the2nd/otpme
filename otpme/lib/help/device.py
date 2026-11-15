@@ -21,13 +21,14 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-device {command} [device]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-device show [--policy-limit <limit>] [--token-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-t] [-a] [device]'),
-                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: -t :show_templates=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
+                    '_cmd_usage_help' : _('Usage: otpme-device show [--role-limit <limit>] [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [device]'),
+                    'cmd'   :   '--role-limit :max_roles: --policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show device(s)'),
                                     '-a'                    : _('Show all devices.'),
                                     '-z <limit>'            : _('Limit output size'),
                                     '--fields f1,f2,f3'     : _('Output only given fields'),
+                                    '--role-limit <limit>'  : _('Output <limit> member roles.'),
                                     '--policy-limit <limit>': _('Output max policies.'),
                                     '--limit <limit>'       : _('Limit number of items shown per object.'),
                                     '--reverse'             : _('Reverse the output order.'),
@@ -39,12 +40,12 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-device list [--attribute attribute] [-a] [regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-device list [--attribute attribute] [-a] [pattern]'),
                     'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List devices.'),
                                     '-a'                        : _('List all devices.'),
-                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
+                                    '--attribute <attribute>'   : _('Match the pattern against this attribute instead of the name.')
                                 },
                 },
 
@@ -62,6 +63,14 @@ cmd_help = {
                     '_help' :   {
                                     'cmd'                   : _('Delete device'),
                                     '--no-trash'            : _('Delete without moving the object to the trash.'),
+                                },
+                },
+
+    'rename'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-device rename {device} {new_name}'),
+                    'cmd'   :   '<|object|> <"new_name">',
+                    '_help' :   {
+                                    'cmd'                   : _('Rename device'),
                                 },
                 },
 
@@ -158,7 +167,7 @@ cmd_help = {
                 },
 
     'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-device config -d -a {device} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-device config [-d] [-a] {device} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to device.'),
@@ -303,7 +312,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-device info {device} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-device info [--language <language>] {device} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set device info'),
@@ -312,7 +321,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-device dump_info {device}'),
+                    '_cmd_usage_help' : _('Usage: otpme-device dump_info [--language <language>] {device}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump device info'),
@@ -332,24 +341,12 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                 },
 
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
     '_show_config'    : {
                     'cmd'   :   '<|object|>',
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-device export --password <password> {device}'),
+                    '_cmd_usage_help' : _('Usage: otpme-device export [--password <password>] {device}'),
                     'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export device config to stdout'),

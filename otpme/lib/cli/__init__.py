@@ -1130,11 +1130,21 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
             if f.startswith("+"):
                 if field_name in x_output_fields:
                     continue
+                # The same names as a plain list takes: a column, or an
+                # LDIF attribute. Any other name was taken as an index
+                # attribute and its raw value printed, without an ACL
+                # (+token gave the member UUIDs of an access group), and
+                # a typo gave an empty column instead of an error.
+                if field_name not in all_fields \
+                and not field_name.startswith("ldif:"):
+                    msg = _("Unknown field: {field_name}")
+                    msg = msg.format(field_name=field_name)
+                    return callback.error(msg)
                 x_output_fields.append(field_name)
                 if field_name not in all_fields:
                     # Not a column of this object type, so nothing
-                    # builds a value for it: it is an attribute, and
-                    # the value is appended further down.
+                    # builds a value for it: the value is appended
+                    # further down.
                     # FIXME: can we use extension.get_valid_attributes(object_type) to get all valid attributes????
                     additional_fields.append(field_name)
                 continue
@@ -1256,6 +1266,14 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
     if verify_acls is None:
         verify_acls = write_acls + read_acls
         return_acls = list(verify_acls)
+        # An LDIF attribute is shown as ldapd hands it out: on the
+        # whitelist, or with "view:attribute:<attr>" on the object. The
+        # search returns only the ACLs it is asked for.
+        if additional_fields:
+            return_acls.append("view:attribute")
+            for x_field in additional_fields:
+                x_attribute = x_field.split(":", 1)[1]
+                return_acls.append(f"view:attribute:{x_attribute}")
 
     # If we will show only objects the user has edit permissions on
     # we do not have to query for any "view-only" ACLs. This way the
@@ -1347,6 +1365,12 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
         acl_checker = ACLChecker(acls)
         return acl_checker.check_acl
 
+    # The LDIF attributes anybody may read, see get_ldif().
+    ldif_whitelist = []
+    if additional_fields:
+        from otpme.lib.classes.otpme_object import get_ldif_whitelist_attributes
+        ldif_whitelist = get_ldif_whitelist_attributes()
+
     rows = []
     if object_order:
         rows = row_getter(realm, site, object_order, result,
@@ -1382,6 +1406,15 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
 
         # Add additional output fields.
         for attr in additional_fields:
+            ldif_attribute = attr.split(":", 1)[1]
+            if ldif_attribute not in ldif_whitelist:
+                attr_acls = []
+                if object_acls is not None:
+                    attr_acls = object_acls.get(x_uuid, [])
+                attr_checker = ACLChecker(attr_acls)
+                if not attr_checker.check_acl(f"view:attribute:{ldif_attribute}"):
+                    x_row.append("-")
+                    continue
             try:
                 attr_value = result[x_uuid][attr]
             except Exception:

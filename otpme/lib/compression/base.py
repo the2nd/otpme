@@ -24,6 +24,8 @@ SUPPORTED_COMPRESSIONS = {
                         'BZIP2' : [1, 2, 3, 4, 5, 6, 7, 8, 9],
                         'ZLIB'  : [1, 2, 3, 4, 5, 6, 7, 8, 9],
                         }
+# The names compress() and decompress() take, for whole files.
+FILE_COMPRESSIONS = ['lz4', 'gzip', 'zlib', 'bzip']
 BZIP2_MIMETYPES = ['application/x-bzip2']
 GZIP_MIMETYPES = ['application/x-gzip', 'application/gzip']
 
@@ -40,6 +42,8 @@ def register():
         for x in levels:
             level = f"{compression}_{x}"
             config.register_compression_type(level, cmodule)
+    for compression in FILE_COMPRESSIONS:
+        config.register_file_compression_type(compression, cmodule)
 
 def get_compression_type(filename):
     """ Get compression type of file.

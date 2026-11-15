@@ -170,15 +170,6 @@ commands = {
                     },
                 },
             },
-    'auto_disable'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'change_auto_disable',
-                    'args'              : ['auto_disable'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
     'show'   : {
             'default'    : {
                 'missing'    : {
@@ -238,22 +229,6 @@ commands = {
                 'exists'    : {
                     'method'            : 'delete',
                     'oargs'             : ['add_to_trash'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'enable'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'enable',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'disable'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'disable',
                     'job_type'          : 'process',
                     },
                 },
@@ -323,15 +298,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'resign',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'add_sign'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'add_sign',
-                    'oargs'             : ['signature', 'tags'],
+                    'oargs'             : ['stdin_pass'],
                     'job_type'          : 'process',
                     },
                 },
@@ -351,15 +318,6 @@ commands = {
                     'method'            : 'verify_sign',
                     'oargs'             : ['username', 'user_uuid', 'tags'],
                     'job_type'          : 'process',
-                    },
-                },
-            },
-    'get_sign_data'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_sign_data',
-                    'oargs'             : ['tags'],
-                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -484,32 +442,6 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     'config'   : {
             'default'    : {
                 'exists'    : {
@@ -531,9 +463,22 @@ def get_value_acls(split=False, **kwargs):
     if split:
         read_acls = result[0]['view']
         set_acls = result[1]['set']
+        enable_acls = result[1]['enable']
+        disable_acls = result[1]['disable']
+        edit_acls = result[1]['edit']
     else:
         read_acls = result['view']
         set_acls = result['set']
+        enable_acls = result['enable']
+        disable_acls = result['disable']
+        edit_acls = result['edit']
+    # A script has no status: nothing that loads or runs one reads it.
+    # So there is nothing to disable, and no time to disable it at.
+    read_acls.remove("status")
+    read_acls.remove("auto_disable")
+    enable_acls.remove("object")
+    disable_acls.remove("object")
+    edit_acls.remove("auto_disable")
     for x in config_params:
         acl = f"config:{x}"
         read_acls.append(acl)
@@ -602,6 +547,9 @@ def register_oid():
                                 getter=rel_path_getter)
 
 def register_hooks():
+    # Run by dump(). Not registered, an auth on action policy refused it
+    # as an unknown hook.
+    config.register_auth_on_action_hook("script", "dump")
     config.register_auth_on_action_hook("script", "sign")
     config.register_auth_on_action_hook("script", "add_sign")
     config.register_auth_on_action_hook("script", "del_sign")
@@ -776,9 +724,21 @@ class Script(OTPmeObject):
 
     def get_sign_data(self, callback: JobCallback=default_callback, **kwargs):
         """ Return script to be signed by parent class method. """
-        # Get script, this also checks ACLs.
-        script = self.dump(run_policies=False, callback=callback)
+        # No ACLs here: this is no command, and who calls it checked
+        # what they need. verify_sign() takes verify:signature, and
+        # with the ACLs of dump checked here that was not enough.
+        script = self.dump(run_policies=False,
+                        verify_acls=False,
+                        callback=callback)
         return callback.ok(script)
+
+    # What is signed is the content: who may not read it may not sign it.
+    # get_sign_data() checks nothing, and when it still went through
+    # dump() and that refused, the refusal was signed in its place.
+    @check_acls(['view:script', 'dump'])
+    def sign(self, **kwargs):
+        """ Sign the script. """
+        return super().sign(**kwargs)
 
     @check_acls(['view:script', 'dump'])
     def dump(
@@ -862,11 +822,12 @@ class Script(OTPmeObject):
         ):
         """ Add a script. """
         if verify_acls:
-            if replace:
-                if self.exists():
-                    if not self.verify_acl("edit:script"):
-                        msg = denied_msg(self, "edit:script")
-                        return callback.error(msg, exception=PermissionDenied)
+            # With -r a script that is not there yet is added, and that
+            # takes what adding takes.
+            if replace and self.exists():
+                if not self.verify_acl("edit:script"):
+                    msg = denied_msg(self, "edit:script")
+                    return callback.error(msg, exception=PermissionDenied)
             else:
                 _unit = backend.get_object(object_type="unit",
                                         uuid=self.unit_uuid)
@@ -961,6 +922,8 @@ class Script(OTPmeObject):
         return OTPmeObject.add(self, verbose_level=verbose_level,
                                 callback=callback, **kwargs)
 
+    # The copy holds the content, so it takes what dump takes to read it.
+    @check_acls(['view:script', 'dump'])
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
@@ -973,17 +936,17 @@ class Script(OTPmeObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Copy this script (and its signatures) to another one. """
+        """ Copy the content of this script to another one. """
         # Resolv object path (e.g. unit/script).
         if "/" in destination_script:
             x = oid.resolve_path(destination_script, object_type='script')
-            #object_realm = x['realm']
-            #object_site = x['site']
+            # Within the site: the signatures and the ACLs are of it.
+            if x['realm'] != self.realm or x['site'] != self.site:
+                msg = _("Cannot copy a script to another site.")
+                return callback.error(msg)
             object_unit = x['unit']
             object_name = x['name']
         else:
-            #object_realm = self.realm
-            #object_site = self.site
             object_unit = self.unit
             object_name = destination_script
 
@@ -991,17 +954,20 @@ class Script(OTPmeObject):
         if not oid.check_name(object_type='script', object_name=object_name):
             return callback.error(_("Invalid destination script name."))
 
-        # Check if destination script exists.
-        result = backend.search(object_type="script",
-                                attribute="name",
-                                value=object_name,
-                                realm=self.realm,
-                                return_type="instance")
+        # A name is unique within its unit only, so the destination is
+        # looked up by its OID, not by its name.
+        dst_oid = oid.get(object_type="script",
+                        realm=self.realm,
+                        site=self.site,
+                        unit=object_unit,
+                        name=object_name)
+        if dst_oid.read_oid == self.oid.read_oid:
+            msg = _("Cannot copy a script to itself.")
+            return callback.error(msg)
+
+        dst_script = backend.get_object(object_id=dst_oid)
         # Use existing script if it exists.
-        if result:
-            # FIXME: acquire_lock() and release_lock() when replacing a script!?!
-            # Get destination script from result.
-            dst_script = result[0]
+        if dst_script:
             # Check if we have permissions to replace destination script.
             if not dst_script.verify_acl("edit:script"):
                 msg = denied_msg(dst_script, "edit:script")
@@ -1011,36 +977,64 @@ class Script(OTPmeObject):
             msg = msg.format(name=dst_script.name)
             if not self.ask_change_confirmation(msg, force=force, callback=callback):
                 return callback.abort()
-            # Copy script to destination script.
-            dst_script.script = self.script
-        else:
-            # Create new script instance.
-            try:
-                dst_script = Script(name=object_name,
-                                    unit=object_unit,
-                                    realm=self.realm,
-                                    site=self.site)
-                                    # FIXME: how to copy between sites!?!
-                                    #realm=object_realm,
-                                    #site=object_site)
-            except Exception as e:
-                msg = _("Error loading destination script: {error}")
-                msg = msg.format(error=e)
-                return callback.error(msg)
-            # Try to add the new script.
-            try:
-                add_status = dst_script.add(script=self.script)
-                add_message = ""
-            except Exception as e:
-                add_message = str(e)
-                add_status = False
-            if not add_status:
-                return callback.error(add_message)
+            return dst_script._copy_from(self, callback=callback)
 
-        # Copy script signatures to destination script.
-        dst_script.signatures = self.signatures
+        # Create new script instance.
+        try:
+            dst_script = Script(name=object_name,
+                                unit=object_unit,
+                                realm=self.realm,
+                                site=self.site)
+        except Exception as e:
+            msg = _("Error loading destination script: {error}")
+            msg = msg.format(error=e)
+            return callback.error(msg)
+        # Try to add the new script.
+        # With our callback: auto_sign signs the copy as it signs a script
+        # added by hand, and asks the user to. Without it the signing went
+        # to the default callback, reached no client and failed, and the
+        # "Auto-signing failed." went nowhere: the copy stayed unsigned.
+        try:
+            add_status = dst_script.add(script=self.script, callback=callback)
+            add_message = ""
+        except Exception as e:
+            add_message = str(e)
+            add_status = False
+        if not add_status:
+            # add() said why itself, through the callback.
+            if not add_message:
+                return add_status
+            return callback.error(add_message)
 
-        return dst_script._write(callback=callback)
+        # The signatures stay with the source. Each carries the tag
+        # script:<uuid> of the source, and the copy looks for its own:
+        # verify_sign, del_sign and get_sign --tags did not find them
+        # there, and only resign could renew them. Sign the copy.
+        return callback.ok()
+
+    @object_lock(full_lock=True)
+    @backend.transaction
+    def _copy_from(self, source, callback: JobCallback=default_callback):
+        """ Replace the content by that of <source>.
+
+        The script that copies holds its own lock, and changelog entry:
+        this one takes the lock of the destination, and the entry, which
+        object_changelog writes only for the command it decorates.
+
+        The signatures of the source are not taken, see copy(). Those of
+        this script stay, as with add -r, and no longer match.
+        """
+        self.script = source.script
+        # Of the content, as add() does it.
+        script_md5sum = decode(self.script, "base64")
+        self.script_md5sum = stuff.gen_md5(script_md5sum)
+        if self.signatures:
+            msg = _("NOTE: Please update script signatures after editing!!!")
+            callback.send(msg)
+        if self.changelog_enabled():
+            action = f"copy from {source.rel_path}"
+            self.add_changelog_entry(action=action, callback=callback)
+        return self._cache(callback=callback)
 
     @object_lock(full_lock=True)
     @backend.transaction

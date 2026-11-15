@@ -35,7 +35,7 @@ For user, token, role, host, node, client, accessgroup.
 .TP
 .B autodisable
 Disable the object it is assigned to after a time, or after it was unused for that long.
-For every object type except the realm and policies, and not for an object the realm or a site comes with, e.g. the admin user.
+For every object type except the realm, policies, scripts and passwords, and not for an object the realm or a site comes with, e.g. the admin user.
 "Unused for" only where the object keeps its last use: user, token, host, node, client, device, resolver, share.
 .TP
 .B forcetoken
@@ -165,8 +165,11 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fIregex\fR]
-List the policy names, and with a regex only those that match it.
+.B list \fR[\fIpattern\fR]
+List the policy names, and with a pattern only those that match it, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
 .TP
 .B enable \fIpolicy\fR
 Enable a disabled policy.
@@ -272,8 +275,7 @@ The somebody is a role or a token, never a user.
 .PP
 What the three forms \fBacl\fR, \fB+acl\fR and \fB++acl\fR mean is under \fBACLs\fR in
 .BR otpme (7).
-Which ACLs a policy knows, those of \fBpolicy\fR and those of its type, is in
-.BR otpme\-acls (7).
+Tab completion after \fBadd_acl\fR offers the ACLs a policy knows, those of \fBpolicy\fR and those of its type.
 .PP
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
@@ -281,7 +283,7 @@ A command that changes something asks first; the global option \fB\-f\fR skips t
 Give a role or a token one or more ACLs on this policy.
 .br
 \fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
-\fIowner\fR is the path of that role or token.
+\fIowner\fR names it the way \fBlist_acls\fR prints it: a role as \fIsite/name\fR, or by its name alone on its own site; a token as \fI\%user/token\fR.
 An ACL can carry a value, for example \fBview:policy_type\fR.
 To give several ACLs at once, separate them with commas: \fB\%view:policy_type,view:status\fR.
 .br
@@ -333,20 +335,23 @@ What was done and by whom stays as it is.
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIpolicy\fR
-Show the changelog of the policy.
+Show the changelog of the policy, one entry per line: its \fIentry_id\fR, the time, who made the change and what was done, then a detail in round brackets and the comment in square brackets where there are any.
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fIpolicy\fR \fIentry_id\fR \fIcomment\fR
 Set the comment of that entry, or replace the one it has.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B del_changelog \fIpolicy\fR \fIentry_id\fR
 Remove the comment of that entry.
 The entry itself stays, and an entry without a comment is refused.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIpolicy\fR
 Remove every entry of the changelog.
+Afterwards it holds one entry: that it was cleared.
 .br
 This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
@@ -529,13 +534,13 @@ It does not ask in API mode (directly on a node, without the daemons), over the 
 A hook is an action on an object type, e.g. \fBuser change_pin\fR or \fBunit pre_add_user\fR.
 A new policy gets every hook there is.
 \fBshow\fR \fIpolicy\fR lists the ones it has (\fBHOOKS\fR) and the ones removed by hand (\fBREMOVED_HOOKS\fR).
-Every object type has these:
+Every object type has these; a command of another name is in brackets:
 .\" BEGIN COMMON HOOKS
 .RS
 .PP
 .na
 .nh
-add, add_acl, add_attribute, add_extension, add_object_class, add_policy, change_description, change_unit, del_acl, del_attribute, del_object_class, delete, disable, disable_acl_inheritance, enable, enable_acl_inheritance, export, get_acls, modify, remove_extension, remove_orphans, remove_policy, rename.
+add, add_acl, add_attribute, add_extension, add_object_class, add_policy, change_auto_disable\ (auto_disable), change_description\ (description), change_info\ (info), change_unit\ (move), del_acl, del_attribute, del_object_class, delete\ (del), disable, disable_acl_inheritance, enable, enable_acl_inheritance, export, get_acls\ (list_acls), modify, remove_extension, remove_orphans, remove_policy, rename, show_config_parameters\ (show_config).
 .hy
 .ad
 .RE
@@ -959,12 +964,12 @@ An auth on action policy can ask for a login again before these actions.
 See
 .B Auth On Action Policy
 above.
-A policy has the hooks every object type has, and these:
+A policy has the hooks every object type has, and these; a command of another name is in brackets:
 .RS
 .PP
 .na
 .nh
-add_creator_acl, add_default_group, add_default_policy, add_default_role, add_hook, add_id_range, add_token_acl, add_user_acl, add_whitelist, change_auto_disable, change_default_group, change_force_pass_types, change_force_token_types, change_login_times, change_password_min_len, change_pin_min_len, change_reauth_expiry, change_reauth_timeout, change_strength_checker, change_strength_checker_opts, del_creator_acl, del_id_range, del_token_acl, del_user_acl, disable_require_lower, disable_require_number, disable_require_special, disable_require_upper, disable_strength_checker, enable_require_lower, enable_require_number, enable_require_special, enable_require_upper, enable_strength_checker, remove_default_group, remove_default_policy, remove_default_role, remove_hook, remove_whitelist, set_config_parameter, set_default_unit, set_template, show_config_parameters, update_hooks.
+add_creator_acl, add_default_group, add_default_policy, add_default_role, add_hook, add_id_range, add_token_acl, add_user_acl, add_whitelist\ (whitelist_role or whitelist_token), change_default_group\ (default_group), change_force_pass_types\ (force_pass_types), change_force_token_types\ (force_token_types), change_login_times\ (login_times), change_password_min_len\ (password_min_len), change_pin_min_len\ (pin_min_len), change_reauth_expiry\ (reauth_expiry), change_reauth_timeout\ (reauth_timeout), change_strength_checker\ (strength_checker), change_strength_checker_opts\ (strength_checker_opts), del_creator_acl, del_id_range, del_token_acl, del_user_acl, disable_require_lower, disable_require_number, disable_require_special, disable_require_upper, disable_strength_checker, enable_require_lower, enable_require_number, enable_require_special, enable_require_upper, enable_strength_checker, remove_default_group, remove_default_policy, remove_default_role, remove_hook, remove_whitelist\ (unwhitelist_role or unwhitelist_token), set_config_parameter\ (config), set_default_unit\ (set_unit), set_template, update_hooks.
 .hy
 .ad
 .RE
@@ -984,7 +989,6 @@ Change them with the commands above, not in the file.
 .nh
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
 .BR otpme\-site (1),
 .BR otpme\-unit (1),
 .BR otpme\-user (1),

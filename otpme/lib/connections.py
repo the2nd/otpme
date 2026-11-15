@@ -530,6 +530,9 @@ def get(daemon, mgmt=None, ping=True, **kwargs):
     if daemon == "mgmtd":
         if mgmt is None:
             mgmt = True
+    if daemon == "joind":
+        if mgmt is None:
+            mgmt = True
     if daemon == "syncd":
         if mgmt is None:
             mgmt = True

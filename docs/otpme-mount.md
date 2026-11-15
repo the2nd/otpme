@@ -44,7 +44,9 @@ Leave it out and **otpme-agent** mounts the share at the usual place:
 
 The first part is the mount root (**MOUNT_ROOT_DIR**, see
 **otpme.conf**(5)). The directories are made as needed and belong to
-you.
+you. Options that change how it is mounted, **--nodes**, **--hard**,
+**--master-password-mount**, **--add-share-key** and **--foreground**,
+need a mountpoint of your own, see **OPTIONS**.
 
 This is also where the shares of a user are mounted at login. A mount
 made by hand with a mountpoint of your own is yours alone: the agent
@@ -111,10 +113,14 @@ share object, see **--no-key-gen** in **otpme-share**(1).
 
 # OPTIONS
 
+**--nodes**, **--hard**, **--master-password-mount**,
+**--add-share-key** and **--foreground** need a *mountpoint* of your
+own. Without one the agent mounts the share, at the usual place and with
+its own settings, and they are refused.
+
 **-a**  
 Mount all shares you may mount, each at the usual place. Not for a
-mountpoint of your own, and not together with **--foreground**,
-**--master-password-mount** or **--add-share-key**.
+mountpoint of your own, and not together with the options above.
 
 **-u**  
 Unmount the share. With **-a** it unmounts all of them. The agent does
@@ -182,13 +188,21 @@ Mount an encrypted share with its master password.
 The same, and keep the key for your own token, so the next mount needs
 no master password. Runs in the login session of root.
 
+**otpme-mount --nodes node1 berlin/projects /mnt/projects**  
+Mount it from **node1** only.
+
+**fusermount -u /mnt/projects**  
+Unmount a share at a mountpoint of your own; **-u** does not reach it.
+
 # NOTES
 
-An unencrypted share connects in the background and answers with
-**ENOENT** until the connection stands. So a program that looks at the
-mountpoint in the first moment is told the path is not there, instead of
-waiting for it. An encrypted share waits instead: getting its key may
-ask for a password, and that needs a command that waits for the answer.
+A share connects in the background and answers with **ENOENT** until the
+connection stands. So a program that looks at the mountpoint in the
+first moment is told the path is not there, instead of waiting for it.
+It waits instead where getting the connection may ask something or must
+not fail: an encrypted share, whose key may ask for a password, a share
+with SOTP signing, a write of a **--hard** mount, and the connection
+made again after **mount_timeout**.
 
 A share can drop its connection when nothing uses it for a while, and
 with it the share key (**mount_timeout**, see **otpme-share**(1)). The
@@ -198,7 +212,8 @@ plugged in again.
 
 A node asks once a second whether your token may still use the share,
 and stops serving the mount when it may not. Taking a permission away
-also tells the hosts to unmount the share, see **--share-notify** in
+also tells the hosts to unmount the share where it is done with
+**--share-notify** or **send_share_notifications** is set, see
 **otpme-share**(1).
 
 After a mount that went to the background, the readahead of the
@@ -208,7 +223,7 @@ that sudo rule the mount still works, only slower on large reads.
 # SEE ALSO
 
 **otpme**(1), **otpme**(7), **otpme-share**(1), **otpme-tool**(1),
-**otpme.conf**(5)
+**otpme.conf**(5), **fusermount**(1)
 
 # AUTHOR
 

@@ -38,6 +38,15 @@ TRANSLATIONS = {}
 # shows under -dee.
 RAISE_EXCEPTION_CALLERS = 5
 
+# Read before the cache and index modules are imported, see load().
+PREREAD_DIR_PARAMETERS = [
+                    "DATA_DIR",
+                    "SPOOL_DIR",
+                    "CACHE_DIR",
+                    "RUN_DIR",
+                    "LOG_DIR",
+                    ]
+
 class OTPmeConfig(object):
     def __init__(self, tool_name="otpme", use_syslog=False,
         use_systemd_log=False, auto_load=True, quiet=False):
@@ -122,7 +131,7 @@ class OTPmeConfig(object):
         # PAM log settings.
         self.register_config_var("pam_use_syslog", bool, False,
                             config_file_parameter="PAM_USE_SYSLOG")
-        self.register_config_var("pam_use_systemd", bool, False,
+        self.register_config_var("pam_use_systemd", bool, True,
                             config_file_parameter="PAM_USE_SYSTEMD")
         self.register_config_var("pam_use_logfile", bool, False,
                             config_file_parameter="PAM_USE_LOGFILE")
@@ -166,9 +175,6 @@ class OTPmeConfig(object):
                             config_file_parameter="SYSLOG_CERT")
         self.register_config_var("syslog_key", str, None,
                             config_file_parameter="SYSLOG_KEY")
-        # Pickle type to use for caching.
-        self.register_config_var("pickle_cache_module", str, "pickle",
-                                config_file_parameter="PICKLE_CACHE_MODULE")
         # Default OTPme user/group.
         self.register_config_var("user", str, "otpme",
                             config_file_parameter="USER")
@@ -192,6 +198,11 @@ class OTPmeConfig(object):
                                 config_file_parameter="PINENTRY",
                                 user_config_file_parameter="PINENTRY")
         self.register_config_var("_logger", None, None)
+        # True while load() imports modules before it has read the config
+        # file, see setup_logger().
+        self.register_config_var("_before_config_file", bool, False)
+        # The logger was built then, from the defaults.
+        self.register_config_var("_logger_from_defaults", bool, False)
         # OTPme command that was called.
         self.register_config_var("command", None, None)
         # Index type to use.
@@ -464,7 +475,7 @@ class OTPmeConfig(object):
                                 config_file_parameter="BACKUP_REPO_PASS_FILE")
         self.register_config_var("backup_key", str, None)
         self.register_config_var("backup_repo_pass", str, None)
-        self.register_config_var("backup_exclude_special", bool, None,
+        self.register_config_var("backup_exclude_special", bool, True,
                                 config_file_parameter="BACKUP_EXCLUDE_SPECIAL")
         self.register_config_var("backup_excludes", list, None,
                                 config_file_parameter="BACKUP_EXCLUDES")
@@ -477,9 +488,6 @@ class OTPmeConfig(object):
         self.register_config_var("backup_client_ca", str, None,
                                 config_file_parameter="BACKUP_CLIENT_CA")
 
-        # Inter-daemon communication timeout.
-        self.register_config_var("inter_daemon_comm_timeout", int, 2,
-                            config_file_parameter="INTER_DAEMON_COMM_TIMEOUT")
         self.register_config_var("controld_heartbeat_interval", int, 15,
                                 config_file_parameter="CONTROLD_HEARTBEAT_INTERVAL")
         self.register_config_var("controld_heartbeat_retry_interval", int, 3,
@@ -491,20 +499,22 @@ class OTPmeConfig(object):
 
         self.register_config_var("agent_connection_idle_timeout", int, 300,
                         config_file_parameter="AGENT_CONNECTION_IDLE_TIMEOUT")
-        self.register_config_var("agent_keepalive_interval", int, 6,
+        self.register_config_var("agent_keepalive_interval", int, 5,
                                 config_file_parameter="AGENT_KEEPALIVE_INTERVAL")
         # How often otpme-agent fetches the passwords this host may keep
         # for offline use, besides at login and when idled says one of
         # them changed (see otpme.lib.pass_cache).
         self.register_config_var("agent_pass_cache_interval", int, 3600,
                                 config_file_parameter="AGENT_PASS_CACHE_INTERVAL")
+        # Whether otpme-agent asks the user to confirm each use of the
+        # PIV card while it has a PIV session. Main config only.
+        self.register_config_var("agent_confirm_actions", bool, True,
+                                config_file_parameter="AGENT_CONFIRM_ACTIONS")
 
-        # Use DNS to get OTPme login realm/site and socket URI.
+        # Use DNS to get the realm/site a host logs in to. The address of
+        # a site always comes from its FQDNs, see connections.get().
         self.register_config_var("login_use_dns", bool, True,
                                 config_file_parameter="LOGIN_USE_DNS")
-        # Use DNS to get OTPme site address.
-        self.register_config_var("use_dns", bool, False,
-                            config_file_parameter="USE_DNS")
         # Use direct API calls instead of connecting to the daemons.
         self.register_config_var("use_api", bool, False)
         # Emulate login token when running in API mode.
@@ -619,13 +629,14 @@ class OTPmeConfig(object):
         self.register_config_var("backend_policy_interval", int, 60,
                             config_file_parameter="BACKEND_POLICY_INTERVAL")
         # hostd sync interval in seconds.
-        self.register_config_var("hostd_sync_interval", int, 300,
+        self.register_config_var("hostd_sync_interval", int, 180,
                                 config_file_parameter="SYNC_INTERVAL")
         # To prevent our local objects from beeing in an inconsistent state (e.g. token
         # is synced but not its second factor token) we need to be in an consistent
         # state with the master node at least at one point while doing a sync. The
         # hostd sync retry count paramter configures how many times we will try to get
-        # a consistent state until we wait for hostd sync interval before retrying.
+        # a consistent state until the sync counts as failed and is retried after the
+        # hostd sync retry interval.
         self.register_config_var("hostd_sync_retry_count", int, 5,
                                 config_file_parameter="SYNC_RETRY_COUNT")
         # Retry interval if sync failed (e.g. network problems) in seconds.
@@ -1009,8 +1020,6 @@ class OTPmeConfig(object):
         # a decision from an omission.
         self.register_config_var("index_attribute_all_types", list, [])
 
-        self.register_config_var("logout_pass_len", int, 6,
-                            config_file_parameter="LOGOUT_PASS_LEN")
         self.register_config_var("node_jotp_len", int, 8)
         self.register_config_var("host_jotp_len", int, 8)
         self.register_config_var("join_jotp_hash_type", str, "PBKDF2")
@@ -1018,8 +1027,6 @@ class OTPmeConfig(object):
 
         self.register_config_var("object_config_file_name", str, "object.json")
 
-        # FIXME: make this a (user) config file option?
-        self.register_config_var("pwgen", str, "pwgen")
         self.register_config_var("agent_vars_filename", str, ".ssh_agent_vars")
 
         valid_token_login_interfaces = [
@@ -1030,16 +1037,14 @@ class OTPmeConfig(object):
         self.register_config_var("valid_token_login_interfaces",
                                 list, valid_token_login_interfaces)
 
-        self.register_config_var("last_config_file_mtime", float, 0.0)
-        self.register_config_var("last_config_reload_check", float, 0.0)
-
-        self.register_config_var("reload_config_interval", int, 60,
-                                config_file_parameter="RELOAD_CONFIG_INTERVAL")
-
         self.register_config_var("supported_protocols", dict, {})
         self.register_config_var("supported_encryption_types", dict, {})
         self.register_config_var("supported_encoding_types", dict, {})
         self.register_config_var("supported_compression_types", dict, {})
+        # Compressions for whole files (e.g. OBJECT_JSON_COMPRESSION). Not
+        # the ones above: those are headers of values in an object config,
+        # and every name there is looked for as one.
+        self.register_config_var("supported_file_compression_types", dict, {})
         self.register_config_var("supported_hash_types", dict, {})
         self.register_config_var("supported_ecdh_curves", dict, {})
         self.register_config_var("supported_ec_signing_curves", dict, {})
@@ -1050,9 +1055,6 @@ class OTPmeConfig(object):
         self.register_config_var("use_radius_mod", bool, True,
                             config_file_parameter="USE_RADIUS_MOD")
 
-        self.register_config_var("radius_cache_time", int, 60,
-                            config_file_parameter="RADIUS_CACHE_TIME")
-
         self.register_config_var("radius_start_servers", int, 32,
                             config_file_parameter="RADIUS_START_SERVERS")
         self.register_config_var("radius_max_servers", int, 64,
@@ -1062,7 +1064,7 @@ class OTPmeConfig(object):
         self.register_config_var("radius_max_spare_servers", int, 16,
                             config_file_parameter="RADIUS_MAX_SPARE_SERVERS")
 
-        self.register_config_var("radius_mod_logfile", str, "/var/log/otpme/radius-module.log",
+        self.register_config_var("radius_mod_logfile", str, "/var/log/freeradius/radius-module.log",
                             config_file_parameter="RADIUS_MOD_LOGFILE")
         # Spread LDAP requests over the member nodes. Off by default:
         # it needs haproxy installed, and a single node works without
@@ -1092,8 +1094,15 @@ class OTPmeConfig(object):
                             config_file_parameter="START_FREERADIUS")
         self.register_config_var("freeradius_bin", str, "/usr/sbin/freeradius",
                             config_file_parameter="FREERADIUS_BIN")
-        self.register_config_var("pwgen_bin", str, "pwgen",
-                            config_file_parameter="PWGEN")
+        # With the Python module FreeRADIUS runs as this user, and the
+        # module gets what it needs to know through hostd. Without it
+        # otpme-auth reads the auth cache, and that takes the OTPme user.
+        self.register_config_var("freeradius_user", str, "freerad",
+                            config_file_parameter="FREERADIUS_USER")
+        self.register_config_var("freeradius_group", str, "freerad",
+                            config_file_parameter="FREERADIUS_GROUP")
+        self.register_config_var("freeradius_log_dir", str, "/var/log/freeradius",
+                            config_file_parameter="FREERADIUS_LOG_DIR")
         self.register_config_var("timezone", str, "Europe/Berlin",
                                 config_file_parameter="TIMEZONE")
         # Debug stuff.
@@ -1294,8 +1303,27 @@ class OTPmeConfig(object):
                 val = main_opts[var]
                 setattr(self, var, main_opts[var])
 
+        # The cache and index modules registered next build their paths
+        # from these when they are imported (INDEX_DIR, the log files of
+        # postgres and redis, ...), which is before the config file is
+        # read below. So the directories are taken from the file first;
+        # without that DATA_DIR moved the objects but not the index.
+        # Only on the first load: the modules are imported once, so a
+        # changed directory takes a restart anyway.
+        if not self.config_reload:
+            self.preread_dirs()
+
+        # The modules below take config.logger when they are imported
+        # (logger = config.logger), so the logger is built from the
+        # defaults here. It is built again once the file is read.
+        if not self.config_reload:
+            self._before_config_file = True
+
         # Register required modules.
         register_module("otpme.lib.filetools")
+        # The file compressions filetools writes objects with, before
+        # verify() checks OBJECT_JSON_COMPRESSION against them.
+        register_module("otpme.lib.compression.base")
         # Register cache module before index because of dogpile dependency.
         register_module('otpme.lib.cache', ignore_deps=True)
         # Register index module after debug level was set by main opts but
@@ -1315,7 +1343,7 @@ class OTPmeConfig(object):
 
         # Merge user config parameters.
         merged_config = dict(self.main_config)
-        if not self.daemon_mode:
+        if self.use_user_config():
             # Set users signers dir.
             self.user_signers_dir = self.get_user_signers_dir(self.system_user())
             # Get user config.
@@ -1342,8 +1370,9 @@ class OTPmeConfig(object):
             try:
                 self.print_tracebacks = merged_config['TRACEBACKS']
             except Exception:
-                # Default should be to print tracebacks.
-                self.print_tracebacks = True
+                # Not set: no tracebacks, as otpme.conf.dist has it. The
+                # debug options turn them on (see help/__init__.py).
+                self.print_tracebacks = False
 
         # Check if we should print out tracebacks.
         if not self.print_tracebacks:
@@ -1373,6 +1402,7 @@ class OTPmeConfig(object):
                 msg = _("Unable to set config parameter: {parameter}: {e}")
                 msg = msg.format(parameter=parameter, e=e)
                 error_message(msg)
+        self._before_config_file = False
 
         if self.system_user() == "root":
             # Read backup repo pass file.
@@ -1492,9 +1522,11 @@ class OTPmeConfig(object):
         # Directory to spool transaction.
         self.transaction_dir = os.path.join(self.spool_dir, "transactions")
 
-        # Default key file.
-        key_file = os.path.join(self.config_dir, "otpme.key")
-        self.key_command = f"file:/{key_file}"
+        # Default key file, where KEY_COMMAND says nothing. Set without
+        # asking before, so KEY_COMMAND never had any effect.
+        if not self.key_command:
+            key_file = os.path.join(self.config_dir, "otpme.key")
+            self.key_command = f"file:/{key_file}"
 
         # Load disk encryption module.
         try:
@@ -1558,6 +1590,12 @@ class OTPmeConfig(object):
         # Create or reconfigure logger instance.
         if configure_logger:
             self.setup_logger(existing_logger=self.logger, pid=self.my_pid)
+        elif self._logger_from_defaults:
+            # Built while the modules were imported, before the config
+            # file was read: build it again, as it was asked for then,
+            # with the log file, level etc. from the file. In place, so
+            # what the modules took keeps working.
+            self.setup_logger(existing_logger=self._logger)
 
         if not self.config_reload and self.debug_enabled \
         and (not self.file_logging and not self.use_syslog \
@@ -1584,9 +1622,10 @@ class OTPmeConfig(object):
 
         if self.object_caches:
             for cache in self.object_caches:
-                object_type = cache.split(":")[0]
-                cache_size_str = cache.split(":")[1]
+                # An entry without a ":" ended in an IndexError that
+                # named nothing.
                 try:
+                    object_type, cache_size_str = cache.split(":", 1)
                     cache_size = int(cache_size_str)
                 except (TypeError, ValueError) as e:
                     msg = _("Invalid OBJECT_CACHES entry '{entry}': {error}")
@@ -1853,8 +1892,20 @@ class OTPmeConfig(object):
         getter=None, setter=None, deller=None, warn_if_exists=False,
         default_genner=None, gen_default_on_create=False,
         sensitive=False, admin_only=False, superuser_only=False,
-        merging_setter=False):
+        merging_setter=False, orphans=None, orphans_report_only=False):
         """ Register config parameter.
+
+        orphans: for a parameter that keeps UUIDs of other objects. A
+        function that gets the stored value and gives back the entries of
+        it that point at an object that is gone (for a single UUID that
+        UUID). remove_orphans() asks it and takes each one out the way
+        "config -d <object> <parameter> <entry>" does, through
+        set_config_param(), so setter, deller and the rules of a site
+        apply. See otpme_object.uuid_orphans() and trust_orphans().
+
+        orphans_report_only: remove_orphans() says what <orphans> found but
+        changes nothing, for a value whose change has to be done by hand
+        (password_store_members: its signatures would no longer fit).
 
         merging_setter: the setter builds the whole new value itself, also
         when a value is added (-a) or removed (-d <value>). It gets the
@@ -1908,6 +1959,8 @@ class OTPmeConfig(object):
                                             'admin_only'        : admin_only,
                                             'superuser_only'    : superuser_only,
                                             'merging_setter'    : merging_setter,
+                                            'orphans'           : orphans,
+                                            'orphans_report_only' : orphans_report_only,
                                         }
     def get_config_parameter(self, name):
         try:
@@ -2531,6 +2584,14 @@ class OTPmeConfig(object):
             raise AlreadyRegistered(msg)
         self.supported_compression_types[ctype] = cmod
 
+    def register_file_compression_type(self, ctype, cmod):
+        """ Register compression type for whole files. """
+        if ctype in self.supported_file_compression_types:
+            msg = _("File compression type already registered: {ctype}")
+            msg = msg.format(ctype=ctype)
+            raise AlreadyRegistered(msg)
+        self.supported_file_compression_types[ctype] = cmod
+
     def get_ecdh_curves(self):
         """ Get supported ECDH curves ordered by strength. """
         from otpme.lib import stuff
@@ -2802,17 +2863,46 @@ class OTPmeConfig(object):
         default_callback = JobCallback(name="default_callback")
         return default_callback
 
+    def use_user_config(self):
+        """ Whether the config file of the user is merged in.
+
+        Not for the daemons, which run as root or as the OTPme user.
+        But otpme-agent is a daemon that runs as the user, and it loads
+        the config again once it is one: without the user config it
+        lost PINENTRY and LANGUAGE of the user for its prompts. """
+        if not self.daemon_mode:
+            return True
+        return self.system_user() not in ("root", self.user)
+
     def system_user(self):
-        """ get current system user we run as. """
+        """ get current system user we run as.
+
+        That is the real user, but root only with the rights of root.
+        FreeRADIUS loads our module with the real user root and the
+        effective one FREERADIUS_USER, and gives up root only after:
+        taken for root, the module set the permissions of our
+        directories and got "Operation not permitted". The other way
+        round (sudo, su: the real user a user, the effective one root)
+        it stays the real user.
+        """
+        import pwd
         from otpme.lib import stuff
         pid = os.getpid()
-        return stuff.get_pid_user(pid)
+        pid_user = stuff.get_pid_user(pid)
+        euid = os.geteuid()
+        if pid_user == "root" and euid != 0:
+            pid_user = pwd.getpwuid(euid).pw_name
+        return pid_user
 
     def system_group(self):
-        """ Get current system group we run as. """
+        """ Get current system group we run as, see system_user(). """
+        import grp
         from otpme.lib import stuff
         pid = os.getpid()
         pid_group = stuff.get_pid_group(pid)
+        egid = os.getegid()
+        if pid_group == "root" and egid != 0:
+            pid_group = grp.getgrgid(egid).gr_name
         return pid_group
 
     @property
@@ -3144,7 +3234,8 @@ class OTPmeConfig(object):
 
         self.last_user_config_file_checksum = config_file_md5
 
-        self.user_config = stuff.conf_to_dict(file_content)
+        self.user_config = stuff.conf_to_dict(file_content,
+                                            file_name=user_conf_file)
         # Make user config includes only allowed parameters.
         for x in dict(self.user_config):
             if x in self.user_configfile_params:
@@ -3323,20 +3414,39 @@ class OTPmeConfig(object):
                 master_key = fd.read().replace("\n", "")
                 fd.close()
         else:
-            # Try to get master key via script.
+            # Try to get master key via script. Split into program and
+            # arguments: handed over as one string without a shell, the
+            # whole line was looked for as the name of one program. And
+            # read as text: the bytes it gave did not take the
+            # str.replace() below.
+            import shlex
             from subprocess import PIPE
             from subprocess import Popen
-            #pipe = Popen(self.key_command, stdout=PIPE, stderr=PIPE, shell=True)
-            pipe = Popen(self.key_command, stdout=PIPE, stderr=PIPE, shell=False)
+            try:
+                key_command = shlex.split(self.key_command)
+            except ValueError as e:
+                msg = _("Invalid KEY_COMMAND: {error}")
+                msg = msg.format(error=e)
+                raise OTPmeException(msg) from e
+            try:
+                pipe = Popen(key_command, stdout=PIPE, stderr=PIPE,
+                            shell=False, text=True)
+            except OSError as e:
+                msg = _("Error running KEY_COMMAND: {script_stderr}")
+                msg = msg.format(script_stderr=e)
+                raise OTPmeException(msg) from e
             # Get script stdout and stderr.
             script_stdout, script_stderr = pipe.communicate()
             # Get script exit code.
             script_returncode = pipe.returncode
             if script_returncode != 0:
                 msg = _("Error running KEY_COMMAND: {script_stderr}")
-                msg = msg.format(script_stderr=script_stderr)
+                msg = msg.format(script_stderr=script_stderr.strip())
                 raise OTPmeException(msg)
             master_key = script_stdout.replace("\n", "")
+            if not master_key:
+                msg = _("KEY_COMMAND gave no key.")
+                raise OTPmeException(msg)
         return master_key
 
     def set_password_salt(self, salt=None):
@@ -3477,30 +3587,6 @@ class OTPmeConfig(object):
         pidfile = os.path.join(self.pidfile_dir, pidfile_name)
         return pidfile
 
-    def check_config_reload(self):
-        """ Check if config reload is needed. """
-        # Calculate time since last config file read.
-        config_age = int(time.time() - self.last_config_reload_check)
-
-        # Check if config age is greater than configured interval.
-        if config_age > self.reload_config_interval:
-            # Get current config file modification time.
-            try:
-                config_file_mtime = os.path.getmtime(self.config_file)
-            except FileNotFoundError:
-                config_file_mtime = time.time()
-
-            # If current config file modification time differs from timstamp saved
-            # in config module a reload is needed.
-            if config_file_mtime != self.last_config_file_mtime:
-                return True, "Config file has new modification time. Reload needed..."
-            else:
-                # Remember when we have check if a config reload is needed.
-                self.last_config_reload_check = time.time()
-                return False, ""
-        else:
-            return False, ""
-
     def check_modules(self):
         """ Check if all required modules are installed. """
         try:
@@ -3513,19 +3599,12 @@ class OTPmeConfig(object):
 
     def verify(self):
         """ Check OTPme config. """
-        # check if pwgen is executable
-        if not os.access(self.pwgen_bin, os.X_OK):
-            msg = ("Cannot execute pwgen. Please check your config.")
-            raise OTPmeException(msg)
-
-        if not isinstance(self.logout_pass_len, int) or self.logout_pass_len < 1:
-            msg = ("LOGOUT_PASS_LEN must be greater than 0. Please "
-                    "check your config.")
-            raise OTPmeException(msg)
-
-        if not isinstance(self.reload_config_interval, int) or self.reload_config_interval < 1:
-            msg = ("RELOAD_CONFIG_INTERVAL must be greater than 0. "
-                    "Please check your config.")
+        # Else every write of an object fails, see filetools.
+        compression = self.object_json_compression
+        if compression and compression not in self.supported_file_compression_types:
+            valid = ", ".join(self.supported_file_compression_types)
+            msg = _("Invalid OBJECT_JSON_COMPRESSION: {value}: must be one of {valid}")
+            msg = msg.format(value=compression, valid=valid)
             raise OTPmeException(msg)
 
         for x in self.object_types:
@@ -3536,6 +3615,28 @@ class OTPmeConfig(object):
             raise OTPmeException(msg)
 
         return True
+
+    def preread_dirs(self):
+        """ Take the base directories from the config file before the
+        modules that build paths from them are imported, see load().
+        Whatever goes wrong here read() runs into again and says so. """
+        from otpme.lib import stuff
+        try:
+            fd = open(self.config_file, 'r')
+            file_content = fd.read()
+            fd.close()
+        except (OSError, IOError):
+            return
+        try:
+            dirs = stuff.conf_to_dict(file_content,
+                                    parameters=PREREAD_DIR_PARAMETERS)
+        except Exception:
+            return
+        for parameter in PREREAD_DIR_PARAMETERS:
+            value = dirs.get(parameter)
+            if not value:
+                continue
+            setattr(self, self.configfile_var_map[parameter], value)
 
     def read(self, quiet=False):
         """ Read config file. """
@@ -3579,15 +3680,8 @@ class OTPmeConfig(object):
         self.last_config_file_checksum = str(config_file_md5)
 
         # Convert config file content to object config (dict).
-        main_config = stuff.conf_to_dict(file_content)
-
-        # Timestamp of the last reload check.
-        self.last_config_reload_check = time.time()
-        # Remember config file mtime from last read.
-        try:
-            self.last_config_file_mtime =  os.path.getmtime(self.config_file)
-        except FileNotFoundError:
-            self.last_config_file_mtime = time.time()
+        main_config = stuff.conf_to_dict(file_content,
+                                        file_name=self.config_file)
         return main_config
 
     def set_realm(self, name, uuid):
@@ -3739,6 +3833,26 @@ class OTPmeConfig(object):
             self.setup_logger()
         return self._logger
 
+    def get_pam_log_target(self):
+        """ The first of PAM_USE_LOGFILE, PAM_USE_SYSLOG and PAM_USE_SYSTEMD
+        that is set, as (logfile, syslog, systemd). """
+        if self.pam_use_logfile:
+            # A screen unlock runs pam_otpme as the user, who can not
+            # write the log file. ensure_logfile() would raise, before
+            # pam_otpme.py catches anything, and the unlock failed.
+            logfile = self.pam_logfile
+            if os.path.exists(logfile):
+                writable = os.access(logfile, os.W_OK)
+            else:
+                writable = os.access(os.path.dirname(logfile), os.W_OK)
+            if writable:
+                return logfile, False, False
+        if self.pam_use_syslog:
+            return None, True, False
+        if self.pam_use_systemd:
+            return None, False, True
+        return None, False, False
+
     def setup_logger(self, banner=None, existing_logger=None,
         log_file=False, logger_syslog=False, logger_systemd=False,
         timestamps=None, pid=None, logger_color_logs=None, **kwargs):
@@ -3785,12 +3899,9 @@ class OTPmeConfig(object):
             elif self.use_systemd_log:
                 logger_systemd = True
             elif self.tool_name == "pam_otpme":
-                if self.pam_use_logfile:
-                    logger_logfile = self.pam_logfile
-                elif self.pam_use_syslog:
-                    logger_syslog = True
-                elif self.pam_use_systemd:
-                    logger_systemd = True
+                logger_logfile, \
+                logger_syslog, \
+                logger_systemd = self.get_pam_log_target()
         else:
             if self.file_logging and not logger_logfile:
                 logger_logfile = self.log_file
@@ -3799,12 +3910,15 @@ class OTPmeConfig(object):
             elif self.use_systemd_log:
                 logger_systemd = True
             elif self.tool_name == "pam_otpme":
-                if self.pam_use_logfile:
-                    logger_logfile = self.pam_logfile
-                elif self.pam_use_syslog:
-                    logger_syslog = True
-                elif self.pam_use_systemd:
-                    logger_systemd = True
+                logger_logfile, \
+                logger_syslog, \
+                logger_systemd = self.get_pam_log_target()
+                # Without a target the logger would print to stdout, and
+                # that is the terminal of a login.
+                if not logger_logfile \
+                and not logger_syslog \
+                and not logger_systemd:
+                    logger_logfile = "/dev/null"
             elif self.tool_name == "radius_module":
                 logger_logfile = self.radius_mod_logfile
                 if timestamps is None:
@@ -3817,6 +3931,14 @@ class OTPmeConfig(object):
                 # If we are not in debug mode and logging is not enabled throw away
                 # log messages.
                 logger_logfile = "/dev/null"
+
+        # Before the config file is read the path is the default, which
+        # may not be there (RADIUS_MOD_LOGFILE was given in the file) and
+        # failed the start. load() builds the logger again after it, and
+        # until then what goes to a file goes nowhere.
+        self._logger_from_defaults = self._before_config_file
+        if self._before_config_file and logger_logfile:
+            logger_logfile = "/dev/null"
 
         self._logger = log.get_logger(log_name=self.log_name, pid=pid, banner=banner,
                                 logfile=logger_logfile, syslog=logger_syslog,

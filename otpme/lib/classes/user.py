@@ -57,6 +57,7 @@ from otpme.lib.classes.data_objects.failed_pass import FailedPass
 from otpme.lib.classes.data_objects.otpme_job import OTPmeTreeJob
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 from otpme.lib.classes.otpme_object import name_len_setter
+from otpme.lib.classes.otpme_object import uuid_orphans
 
 from otpme.lib.classes.otpme_object import \
     get_acls as _get_acls
@@ -612,6 +613,11 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_token',
                     'args'              : ['token_name'],
+                    # otpme-token del is sent as this command (see
+                    # CommandHandler.handle_token_add_del_command), with
+                    # what token del takes. Not listed here it never
+                    # reached the token: --no-trash put it in the trash.
+                    'oargs'             : ['add_to_trash'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1102,32 +1108,6 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     'config'   : {
             'default'    : {
                 'exists'    : {
@@ -1225,7 +1205,7 @@ def register():
     register_oid()
     config.register_config_parameter(name="max_user_name_len",
                                     ctype=int,
-                                    default_value=32,
+                                    default_value=64,
                                     setter=name_len_setter,
                                     object_types=['site', 'unit'])
     register_hooks()
@@ -1390,6 +1370,7 @@ def register_config_parameters():
                                     getter=script_getter,
                                     setter=script_setter,
                                     default_value=KEY_SCRIPT_PATH,
+                                    orphans=uuid_orphans,
                                     object_types=object_types)
     # Default auth script to add to new users.
     AUTH_SCRIPT_PATH = f"{scripts_unit}/{AUTH_SCRIPT_NAME}"
@@ -1398,6 +1379,7 @@ def register_config_parameters():
                                     getter=script_getter,
                                     setter=script_setter,
                                     default_value=AUTH_SCRIPT_PATH,
+                                    orphans=uuid_orphans,
                                     object_types=object_types)
     # Default agent script to add to new users.
     AGENT_SCRIPT_PATH = f"{scripts_unit}/{AGENT_SCRIPT_NAME}"
@@ -1406,6 +1388,7 @@ def register_config_parameters():
                                     getter=script_getter,
                                     setter=script_setter,
                                     default_value=AGENT_SCRIPT_PATH,
+                                    orphans=uuid_orphans,
                                     object_types=object_types)
     # Default login script to add to new users.
     LOGIN_SCRIPT_PATH = f"{scripts_unit}/{LOGIN_SCRIPT_NAME}"
@@ -1414,6 +1397,7 @@ def register_config_parameters():
                                     getter=script_getter,
                                     setter=script_setter,
                                     default_value=LOGIN_SCRIPT_PATH,
+                                    orphans=uuid_orphans,
                                     object_types=object_types)
     # Max failed pass history length
     object_types = [
@@ -5687,10 +5671,13 @@ class User(OTPmeObject):
             add_result = new_token._cache(callback=callback)
             return add_result
 
-        # Append new token UUID to tokens variable of the user.
-        self.tokens.append(new_token.uuid)
-        # Update index.
-        self.add_index('token', new_token.uuid)
+        # Append new token UUID to tokens variable of the user. A token
+        # moved onto one it replaces has that one's UUID, which is in
+        # the list already (Token.move()).
+        if new_token.uuid not in self.tokens:
+            self.tokens.append(new_token.uuid)
+            # Update index.
+            self.add_index('token', new_token.uuid)
 
         # Set default token.
         if self.name != config.token_store_user:
@@ -5730,6 +5717,7 @@ class User(OTPmeObject):
         run_policies: bool=True,
         verify_acls: bool=True,
         remove_default_token: bool=False,
+        add_to_trash: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
@@ -5799,6 +5787,7 @@ class User(OTPmeObject):
             del_status = token.delete(callback=callback,
                                     run_policies=run_policies,
                                     verify_acls=verify_acls,
+                                    add_to_trash=add_to_trash,
                                     force=force,
                                     **kwargs)
             # Check if user aborted token deletion.
@@ -6826,6 +6815,11 @@ class User(OTPmeObject):
         if self.name == config.admin_user_name:
             return callback.error("Cannot rename admin user.")
 
+        if new_name == config.user:
+            msg = _("Name is reserved for the system user of OTPme: {name}")
+            msg = msg.format(name=new_name)
+            return callback.error(msg)
+
         result = backend.search(object_type="user",
                                 attribute="name",
                                 value=new_name)
@@ -6901,6 +6895,12 @@ class User(OTPmeObject):
         **kwargs,
         ):
         """ Add user. """
+        # The name of the system user of OTPme resolves to it, so scriptd
+        # would run scripts of such a user with its rights.
+        if self.name == config.user:
+            msg = _("Name is reserved for the system user of OTPme: {name}")
+            msg = msg.format(name=self.name)
+            return callback.error(msg)
         # Check if user exist on any site.
         if default_attributes is None:
             default_attributes = {}

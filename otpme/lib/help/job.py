@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-job {command} [job]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-job show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [job]'),
+                    '_cmd_usage_help' : _('Usage: otpme-job show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [job]'),
                     'cmd'   :   '--fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": ["search_regex"]',
                     '_help' :   {
                                     'cmd'                           : _('Show job(s)'),

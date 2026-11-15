@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-user {command} [user]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-user show [--fields <field1,field2,field3>] [--policy-limit <limit>] [-z <size_limit>] [-a] [-t] [user] [token]'),
+                    '_cmd_usage_help' : _('Usage: otpme-user show [--fields <field1,field2,field3>] [--policy-limit <limit>] [-z <size_limit>] [-a] [-t] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [user] [token]'),
                     'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: -t :show_templates=True: [|object|] ["token_name"]',
                     '_help' :   {
                                     'cmd'                   : _('Show user(s)'),
@@ -40,18 +40,18 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user list [--attribute attribute] [-a] [-t] [regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-user list [--attribute attribute] [-a] [-t] [pattern]'),
                     'cmd'   :   '--attribute :"attribute": -a :show_all=True: -t :show_templates=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List users.'),
                                     '-a'                        : _('List all users.'),
                                     '-t'                        : _('List the user templates instead of the users.'),
-                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
+                                    '--attribute <attribute>'   : _('Match the pattern against this attribute instead of the name.')
                                 },
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user add [--no-default-token] [--default-token <default_token>] [--default-token-type <token_type>] [--password <password>] [--weak-password] [--group <group>] [--groups <group1,group2>] [--role <default_role>] [--roles <role1,role2>] [--attributes <attr1=val1,attr2=val2...>] [-t] [--template <template_name>] [--no-template] [--no-qrcode] {user}'),
+                    '_cmd_usage_help' : _('Usage: otpme-user add [--no-default-token] [--default-token <default_token>] [--default-token-type <token_type>] [--password <password>] [--weak-password] [--group <group>] [--groups <group1,group2>] [--role <default_role>] [--roles <role1,role2>] [--attributes <attr1=val1,attr2=val2...>] [-t] [--template <template_name>] [--no-template] [--no-qrcode] [--mode <mode>] {user}'),
                     'cmd'   :   '--group :"group": --groups :[groups]: --role :"default_role": --roles :[default_roles]: --no-default-token :add_default_token=False: --default-token :"default_token": --default-token-type :"default_token_type": --password :"password": --weak-password :weak_password=True: --attributes :[ldif_attributes]: -t :template_object=True: --template :"template_name": --no-template :no_template=True: --no-qrcode :gen_qrcode=False: --mode :"mode": <|object|>',
                     '_help' :   {
                                     'cmd'                                   : _('Add new user.'),
@@ -147,7 +147,7 @@ cmd_help = {
                 },
 
     'gen_keys'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user gen_keys [--server] [-b <bits>] [--sign-algo <algo>] [--encrypt-algo <algo>] [-n] {user}'),
+                    '_cmd_usage_help' : _('Usage: otpme-user gen_keys [--server] [-b <bits>] [--sign-algo <algo>] [--encrypt-algo <algo>] [-n] [--stdin-pass] {user}'),
                     'cmd'   :   '-b :key_len: --server :key_mode=server: --sign-algo :"sign_algo": --encrypt-algo :"encrypt_algo": -n :encrypt_key=False: --stdin-pass :stdin_pass=True: <|object|>',
                     '_help' :   {
                                     'cmd'                               : _('Generate user\'s sign + encrypt key pairs'),
@@ -171,7 +171,7 @@ cmd_help = {
 
 
     'key_pass'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user key_pass {user}'),
+                    '_cmd_usage_help' : _('Usage: otpme-user key_pass [--stdin-pass] {user}'),
                     'cmd'   :   '--stdin-pass :stdin_pass=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Change password of user\'s private key.'),
@@ -324,10 +324,11 @@ cmd_help = {
                 },
 
     'del_token'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user del_token {user} {token}'),
-                    'cmd'   :   '<|object|> <"token_name">',
+                    '_cmd_usage_help' : _('Usage: otpme-user del_token [--no-trash] {user} {token}'),
+                    'cmd'   :   '--no-trash :add_to_trash=False: <|object|> <"token_name">',
                     '_help' :   {
                                     'cmd'                   : _('Delete token'),
+                                    '--no-trash'            : _('Delete without moving the object to the trash.'),
                                 },
                 },
 
@@ -478,7 +479,7 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user config -d -a {user} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-user config [-d] [-a] {user} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to user.'),
@@ -512,7 +513,7 @@ cmd_help = {
                 },
 
      'add_attribute'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user add_attribute -i <position> {user} {attribute}=[value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-user add_attribute [-i <position>] {user} {attribute}=[value]'),
                     'cmd'   :   '-i :position: <|object|> <attribute>=[value]',
                     '_help' :   {
                                     'cmd'                   : _('Add (ldap) attribute to user'),
@@ -553,7 +554,7 @@ cmd_help = {
                 },
 
      'show_ldif'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user show_ldif {user} -a attribute1,attribute2'),
+                    '_cmd_usage_help' : _('Usage: otpme-user show_ldif {user} [-a attribute1,attribute2]'),
                     'cmd'   :   '<|object|> -a :[attributes]:',
                     '_help' :   {
                                     'cmd'                   : _('Show LDIF representation of user'),
@@ -618,7 +619,7 @@ cmd_help = {
 
 
     'remove_orphans'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-user remove_orphans {user}'),
+                    '_cmd_usage_help' : _('Usage: otpme-user remove_orphans [-r] {user}'),
                     'cmd'   :   '-r :recursive=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Remove orphan UUIDs'),
@@ -636,7 +637,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user info {user} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-user info [--language <language>] {user} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set user info'),
@@ -645,7 +646,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user dump_info {user}'),
+                    '_cmd_usage_help' : _('Usage: otpme-user dump_info [--language <language>] {user}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump user info'),
@@ -665,24 +666,12 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                 },
 
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
     '_show_config'    : {
                     'cmd'   :   '<|object|>',
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user export --password <password> {user}'),
+                    '_cmd_usage_help' : _('Usage: otpme-user export [--password <password>] {user}'),
                     'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export user config to stdout.'),
@@ -829,7 +818,7 @@ cmd_help = {
                                 },
                 },
     'find_groups'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-user find_groups {user}'),
+                    '_cmd_usage_help' : _('Usage: otpme-user find_groups [--return-type <type>] {user}'),
                     'cmd'   :   '--return-type :"return_type": [|object|]',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
@@ -841,7 +830,7 @@ cmd_help = {
                 },
     'list_tokens'   : {
                     'internal'  : True,
-                    '_cmd_usage_help' : _('Usage: otpme-user list_tokens {user}'),
+                    '_cmd_usage_help' : _('Usage: otpme-user list_tokens [--return-type <type>] [--token-types <hotp,totp>] {user}'),
                     'cmd'   :   '--return-type :"return_type": --token-types :[token_types]: [|object|]',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
@@ -853,7 +842,7 @@ cmd_help = {
                                 },
                 },
     'find_roles'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-user find_roles {user}'),
+                    '_cmd_usage_help' : _('Usage: otpme-user find_roles [--return-type <type>] {user}'),
                     'cmd'   :   '--return-type :"return_type": [|object|]',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
@@ -864,7 +853,7 @@ cmd_help = {
                                 },
                 },
     'find_signatures'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-user find_signatures {user}'),
+                    '_cmd_usage_help' : _('Usage: otpme-user find_signatures [--return-type <type>] [--object-types <script,token>] {user}'),
                     'cmd'   :   '--return-type :"return_type": --object-types :[object_types]: [|object|]',
                     'ovals' :   {
                                 'return_type'   : ['name', 'rel_path', 'read_oid', 'full_oid', 'uuid'],

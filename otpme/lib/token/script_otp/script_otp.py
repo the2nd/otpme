@@ -13,6 +13,7 @@ except Exception:
 
 from otpme.lib import oid
 from otpme.lib import config
+from otpme.lib import backend
 from otpme.lib.otpme_acl import denied_msg
 from otpme.lib import otpme_acl
 from otpme.lib.classes.token import Token
@@ -258,6 +259,15 @@ class ScriptToken(Token):
                 'auth_challenge'    : auth_challenge,
                 'auth_response'     : auth_response,
                 }
+        # auth_group is the access group, a value for the script. The
+        # script runs with the group of the user, as the auth script of
+        # a token does.
+        user_group = None
+        user = backend.get_object(object_type="user",
+                                name=auth_user,
+                                realm=config.realm)
+        if user:
+            user_group = user.group
         log_msg = _("Starting token script...", log=True)[1]
         logger.debug(log_msg)
         # Run token script.
@@ -266,7 +276,7 @@ class ScriptToken(Token):
                                         script_uuid=self.auth_script,
                                         script_parms=token_script_parms,
                                         user=auth_user,
-                                        group=auth_group)
+                                        group=user_group)
 
         except Exception as e:
             log_msg = _("Error running token script: {e}", log=True)[1]

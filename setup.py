@@ -90,7 +90,6 @@ class PostInstallCommand(install):
 #                "bson>=0.5.10",
 #                # Improve tinydb performance.
 #                "ujson>=5.7.0",
-#                #"larch-pickle>=1.1.3",
 #                "ldaptor>=21.2.0",
 #                "humanize>=0.5.1",
 #                "cachetools==5.3.1",
@@ -246,6 +245,7 @@ data_files = [
                         "otpme/man/otpme-user.1",
                         "otpme/man/otpme-vlan.1",
                         "otpme/man/otpme-aclgroup.1",
+                        "otpme/man/local-backup.1",
                     ]
                 ),
                 ('/usr/share/man/man5',
@@ -256,7 +256,6 @@ data_files = [
                 ('/usr/share/man/man7',
                     [
                         "otpme/man/otpme.7",
-                        "otpme/man/otpme-acls.7",
                     ]
                 ),
                 ('/usr/share/man/man8',

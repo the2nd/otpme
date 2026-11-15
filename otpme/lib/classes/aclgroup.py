@@ -19,12 +19,15 @@ from otpme.lib import backend
 from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
+from otpme.lib import otpme_acl
 from otpme.lib.otpme_acl import denied_msg
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.classes import get_object_module_path
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.classes.otpme_object import name_len_setter
+from otpme.lib.classes.otpme_object import format_acl
+from otpme.lib.classes.otpme_object import ACL_SEND_BLOCK
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 
@@ -76,14 +79,16 @@ recursive_default_acls = []
 # The ACL groups every site has. They hold what the code says: it writes
 # them when the site is added and on every upgrade (Site.upgrade()), so an
 # update brings the ACLs they should have, and nobody can change their
-# entries. <member_of> are the base groups each one inherits from.
+# entries. <inherits> are the base groups each one inherits from. Their
+# names are in upper case, like those of the base roles and access
+# groups: one made by an admin is in lower case, see _set_name().
 BASE_ACLGROUPS = {
     # What every realm user may see: the role REALM_USER gets it on the
     # site and the whole tree below it (Site.add_acls()). The users,
     # groups, units and roles for an LDAP client, the hosts and nodes for
     # otpme-shell. Not more: a user has no business with the access
     # groups, clients or policies of a site.
-    "realm_user"    : {
+    "REALM_USERS"   : {
                         'entries'   : [
                                     "site:view_public",
                                     "site:view:attribute",
@@ -97,9 +102,9 @@ BASE_ACLGROUPS = {
                                     "host:view_public",
                                     "node:view_public",
                                     ],
-                        'member_of' : [],
+                        'inherits'  : [],
                     },
-    "usermanager"   : {
+    "USERMANAGER"   : {
                         'entries'   : [
                                     "unit:add:user",
                                     "unit:delete:user",
@@ -116,9 +121,9 @@ BASE_ACLGROUPS = {
                                     "token:view:initial_secret",
                                     "token:view:initial_pin",
                                     ],
-                        'member_of' : [],
+                        'inherits'  : [],
                     },
-    "useradmin"     : {
+    "USERADMIN"     : {
                         'entries'   : [
                                     "user:edit",
                                     "user:enable",
@@ -144,9 +149,9 @@ BASE_ACLGROUPS = {
                                     "token:remove:policy",
                                     "token:set_temp_password",
                                     ],
-                        'member_of' : ["usermanager"],
+                        'inherits'  : ["USERMANAGER"],
                     },
-    "groupmanager"  : {
+    "GROUPMANAGER"  : {
                         'entries'   : [
                                     "unit:add:group",
                                     "unit:delete:group",
@@ -157,7 +162,37 @@ BASE_ACLGROUPS = {
                                     "group:add:role",
                                     "group:remove:role",
                                     ],
-                        'member_of' : [],
+                        'inherits'  : [],
+                    },
+    # Work with the passwords of a unit, see otpme-pass(1): add and delete
+    # them, their entries, keys and the objects they belong to. Reading
+    # needs the key of the user as well, which no ACL gives. Not in it:
+    # move, policies and ACLs.
+    "PASSUSER"      : {
+                        'entries'   : [
+                                    "unit:add:pass",
+                                    "unit:delete:pass",
+                                    "pass:view_public",
+                                    "pass:view:entries",
+                                    "pass:view:changelog",
+                                    "pass:view:info",
+                                    "pass:add:entry",
+                                    "pass:edit:entry",
+                                    "pass:delete:entry",
+                                    "pass:edit:keys",
+                                    "pass:edit:description",
+                                    "pass:edit:info",
+                                    "pass:rename:object",
+                                    "pass:add:node",
+                                    "pass:remove:node",
+                                    "pass:add:host",
+                                    "pass:remove:host",
+                                    "pass:add:device",
+                                    "pass:remove:device",
+                                    "pass:add:client",
+                                    "pass:remove:client",
+                                    ],
+                        'inherits'  : [],
                     },
     }
 
@@ -227,6 +262,14 @@ commands = {
                     'method'            : 'list_aclgroups',
                     'oargs'             : ['recursive'],
                     'job_type'          : 'thread',
+                    },
+                },
+            },
+    'find_acls'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_acls',
+                    'job_type'          : 'process',
                     },
                 },
             },
@@ -562,39 +605,31 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     }
 
-REALM_USER_ACLGROUP = "realm_user"
+REALM_USER_ACLGROUP = "REALM_USERS"
+# The names the base ACL groups had before they were in upper case.
+# add_base_aclgroups() renames a group of the old name, so it keeps its
+# UUID and with it every ACL it is given in.
+OLD_BASE_ACLGROUP_NAMES = {
+                        "realm_user"    : "REALM_USERS",
+                        "usermanager"   : "USERMANAGER",
+                        "useradmin"     : "USERADMIN",
+                        "groupmanager"  : "GROUPMANAGER",
+                        "passuser"      : "PASSUSER",
+                        }
+
+def get_aclgroup_name(name):
+    """ The name of an ACL group as it is stored: a base group in upper
+    case, any other one in lower case. """
+    name = str(name)
+    if name.upper() in BASE_ACLGROUPS:
+        return name.upper()
+    return name.lower()
 
 def get_realm_user_object_types():
     """ The object types the role REALM_USER gets the base ACL group
-    realm_user on: those it has entries for, and the site and the units,
+    REALM_USERS on: those it has entries for, and the site and the units,
     which hand it on. See Site.add_realm_user_acls(). """
     object_types = {"site", "unit"}
     for entry in BASE_ACLGROUPS[REALM_USER_ACLGROUP]['entries']:
@@ -680,14 +715,14 @@ def check_entry(entry):
     raise OTPmeException(msg)
 
 def get_parent_aclgroups(aclgroup_uuid, recursive=False):
-    """ The ACL groups the given one is a member of, and so inherits the
-    entries of. Groups may come round to one seen before: every group
-    is taken once. """
+    """ The ACL groups that inherit from the given one, and so get its
+    entries. Groups may come round to one seen before: every group is
+    taken once. """
     parents = []
     check_uuids = [aclgroup_uuid]
     while check_uuids:
         x_parents = backend.search(object_type="aclgroup",
-                                    attribute="aclgroup",
+                                    attribute="inherit",
                                     values=check_uuids,
                                     return_type="uuid")
         check_uuids = []
@@ -717,10 +752,15 @@ def register():
     config.register_recursive_default_acl("site", "+aclgroup")
     config.register_default_acl("unit", "+aclgroup")
     config.register_recursive_default_acl("unit", "+aclgroup")
-    # The groups a group is a member of are found by it, see
+    # The groups a group inherits from, see otpme_acl.get_aclgroup_acls(),
+    # and the other way round the groups that inherit from one, see
     # get_parent_aclgroups(). Every node checks ACLs, also on objects of
     # other sites, which may name our groups. Hosts check none: groups
     # are not synced to them (see register_sync_settings()).
+    config.register_index_attribute("inherit", sync=["node:untrusted"],
+                                    object_types=["aclgroup"])
+    # The members a group had before upgrade 8 turned the lists round,
+    # see Site.upgrade_aclgroup_inherits(). Read and emptied there only.
     config.register_index_attribute("aclgroup", sync=["node:untrusted"],
                                     object_types=["aclgroup"])
     # The groups that hold an entry are found by it, and show lists them.
@@ -740,6 +780,90 @@ def register_object_unit():
     for aclgroup_name in BASE_ACLGROUPS:
         config.register_base_object("aclgroup", aclgroup_name)
 
+def rename_old_base_aclgroups(site, callback=default_callback):
+    """ Give the base ACL groups of the site that still have their old
+    name in lower case the new one, see OLD_BASE_ACLGROUP_NAMES. Before
+    add_base_aclgroups() looks for them by the new name: else it would
+    add a second group next to the old one. The UUID stays, and so does
+    every ACL the group is given in. """
+    for old_name, new_name in OLD_BASE_ACLGROUP_NAMES.items():
+        # Aclgroup(name=...) would take the name in upper case.
+        result = backend.search(object_type="aclgroup",
+                                attribute="name",
+                                value=old_name,
+                                realm=site.realm,
+                                site=site.name,
+                                return_type="instance")
+        if not result:
+            continue
+        aclgroup = result[0]
+        # _set_name() made the name of the instance upper case already,
+        # the OID has the one stored.
+        if aclgroup.oid.name != old_name:
+            continue
+        aclgroup.name = old_name
+        msg = _("Renaming base ACL group {old_name} to {new_name}...")
+        msg = msg.format(old_name=old_name, new_name=new_name)
+        callback.send(msg)
+        new_oid = oid.get(object_type="aclgroup",
+                        realm=aclgroup.realm,
+                        site=aclgroup.site,
+                        unit=aclgroup.unit,
+                        name=new_name)
+        # Not rename(): it refuses a base group, which this is.
+        result = aclgroup._rename(new_oid,
+                                force=True,
+                                run_policies=False,
+                                verify_acls=False,
+                                callback=callback)
+        if not result:
+            return callback.error()
+    return callback.ok()
+
+def turn_old_member_lists(site, callback=default_callback):
+    """ Turn the lists of the ACL groups of the site round, once, see
+    Site.upgrade_aclgroup_inherits().
+
+    A group held the groups that inherited from it (ACLGROUPS, index
+    "aclgroup"); each of those holds the groups it inherits from now
+    (INHERITS, index "inherit"). A member of another site is dropped:
+    its own site keeps its list. A group is emptied only after its
+    members have it, so a run that is cut short and starts again finds
+    them done and does the rest. """
+    result = backend.search(object_type="aclgroup",
+                            attribute="uuid",
+                            value="*",
+                            realm=site.realm,
+                            site=site.name,
+                            return_type="uuid")
+    for aclgroup_uuid in result:
+        aclgroup = backend.get_object(object_type="aclgroup",
+                                    uuid=aclgroup_uuid)
+        if not aclgroup or not aclgroup.old_members:
+            continue
+        for member_uuid in list(aclgroup.old_members):
+            member = backend.get_object(object_type="aclgroup",
+                                        uuid=member_uuid)
+            if not member:
+                continue
+            if member.site != aclgroup.site:
+                continue
+            if aclgroup.uuid in member.inherits:
+                continue
+            member.inherits.append(aclgroup.uuid)
+            member.add_index('inherit', aclgroup.uuid)
+            if not member._cache(callback=callback):
+                return callback.error()
+        # Read again: it may have been a member above.
+        aclgroup = backend.get_object(object_type="aclgroup",
+                                    uuid=aclgroup_uuid)
+        for member_uuid in list(aclgroup.old_members):
+            aclgroup.del_index('aclgroup', member_uuid)
+        aclgroup.old_members = []
+        if not aclgroup._cache(callback=callback):
+            return callback.error()
+    return callback.ok()
+
 def add_base_aclgroups(site, callback=default_callback):
     """ Add the base ACL groups the site does not have, and make the ones
     it has hold what BASE_ACLGROUPS says. Called when the site is added,
@@ -752,6 +876,8 @@ def add_base_aclgroups(site, callback=default_callback):
             msg = _("Problem adding base unit '{unit_path}'.")
             msg = msg.format(unit_path=unit_path)
             return callback.error(msg)
+    if not rename_old_base_aclgroups(site, callback=callback):
+        return callback.error()
     aclgroups = {}
     for aclgroup_name in BASE_ACLGROUPS:
         aclgroup = Aclgroup(name=aclgroup_name,
@@ -766,19 +892,14 @@ def add_base_aclgroups(site, callback=default_callback):
         if not aclgroup.set_base_entries(entries, callback=callback):
             return callback.error()
         aclgroups[aclgroup_name] = aclgroup
-    # Only adds: a member somebody else added stays.
+    # What a base group inherits is what the code says as well: nobody
+    # can change it (check_base_aclgroup() in add_aclgroup()).
     for aclgroup_name in BASE_ACLGROUPS:
         aclgroup = aclgroups[aclgroup_name]
-        for parent_name in BASE_ACLGROUPS[aclgroup_name]['member_of']:
-            parent = aclgroups[parent_name]
-            if aclgroup.uuid in parent.aclgroups:
-                continue
-            if not parent.add_aclgroup(aclgroup_name,
-                                    force=True,
-                                    verify_acls=False,
-                                    run_policies=False,
-                                    callback=callback):
-                return callback.error()
+        inherits = [aclgroups[x].uuid
+                    for x in BASE_ACLGROUPS[aclgroup_name]['inherits']]
+        if not aclgroup.set_base_inherits(inherits, callback=callback):
+            return callback.error()
     return callback.ok()
 
 def register_oid():
@@ -789,7 +910,10 @@ def register_oid():
     realm_name_re = oid.object_regex['realm']['name']
     site_name_re = oid.object_regex['site']['name']
     unit_name_re = oid.object_regex['unit']['name']
-    aclgroup_name_re = '([0-9a-z]([0-9a-z_.-]*[0-9a-z]){0,})'
+    # Upper case for the base groups (e.g. REALM_USERS), see _set_name();
+    # it was lower case only, and the rename to the upper case names
+    # ended in "Invalid OID" in the middle of its transaction.
+    aclgroup_name_re = '([0-9A-Za-z]([0-9A-Za-z_.-]*[0-9A-Za-z]){0,})'
     aclgroup_path_re = f'{unit_path_re}[/]{aclgroup_name_re}'
     # An OID is not a path, see accessgroup.py: no leading slash, and
     # the unit part is optional because the read OID has none.
@@ -871,9 +995,14 @@ class Aclgroup(OTPmeObject):
 
         # <object_type>:<acl>, see check_entry().
         self.entries = []
-        # The groups that are members of this one, and so inherit our
-        # entries. The same way round as roles in a role.
-        self.aclgroups = []
+        # The groups this one inherits from: it gets their entries. Kept
+        # on the group that gets them, so that changing what it grants
+        # is a change of this group, see add_aclgroup().
+        self.inherits = []
+        # The other way round, the groups that inherited from this one,
+        # as the list was before upgrade 8. Read and emptied by
+        # Site.upgrade_aclgroup_inherits() only.
+        self.old_members = []
 
         # ACL groups should not inherit ACLs by default.
         self.acl_inheritance_enabled = False
@@ -884,7 +1013,7 @@ class Aclgroup(OTPmeObject):
                             # An ACL on an object of another site may name
                             # one of our groups.
                             "ENTRIES",
-                            "ACLGROUPS",
+                            "INHERITS",
                             "EXTENSIONS",
                             "OBJECT_CLASSES",
                             "EXTENSION_ATTRIBUTES",
@@ -893,9 +1022,12 @@ class Aclgroup(OTPmeObject):
                     }
 
     def _set_name(self, name: str):
-        """ Set object name. """
-        # Make sure name is a string and lowercase.
-        self.name = str(name).lower()
+        """ Set object name.
+
+        A base ACL group has its name in upper case, any other one in
+        lower case, as with roles. So @usermanager is USERMANAGER.
+        """
+        self.name = get_aclgroup_name(name)
 
     def set_variables(self):
         """ Set instance variables. """
@@ -910,8 +1042,14 @@ class Aclgroup(OTPmeObject):
                                                         'required'  : False,
                                                     },
 
+                        'INHERITS'                  : {
+                                                        'var_name'  : 'inherits',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+
                         'ACLGROUPS'                 : {
-                                                        'var_name'  : 'aclgroups',
+                                                        'var_name'  : 'old_members',
                                                         'type'      : list,
                                                         'required'  : False,
                                                     },
@@ -926,6 +1064,7 @@ class Aclgroup(OTPmeObject):
         aclgroup_site = self.site
         if "/" in aclgroup_name:
             aclgroup_site, aclgroup_name = aclgroup_name.split("/", 1)
+        aclgroup_name = get_aclgroup_name(aclgroup_name)
         result = backend.search(object_type="aclgroup",
                                 attribute="name",
                                 value=aclgroup_name,
@@ -968,26 +1107,48 @@ class Aclgroup(OTPmeObject):
             return True
         return self._cache(callback=callback)
 
-    def get_member_aclgroups(self, recursive: bool=False):
-        """ The UUIDs of the groups that are members of this one. Groups
-        may come round to one seen before: every group is taken once. """
-        members = []
-        check_uuids = list(self.aclgroups)
+    @object_lock()
+    def set_base_inherits(self, inherits: list,
+        callback: JobCallback=default_callback):
+        """ Make the groups a base ACL group inherits from the given ones
+        (UUIDs). """
+        object_changed = False
+        for x_uuid in list(self.inherits):
+            if x_uuid in inherits:
+                continue
+            self.inherits.remove(x_uuid)
+            self.del_index('inherit', x_uuid)
+            object_changed = True
+        for x_uuid in inherits:
+            if x_uuid in self.inherits:
+                continue
+            self.inherits.append(x_uuid)
+            self.add_index('inherit', x_uuid)
+            object_changed = True
+        if not object_changed:
+            return True
+        return self._cache(callback=callback)
+
+    def get_inherited_aclgroups(self, recursive: bool=False):
+        """ The UUIDs of the groups this one inherits from. Groups may
+        come round to one seen before: every group is taken once. """
+        inherited = []
+        check_uuids = list(self.inherits)
         while check_uuids:
             x_uuid = check_uuids.pop(0)
             if x_uuid == self.uuid:
                 continue
-            if x_uuid in members:
+            if x_uuid in inherited:
                 continue
-            members.append(x_uuid)
+            inherited.append(x_uuid)
             if not recursive:
                 continue
             x_aclgroup = backend.get_object(object_type="aclgroup",
                                             uuid=x_uuid)
             if not x_aclgroup:
                 continue
-            check_uuids += x_aclgroup.aclgroups
-        return members
+            check_uuids += x_aclgroup.inherits
+        return inherited
 
     @object_lock()
     @audit_log()
@@ -1114,23 +1275,37 @@ class Aclgroup(OTPmeObject):
         **kwargs,
         ):
         """ The entries of the ACL group. With <recursive> also those it
-        inherits from the groups it is a member of, named with the group
-        they come from. """
+        inherits, named with the group they come from. """
         if not self.verify_acl("view:entries"):
             msg = denied_msg(self, "view:entries")
             return callback.error(msg, exception=PermissionDenied)
         result = sorted(self.entries)
         if recursive:
-            for x_uuid in get_parent_aclgroups(self.uuid, recursive=True):
-                x_aclgroup = backend.get_object(object_type="aclgroup",
-                                                uuid=x_uuid)
-                if not x_aclgroup:
-                    continue
-                x_name = x_aclgroup.name
-                if x_aclgroup.site != self.site:
-                    x_name = f"{x_aclgroup.site}/{x_name}"
-                for x_entry in sorted(x_aclgroup.entries):
-                    result.append(f"{x_entry} ({x_name})")
+            # Walked as otpme_acl.get_aclgroup_acls() walks: a disabled
+            # group passes nothing on, neither its own entries nor those
+            # of the groups it inherits from, and only a group of our
+            # site counts.
+            seen_uuids = [self.uuid]
+            check_uuids = list(self.inherits)
+            while check_uuids:
+                next_uuids = []
+                for x_uuid in check_uuids:
+                    if x_uuid in seen_uuids:
+                        continue
+                    seen_uuids.append(x_uuid)
+                    x_aclgroup = backend.get_object(object_type="aclgroup",
+                                                    uuid=x_uuid)
+                    if not x_aclgroup:
+                        continue
+                    if x_aclgroup.site != self.site:
+                        continue
+                    if not x_aclgroup.enabled:
+                        continue
+                    x_name = x_aclgroup.name
+                    for x_entry in sorted(x_aclgroup.entries):
+                        result.append(f"{x_entry} ({x_name})")
+                    next_uuids += x_aclgroup.inherits
+                check_uuids = next_uuids
         if _caller == "CLIENT":
             result = "\n".join(result)
         return callback.ok(result)
@@ -1148,18 +1323,37 @@ class Aclgroup(OTPmeObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Make the given ACL group a member of this one. It inherits our
-        entries then, the same way round as a role in a role. """
+        """ Let this ACL group inherit from the given one: it gets its
+        entries too.
+
+        The list is on the group that gets the entries. It was on the
+        one that gives them, and so whoever kept a group of their own
+        could add any other group to it, REALM_USERS as well, and change
+        what that one grants wherever it is given. Now that is a change
+        of the group that grants more, with the ACL on that group.
+        """
         if verify_acls:
             if not self.verify_acl("add:aclgroup"):
                 msg = denied_msg(self, "add:aclgroup")
                 return callback.error(msg, exception=PermissionDenied)
 
+        base_check = self.check_base_aclgroup(callback=callback)
+        if base_check is not True:
+            return base_check
+
         aclgroup = self.get_aclgroup(aclgroup_name, callback=callback)
         if not aclgroup:
             return aclgroup
 
-        if aclgroup.uuid in self.aclgroups:
+        # Only from a group of our site: the entries of one of another
+        # site are kept there. And it would not count, see
+        # otpme_acl.get_aclgroup_acls().
+        if aclgroup.site != self.site:
+            msg = _("ACL group of another site cannot be added: {aclgroup}")
+            msg = msg.format(aclgroup=aclgroup_name)
+            return callback.error(msg)
+
+        if aclgroup.uuid in self.inherits:
             msg = _("ACL group is already a member: {aclgroup}")
             msg = msg.format(aclgroup=aclgroup_name)
             return callback.error(msg)
@@ -1167,7 +1361,7 @@ class Aclgroup(OTPmeObject):
         # A loop would make a group inherit from itself. Unlike roles we
         # refuse it: it says nothing a group does not say on its own.
         if aclgroup.uuid == self.uuid \
-        or self.uuid in aclgroup.get_member_aclgroups(recursive=True):
+        or self.uuid in aclgroup.get_inherited_aclgroups(recursive=True):
             msg = _("ACL group would inherit from itself: {aclgroup}")
             msg = msg.format(aclgroup=aclgroup_name)
             return callback.error(msg)
@@ -1188,8 +1382,8 @@ class Aclgroup(OTPmeObject):
             except Exception:
                 return callback.error()
 
-        self.aclgroups.append(aclgroup.uuid)
-        self.add_index('aclgroup', aclgroup.uuid)
+        self.inherits.append(aclgroup.uuid)
+        self.add_index('inherit', aclgroup.uuid)
         return self._cache(callback=callback)
 
     @object_lock()
@@ -1205,14 +1399,18 @@ class Aclgroup(OTPmeObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Take the given ACL group out of this one. A UUID takes out a
-        group that is gone. """
+        """ Take the given ACL group out of this one: this one no longer
+        inherits from it. A UUID takes out a group that is gone. """
         if verify_acls:
             if not self.verify_acl("remove:aclgroup"):
                 msg = denied_msg(self, "remove:aclgroup")
                 return callback.error(msg, exception=PermissionDenied)
 
-        if aclgroup_name in self.aclgroups:
+        base_check = self.check_base_aclgroup(callback=callback)
+        if base_check is not True:
+            return base_check
+
+        if aclgroup_name in self.inherits:
             aclgroup_uuid = aclgroup_name
         else:
             aclgroup = self.get_aclgroup(aclgroup_name, callback=callback)
@@ -1220,7 +1418,7 @@ class Aclgroup(OTPmeObject):
                 return aclgroup
             aclgroup_uuid = aclgroup.uuid
 
-        if aclgroup_uuid not in self.aclgroups:
+        if aclgroup_uuid not in self.inherits:
             msg = _("ACL group is not a member: {aclgroup}")
             msg = msg.format(aclgroup=aclgroup_name)
             return callback.error(msg)
@@ -1241,8 +1439,8 @@ class Aclgroup(OTPmeObject):
             except Exception:
                 return callback.error()
 
-        self.aclgroups.remove(aclgroup_uuid)
-        self.del_index('aclgroup', aclgroup_uuid)
+        self.inherits.remove(aclgroup_uuid)
+        self.del_index('inherit', aclgroup_uuid)
         return self._cache(callback=callback)
 
     def list_aclgroups(
@@ -1252,16 +1450,16 @@ class Aclgroup(OTPmeObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ The groups that are members of this one. """
+        """ The groups this one inherits from. """
         if not self.verify_acl("view:aclgroups"):
             msg = denied_msg(self, "view:aclgroups")
             return callback.error(msg, exception=PermissionDenied)
         result = []
-        for x_uuid in self.get_member_aclgroups(recursive=recursive):
+        for x_uuid in self.get_inherited_aclgroups(recursive=recursive):
             x_oid = backend.get_oid(uuid=x_uuid,
                                     object_type="aclgroup",
                                     instance=True)
-            # Show the UUID of an orphan member instead of hiding it.
+            # Show the UUID of a group that is gone instead of hiding it.
             if not x_oid:
                 result.append(x_uuid)
                 continue
@@ -1335,14 +1533,15 @@ class Aclgroup(OTPmeObject):
             except Exception:
                 return callback.error()
 
-        # The groups that are members of us lose what they inherit from
-        # us, and the objects we are given on lose what we grant there,
-        # which is worth saying. Their ACLs are left as orphans, see
+        # The groups that inherit from us lose what they get from us, and
+        # the objects we are given on lose what we grant there, which is
+        # worth saying. Their ACLs are left as orphans, see
         # OTPmeObject.get_orphan_acls().
         msgs = []
-        if self.aclgroups:
-            msg = _("The ACL group has {member_count} member(s) which will lose its entries.")
-            msg = msg.format(member_count=len(self.aclgroups))
+        inherited_by = get_parent_aclgroups(self.uuid)
+        if inherited_by:
+            msg = _("{group_count} ACL group(s) inherit from the ACL group and will lose its entries.")
+            msg = msg.format(group_count=len(inherited_by))
             msgs.append(msg)
         used_by = backend.search(attribute="acl",
                                 value=f"*@{self.uuid}",
@@ -1359,9 +1558,9 @@ class Aclgroup(OTPmeObject):
                                             callback=callback):
             return callback.abort()
 
-        # Take us out of the groups we are a member of, so they hold no
-        # UUID of a group that is gone.
-        for x_uuid in get_parent_aclgroups(self.uuid):
+        # Take us out of the groups that inherit from us, so they hold
+        # no UUID of a group that is gone.
+        for x_uuid in inherited_by:
             x_aclgroup = backend.get_object(object_type="aclgroup",
                                             uuid=x_uuid)
             if not x_aclgroup:
@@ -1376,6 +1575,103 @@ class Aclgroup(OTPmeObject):
                             force=force,
                             callback=callback,
                             **kwargs)
+
+    def get_granting_aclgroups(self):
+        """ Where our entries are granted: we ourselves, then the groups
+        that have us as a member, then those that have one of them, and
+        so on, as (UUID, way). <way> is None for us, else the names from
+        us up, e.g. "PASSUSER in mine in top". Walked as
+        otpme_acl.get_aclgroup_acls() walks the other way: only groups of
+        our site, and a disabled one passes nothing on, so it is left out
+        with the groups above it. A group reached twice keeps the
+        shorter way. """
+        granting = [(self.uuid, None)]
+        ways = {self.uuid: self.name}
+        check_uuids = [self.uuid]
+        while check_uuids:
+            result = backend.search(object_type="aclgroup",
+                                    attribute="inherit",
+                                    values=check_uuids,
+                                    return_attributes=['uuid', 'name',
+                                                    'enabled', 'site',
+                                                    'inherit'])
+            next_uuids = []
+            for x_uuid in sorted(result):
+                if x_uuid in ways:
+                    continue
+                x_data = result[x_uuid]
+                if otpme_acl.get_aclgroup_site(x_data) != self.site:
+                    continue
+                try:
+                    x_enabled = x_data['enabled'][0]
+                except Exception:
+                    x_enabled = False
+                if not x_enabled:
+                    continue
+                # The member we came from: one of this round.
+                x_members = [x for x in x_data.get('inherit') or []
+                            if x in check_uuids]
+                if not x_members:
+                    continue
+                x_name = x_data['name']
+                if isinstance(x_name, list):
+                    x_name = x_name[0]
+                way = f"{ways[sorted(x_members)[0]]} in {x_name}"
+                ways[x_uuid] = way
+                granting.append((x_uuid, way))
+                next_uuids.append(x_uuid)
+            check_uuids = next_uuids
+        return granting
+
+    def find_acls(
+        self,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ The objects we are given on, and to whom.
+
+        OTPmeObject.find_acls() looks for the ACLs an object holds as
+        their owner, a token or a role. An ACL group owns none: it is the
+        value of an ACL, <owner_type>:<owner_uuid>:[+[+]]@<our UUID>.
+
+        A group that has us as a member grants our entries where it is
+        given, and so on up. Those ACLs are ours as well, with the way
+        there, e.g. "(PASSUSER in mine in top)": nothing else shows
+        which groups have us as a member.
+        """
+        if config.auth_token and not config.auth_token.is_admin():
+            msg = _("You must be admin for this command.")
+            return callback.error(msg)
+        acls = []
+        acls_callback_result = []
+        for aclgroup_uuid, way in self.get_granting_aclgroups():
+            result = backend.search(attribute="acl",
+                                    value=f"*@{aclgroup_uuid}",
+                                    return_raw_acls=True,
+                                    return_attributes=['uuid', 'read_oid'])
+            for x_uuid in result['acls']:
+                x_oid = result['objects'][x_uuid]['read_oid']
+                for raw_acl in result['acls'][x_uuid]:
+                    _acl = otpme_acl.decode(raw_acl)
+                    if _acl.aclgroup_uuid != aclgroup_uuid:
+                        continue
+                    _acl_string = f"{x_oid} {format_acl(raw_acl)}"
+                    if way:
+                        _acl_string = f"{_acl_string} ({way})"
+                    if _caller == "CLIENT":
+                        # Appended first, then the block checked, see
+                        # OTPmeObject.find_acls().
+                        acls_callback_result.append(_acl_string)
+                        if len(acls_callback_result) >= ACL_SEND_BLOCK:
+                            callback.send("\n".join(acls_callback_result))
+                            acls_callback_result = []
+                    acls.append(_acl_string)
+        if acls_callback_result:
+            callback.send("\n".join(acls_callback_result))
+        if _caller == "CLIENT":
+            return callback.ok()
+        return callback.ok(acls)
 
     @object_lock(full_lock=True)
     @backend.transaction
@@ -1394,6 +1690,9 @@ class Aclgroup(OTPmeObject):
         if base_check is not True:
             return base_check
 
+        # The name as it is stored, see _set_name().
+        new_name = get_aclgroup_name(new_name)
+
         msg = _("Rename ACL group '{aclgroup}' to '{new_name}'?: ")
         msg = msg.format(aclgroup=self.name, new_name=new_name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -1407,6 +1706,35 @@ class Aclgroup(OTPmeObject):
                         name=new_name)
         return self._rename(new_oid, callback=callback, _caller=_caller, **kwargs)
 
+    def move(
+        self,
+        new_unit: str,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Move ACL group. A base group stays where it is:
+        add_base_aclgroups() looks for it in its default unit on every
+        site upgrade, finds nothing there, and the name it then tries to
+        add is in use, so the upgrade stops. """
+        base_check = self.check_base_aclgroup(callback=callback)
+        if base_check is not True:
+            return base_check
+        return super().move(new_unit, callback=callback, **kwargs)
+
+    def disable(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Disable ACL group. A base group stays enabled: REALM_USERS
+        disabled takes from every user what they may see of the site
+        (users, groups, units, roles, hosts, nodes; see BASE_ACLGROUPS),
+        and a site upgrade does not enable it again. """
+        base_check = self.check_base_aclgroup(callback=callback)
+        if base_check is not True:
+            return base_check
+        return super().disable(callback=callback, **kwargs)
+
     def remove_orphans(
         self,
         force: bool=False,
@@ -1419,7 +1747,7 @@ class Aclgroup(OTPmeObject):
         ):
         """ Remove orphan UUIDs. """
         extra_ref_lists = [
-                ('aclgroups', 'aclgroup', None),
+                ('inherits', 'aclgroup', None),
                 ]
         return super().remove_orphans(force=force,
                                     run_policies=run_policies,
@@ -1449,18 +1777,19 @@ class Aclgroup(OTPmeObject):
         if self.verify_acl("view:aclgroups") \
         or self.verify_acl("add:aclgroup") \
         or self.verify_acl("remove:aclgroup"):
-            members = []
-            for x_uuid in self.aclgroups:
+            # The groups it inherits from.
+            inherited = []
+            for x_uuid in self.inherits:
                 x_oid = backend.get_oid(uuid=x_uuid,
                                         object_type="aclgroup",
                                         instance=True)
-                # Show the UUID of an orphan member instead of hiding it.
+                # Show the UUID of a group that is gone instead of hiding it.
                 if not x_oid:
-                    members.append(x_uuid)
+                    inherited.append(x_uuid)
                     continue
-                members.append(x_oid.name)
-            members = ",".join(sorted(members))
-            lines.append(f'ACLGROUPS="{members}"')
+                inherited.append(x_oid.name)
+            inherited = ",".join(sorted(inherited))
+            lines.append(f'ACLGROUPS="{inherited}"')
         else:
             lines.append('ACLGROUPS=""')
 

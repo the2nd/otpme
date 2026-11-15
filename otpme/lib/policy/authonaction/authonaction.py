@@ -72,11 +72,16 @@ DEFAULT_HOOKS = [
                 'del_object_class',
                 'remove_orphans',
                 'change_description',
+                # Run by OTPmeObject for nearly every type, and registered
+                # for none or few: a policy refused them as unknown hooks.
+                'change_info',
+                'change_auto_disable',
                 'disable_acl_inheritance',
                 'enable_acl_inheritance',
                 # Non-modify hooks.
                 'export',
                 'get_acls',
+                'show_config_parameters',
                 ]
 # Object types whose parent is not a unit (see get_parent_uuid()), a unit
 # never runs their pre_add_/post_add_ hooks: a realm has no parent, a

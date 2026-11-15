@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-aclgroup {command} [aclgroup]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-aclgroup show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [aclgroup]'),
+                    '_cmd_usage_help' : _('Usage: otpme-aclgroup show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [aclgroup]'),
                     'cmd'   :   '--fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": --policy-limit :max_policies: --limit :limit: [|object|]',
                     '_help' :   {
                                     'cmd'                           : _('Show ACL group(s)'),
@@ -39,12 +39,12 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-aclgroup list [--attribute attribute] [-a] [regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-aclgroup list [--attribute attribute] [-a] [pattern]'),
                     'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List ACL groups.'),
                                     '-a'                        : _('List all ACL groups.'),
-                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
+                                    '--attribute <attribute>'   : _('Match the pattern against this attribute instead of the name.')
                                 },
                 },
 
@@ -94,7 +94,7 @@ cmd_help = {
                     '_cmd_usage_help' : _('Usage: otpme-aclgroup add_aclgroup {aclgroup} {member_aclgroup}'),
                     'cmd'   :   '<|object|> <"aclgroup_name">',
                     '_help' :   {
-                                    'cmd'                   : _('Add an ACL group to this one. It inherits the ACLs of this one.'),
+                                    'cmd'                   : _('Add an ACL group to this one. This one gets its entries too.'),
                                 },
                 },
 
@@ -110,13 +110,21 @@ cmd_help = {
                     '_cmd_usage_help' : _('Usage: otpme-aclgroup list_aclgroups [-r] {aclgroup}'),
                     'cmd'   :   '-r :recursive=True: <|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('List the ACL groups that are members of this one.'),
-                                    '-r'                    : _('Also their members, and so on.'),
+                                    'cmd'                   : _('List the ACL groups that were added to this one.'),
+                                    '-r'                    : _('Also those added to them, and so on.'),
+                                },
+                },
+
+    'find_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-aclgroup find_acls {aclgroup}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Find the objects the ACL group is given on, and to whom.'),
                                 },
                 },
 
     'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-aclgroup config -d -a {aclgroup} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-aclgroup config [-d] [-a] {aclgroup} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to ACL group.'),
@@ -293,7 +301,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-aclgroup info {aclgroup} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-aclgroup info [--language <language>] {aclgroup} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set ACL group info'),
@@ -302,7 +310,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-aclgroup dump_info {aclgroup}'),
+                    '_cmd_usage_help' : _('Usage: otpme-aclgroup dump_info [--language <language>] {aclgroup}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump ACL group info'),
@@ -310,24 +318,12 @@ cmd_help = {
                                 },
                 },
 
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
     '_show_config'    : {
                     'cmd'   :   '<|object|>',
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-aclgroup export --password <password> {aclgroup}'),
+                    '_cmd_usage_help' : _('Usage: otpme-aclgroup export [--password <password>] {aclgroup}'),
                     'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export ACL group config to stdout.'),

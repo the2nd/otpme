@@ -32,7 +32,7 @@ To let the role \fBhelpdesk\fR see them for new users of the unit \fBlinux/users
 .RE
 .IP
 They only count when the token is added, so the role does not see the secret later.
-The ACL group \fBusermanager\fR holds both, see
+The ACL group \fBUSERMANAGER\fR holds both, see
 .BR otpme\-aclgroup (1).
 Without them, give the user a way in with a temporary password, see \fBtemp_password\fR in
 .BR otpme\-token (1).
@@ -69,13 +69,16 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-t\fR] [\fB\-\-attribute\fR \fIATTR\fR] \fR[\fIregex\fR]
-List the users, and with a regex only those whose name matches it.
+.B list \fR[\fB\-a\fR] [\fB\-t\fR] [\fB\-\-attribute\fR \fIATTR\fR] \fR[\fIpattern\fR]
+List the users, and with a pattern only those whose name matches it, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
 .br
 You get the users you may change; \fB\-a\fR adds those you may only look at.
 \fB\-t\fR lists the user templates instead.
 Without \fB\-a\fR these are the templates you may change or have \fBuse\fR on, i.e. the ones you may give to \fBadd \-\-template\fR.
-\fB\-\-attribute\fR shows the given attribute instead of the name.
+\fB\-\-attribute\fR matches the pattern against that attribute instead of the name.
 .TP
 .B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIuser\fR
 Enable a disabled user account.
@@ -281,12 +284,135 @@ Enable / disable the user's authorization script.
 .TP
 .B key_script \fIuser\fR \fR[\fIscript\fR] \fB\-\-\fR \fR[\fIscript_options\fR]
 Set the user's key script.
+OTPme runs it for all work with the user's keys: make them, sign, verify, encrypt, decrypt, make a CSR and change the key password.
+It gives the command first, then the script options set here, then the options of the call.
+.IP
+The default key script \fBkey_script.sh\fR takes these script options:
+.RS
+.TP
+.B \-\-yubikey\-piv \fR[\fIslot\fR]
+The private keys are on a YubiKey in PIV mode.
+Signing and decrypting happen on the card, always through otpme\-agent; the key script never sees the PIN.
+.br
+The agent holds the PIN login of the card, its PIV session.
+Logging in with the token opens it; where there is none, the agent asks for the PIN.
+It stays open for the \fBkey_cache_time\fR of the user, or for \fBYUBIKEY_PIV_TIMEOUT\fR seconds where that is set in \fI~/.otpme/otpme\-agent.conf\fR; with neither, until the agent ends.
+.br
+While the session is open, the agent asks to confirm each use of the card, with what it is for, e.g. the share or the password.
+It asks only in a graphical session: on a console the shell reads the terminal, so the agent uses the card without asking.
+\fB\%AGENT_CONFIRM_ACTIONS\fR in
+.BR otpme.conf (5)
+switches it off for a host.
+.br
+\fIslot\fR is the slot
+.B gen_csr
+uses when it is not told one: \fB\%AUTHENTICATION\fR, \fBSIGNATURE\fR, \fB\%KEY_MANAGEMENT\fR or \fB\%CARD_AUTH\fR.
+It can be left out.
+.TP
+.B \-\-use\-agent\-piv
+Taken for settings from before, and does nothing: \fB\-\-yubikey\-piv\fR always goes through otpme\-agent.
+.TP
+.B \-\-yubikey\-hmac \fIslot\fR
+The passphrase of the private key goes through the HMAC challenge-response of the YubiKey in \fIslot\fR (1 or 2).
+Without the YubiKey the private key does not open.
+Encrypted files stay with the public key.
+It needs the program \fBykchalresp\fR.
+.TP
+.B \-\-use\-gpg \fIid\fR
+The private key is encrypted with the GPG key \fIid\fR, not with a passphrase.
+.TP
+.B \-\-key\-enc rsa\fR|\fBaes\fR|\fBgpg\fR|\fByubikey\-hmac
+How \fBencrypt\fR protects the key of a file.
+\fBrsa\fR is the default: the public key of the user, or of the user of \fB\-u\fR.
+\fBaes\fR: a passphrase.
+\fBgpg\fR: the GPG key of \fB\-\-use\-gpg\fR.
+\fByubikey\-hmac\fR: a passphrase that goes through the YubiKey of \fB\-\-yubikey\-hmac\fR.
+With anything but \fBrsa\fR, \fBencrypt \-u\fR and \fBencrypt \-\-rsa\fR are refused.
+Decrypting follows what the file says, not this option.
+.TP
+.B \-\-salt\-file \fIfile\fR
+The SHA1 sum of \fIfile\fR goes before every passphrase: that of the private key and that of a file.
+Without the file nothing opens.
+A file that cannot be read is an error.
+A file encrypted with a salt does not decrypt itself with a passphrase: it calls
+.BR otpme\-tool\ decrypt .
+.TP
+.B \-\-no\-self\-decrypt
+Encrypted files get no script.
+Normally a file has a script at its start, and running the file decrypts it.
+.RE
+.IP
+OTPme gives these options itself, for the call it makes:
+\fB\-u\fR, \fB\-\-rsa\fR, \fB\-\-no\-rsa\fR and \fB\-\-force\-pass\fR (from \fBotpme\-tool encrypt\fR),
+\fB\-\-algo\fR and \fB\-b\fR (from \fBgen_keys\fR),
+\fB\-\-server\-key\fR (key mode server),
+\fB\-\-reason\fR (the text of the PIN prompt),
+\fB\-\-api\fR and \fB\-\-auth\-token\fR (API mode).
 .TP
 .B get_key_script \fIuser\fR \fR[\fBname\fR|\fBuuid\fR]
 Show the name or UUID of the user's key script.
 .TP
 .B agent_script \fIuser\fR \fR[\fIscript\fR] \fB\-\-\fR \fR[\fIscript_options\fR]
 Set the user's agent script.
+It starts and stops the SSH agent of the user, see \fBSSH Agent\fR in
+.BR otpme\-tool (1).
+PAM runs it as well: \fBadd_key\fR after a login, \fBunlock\fR when the screen is unlocked with an SSH token.
+.IP
+The default agent script \fBagent_script.sh\fR starts ssh\-agent and takes these script options:
+.RS
+.TP
+.B \-\-gpg\-agent
+Start gpg\-agent with SSH support, not ssh\-agent.
+.TP
+.B \-\-gpg\-smartcard
+Like \fB\-\-gpg\-agent\fR, for a GPG smartcard.
+On screen unlock the card asks for its PIN again.
+Only one gpg\-agent of the user can run then, so \fBstatus\fR counts all of them.
+.TP
+.B \-\-pinentry \fIprogram\fR
+The pinentry program of gpg\-agent.
+The default is \fBotpme\-pinentry\fR.
+.TP
+.B \-\-yubikey\-piv
+\fBadd_key\fR adds the key of the YubiKey PIV token to the agent.
+The password of the login is taken as its PIN.
+.TP
+.B \-\-no\-confirm
+Only with \fB\-\-yubikey\-piv\fR.
+The agent uses the key without asking each time.
+Without it every use of the key has to be confirmed.
+.RE
+.IP
+\fBExamples.\fR
+Key script and agent script go together.
+For a user whose keys are on a YubiKey in PIV mode:
+.sp
+.in +4
+.nf
+otpme\-user key_script alice scripts/key_script.sh \-\- \-\-yubikey\-piv AUTHENTICATION
+otpme\-user agent_script alice scripts/agent_script.sh \-\- \-\-yubikey\-piv
+.fi
+.in -4
+.IP
+For a user with a GPG smartcard, e.g. a YubiKey deployed as \fByubikey_gpg\fR:
+the private key is encrypted with the GPG key of the card, and gpg\-agent is the SSH agent.
+.sp
+.in +4
+.nf
+otpme\-user key_script alice scripts/key_script.sh \-\- \-\-use\-gpg alice@example.org
+otpme\-user agent_script alice scripts/agent_script.sh \-\- \-\-gpg\-smartcard
+.fi
+.in -4
+.IP
+.B otpme\-user show
+then lists them, e.g.
+.sp
+.in +4
+.nf
+key_script:    scripts/key_script.sh \-\-yubikey\-piv AUTHENTICATION
+agent_script:  scripts/agent_script.sh \-\-yubikey\-piv
+.fi
+.in -4
 .TP
 .B login_script \fIuser\fR \fR[\fIscript\fR] \fB\-\-\fR \fR[\fIscript_options\fR]
 Set the user's login script.
@@ -380,7 +506,8 @@ Also \fBclient_auth\fR, \fBserver_auth\fR, \fBcode_signing\fR, \fBsmartcard_logo
 Whether the signed certificate carries all of it is up to the CA: a request asks, it does not decide.
 .IP
 A user whose private key is on a YubiKey in PIV mode gets a request signed by the card, because the key does not come off it.
-The card asks for its PIN.
+otpme\-agent does it, and asks for the PIN or to confirm, see \fB\-\-yubikey\-piv\fR under
+.BR key_script .
 The key is the one the key script is set to (\fB\-\-yubikey\-piv\fR), and
 .B \-\-slot
 asks for another one.
@@ -588,20 +715,23 @@ What was done and by whom stays as it is.
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIuser\fR
-Show the changelog of the user.
+Show the changelog of the user, one entry per line: its \fIentry_id\fR, the time, who made the change and what was done, then a detail in round brackets and the comment in square brackets where there are any.
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fIuser\fR \fIentry_id\fR \fIcomment\fR
 Set the comment of that entry, or replace the one it has.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B del_changelog \fIuser\fR \fIentry_id\fR
 Remove the comment of that entry.
 The entry itself stays, and an entry without a comment is refused.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIuser\fR
 Remove every entry of the changelog.
+Afterwards it holds one entry: that it was cleared.
 .br
 This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
@@ -625,7 +755,7 @@ A user holds no ACLs of their own, so there is no \fBfind_acls\fR here. Their to
 Give a role or a token one or more ACLs on this user.
 .br
 \fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
-\fIowner\fR is the path of that role or token.
+\fIowner\fR names it the way \fBlist_acls\fR prints it: a role as \fIsite/name\fR, or by its name alone on its own site; a token as \fI\%user/token\fR.
 An ACL can carry a value, for example \fBedit:password\fR.
 To give several ACLs at once, separate them with commas: \fB\%edit:password,view:status\fR.
 .br
@@ -729,6 +859,7 @@ see
 .TP
 .B remove_orphans \fR[\fB\-r\fR] \fIuser\fR
 Remove what the user still points at although it is gone: ACLs, policies, signatures and tokens whose object does not exist any more.
+Config parameters set on the user that keep other objects lose the ones that are gone, e.g. a deleted VLAN in \fBvlans\fR or a deleted role in \fBadmin_access_role\fR, the way \fBconfig \-d\fR does.
 .br
 It shows everything it found and asks once.
 \fB\-r\fR does the same for the tokens of the user.
@@ -902,7 +1033,7 @@ The character between two CSV fields.
 .B \-\-attribute \fIATTR\fR
 Of
 .BR list :
-match the regex against this attribute instead of the name, as in \fBlist \-\-attribute enabled True\fR.
+match the pattern against this attribute instead of the name, as in \fBlist \-\-attribute enabled True\fR.
 .SS Other Options
 .TP
 .B \-\-keep\-acls
@@ -1084,12 +1215,12 @@ See
 .B Auth On Action Policy
 in
 .BR otpme\-policy (1).
-A user has the hooks every object type has, and these:
+A user has the hooks every object type has, and these; a command of another name is in brackets:
 .RS
 .PP
 .na
 .nh
-add_photo, add_token, change_agent_script, change_auth_script, change_encrypt_private_key, change_encrypt_public_key, change_group, change_key_cache_time, change_key_pass, change_key_script, change_login_script, change_sign_private_key, change_sign_public_key, decrypt, del_keys, del_photo, del_token, deploy_token, disable_admin_access, disable_auth_script, disable_auto_mount, disable_autosign, disable_disabled_login, disable_key_caching, disable_login_script, dump_photo, enable_admin_access, enable_auth_script, enable_auto_mount, enable_autosign, enable_disabled_login, enable_key_caching, enable_login_script, encrypt, gen_keys, move, pre_add_token, set_config_parameter, sign, unblock, verify.
+add_photo\ (photo), add_token, change_agent_script\ (agent_script), change_auth_script\ (auth_script), change_encrypt_private_key\ (encrypt_private_key), change_encrypt_public_key\ (encrypt_public_key), change_group\ (group), change_key_cache_time\ (key_cache_time), change_key_pass\ (key_pass), change_key_script\ (key_script), change_login_script\ (login_script), change_sign_private_key\ (sign_private_key), change_sign_public_key\ (sign_public_key), decrypt, del_keys, del_photo, del_token, deploy_token, disable_admin_access, disable_auth_script, disable_auto_mount, disable_autosign, disable_disabled_login, disable_key_caching, disable_login_script, dump_photo, enable_admin_access, enable_auth_script, enable_auto_mount, enable_autosign, enable_disabled_login, enable_key_caching, enable_login_script, encrypt, gen_keys, move, pre_add_token, set_config_parameter\ (config), sign, unblock, verify.
 .hy
 .ad
 .RE
@@ -1097,7 +1228,6 @@ add_photo, add_token, change_agent_script, change_auth_script, change_encrypt_pr
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
 .BR otpme-token (1),
 .BR otpme-group (1),
 .BR otpme-role (1),

@@ -596,13 +596,13 @@ Update the package lists.
 .B otpme-deploy add \-\-host client1 \-\-arg type=sw_mgmt \-\-arg 'signer=role|example.org/berlin/sw\-admins' signer_mgmt add_signer
 Trust the role sw\-admins for sw_mgmt jobs on client1.
 .TP
-.B otpme-deploy add \-\-unit hosts \-\-recursive \-\-arg type=service_mgmt \-\-arg 'signer=user|example.org/berlin/alice' signer_mgmt add_signer
+.B otpme-deploy add \-\-unit hosts \-\-recursive \-\-arg type=service_mgmt \-\-arg 'signer=user|example.org/alice' signer_mgmt add_signer
 Trust the user alice for service_mgmt jobs on all hosts of the unit \fBhosts\fR and the units below it.
 .TP
 .B otpme-deploy add \-\-host client1 \-\-arg type=repo_mgmt \-\-arg 'signer=role|example.org/berlin/repo\-admins' \-\-arg tags=deploy,berlin signer_mgmt add_signer
 Add a signer with two tags.
 .TP
-.B otpme-deploy add \-\-unit hosts \-\-recursive \-\-arg type=service_mgmt \-\-arg 'signer=user|example.org/berlin/alice' signer_mgmt update_signer
+.B otpme-deploy add \-\-unit hosts \-\-recursive \-\-arg type=service_mgmt \-\-arg 'signer=user|example.org/alice' signer_mgmt update_signer
 Pin the new key of alice, for example after alice changed the sign key.
 .TP
 .B otpme-deploy add \-\-host client1 \-\-arg type=sw_mgmt \-\-arg 'signer=role|example.org/berlin/sw\-admins' signer_mgmt del_signer

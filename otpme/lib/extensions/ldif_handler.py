@@ -72,6 +72,10 @@ class OTPmeLDIFHandler(object):
 
         # Add non default attributes.
         for at in dict(default_attributes):
+            # Already set by add_object_class(), which an attribute
+            # before it in this loop made add its object class.
+            if at not in default_attributes:
+                continue
             v = default_attributes.pop(at)
             add_result = self.add_attribute(o=o,
                                     a=at,
@@ -982,9 +986,24 @@ class OTPmeLDIFHandler(object):
                 msg = _("Adding default attribute: {attribute}")
                 msg = msg.format(attribute=at)
                 callback.send(msg)
+            # A value given to init() and not added yet wins over a
+            # generated one. Generated first, the given one came
+            # second: a different value replaced it, the same one was
+            # refused as already there, and the object was not added
+            # (e.g. a user with loginShell=/bin/bash from a resolver).
+            v = None
+            auto_value = True
+            try:
+                pending = self.objects_default_attributes[o.oid.full_oid]
+            except KeyError:
+                pending = {}
+            if at in pending:
+                v = pending.pop(at)
+                auto_value = False
             self.add_attribute(o=o,
                             a=at,
-                            auto_value=True,
+                            v=v,
+                            auto_value=auto_value,
                             ignore_ro=True,
                             verify=True,
                             ignore_missing_attributes=ignore_missing_attributes,
@@ -1050,12 +1069,18 @@ class OTPmeLDIFHandler(object):
                 continue
             dependent_attributes.remove(at)
 
-        if len(dependent_attributes) > 0 and not force:
-            msg = _("{extension_name}: The following attributes depend on the object class and will also be removed: {attributes}")
-            msg = msg.format(extension_name=self.name, attributes=', '.join(dependent_attributes))
-            return callback.error(msg)
+        # Without force this only says what would go: del_object_class()
+        # asks after it, and an answer of no has to find the object as it
+        # was. The class went from the LDIF here before the question,
+        # where no attribute depended on it.
+        if not force:
+            if len(dependent_attributes) > 0:
+                msg = _("{extension_name}: The following attributes depend on the object class and will also be removed: {attributes}")
+                msg = msg.format(extension_name=self.name, attributes=', '.join(dependent_attributes))
+                return callback.error(msg)
+            return callback.ok()
 
-        if len(dependent_attributes) > 0 and force:
+        if len(dependent_attributes) > 0:
             for at in dependent_attributes:
                 self.del_attribute(o=o, a=at, ignore_deps=True, callback=callback)
 

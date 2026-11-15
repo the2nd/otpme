@@ -43,6 +43,7 @@ from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.otpme_object import OTPmeBaseObject
 from otpme.lib.classes.otpme_object import OTPmeDataObject
 from otpme.lib.classes.otpme_object import token_role_list_setter
+from otpme.lib.classes.otpme_object import uuid_orphans
 from otpme.lib.classes.otpme_object import token_role_list_getter
 from otpme.lib.classes.otpme_object import token_role_list_allows
 
@@ -235,6 +236,7 @@ def register_config_params():
                                     warn_if_exists=True,
                                     setter=token_role_list_setter,
                                     getter=token_role_list_getter,
+                                    orphans=uuid_orphans,
                                     object_types=[
                                                 'site',
                                                 'unit',

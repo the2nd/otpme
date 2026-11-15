@@ -28,7 +28,7 @@ root.
 
 ## Realm
 
-**join \[**--jotp** *jotp*\] \[**--host-type** **host**\|**node**\] \[**--unit** *unit*\] \[**--host-key-len** *bits*\] \[**--ca-key-len** *bits*\] \[**--ca-valid** *days*\] \[**--site-key-len** *bits*\] \[**--site-valid** *days*\] \[**--trust-site-cert**\|**--check-site-cert** *fingerprint*\] \[**--joind-uri** *uri*\] \[**--no-daemon-start**\] \[*domain*\]**  
+**join \[**--jotp** *jotp*\] \[**--hostname** *hostname*\] \[**--host-type** **host**\|**node**\] \[**--unit** *unit*\] \[**--host-key-len** *bits*\] \[**--ca-key-len** *bits*\] \[**--ca-valid** *days*\] \[**--site-key-len** *bits*\] \[**--site-valid** *days*\] \[**--trust-site-cert**\|**--check-site-cert** *fingerprint*\] \[**--joind-uri** *uri*\] \[**--no-daemon-start**\] \[*domain*\]**  
 Make this machine a host or a node of a realm. You must be root, and the
 machine must not be in a realm yet.
 
@@ -40,6 +40,12 @@ the TXT records **\_otpme-realm.\_tcp.***domain* and
 given, else the domain of the FQDN of this machine.  
 **--joind-uri** names the joind instead of the SRV record, e.g.
 **tcp://node1.berlin.example.org:2024**; 2024 is the port of joind.
+
+**The name.** The host or node gets the hostname of this machine as its
+name. **--hostname** gives it another name, e.g. **web1**. It is a name,
+not an FQDN. The domain to find the joind in stays that of this machine.
+After the join OTPme uses the name of the object, not the hostname of
+the machine.
 
 **Who may join.** With **--jotp** nobody logs in: the JOTP is the
 one-time password that **otpme-host add** or **otpme-node add** printed,
@@ -494,8 +500,12 @@ is a new key.
 
 With **--tag *tag*** a signature counts only if it carries this tag too.
 Give it more than once for more, and a signature has to carry all of
-them. An OID, or *type***:***name* of an object of this site, stands for
-that object, and a tag for an object that does not exist is refused.
+them. An OID, *type*:*name*, e.g. **group:admins**, or
+*type*:*site*/*name*, e.g. **role:munich/admins**, stands for that
+object. *type*:*name* means the object of this site; if there is none,
+the one of that name in the realm. A name that is in more than one other
+site needs the site, e.g. **role:munich/REALM_USER**: every site has a
+role of that name. A tag for an object that does not exist is refused.
 Anything else is taken as it is, for example **sometag** or
 **sometag=value**.
 
@@ -1017,11 +1027,11 @@ new ones over.
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme.conf**(5),
-**pam_otpme**(8), **otpme-realm**(1), **otpme-site**(1),
-**otpme-host**(1), **otpme-node**(1), **otpme-user**(1),
-**otpme-script**(1), **otpme-pass**(1), **otpme-deploy**(1),
-**otpme-shell**(1), **otpme-backup**(1)
+**otpme**(1), **otpme**(7), **otpme.conf**(5), **pam_otpme**(8),
+**otpme-realm**(1), **otpme-site**(1), **otpme-host**(1),
+**otpme-node**(1), **otpme-user**(1), **otpme-script**(1),
+**otpme-pass**(1), **otpme-deploy**(1), **otpme-shell**(1),
+**otpme-backup**(1)
 
 # AUTHOR
 

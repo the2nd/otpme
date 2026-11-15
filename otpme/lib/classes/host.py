@@ -906,32 +906,6 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     }
 
 def get_acls(split=False, **kwargs):
@@ -1113,6 +1087,14 @@ def register_hooks():
     config.register_auth_on_action_hook("host", "limit_logins")
     config.register_auth_on_action_hook("host", "unlimit_logins")
     config.register_auth_on_action_hook("host", "change_public_key")
+    # OTPmeDevice.change_mac(), see device.py.
+    config.register_auth_on_action_hook("host", "change_mac")
+    # Run by OTPmeHost.enable_jotp() etc. and refused by add_hook() as
+    # unknown before they were registered.
+    config.register_auth_on_action_hook("host", "enable_jotp")
+    config.register_auth_on_action_hook("host", "disable_jotp")
+    config.register_auth_on_action_hook("host", "enable_lotp")
+    config.register_auth_on_action_hook("host", "disable_lotp")
     config.register_auth_on_action_hook("host", "enable_jotp_rejoin")
     config.register_auth_on_action_hook("host", "disable_jotp_rejoin")
     config.register_auth_on_action_hook("host", "add_dynamic_group")
@@ -1782,6 +1764,8 @@ class Host(OTPmeHost, OTPmeDevice):
 
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
+    @object_changelog("add")
     def add(
         self,
         callback: JobCallback=default_callback,
@@ -1790,18 +1774,15 @@ class Host(OTPmeHost, OTPmeDevice):
         """ Add a host. """
         # Add host.
         add_result = super().add(callback=callback, **kwargs)
-        # Check for default accessgroup.
-        host_ag = self.get_config_parameter("hosts_accessgroup")
+        # Check for default accessgroup. We hold its UUID, as with the
+        # role below: the setter checked add:host on just that one.
+        host_ag = self.get_config_parameter("hosts_accessgroup",
+                                            apply_getter=False)
         if host_ag:
-            result = backend.search(object_type="accessgroup",
-                                    attribute="name",
-                                    value=host_ag,
-                                    realm=config.realm,
-                                    site=config.site,
-                                    return_type="instance")
-            if result:
-                ag = result[0]
+            ag = backend.get_object(object_type="accessgroup", uuid=host_ag)
+            if ag:
                 ag.add_host(host_name=self.name,
+                            host_uuid=self.uuid,
                             force=True,
                             verify_acls=False,
                             callback=callback)

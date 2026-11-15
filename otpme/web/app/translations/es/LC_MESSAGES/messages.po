@@ -893,6 +893,11 @@ msgstr "Comprobando tu teléfono..."
 msgid "Re-deploying token '{token_name}' for user '{user_name}'."
 msgstr "Re-desplegando token '{token_name}' para el usuario '{user_name}'."
 
+#: templates/recover_complete.html:45
+#, python-brace-format
+msgid "Setting up token '{token_name}' for user '{user_name}'."
+msgstr "Configurando el token '{token_name}' para el usuario '{user_name}'."
+
 #: templates/recover_complete.html:74
 msgid "Set New Password"
 msgstr "Establecer nueva contraseña"

@@ -115,11 +115,14 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
-List the node names, and with a regex only those that match it.
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+List the node names, and with a pattern only those that match it, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
 You get the nodes you may change; \fB\-a\fR adds those you may only look at.
 .br
-\fB\-\-attribute\fR matches the regex against that attribute instead of the name: \fBlist \-\-attribute enabled True\fR lists the nodes that are enabled.
+\fB\-\-attribute\fR matches the pattern against that attribute instead of the name: \fBlist \-\-attribute enabled True\fR lists the nodes that are enabled.
 A value that is not text has to be spelled out \(em \fB*\fR matches none of it.
 .TP
 .B enable \fR[\fB\-\-offline\fR] \fInode\fR
@@ -481,20 +484,23 @@ What was done and by whom stays as it is.
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fInode\fR
-Show the changelog of the node.
+Show the changelog of the node, one entry per line: its \fIentry_id\fR, the time, who made the change and what was done, then a detail in round brackets and the comment in square brackets where there are any.
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fInode\fR \fIentry_id\fR \fIcomment\fR
 Set the comment of that entry, or replace the one it has.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B del_changelog \fInode\fR \fIentry_id\fR
 Remove the comment of that entry.
 The entry itself stays, and an entry without a comment is refused.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fInode\fR
 Remove every entry of the changelog.
+Afterwards it holds one entry: that it was cleared.
 .br
 This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
@@ -517,10 +523,6 @@ which token they have to use,
 switches the node off after a time, and
 .B authonaction
 asks whoever changes something here to authenticate for it again.
-.PP
-A
-.B defaultpolicies
-policy is taken as well, because it fits every object in the tree, but nothing reads it on a node: what gives a new node its policies is such a policy on the unit or the site above it.
 .PP
 A policy on the node runs at every login to it.
 A policy on a role runs only where that role is assigned to the node and holds the token that is logging in \(em a restriction on a role the token does not reach this node through says nothing about this node.
@@ -560,7 +562,7 @@ A command that changes something asks first; the global option \fB\-f\fR skips t
 Give a role or a token one or more ACLs on this node.
 .br
 \fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
-\fIowner\fR is the path of that role or token.
+\fIowner\fR names it the way \fBlist_acls\fR prints it: a role as \fIsite/name\fR, or by its name alone on its own site; a token as \fI\%user/token\fR.
 An ACL can carry a value, for example \fBview:tokens\fR.
 To give several ACLs at once, separate them with commas: \fB\%view:tokens,view:status\fR.
 .br
@@ -678,6 +680,7 @@ Remove what the node still points at although it is gone.
 On a node that is its ACLs, its policies, the tokens and roles added to it, and its vote script.
 A token that is gone takes the login interfaces and the SSH options that were stored with it.
 A vote script that is gone is worth clearing: the node votes 1 at every election while it is named and missing.
+Config parameters set on the node that keep other objects lose the ones that are gone, e.g. a token or role in \fBallow_confd_jobs\fR, the way \fBconfig \-d\fR does.
 .PP
 The join node and the join token stay.
 Both keep a note of what they pointed at so they can still be shown, and they say what happened, not what is allowed.
@@ -841,12 +844,12 @@ See
 .B Auth On Action Policy
 in
 .BR otpme\-policy (1).
-A node has the hooks every object type has, and these:
+A node has the hooks every object type has, and these; a command of another name is in brackets:
 .RS
 .PP
 .na
 .nh
-add_dynamic_group, add_token, change_public_key, change_vote_script, disable_jotp_rejoin, disable_vote_script, enable_jotp_rejoin, enable_vote_script, join, leave, limit_logins, remove_dynamic_group, remove_token, renew_cert, revoke_cert, set_config_parameter, unlimit_logins.
+add_dynamic_group, add_token, change_public_key\ (public_key), change_vote_script\ (vote_script), disable_jotp, disable_jotp_rejoin, disable_lotp, disable_vote_script, enable_jotp, enable_jotp_rejoin, enable_lotp, enable_vote_script, join, leave, limit_logins, remove_dynamic_group, remove_token, renew_cert, revoke_cert, set_config_parameter\ (config), unlimit_logins.
 .hy
 .ad
 .RE
@@ -887,7 +890,6 @@ The SSH keys of that user, as sshd gets them through \fBotpme-get-authorized-key
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
 .BR otpme.conf (5),
 .BR pam_otpme (8),
 .BR otpme\-cluster (1),

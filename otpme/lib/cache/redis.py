@@ -164,13 +164,19 @@ def gen_redis_conf():
         appendonly_opt = "appendonly no"
         dir_opt = f"dir {config.tmp_dir}"
         redis_conf.append(save_opt)
+    # Any other value left maxmemory_policy_opt unset, and Redis did not
+    # start, with an UnboundLocalError to say why.
     if config.redis_maxmemory_policy == "lfu":
         redis_conf.append(lfu_log_factor)
         redis_conf.append(lfu_decay_time)
         maxmemory_policy_opt = "maxmemory-policy volatile-lfu"
-    if config.redis_maxmemory_policy == "lru":
+    elif config.redis_maxmemory_policy == "lru":
         redis_conf.append(maxmemory_samples_opt)
         maxmemory_policy_opt = "maxmemory-policy volatile-lru"
+    else:
+        msg = _("Invalid REDIS_MAXMEMORY_POLICY: {value}: must be lru or lfu")
+        msg = msg.format(value=config.redis_maxmemory_policy)
+        raise OTPmeException(msg)
     redis_conf.append(maxmemory_policy_opt)
     redis_conf.append(appendonly_opt)
     redis_conf.append(dir_opt)
@@ -612,8 +618,7 @@ class RedisDict(SharedDict):
         # Make sure redis persistence is disabled (once per process).
         _ensure_persistence_disabled(self.redis_db)
         if self.pickle:
-            pickel_type = config.pickle_cache_module
-            self.pickle_handler = PickleHandler(pickel_type)
+            self.pickle_handler = PickleHandler()
         self._lock = None
         #self.redis_db.config_rewrite()
         if clear:
@@ -814,8 +819,7 @@ class RedisList(SharedList):
         _ensure_persistence_disabled(self.redis_db)
         #self.redis_db.config_rewrite()
         if self.pickle:
-            pickel_type = config.pickle_cache_module
-            self.pickle_handler = PickleHandler(pickel_type)
+            self.pickle_handler = PickleHandler()
         if clear:
             self.clear()
 

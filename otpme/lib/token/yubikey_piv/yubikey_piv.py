@@ -758,9 +758,11 @@ class YubikeypivToken(Token):
                     }
         signature = callback.scauth(smartcard_type="yubikey_piv",
                             smartcard_data=smartcard_data)
-        # Verify signature.
+        # Verify signature. The client signs a test challenge with a
+        # tag, see protocols/utils.tag_test_challenge().
+        from otpme.lib.protocols.utils import tag_test_challenge
         sc_data = {
-                    'challenge' : challenge,
+                    'challenge' : tag_test_challenge(challenge),
                     'signature' : signature,
                 }
         status = self.verify(sc_data,

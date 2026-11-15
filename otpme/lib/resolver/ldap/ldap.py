@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-import re
 import ssl
 import ldap3
+from urllib.parse import urlsplit
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -53,6 +53,8 @@ write_acls =  []
 read_value_acls = {
                 "view"      : [
                             "ldap_server",
+                            "ldap_filter",
+                            "attribute_mapping",
                             "ldap_base",
                             "login_dn",
                             "login_password",
@@ -286,6 +288,34 @@ def get_recursive_default_acls():
                                 resolver_recursive_default_acls)
     return _acls
 
+def parse_server_uri(server_uri):
+    """ Split an LDAP server URI into (use_ssl, use_start_tls, host, port).
+
+    ldaps:// is TLS from the start, port 636 by default. ldap:// is always
+    StartTLS, port 389 by default: the bind DN and password never travel
+    in clear. A port in the URI counts. Anything else raises ValueError.
+    """
+    try:
+        parts = urlsplit(server_uri)
+        port = parts.port
+    except ValueError:
+        parts = None
+    if not parts or parts.scheme not in ("ldap", "ldaps") \
+    or not parts.hostname \
+    or parts.path not in ("", "/") \
+    or parts.query or parts.fragment \
+    or parts.username or parts.password:
+        msg = _("Invalid LDAP URI, need ldap://host[:port] or ldaps://host[:port]: {server_uri}")
+        msg = msg.format(server_uri=server_uri)
+        raise ValueError(msg)
+    if parts.scheme == "ldaps":
+        if port is None:
+            port = 636
+        return True, False, parts.hostname, port
+    if port is None:
+        port = 389
+    return False, True, parts.hostname, port
+
 REGISTER_BEFORE = []
 REGISTER_AFTER = []
 
@@ -425,6 +455,11 @@ class LdapResolver(Resolver):
         """ Add LDAP server. """
         if not server_uri:
             return callback.error(_("Got empty LDAP server."))
+        try:
+            parse_server_uri(server_uri)
+        except ValueError as e:
+            msg = str(e)
+            return callback.error(msg)
         if server_uri in self.ldap_servers:
             return callback.error(_("LDAP server already added to this resolver."))
 
@@ -441,8 +476,9 @@ class LdapResolver(Resolver):
                 self.run_policies("add_server",
                                 callback=callback,
                                 _caller=_caller)
-            except Exception:
-                return callback.error()
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
 
         self.ldap_servers.append(server_uri)
         return self._cache(callback=callback)
@@ -473,8 +509,9 @@ class LdapResolver(Resolver):
                 self.run_policies("del_server",
                                 callback=callback,
                                 _caller=_caller)
-            except Exception:
-                return callback.error()
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
 
         self.ldap_servers.remove(server_uri)
         return self._cache(callback=callback)
@@ -509,8 +546,9 @@ class LdapResolver(Resolver):
                 self.run_policies("add_filter",
                                 callback=callback,
                                 _caller=_caller)
-            except Exception:
-                return callback.error()
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
 
         if object_type not in self.ldap_filters:
             self.ldap_filters[object_type] = []
@@ -549,8 +587,9 @@ class LdapResolver(Resolver):
                 self.run_policies("del_filter",
                                 callback=callback,
                                 _caller=_caller)
-            except Exception:
-                return callback.error()
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
 
         self.ldap_filters[object_type].remove(ldap_filter)
         return self._cache(callback=callback)
@@ -586,8 +625,9 @@ class LdapResolver(Resolver):
                 self.run_policies("add_attribute_mapping",
                                 callback=callback,
                                 _caller=_caller)
-            except Exception:
-                return callback.error()
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
 
         if not dst_attr:
             dst_attr = src_attr
@@ -615,6 +655,17 @@ class LdapResolver(Resolver):
             msg = msg.format(object_type=object_type)
             return callback.error(msg)
 
+        # Found before the question, not after it.
+        dst_attr = None
+        for x in self.attribute_mappings[object_type]:
+            x_src = self.attribute_mappings[object_type][x]
+            if x_src == src_attr:
+                dst_attr = x
+                break
+
+        if not dst_attr:
+            return callback.error(_("Unknown attribute."))
+
         msg = _("Remove {object_type} attribute mapping '{src_attr}' from resolver '{resolver_name}'?: ")
         msg = msg.format(object_type=object_type,
                         src_attr=src_attr,
@@ -630,18 +681,9 @@ class LdapResolver(Resolver):
                 self.run_policies("del_attribute_mapping",
                                 callback=callback,
                                 _caller=_caller)
-            except Exception:
-                return callback.error()
-
-        dst_attr = None
-        for x in self.attribute_mappings[object_type]:
-            x_src = self.attribute_mappings[object_type][x]
-            if x_src == src_attr:
-                dst_attr = x
-                break
-
-        if not dst_attr:
-            return callback.error(_("Unknown attribute."))
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
 
         self.attribute_mappings[object_type].pop(dst_attr)
         return self._cache(callback=callback)
@@ -670,8 +712,9 @@ class LdapResolver(Resolver):
                 self.run_policies("change_ldap_base",
                                 callback=callback,
                                 _caller=_caller)
-            except Exception:
-                return callback.error()
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
         self.ldap_base = ldap_base
         return self._cache(callback=callback)
 
@@ -696,8 +739,9 @@ class LdapResolver(Resolver):
                 self.run_policies("change_login_dn",
                                 callback=callback,
                                 _caller=_caller)
-            except Exception:
-                return callback.error()
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
         if login_dn == "":
             self.login_dn = None
         else:
@@ -725,8 +769,9 @@ class LdapResolver(Resolver):
                 self.run_policies("change_login_password",
                                 callback=callback,
                                 _caller=_caller)
-            except Exception:
-                return callback.error()
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
         if login_password is None:
             login_password = callback.askpass("LDAP password: ")
         if login_password == "":
@@ -759,8 +804,9 @@ class LdapResolver(Resolver):
                 self.run_policies("change_ca_data",
                                 callback=callback,
                                 _caller=_caller)
-            except Exception:
-                return callback.error()
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
         self.ca_data = ca_data
         return self._cache(callback=callback)
 
@@ -771,43 +817,12 @@ class LdapResolver(Resolver):
 
     def get_ldap_connection(self, server_uri, callback=default_callback):
         """ Get connection type and LDAP port from server URI. """
-        use_ssl = False
-        use_start_tls = False
-        server_address = None
-        server_port = None
-
-        # Try to get server port from URI.
-        ldap_re = re.compile(':[0-9]*$')
-        if ldap_re.match(server_uri):
-            try:
-                server_port = int(server_uri.split(":")[-1:])
-            except Exception:
-                msg = _("Invalid port in server URI: {server_uri}")
-                msg = msg.format(server_uri=server_uri)
-                raise Exception(msg) from None
-
-        if server_uri.startswith("ldaps://"):
-            if server_port is None:
-                server_port = 636
-            if server_port == 389:
-                use_start_tls = True
-            else:
-                use_ssl = True
-
-        elif server_uri.startswith("ldap://"):
-            if server_port is None:
-                server_port = 389
-
-        # Try to get server address from URI.
-        try:
-            server_address = server_uri.split("/")[2]
-        except Exception:
-            pass
-
-        if server_address is None:
-            msg = _("Invalid LDAP URI: {server_uri}")
-            msg = msg.format(server_uri=server_uri)
-            raise Exception(msg)
+        # The port used to be ignored: the regex was anchored at the start
+        # of the URI and never matched. And ldap:// bound in clear.
+        use_ssl, \
+        use_start_tls, \
+        server_address, \
+        server_port = parse_server_uri(server_uri)
 
         # TLS handling. For ldaps:// and StartTLS we want to verify the
         # server certificate against an explicitly configured CA bundle
@@ -963,17 +978,18 @@ class LdapResolver(Resolver):
                         else:
                             result_attributes[a] = []
 
+                    # The primary group of a new user, from the groups of
+                    # this run. Without them (--object-types user, or no
+                    # group filter) a new user gets the default group.
                     if object_type == "user":
-                        try:
-                            gid_number = x_attributes['gidNumber'][0]
-                        except KeyError:
-                            gid_number = None
+                        gid_number = (x_attributes.get('gidNumber') or [None])[0]
+                        if isinstance(gid_number, bytes):
+                            gid_number = gid_number.decode()
+                        groups = result.get('group', {})
                         if gid_number:
-                            if isinstance(gid_number, bytes):
-                                gid_number = gid_number.decode()
-                            for group in result['group']:
-                                x_gid_number = result['group'][group]['gidNumber'][0]
-                                if x_gid_number == gid_number:
+                            for group in groups:
+                                x_gid_numbers = groups[group].get('gidNumber') or [None]
+                                if x_gid_numbers[0] == gid_number:
                                     result_attributes['object_group'] = group
                                     break
 
@@ -1133,8 +1149,9 @@ class LdapResolver(Resolver):
             login_dn = self.login_dn
         lines.append(f'LOGIN_DN="{login_dn}"')
 
+        # A secret: the bare "view" must not cover it, see otpme.7.
         login_password = ""
-        if self.verify_acl("view:login_password") \
+        if self.verify_acl("view_all:login_password") \
         or self.verify_acl("edit:login_password"):
             login_password = self.login_password
         lines.append(f'LOGIN_PASSWORD="{login_password}"')
@@ -1157,9 +1174,9 @@ class LdapResolver(Resolver):
         lines.append(f'LDAP_FILTERS="{",".join(ldap_filters)}"')
 
         attribute_mappings = []
-        if self.verify_acl("view:ldap_attribute") \
-        or self.verify_acl("add:ldap_attribute") \
-        or self.verify_acl("del:ldap_attribute"):
+        if self.verify_acl("view:attribute_mapping") \
+        or self.verify_acl("add:attribute_mapping") \
+        or self.verify_acl("del:attribute_mapping"):
             for object_type in self.attribute_mappings:
                 attr_list = []
                 for src_attr in self.attribute_mappings[object_type]:

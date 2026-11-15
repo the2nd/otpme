@@ -145,11 +145,27 @@ def search_objects(cache, search):
     return found
 
 def list_names(cache, search_regex=None):
-    """ The names of the kept passwords, as "otpme-pass list" has them. """
-    names = sorted(x['name'] for x in cache['objects'])
+    """ The names of the kept passwords, as "otpme-pass list" has them.
+
+    The search is the one online (cli.list_objects()), which is no
+    regex: a path that ends with a slash asks for the passwords of that
+    unit (not of its sub units), "*" stands for any text, everything
+    else for itself, and it has to match the whole name -- or the whole
+    path, when there is a slash in it.
+    """
+    objects = cache['objects']
     if search_regex:
-        x_re = re.compile(search_regex)
-        names = [x for x in names if x_re.search(x)]
+        if search_regex.endswith("/"):
+            unit_path = search_regex.strip("/")
+            objects = [x for x in objects if x['unit'] == unit_path]
+        else:
+            attribute = "name"
+            if "/" in search_regex:
+                attribute = "rel_path"
+            x_re = re.escape(search_regex).replace(r"\*", ".*")
+            x_re = re.compile(x_re)
+            objects = [x for x in objects if x_re.fullmatch(x[attribute])]
+    names = sorted(x['name'] for x in objects)
     return "\n".join(names)
 
 def show_table(objects):

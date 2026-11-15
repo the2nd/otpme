@@ -2398,9 +2398,20 @@ def get_oid(uuid, object_type=None, object_types=None,
 def get_uuid(object_id):
     """ Get object's UUID from cache or via read(). """
     uuid = None
-    # Try to get UUID from index.
-    result = index_search(attribute="read_oid",
-                        value=object_id.read_oid,
+    # Try to get UUID from index. By the full OID where we have it: it
+    # names the object whatever its read OID is, and the read OID of a
+    # type can change (e.g. device|realm/site/name became
+    # device|realm/name) while the index still holds the one of before
+    # -- then nothing loaded the object, not even the upgrade that
+    # writes its index entries again.
+    if object_id.full_oid:
+        attribute = "full_oid"
+        value = object_id.full_oid
+    else:
+        attribute = "read_oid"
+        value = object_id.read_oid
+    result = index_search(attribute=attribute,
+                        value=value,
                         object_type=object_id.object_type,
                         return_type="uuid")
     if result:
@@ -2433,7 +2444,10 @@ def index_dump(object_id=None, uuid=None, session=None, checksum_ready=False, **
         raise OTPmeException(msg) from err
     result = {'read_oid':object_id.read_oid}
     q = session.query(IndexObject)
-    if object_id:
+    # By the full OID where we have it, see get_uuid().
+    if object_id and object_id.full_oid:
+        x = q.filter(IndexObject.full_oid == object_id.full_oid)
+    elif object_id:
         x = q.filter(IndexObject.read_oid == object_id.read_oid)
     if uuid:
         x = q.filter(IndexObject.uuid == uuid)

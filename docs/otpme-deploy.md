@@ -627,14 +627,14 @@ Update the package lists.
 **otpme-deploy add --host client1 --arg type=sw_mgmt --arg 'signer=role\|example.org/berlin/sw-admins' signer_mgmt add_signer**  
 Trust the role sw-admins for sw_mgmt jobs on client1.
 
-**otpme-deploy add --unit hosts --recursive --arg type=service_mgmt --arg 'signer=user\|example.org/berlin/alice' signer_mgmt add_signer**  
+**otpme-deploy add --unit hosts --recursive --arg type=service_mgmt --arg 'signer=user\|example.org/alice' signer_mgmt add_signer**  
 Trust the user alice for service_mgmt jobs on all hosts of the unit
 **hosts** and the units below it.
 
 **otpme-deploy add --host client1 --arg type=repo_mgmt --arg 'signer=role\|example.org/berlin/repo-admins' --arg tags=deploy,berlin signer_mgmt add_signer**  
 Add a signer with two tags.
 
-**otpme-deploy add --unit hosts --recursive --arg type=service_mgmt --arg 'signer=user\|example.org/berlin/alice' signer_mgmt update_signer**  
+**otpme-deploy add --unit hosts --recursive --arg type=service_mgmt --arg 'signer=user\|example.org/alice' signer_mgmt update_signer**  
 Pin the new key of alice, for example after alice changed the sign key.
 
 **otpme-deploy add --host client1 --arg type=sw_mgmt --arg 'signer=role\|example.org/berlin/sw-admins' signer_mgmt del_signer**  

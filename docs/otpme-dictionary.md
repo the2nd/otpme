@@ -1,6 +1,7 @@
 # NAME
 
-otpme-dictionary - manage OTPme dictionaries
+otpme-dictionary - the word lists a password policy checks passwords
+against
 
 # SYNOPSIS
 
@@ -8,26 +9,89 @@ otpme-dictionary - manage OTPme dictionaries
 
 # DESCRIPTION
 
-**otpme-dictionary** manages dictionaries in the OTPme system.
-Dictionaries are word lists used by password policies for password
-strength checking and passphrase generation. Supported dictionary types
-are **list**, **sorted-list**, and **guessing**.
+**otpme-dictionary** manages dictionaries: lists of words that make a
+password easy to guess.
+
+A password policy with the strength checker **spsc** looks the parts of
+a password up in the dictionaries of its **dict_order**, see
+**otpme-policy**(1). A part it finds counts as guessed with as many
+tries as the dictionary says, and the password gets a lower score. The
+first dictionary in **dict_order** that has the part counts. A
+dictionary that is in no **dict_order** does nothing.
+
+A dictionary belongs to a site, and a policy uses only those of its own
+site. Every site comes with a set of them, see **FILES**.
+
+There are three types of dictionary; the type is chosen with **add** and
+cannot be changed:
+
+> -   **list**: words in no order. A word found in it counts as one of
+>     10000 tries, however long the list is.
+>
+> -   **sorted-list**: words in the order of how often they are used,
+>     the most common first. A word found in it counts as many tries as
+>     its place in the list, so the first word is the weakest. Capital
+>     letters raise the count: two to five times for a common spelling
+>     like **Berlin** or **BERLIN**, far more for an odd one like
+>     **bErLin**.
+>
+> -   **guessing**: no words, but the pieces of three characters that
+>     words begin, go on and end with, learned from a file of words with
+>     **word_learning**. A part of the password that is made of letters
+>     only, and begins, goes on and ends like those words, counts as a
+>     word even when no list has it. It counts as many tries as the
+>     dictionary has entries.
 
 # COMMANDS
 
 ## Dictionary Management
 
 **add *dictionary* \[*dict_type*\]**  
-Create a new dictionary, optionally with a specific type.
+Add an empty dictionary; **word_import** or **word_learning** fill it.
+*dict_type* is **list** (the default), **sorted-list** or **guessing**,
+see **DESCRIPTION**.  
+With a path, e.g. **wordlists/german**, it goes into that unit; else
+into the unit a **defaultunits** policy names, or into
+**dictionaries**.  
+Needs **add:dictionary** on the unit.
 
-**del *dictionary***  
-Delete a dictionary.
+**del \[**--no-trash**\] *dictionary***  
+Delete the dictionary. It goes to the trash, see **otpme-trash**(1);
+**--no-trash** deletes it right away.  
+A password policy that names it skips it from then on, and
+**remove_orphans** of the policy takes it off the list.  
+Needs **delete:object** on the dictionary or **delete:dictionary** on
+the unit.
 
-**show \[*dictionary*\]**  
-Display dictionary information. Without arguments, shows all
-dictionaries.
+**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*dictionary*\]**  
+Without a dictionary: a table of them, with their unit, type, status,
+size, policies, ACL inheritance and description. The size is the memory
+its words take.
 
-<!-- -->
+**-a**  
+Also the dictionaries you may only look at, not just the ones you may
+change.
+
+**-z *N***  
+How many dictionaries to print.
+
+**--fields *F1,F2***  
+Print these columns and no others, in the order they are named.
+
+**--limit *N*, **--policy-limit** *N***  
+How many policies to print per dictionary.
+
+**--sort-by *field*, **--reverse****  
+Which column to sort by, and the other way round.
+
+**--raw, **--csv**, **--csv-sep** *sep***  
+**--raw** leaves the header and the borders out, **--csv** prints one
+row per line with **;** between the columns, and **--csv-sep** uses
+another separator.
+
+A column you may not see says **-**. With a dictionary named, this
+prints the object itself instead of a table row, one value per line, its
+type and size among them.
 
 **show_oid \[**--full**\] *dictionary***  
 Show the OID of the dictionary:
@@ -40,55 +104,87 @@ Needs the ACL **view_public:object**.
 Show the UUID of the dictionary.  
 Needs the ACL **view_public:object**.
 
-<!-- -->
-
-**list \[*regex*\]**  
-List dictionaries, optionally filtered by regex pattern.
+**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+List the dictionary names, and with a pattern only those that match it,
+see **SELECTING OBJECTS** in **otpme**(1). You get the dictionaries you
+may change; **-a** adds those you may only look at. **--attribute**
+matches the pattern against that attribute instead of the name.
 
 **enable *dictionary***  
-Enable a disabled dictionary.
-
 **disable *dictionary***  
-Disable a dictionary without deleting it.
+A password policy checks only against enabled dictionaries; a disabled
+one stays on its list and is skipped.  
+Needs **enable:object** or **disable:object**.
 
 **rename *dictionary* *new_name***  
-Rename a dictionary.
+Rename the dictionary. A password policy knows it by its UUID, so it
+keeps it.  
+Needs **rename**.
 
 **move \[**--keep-acls**\] *dictionary* *unit***  
-Move dictionary to a different unit.
+Move the dictionary into another unit of the same site. It keeps its
+ACLs; where ACL inheritance is on for it, the default ACLs of the old
+unit are taken away and those of the new one given. **--keep-acls**
+keeps all ACLs as they are.  
+Needs **move** on the dictionary and **add:dictionary** on the unit.
 
 **touch *dictionary***  
-Re-index the object to fix potential index problems.
+Write the index entries of the dictionary again.  
+Needs **touch**.
 
 **auto_disable *dictionary* *time***  
 Set auto-disable time. It is either a relative time with a leading
 **+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
 The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
 **otpme**(7). A relative time counts from when it is set, and again from
-when the dictionary is enabled. **0** removes it. It is refused for an
-object the realm or a site comes with, e.g. the admin user; a time set
-on one before does nothing.
+when the dictionary is enabled. **0** removes it. It is refused for a
+dictionary OTPme comes with, e.g. **german**; a time set on one before
+does nothing.  
+Needs **edit:auto_disable**.
 
 ## Word Management
 
+The file is read on your side, also as *.gz*, and only its entries go to
+the node. New entries go after those the dictionary has; one it has
+already is skipped. To replace them, **clear** first. The commands that
+change something ask first; the global option **-f** skips the question.
+
 **word_import *dictionary* *file***  
-Import words from a file into the dictionary.
+Add the words of *file* to a dictionary of type **list** or
+**sorted-list**.  
+The first word of each line is taken, in small letters, if it has 3
+characters at least. The words keep the order of the file, and for a
+**sorted-list** that is their rank: the first line is the most common
+word. A dictionary of type **guessing** is refused.  
+Needs the ACL **add:words**.
 
 **word_learning *dictionary* *file***  
-Analyze words from a file and build a guessing dictionary with character
-sequence patterns and their frequencies.
+Build the entries of a dictionary of type **guessing** from the words of
+*file*, those with 4 characters at least.  
+Every word is cut into pieces of three characters: its start (**abc:**),
+the pieces in its middle (**:abc:**) and its end (**:abc**). A piece
+that comes 3 times at least is kept, the most common first. Every three
+letters that come in no middle at all are kept as well, as **-abc-**. A
+dictionary of another type is refused.  
+Needs the ACL **add:words**.
 
 **word_export *dictionary***  
-Export all words to stdout.
+The entries of the dictionary to stdout, one per line, in their order.  
+Needs the ACL **dump**.
 
 **clear *dictionary***  
-Remove all words from the dictionary.
+Remove all entries of the dictionary.  
+Needs the ACL **delete:words**.
 
 ## Object Changelog
 
 Every change to the object writes an entry: who made it, when, and what
-was done. A change can carry a comment of its own, through the global
-option **--changelog**.
+was done. The first entry is the one of **add**. A change can carry a
+comment of its own, through the global option **--changelog**.
+
+Nothing is written where the **changelog** config parameter is off. It
+is read along the cascade (dictionary, unit, site). Without any value
+anywhere it is on.
 
 An *entry_id* is the number the listing shows in front of an entry,
 counted from 0.
@@ -100,18 +196,23 @@ A command that changes something asks first; the global option **-f**
 skips the question.
 
 **changelog *dictionary***  
-Show the changelog of the dictionary. Needs the ACL **view:changelog**.
+Show the changelog of the dictionary, one entry per line: its
+*entry_id*, the time, who made the change and what was done, then a
+detail in round brackets and the comment in square brackets where there
+are any. Needs the ACL **view:changelog**.
 
 **edit_changelog *dictionary* *entry_id* *comment***  
-Set the comment of that entry, or replace the one it has. Needs the ACL
-**edit:changelog**.
+Set the comment of that entry, or replace the one it has. That writes an
+entry of its own. Needs the ACL **edit:changelog**.
 
 **del_changelog *dictionary* *entry_id***  
 Remove the comment of that entry. The entry itself stays, and an entry
-without a comment is refused. Needs the ACL **edit:changelog**.
+without a comment is refused. That writes an entry of its own. Needs the
+ACL **edit:changelog**.
 
 **clear_changelog *dictionary***  
-Remove every entry of the changelog.  
+Remove every entry of the changelog. Afterwards it holds one entry: that
+it was cleared.  
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
@@ -124,6 +225,17 @@ A *policy* is the name of a policy, not a path. It is looked for in the
 site of the dictionary. Which policies there are, and what each of them
 does, is in **otpme-policy**(1).
 
+Two policy types fit a dictionary:
+
+-   **authonaction** asks for a login again before the actions of the
+    dictionary, see **AUTH ON ACTION HOOKS**.
+
+-   **autodisable** disables the dictionary after a while. A password
+    policy skips a disabled dictionary: passwords are no longer checked
+    against it. It is refused for the dictionaries a site comes with.
+    One set with **auto_disable -u** (unused for) is refused too: a
+    dictionary does not keep its last use.
+
 Attaching and detaching ask before they change anything; the global
 option **-f** skips the question.
 
@@ -131,7 +243,8 @@ option **-f** skips the question.
 Attach a policy to the dictionary.  
 A policy has a list of object types it is for; one that does not name
 **dictionary** is refused. So is a second policy of a type that allows
-only one per object.  
+only one per object, even when the first one is disabled, and a policy
+the dictionary already has.  
 Needs the ACL **assign:policy**.
 
 **remove_policy *dictionary* *policy***  
@@ -143,21 +256,44 @@ enforces, so it must not be cheaper than attaching one.
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *dictionary***  
 List the policies attached to the dictionary, the disabled ones too,
 marked **(disabled)**. Use **--return-type** to select the attribute
-returned (**name**, **read_oid**, **full_oid**, **uuid**). Use
-**--policy-types** to list only policies of the given types; these are
-policy types, not policy names.  
+returned (**name**, **read_oid**, **full_oid**, **uuid**); without it
+the names. Only the names are marked. Use **--policy-types** to list
+only policies of the given types; these are policy types, not policy
+names.  
 Needs the ACL **view:policies**.
 
 ## ACL Management
 
-**add_acl *dictionary* *owner_type* *owner* *acl***  
-Add an access control entry.
+An ACL says what somebody may do with this dictionary. The somebody is a
+role or a token, never a user.
 
-**del_acl *dictionary* *acl***  
-Remove an access control entry.
+What the three forms **acl**, **+acl** and **++acl** mean is under
+**ACLs** in **otpme**(7). Tab completion after **add_acl** offers the
+ACLs a dictionary knows. A dictionary has no default ACLs, **+acl** and
+**++acl**: nothing lies in a dictionary that could get them.
+
+Adding and removing ask first; the global option **-f** skips the
+question.
+
+**add_acl *dictionary* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
+Give a role or a token one or more ACLs on this dictionary.  
+*owner_type* is **role** or **token**. *owner* names it the way
+**list_acls** prints it: a role as *site/name*, or by its name alone on
+its own site; a token as *user/token*. An ACL can carry a value, for
+example **add:words**. To give several ACLs at once, separate them with
+commas: **add:words,delete:words**.  
+Needs the ACL **add:acl**.
+
+**del_acl *dictionary* *acl*\[,*acl*\]**  
+Take those ACLs away again.  
+Here an *acl* is the whole entry, owner and all, the way **list_acls**
+prints it: **role:berlin/helpdesk:add:words**.  
+Needs the ACL **delete:acl**.
 
 **list_acls *dictionary***  
-Display all ACLs for the dictionary.
+Show the ACLs that lie on this dictionary, i.e. who may do what with
+it.  
+Needs the ACL **view:acl**.
 
 **enable_acl_inheritance *dictionary***  
 Let a move of the dictionary swap its default ACLs: what the old unit
@@ -182,105 +318,144 @@ Needs the ACL **disable:acl_inheritance**.
 
 ## Configuration
 
+A dictionary has two config parameters: **changelog** and
+**allow_changelog_clearing**, see **Object Changelog** above and
+**otpme**(7). A parameter is looked up at the dictionary, then at its
+unit and the units above it, then at the site.
+
+**config \[**-d**\] \[**-a**\] *dictionary* *parameter* \[*value*\]**  
+Set a parameter on the dictionary.
+
+**-d**  
+Remove the parameter from the dictionary, or with a value only that one
+value from a list. It is not set back to a default: what applies
+afterwards is what the units or the site say.
+
+**-a**  
+Append the value to a parameter that holds a list, instead of replacing
+what is there.
+
+The ACL is per parameter, **set:config:\<parameter\>**.
+
+**show_config *dictionary* \[*parameter*\]**  
+The parameters set on the dictionary itself, or only the one named.
+Nothing is shown for a parameter that the dictionary gets from a unit or
+from the site.
+
+**get_config *dictionary* *parameter***  
+What the parameter comes to for the dictionary, once the dictionary, its
+units and the site have been looked at. So this answers what applies,
+where **show_config** answers what was set here.
+
 **description *dictionary* \[*description*\]**  
-Set dictionary description.
+Set the description. Without one OTPme asks and offers the current text
+for editing. Needs **edit:description**.
 
 **info \[**--language** *LANG*\] *dictionary* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
-opened in the editor specified by the **EDITOR** environment variable.
+opened in the editor named by the **EDITOR** environment variable. Needs
+**edit:info**.  
+Without **--language** the text is the administrator's own note. Nothing
+shows the info of a dictionary to a user, so a text for a language stays
+a note as well.
 
 **dump_info \[**--language** *LANG*\] *dictionary***  
-Dump the info text to stdout.
+Write one of those texts to stdout. **--language** picks which one;
+without it you get the note of the administrator. Needs **view:info**.
 
-## Import/Export
+## Export and Cleanup
 
-**export \[**--password** *PASS*\] *dictionary***  
-Export dictionary configuration.
+**export \[**--password** *password*\] *dictionary***  
+Write the whole object of the dictionary to stdout, as JSON: its type,
+its entries (compressed), ACLs, policies, config parameters and the
+rest. **otpme-tool import** reads it back.  
+A dictionary holds no key and no secret, so **--password** has nothing
+to encrypt: the output is in clear either way. **word_export** is the
+command for the entries alone.  
+Needs the ACL **export**.
+
+**remove_orphans *dictionary***  
+Remove references to objects that are gone: orphan ACLs and policies of
+the dictionary.  
+It asks once for what it found; the global option **-f** skips the
+question.  
+Needs the ACL **remove:orphans**.
 
 # OPTIONS
 
-## Display Options
+Every option belongs to one command and is described with that command
+above.
 
-**-a**  
-Show all dictionaries (across all units).
-
-**-z *SIZE***  
-Limit output size.
-
-**--fields *FIELD1,FIELD2***  
-Display only specified fields.
-
-**--policy-limit *N***  
-Limit number of policies shown.
-
-**--limit *N***  
-Limit number of items shown per object.
-
-**--sort-by *FIELD***  
-Sort output by field.
-
-**--reverse**  
-Reverse sort order.
-
-**--raw**  
-Output without headers/borders.
-
-**--csv**  
-Output as CSV.
-
-**--csv-sep *SEP***  
-CSV separator character.
-
-**--attribute *ATTR***  
-Of **list**: match the regex against this attribute instead of the name.
-
-## General Options
-
-**--keep-acls**  
-Preserve ACLs when moving dictionary.
-
-**--password *PASS***  
-Password for encrypting exports.
-
-Global options are available for all commands. See **otpme**(1) for
-details.
+Global options work with every command, see **otpme**(1).
 
 # EXAMPLES
 
-## Managing Dictionaries
+## Words of your own
 
-**otpme-dictionary add english list**  
-Create a word list dictionary
+**otpme-dictionary add products**  
+**otpme-dictionary word_import products products.txt**  
+A dictionary of type **list** with the product names of the company, one
+per line in *products.txt*. It goes into the unit **dictionaries**.
 
-**otpme-dictionary add english_guessing guessing**  
-Create a guessing dictionary
+**otpme-policy --type password strength_checker_opts password_strength "min_score=2;dict_order=products,common-passwords,german,english"**  
+The password policy of the site looks the passwords up in it, before the
+others. Each call replaces all options of the checker, so name every
+dictionary that should still be used.
 
-**otpme-dictionary word_import english /usr/share/dict/words**  
-Import words from a file
+## Replacing the words
 
-**otpme-dictionary word_learning english_guessing /usr/share/dict/words**  
-Build guessing patterns from a word file
+**otpme-dictionary clear products**  
+**otpme-dictionary word_import products products.txt**  
+**word_import** only adds; to drop the old words, clear first.
 
-**otpme-dictionary word_export english**  
-Export all words to stdout
+## A guessing dictionary
 
-**otpme-dictionary clear english**  
-Remove all words from the dictionary
+**otpme-dictionary add products-guessing guessing**  
+**otpme-dictionary word_learning products-guessing products.txt**  
+The pieces of three characters the product names are made of.
+
+## Looking at a dictionary
+
+**otpme-dictionary show german**  
+Its type, its size and the rest.
+
+**otpme-dictionary word_export german \| head**  
+Its first entries.
+
+## Not using a dictionary for a while
+
+**otpme-dictionary disable abbreviations-it**  
+The password policy skips it until it is enabled again, without changing
+its **dict_order**.
 
 # AUTH ON ACTION HOOKS
 
 An auth on action policy can ask for a login again before these actions.
 See **Auth On Action Policy** in **otpme-policy**(1). A dictionary has
-the hooks every object type has, and no others.
+the hooks every object type has, and these; a command of another name is
+in brackets:
+
+> add_words (word_import), dump.
 
 # FILES
 
-*/var/lib/otpme/*  
-OTPme data directory
+*/var/lib/otpme/tree/*  
+The objects of the realm, on the nodes and, by sync, on the hosts. A
+dictionary is the directory *\<name\>.dictionary* in the directory of
+its unit, e.g.
+*\<realm\>.realm/\<site\>.site/dictionaries.unit/german.dictionary/*.
+Its entries are in *object.json*, with the rest of its settings. Change
+them with the commands above, not in the file.
+
+*/etc/otpme/dicts/\<name\>.gz*  
+The words of the dictionaries a site comes with. A file is read once,
+when the site adds its dictionary; changing the file later does not
+change the dictionary.
 
 # SEE ALSO
 
-**otpme**(7), **otpme-acls**(7), **otpme-policy**(1)
+**otpme**(1), **otpme**(7), **otpme-policy**(1), **otpme-unit**(1),
+**otpme-trash**(1), **otpme-tool**(1)
 
 # AUTHOR
 

@@ -233,9 +233,11 @@ class AutodisablePolicy(Policy):
                     }
         # Every object can be disabled. No realm, see Realm.add_policy().
         # No policy: one that switches itself off takes away what it
-        # enforces, without anybody removing it.
+        # enforces, without anybody removing it. No script and no
+        # password: they have no status, nothing that runs or reads one
+        # would ask for it.
         self.object_types = [x for x in config.tree_object_types
-                            if x not in ("realm", "policy")]
+                            if x not in ("realm", "policy", "script", "pass")]
 
         self._auto_disable = "+1M"
         self._unused_disable = False

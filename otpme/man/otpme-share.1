@@ -200,11 +200,14 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
-List the share names, and with a regex only those that match it.
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+List the share names, and with a pattern only those that match it, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
 You get the shares you may change; \fB\-a\fR adds those you may only look at.
 .br
-\fB\-\-attribute\fR matches the regex against that attribute instead of the name: \fBlist \-\-attribute encrypted True\fR lists the encrypted shares.
+\fB\-\-attribute\fR matches the pattern against that attribute instead of the name: \fBlist \-\-attribute encrypted True\fR lists the encrypted shares.
 A value that is not text has to be spelled out \(em \fB*\fR matches none of it.
 .TP
 .B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
@@ -355,7 +358,7 @@ If \fIinfo\fR is omitted, the current text is opened in the editor named by the 
 Without
 .B \-\-language
 the text is the administrator's own note about the object, which no user is ever shown.
-With a language it is text for the users in that language.
+A text can be written for a language as well, for the places that show such a text to a user; nothing shows the info of a share, so for a share it stays a note either way.
 .br
 Needs the ACL \fBedit:info\fR.
 .TP
@@ -795,7 +798,7 @@ A command that changes something asks first; the global option \fB\-f\fR skips t
 Give a role or a token one or more ACLs on this share.
 .br
 \fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
-\fIowner\fR is the path of that role or token.
+\fIowner\fR names it the way \fBlist_acls\fR prints it: a role as \fIsite/name\fR, or by its name alone on its own site; a token as \fI\%user/token\fR.
 An ACL can carry a value, for example \fBview:tokens\fR.
 To give several ACLs at once, separate them with commas: \fB\%view:tokens,view:status\fR.
 .br
@@ -843,20 +846,23 @@ What was done and by whom stays as it is.
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIshare\fR
-Show the changelog of the share.
+Show the changelog of the share, one entry per line: its \fIentry_id\fR, the time, who made the change and what was done, then a detail in round brackets and the comment in square brackets where there are any.
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fIshare\fR \fIentry_id\fR \fIcomment\fR
 Set the comment of that entry, or replace the one it has.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B del_changelog \fIshare\fR \fIentry_id\fR
 Remove the comment of that entry.
 The entry itself stays, and an entry without a comment is refused.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIshare\fR
 Remove every entry of the changelog.
+Afterwards it holds one entry: that it was cleared.
 .br
 This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
@@ -889,6 +895,7 @@ Needs the ACL \fBexport\fR.
 Remove what the share still points at although it is gone.
 .br
 On a share that is its ACLs, its policies, its tokens of every kind, its roles, host groups, hosts, nodes and pools, and the share keys and sign public keys of users that are gone.
+Config parameters set on the share that keep other objects lose the ones that are gone, e.g. a deleted backup server in \fBbackup_server\fR, the way \fBconfig \-d\fR does.
 .br
 It shows everything it found and asks once for all of it.
 It asks nothing and changes nothing when it finds nothing.
@@ -1017,12 +1024,12 @@ See
 .B Auth On Action Policy
 in
 .BR otpme\-policy (1).
-A share has the hooks every object type has, and these:
+A share has the hooks every object type has, and these; a command of another name is in brackets:
 .RS
 .PP
 .na
 .nh
-add_group, add_host, add_master_password_token, add_no_mount_token, add_pool, add_root_mount_token, add_share_key, change_add_script, change_mount_script, change_mount_timeout, del_share_key, disable_mount_script, disable_ro, disable_sotp_signing, enable_mount_script, enable_ro, enable_sotp_signing, force_create_mode, force_directory_mode, force_group, get_share_key, limit_hosts, remove_group, remove_host, remove_master_password_token, remove_no_mount_token, remove_pool, remove_root_mount_token, set_config_parameter, set_home_share_permissions, set_root_dir, show_config_parameters, unlimit_hosts, update_sign_public_keys.
+add_group, add_host, add_master_password_token, add_no_mount_token, add_pool, add_root_mount_token, add_share_key, change_add_script, change_mount_script\ (mount_script), change_mount_timeout\ (mount_timeout), del_share_key, disable_mount_script, disable_ro, disable_sotp_signing, enable_mount_script, enable_ro, enable_sotp_signing, force_create_mode, force_directory_mode, force_group, get_share_key, limit_hosts, remove_group, remove_host, remove_master_password_token, remove_no_mount_token, remove_pool, remove_root_mount_token, set_config_parameter\ (config), set_home_share_permissions\ (home_share_permissions), set_root_dir\ (root_dir), unlimit_hosts, update_sign_public_keys.
 .hy
 .ad
 .RE
@@ -1030,7 +1037,6 @@ add_group, add_host, add_master_password_token, add_no_mount_token, add_pool, ad
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
 .BR otpme\-mount (1),
 .BR otpme\-backup (1),
 .BR otpme\-trash (1),

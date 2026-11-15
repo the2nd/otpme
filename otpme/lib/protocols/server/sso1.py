@@ -161,6 +161,8 @@ MAINTENANCE_COMMANDS = (
     "recovery_deploy_verify",
     "recovery_fido2_register_begin",
     "recovery_fido2_register_complete",
+    # A portal of another site handing us its copy of what it wrote.
+    "sso_mirror_portal_objects",
     )
 
 # Byte length of the raw SSO-token recovery secret. 32 bytes = 256 bits
@@ -179,6 +181,10 @@ SSO_RECOVERY_TOKEN_BYTES = 32
 # a new token type = add a branch in ``recovery_deploy_begin`` +
 # ``recovery_deploy_verify`` + this tuple.
 SSO_RECOVERY_DEPLOY_TYPES = ("totp", "fido2", "tiqr", "password")
+
+# Object types a portal may hand the home site of a user, see
+# OTPmeSsoP1.sso_mirror_portal_objects().
+MIRROR_PORTAL_OBJECT_TYPES = ("role", "accessgroup")
 
 # Token types a user may hand the SSO role to from the portal. Every one
 # of them has a card of its own on the settings page, which is what
@@ -314,6 +320,9 @@ class OTPmeSsoP1(OTPmeServer1):
         self.require_master_node = False
         # We need a clean cluster status.
         self.require_cluster_status = True
+        # What the code of a node that forwards to us reads, set per
+        # request by _process_command(). Version 1 until then.
+        self.peer_config_versions = {}
         # Call parent class init.
         OTPmeServer1.__init__(self, **kwargs)
 
@@ -467,6 +476,10 @@ class OTPmeSsoP1(OTPmeServer1):
         # see _sso_token_name(). Set here rather than at each call
         # site, because every one of them comes through here.
         forward_args['portal_site'] = config.site
+        # What our code reads, for an object config the home site sends
+        # back to be mirrored here (_token_sync_config()). The sync says
+        # the same with every request.
+        forward_args['config_versions'] = config.get_config_versions()
         try:
             status, \
             status_code, \
@@ -740,6 +753,13 @@ class OTPmeSsoP1(OTPmeServer1):
         if user.site != config.site:
             forward_args = dict(command_args)
             forward_args['_step_up_verified'] = True
+            if token_type == "tiqr":
+                forward_args = self._tiqr_deploy_forward_args("deploy_begin",
+                                                            user,
+                                                            forward_args)
+                if forward_args is None:
+                    return self.build_response(False,
+                            {'message':'tiqr is not enabled.', 'status':False})
             return self.ssod_redirect_command(command="deploy_begin",
                                             user=user,
                                             command_args=forward_args,
@@ -816,35 +836,16 @@ class OTPmeSsoP1(OTPmeServer1):
             if error is not None:
                 return error
         if token_type == "tiqr":
-            my_site = backend.get_object(object_type="site",
-                                        uuid=config.site_uuid)
-            expiry = time.time() + my_site.get_config_parameter("tiqr_enrollment_expiry")
-            enroll_key = tiqr_helpers.build_enroll_key(
-                                    tiqr_token.get_site_secret(),
-                                    tiqr_helpers.ENROLL_SCOPE_METADATA,
-                                    expiry,
-                                    user_uuid=user.uuid,
-                                    token_name=deploy_name,
-                                    device_name=device_name,
-                                    login_token_uuid=login_token.uuid)
-            url_template = tiqr_helpers.build_metadata_url_template(my_site.sso_fqdn)
-            metadata_url = tiqr_helpers.build_metadata_url(url_template,
-                                                        enroll_key)
-            enroll_scheme = my_site.get_config_parameter("tiqr_enroll_scheme")
-            enroll_url = tiqr_helpers.build_enroll_url(enroll_scheme,
-                                                    metadata_url)
-            try:
-                qrcode_data = qrcode.gen_qrcode(enroll_url, fmt="svg")
-                if isinstance(qrcode_data, bytes):
-                    qrcode_data = qrcode_data.decode('utf-8')
-                qrcode_img = ("data:image/svg+xml;base64,"
-                            + base64.b64encode(qrcode_data.encode()).decode())
-            except Exception as e:
-                log_msg = _("tiqr: QR code generation failed: {e}", log=True)[1]
-                log_msg = log_msg.format(e=e)
-                self.logger.warning(log_msg)
+            enroll_url, qrcode_img, error = self._tiqr_deploy_enrollment(
+                                                "deploy_begin", user,
+                                                command_args, deploy_name,
+                                                device_name, login_token.uuid)
+            if error == "TIQR_DISABLED":
                 return self.build_response(False,
-                                {'message':'DEPLOY_FAILED', 'status':False})
+                        {'message':'tiqr is not enabled.', 'status':False})
+            if error is not None:
+                return self.build_response(False,
+                                {'message':error, 'status':False})
             response = {
                         'token_type'                : token_type,
                         'deploy_token_name'         : deploy_name,
@@ -870,7 +871,7 @@ class OTPmeSsoP1(OTPmeServer1):
             user._write(callback=callback)
         except Exception as e:
             log_msg = _("SSO deploy failed for user '{user_name}': {e}", log=True)[1]
-            log_msg = log_msg.format(user_name=user.name)
+            log_msg = log_msg.format(user_name=user.name, e=e)
             self.logger.critical(log_msg)
             response = {'message':'DEPLOY_FAILED', 'status':False}
             return self.build_response(status, response)
@@ -1025,11 +1026,14 @@ class OTPmeSsoP1(OTPmeServer1):
             # and sends the user back to /reauth for ever.
             forward_args = dict(command_args)
             forward_args['_step_up_verified'] = True
-            return self.ssod_redirect_command(
-                                    command="get_allowed_deploy_token_types",
+            status, response = self._remote_ssod_call(
                                     user=user,
-                                    command_args=forward_args,
+                                    command="get_allowed_deploy_token_types",
+                                    extra_args=forward_args,
                                     mgmt=True)
+            response = self._drop_untrusted_tiqr(user, response,
+                                                "token_types")
+            return self.build_response(status, response)
         allowed = [tt for tt in DEPLOY_TOKEN_TYPES
                    if self._deploy_type_allowed(user, tt)]
         return self.build_response(True,
@@ -2743,7 +2747,8 @@ class OTPmeSsoP1(OTPmeServer1):
         site_secret = tiqr_token.get_site_secret()
         try:
             claims = tiqr_helpers.parse_enroll_key(site_secret, enroll_key,
-                                    tiqr_helpers.ENROLL_SCOPE_METADATA)
+                                    tiqr_helpers.ENROLL_SCOPE_METADATA,
+                                    deploy_name=DEPLOY_NAME)
         except ValueError as e:
             log_msg = _("tiqr: rejected enrollment key: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
@@ -2763,7 +2768,7 @@ class OTPmeSsoP1(OTPmeServer1):
                                 user_uuid=claims['user_uuid'],
                                 token_name=claims['token_name'],
                                 device_name=claims.get('device_name'),
-                                login_token_uuid=claims['login_token_uuid'])
+                                login_token_uuid=claims.get('login_token_uuid'))
         base_url = f"https://{sso_fqdn}"
         sdn, si = self._tiqr_service_name(my_site)
         if not service_display_name:
@@ -2830,14 +2835,16 @@ class OTPmeSsoP1(OTPmeServer1):
             return None
         try:
             token_oid = oid.get(object_id=token_full_oid, resolve=True)
-            # A copy of what the home site has, not a change of ours:
-            # written in maintenance as well, see maintenance.py.
-            with maintenance.override():
-                backend.write_config(object_id=token_oid,
-                                    object_config=token_oc,
-                                    full_index_update=True,
-                                    full_data_update=True,
-                                    cluster=True)
+            # Not in maintenance. Every flow that gets here is refused
+            # there (MAINTENANCE_COMMANDS), and a write that starts in
+            # between is refused by the backend. The sync brings the
+            # token then -- and, unlike this, in a config version our
+            # code reads (peer_versions).
+            backend.write_config(object_id=token_oid,
+                                object_config=token_oc,
+                                full_index_update=True,
+                                full_data_update=True,
+                                cluster=True)
         except Exception as e:
             log_msg = _("{flow}: failed to mirror remote token object: {e}", log=True)[1]
             log_msg = log_msg.format(flow=flow, e=e)
@@ -2914,6 +2921,157 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(flow=flow, e=e)
             self.logger.warning(log_msg)
 
+    def _mirror_objects_to_home(self, user, objects, flow, peer_versions):
+        """ Hand our copy of <objects> to the home site of <user>.
+
+        The other way round of _mirror_remote_token(). The memberships we
+        just wrote are on our roles and access groups, and the home site
+        decides a login against its copy of them -- which knows the new
+        token only after the sync. With them written there as well, the
+        login works at once.
+
+        The config is what the sync would hand that site
+        (get_sync_config() for a node of it), so the sync that comes
+        later finds the same and changes nothing. That includes the
+        config version: <peer_versions> are what the code of the home
+        site reads, as it said them with its answer. An object that
+        cannot go down that far is left to the sync, which leaves it out
+        as well.
+
+        Never fatal: without it the sync brings the same a little later,
+        and _notify_sync_peers() still asks it to hurry. """
+        nodes = backend.search(object_type="node",
+                                attribute="uuid",
+                                value="*",
+                                realm=config.realm,
+                                site=user.site,
+                                return_type="instance")
+        if not nodes:
+            log_msg = _("{flow}: no node of site '{site}' to mirror objects to.", log=True)[1]
+            log_msg = log_msg.format(flow=flow, site=user.site)
+            self.logger.warning(log_msg)
+            return False
+        # Any node of that site: the view the sync gives it depends on
+        # its site only (get_sync_audience()).
+        peer = nodes[0]
+        mirror_objects = []
+        for x_object in objects:
+            try:
+                oc_obj = x_object.get_sync_config(peer,
+                                                peer_versions=peer_versions)
+            except ConfigDowngradeFailed as e:
+                log_msg = _("{flow}: not mirroring '{object_id}' to site '{site}', its code is too old for it: {e}", log=True)[1]
+                log_msg = log_msg.format(flow=flow, object_id=x_object.oid,
+                                        site=user.site, e=e)
+                self.logger.warning(log_msg)
+                continue
+            except Exception as e:
+                log_msg = _("{flow}: failed to read sync config of '{object_id}': {e}", log=True)[1]
+                log_msg = log_msg.format(flow=flow, object_id=x_object.oid, e=e)
+                self.logger.warning(log_msg)
+                continue
+            if not oc_obj:
+                continue
+            mirror_objects.append({
+                        'full_oid'  : x_object.oid.full_oid,
+                        'oc'        : oc_obj.copy(),
+                    })
+        if not mirror_objects:
+            return False
+        status, response = self._remote_ssod_call(user=user,
+                                        command="sso_mirror_portal_objects",
+                                        extra_args={'objects': mirror_objects},
+                                        mgmt=True)
+        if not status:
+            log_msg = _("{flow}: site '{site}' did not take the mirrored objects: {response}", log=True)[1]
+            log_msg = log_msg.format(flow=flow, site=user.site, response=response)
+            self.logger.warning(log_msg)
+            return False
+        log_msg = _("{flow}: mirrored {count} object(s) to site '{site}'.", log=True)[1]
+        log_msg = log_msg.format(flow=flow, count=len(mirror_objects),
+                                site=user.site)
+        self.logger.info(log_msg)
+        return True
+
+    def sso_mirror_portal_objects(self, command_args):
+        """ Internal cross-site command: write a portal's copy of its
+        roles and access groups.
+
+        Sent by _mirror_objects_to_home() of another site's portal,
+        after it added a token of one of our users to them. We write
+        what it sends as our copy, the way that portal writes a copy of
+        our token (_mirror_remote_token()), so a login decided here
+        finds the token at once instead of after the sync.
+
+        Only from a node of another site, only roles and access groups,
+        only of that very site, and only objects we have a copy of
+        already: the sync hands us that site's objects from that site's
+        nodes, and this is the same thing, sooner. Nothing is created
+        here, and nothing of a third site or of ours is touched. """
+        if not self._from_other_site_node():
+            return self.build_response(False,
+                            {'message':'PERMISSION_DENIED', 'status':False})
+        peer_site = self.peer.site
+        objects = command_args.get('objects')
+        if not isinstance(objects, list):
+            return self.build_response(False,
+                            {'message':'SSOD_INCOMPLETE_COMMAND', 'status':False})
+        written = 0
+        for entry in objects:
+            if not isinstance(entry, dict):
+                continue
+            full_oid = entry.get('full_oid')
+            object_config = entry.get('oc')
+            if not isinstance(full_oid, str) or not isinstance(object_config, dict):
+                continue
+            x_oid, refusal = self._mirrored_object_refusal(full_oid,
+                                                        object_config,
+                                                        peer_site)
+            if refusal is not None:
+                self.logger.warning(refusal)
+                continue
+            # Not in maintenance: refused before it gets here (see
+            # MAINTENANCE_COMMANDS), and a write that starts in between
+            # is refused by the backend. The sync brings it afterwards.
+            try:
+                backend.write_config(object_id=x_oid,
+                                    object_config=object_config,
+                                    full_index_update=True,
+                                    full_data_update=True,
+                                    cluster=True)
+            except Exception as e:
+                log_msg = _("Failed to write mirrored object '{object_id}': {e}", log=True)[1]
+                log_msg = log_msg.format(object_id=full_oid, e=e)
+                self.logger.warning(log_msg)
+                continue
+            written += 1
+        log_msg = _("Wrote {count} mirrored object(s) of site '{site}'.", log=True)[1]
+        log_msg = log_msg.format(count=written, site=peer_site)
+        self.logger.info(log_msg)
+        return self.build_response(True, {'status': True, 'written': written})
+
+    def _mirrored_object_refusal(self, full_oid, object_config, peer_site):
+        """ Whether sso_mirror_portal_objects() takes one object a portal
+        of <peer_site> sent. Returns (oid, None) if it does, else
+        (None, log message). """
+        try:
+            x_oid = oid.get(object_id=full_oid, resolve=True)
+        except Exception as e:
+            log_msg = _("Mirrored object refused, bad OID '{object_id}': {e}", log=True)[1]
+            return None, log_msg.format(object_id=full_oid, e=e)
+        if x_oid.object_type not in MIRROR_PORTAL_OBJECT_TYPES:
+            log_msg = _("Mirrored object refused, not a role or access group: {object_id}", log=True)[1]
+            return None, log_msg.format(object_id=full_oid)
+        if x_oid.site != peer_site or x_oid.realm != config.realm:
+            log_msg = _("Mirrored object refused, not of site '{site}': {object_id}", log=True)[1]
+            return None, log_msg.format(site=peer_site, object_id=full_oid)
+        # A copy we have, of the same object.
+        local_uuid = backend.get_uuid(x_oid)
+        if not local_uuid or object_config.get('UUID') != local_uuid:
+            log_msg = _("Mirrored object refused, no copy of it here: {object_id}", log=True)[1]
+            return None, log_msg.format(object_id=full_oid)
+        return x_oid, None
+
     def _token_sync_config(self, token, response, login_token):
         """ Put a token's object config into a peer-forwarded response.
 
@@ -2938,7 +3096,16 @@ class OTPmeSsoP1(OTPmeServer1):
         if not self.from_peer_node:
             return response
         try:
-            oc_obj = token.get_sync_config(self.peer)
+            # Down to what the code of the peer reads, as the sync does:
+            # a copy it cannot load would cost it the token instead of
+            # bringing it early.
+            oc_obj = token.get_sync_config(self.peer,
+                                        peer_versions=self.peer_config_versions)
+        except ConfigDowngradeFailed as e:
+            log_msg = _("Not mirroring token to peer, its code is too old for it: {oid}: {peer}: {error}", log=True)[1]
+            log_msg = log_msg.format(oid=token.oid, peer=self.peer.name, error=e)
+            self.logger.warning(log_msg)
+            return response
         except Exception as e:
             log_msg = _("Failed to read token object config for peer: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
@@ -2983,10 +3150,21 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False,
                             {'message':'INVALID_REQUEST', 'status':False})
         if user.site != config.site:
-            if not self._resolve_tiqr_allowed(user):
+            # A deploy (deploy_begin, recovery_deploy_begin) asks the
+            # trust only, as _tiqr_deploy_forward_args() did when it
+            # pointed the QR code here: the settings card and its
+            # sso_allow_tiqr_mgmt have nothing to do with it. The name is
+            # read unverified -- the home site checks the signature of
+            # the grant and that it names this very token.
+            token_name = payload.get('token_name')
+            if isinstance(token_name, str) \
+            and self._is_deploy_token_name(token_name):
+                reason = self._tiqr_trust_denied_reason(user)
+            else:
+                reason = self._tiqr_denied_reason(user)
+            if reason is not None:
                 self._log_tiqr_denied("tiqr_enroll_finish",
-                                    "originator: "
-                                    f"{self._tiqr_denied_reason(user)}",
+                                    f"originator: {reason}",
                                     user)
                 return self.build_response(False,
                                 {'message':'INVALID_REQUEST', 'status':False})
@@ -3013,7 +3191,8 @@ class OTPmeSsoP1(OTPmeServer1):
         site_secret = tiqr_token.get_site_secret()
         try:
             claims = tiqr_helpers.parse_enroll_key(site_secret, enroll_secret,
-                                        tiqr_helpers.ENROLL_SCOPE_SECRET)
+                                        tiqr_helpers.ENROLL_SCOPE_SECRET,
+                                        deploy_name=DEPLOY_NAME)
         except ValueError as e:
             log_msg = _("tiqr: rejected enrollment secret: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
@@ -3050,8 +3229,17 @@ class OTPmeSsoP1(OTPmeServer1):
         # memberships, the deploy flows replace it and take over its
         # UUID -- and the new token would be created unusable either
         # way. Better to fail than to leave that behind.
-        login_token = backend.get_object(uuid=claims['login_token_uuid'])
-        if login_token is None:
+        #
+        # A grant without one is the account recovery of a user without
+        # an SSO token, and parse_enroll_key() lets it through for a
+        # deploy name only. Its reach comes from what
+        # recovery_deploy_verify adds the token to.
+        login_token = None
+        login_token_uuid = claims.get('login_token_uuid')
+        if login_token_uuid:
+            login_token = backend.get_object(uuid=login_token_uuid)
+        if login_token is None and (login_token_uuid
+                        or not self._is_deploy_token_name(token_name)):
             log_msg = _("tiqr: login token of the enrollment is gone.", log=True)[1]
             self.logger.warning(log_msg)
             return self.build_response(False,
@@ -3187,11 +3375,19 @@ class OTPmeSsoP1(OTPmeServer1):
         also needs sso_allow_tiqr_mgmt. """
         return self._tiqr_denied_reason(user) is None
 
+    def _tiqr_trust_denied_reason(self, user):
+        """ None if we trust the home site of <user> with tiqr, else the
+        reason for the log. """
+        if self._trusts_user_home_site(user, "sso_allow_tiqr_trusts"):
+            return None
+        return f"site {user.site} not in sso_allow_tiqr_trusts"
+
     def _tiqr_denied_reason(self, user):
         """ Which gate of _resolve_tiqr_allowed() refuses the user, for
         the log; None if none does. """
-        if not self._trusts_user_home_site(user, "sso_allow_tiqr_trusts"):
-            return f"site {user.site} not in sso_allow_tiqr_trusts"
+        reason = self._tiqr_trust_denied_reason(user)
+        if reason is not None:
+            return reason
         if not self._mgmt_allowed(user, "sso_allow_tiqr_mgmt"):
             return "sso_allow_tiqr_mgmt=False"
         try:
@@ -3240,6 +3436,122 @@ class OTPmeSsoP1(OTPmeServer1):
             self._log_tiqr_denied(command, "originator did not allow it", user)
             return True
         return False
+
+    def _tiqr_deploy_forward_args(self, command, user, command_args):
+        """ Portal side of a tiqr deploy for a user of another site.
+
+        deploy_begin and recovery_deploy_begin run on the user's home
+        site, and the QR code it made pointed at itself: the phone
+        enrolled under the home site's service name, and a login at
+        this portal asked for ours -- "unknown identity provider". So
+        we hand it the URL with our FQDN, as tiqr_enroll_begin does, and
+        the phone fetches the metadata and delivers its secret here.
+
+        Which is why sso_allow_tiqr_trusts applies, as for the settings
+        page: the secret passes through this site. Not
+        sso_allow_tiqr_mgmt, which is about the settings card.
+
+        Returns the arguments to forward, or None if we do not trust the
+        user's home site with it. """
+        reason = self._tiqr_trust_denied_reason(user)
+        if reason is not None:
+            self._log_tiqr_denied(command, f"originator: {reason}", user)
+            return None
+        my_site = backend.get_object(object_type="site", uuid=config.site_uuid)
+        forward_args = dict(command_args)
+        forward_args['metadata_url_template'] = \
+                tiqr_helpers.build_metadata_url_template(my_site.sso_fqdn)
+        forward_args['_tiqr_allowed'] = True
+        return forward_args
+
+    def _drop_untrusted_tiqr(self, user, response, key):
+        """ Portal side: take tiqr out of the deploy types the home site
+        of <user> answered with, when we do not trust that site with it
+        (see _tiqr_deploy_forward_args()). The page offers only what the
+        deploy would do. """
+        if not isinstance(response, dict):
+            return response
+        types = response.get(key)
+        if not isinstance(types, list) or "tiqr" not in types:
+            return response
+        if self._trusts_user_home_site(user, "sso_allow_tiqr_trusts"):
+            return response
+        response = dict(response)
+        response[key] = [x for x in types if x != "tiqr"]
+        return response
+
+    def _tiqr_deploy_url_template(self, command, user, command_args, my_site):
+        """ Home side: the metadata URL template for a tiqr deploy.
+
+        The forwarding portal's, when a node of another site sent it and
+        we trust that site with tiqr (_tiqr_refused_from_peer_site()).
+        Taken from nobody else: the recovery deploy has no login, and a
+        QR code pointing at a host of somebody's choosing would hand them
+        the secret. Ours otherwise.
+
+        Returns (template, refused) -- refused True when the portal may
+        not have it. """
+        if self._from_other_site_node():
+            if self._tiqr_refused_from_peer_site(command, user, command_args):
+                return None, True
+            template = command_args.get('metadata_url_template')
+            if isinstance(template, str) and template:
+                return template, False
+        return tiqr_helpers.build_metadata_url_template(my_site.sso_fqdn), False
+
+    def _tiqr_deploy_enrollment(self, command, user, command_args,
+        deploy_name, device_name, login_token_uuid):
+        """ Home side: the enrollment QR code of a tiqr deploy
+        (deploy_begin, recovery_deploy_begin).
+
+        No staging token: the signed grant names <deploy_name> as the
+        token to create, and the regular enrollment (tiqr_enroll_metadata
+        -> tiqr_enroll_finish) creates it once the phone has delivered
+        its secret. <login_token_uuid> is the token the grant names,
+        None for none.
+
+        Returns (enroll_url, qrcode_img, error). On failure the first two
+        are None and <error> is TIQR_DISABLED (the portal may not have
+        it, see _tiqr_deploy_url_template()), ENROLL_FAILED or
+        DEPLOY_FAILED. """
+        my_site = backend.get_object(object_type="site", uuid=config.site_uuid)
+        # The QR code points at the portal the user stands in front of,
+        # see _tiqr_deploy_forward_args().
+        url_template, refused = self._tiqr_deploy_url_template(command, user,
+                                                        command_args, my_site)
+        if refused:
+            return None, None, "TIQR_DISABLED"
+        expiry = time.time() + my_site.get_config_parameter("tiqr_enrollment_expiry")
+        enroll_key = tiqr_helpers.build_enroll_key(
+                                tiqr_token.get_site_secret(),
+                                tiqr_helpers.ENROLL_SCOPE_METADATA,
+                                expiry,
+                                user_uuid=user.uuid,
+                                token_name=deploy_name,
+                                device_name=device_name,
+                                login_token_uuid=login_token_uuid)
+        try:
+            metadata_url = tiqr_helpers.build_metadata_url(url_template,
+                                                        enroll_key)
+        except ValueError as e:
+            log_msg = _("tiqr: rejected metadata URL template: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return None, None, "ENROLL_FAILED"
+        enroll_scheme = my_site.get_config_parameter("tiqr_enroll_scheme")
+        enroll_url = tiqr_helpers.build_enroll_url(enroll_scheme, metadata_url)
+        try:
+            qrcode_data = qrcode.gen_qrcode(enroll_url, fmt="svg")
+            if isinstance(qrcode_data, bytes):
+                qrcode_data = qrcode_data.decode('utf-8')
+            qrcode_img = ("data:image/svg+xml;base64,"
+                        + base64.b64encode(qrcode_data.encode()).decode())
+        except Exception as e:
+            log_msg = _("tiqr: QR code generation failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return None, None, "DEPLOY_FAILED"
+        return enroll_url, qrcode_img, None
 
     def _get_user_tiqr_token(self, user, token_name, sso_token_name,
         command_args):
@@ -4529,6 +4841,7 @@ class OTPmeSsoP1(OTPmeServer1):
                                 verify_acls=False,
                                 callback=callback)
             except Exception as e:
+                config.raise_exception()
                 log_msg = _("Failed to rename the SSO token: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
                 self.logger.warning(log_msg)
@@ -4541,6 +4854,7 @@ class OTPmeSsoP1(OTPmeServer1):
                         verify_acls=False,
                         callback=callback)
         except Exception as e:
+            config.raise_exception()
             log_msg = _("Failed to promote token '{token}': {e}", log=True)[1]
             log_msg = log_msg.format(token=token_name, e=e)
             self.logger.warning(log_msg)
@@ -4646,7 +4960,10 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message':'JWT_INVALID', 'status':False})
-        if self.from_peer_node:
+        # A node of another site only. A node of our own one is our
+        # own portal reaching the master node over the network -- the
+        # one on the master node itself comes through the socket.
+        if self._from_other_site_node():
             if not self._site_trusts_site_for_admin_access(self.peer.site):
                 return self.build_response(False, {
                     'message': 'Admin access not available: peer site is not '
@@ -4691,8 +5008,11 @@ class OTPmeSsoP1(OTPmeServer1):
         # decided the operation was allowed under its own trust list;
         # here on the home side we require reciprocal trust so a peer
         # can't drive admin-access changes on our users without an
-        # explicit admin_access_trusts entry.
-        if self.from_peer_node:
+        # explicit admin_access_trusts entry. Asked of a node of another
+        # site only: the portal on a node of ours that is not the master
+        # sends this over the network too (mgmt=True), and our own users
+        # need no entry.
+        if self._from_other_site_node():
             if not self._site_trusts_site_for_admin_access(self.peer.site):
                 return self.build_response(False, {
                     'message': 'Admin access not available: peer site is not '
@@ -5470,22 +5790,155 @@ class OTPmeSsoP1(OTPmeServer1):
             return None
         return user.token(sso_token_name)
 
-    def _recovery_type_allowed(self, user, sso_token):
-        """ True iff:
-              * the SSO-token type is one the recovery deploy flow
-                actually implements (SSO_RECOVERY_DEPLOY_TYPES), and
-              * the user's site/unit/user cascade lists that type in
-                ``allow_sso_token_recovery``.
-        The admin's cascade is authoritative for policy; the
-        implementation gate only refuses types the deploy handlers
-        don't have a branch for. Default cascade (empty list)
-        disables recovery entirely. """
-        if sso_token is None:
+    def _recovery_deploy_targets(self, user):
+        """ The role and access group UUIDs of the user's
+        sso_token_deploy_roles and sso_token_deploy_accessgroups.
+
+        The user's whole cascade, objects of every site included. Which
+        of them a token really goes into is decided where each of them
+        lives, see _recovery_add_memberships(). """
+        roles = user.get_config_parameter("sso_token_deploy_roles",
+                                        apply_getter=False) or []
+        accessgroups = user.get_config_parameter("sso_token_deploy_accessgroups",
+                                                apply_getter=False) or []
+        return list(roles), list(accessgroups)
+
+    def _recovery_may_create(self, user):
+        """ May the recovery create the SSO token the user does not have?
+
+        Only where the administrator named roles or access groups for
+        it. Until now a user got an SSO token from an administrator, and
+        a mail link alone must not change that. And only where there is
+        a type to create, or the mail would lead nowhere. """
+        roles, accessgroups = self._recovery_deploy_targets(user)
+        if not roles and not accessgroups:
             return False
-        if sso_token.token_type not in SSO_RECOVERY_DEPLOY_TYPES:
+        for token_type in SSO_RECOVERY_DEPLOY_TYPES:
+            if self._recovery_type_allowed(user, token_type):
+                return True
+        return False
+
+    def _recovery_type_allowed(self, user, token_type):
+        """ True iff:
+              * the type is one the recovery deploy flow actually
+                implements (SSO_RECOVERY_DEPLOY_TYPES), and
+              * the user's site/unit/user cascade lists it in
+                ``allow_sso_token_recovery``.
+
+        With an SSO token its type is the one asked about. Without one
+        there is only the type the user picks for the token the
+        recovery creates. The default cascade (empty list) disables
+        recovery entirely. """
+        if token_type not in SSO_RECOVERY_DEPLOY_TYPES:
             return False
         allowed = user.get_config_parameter("allow_sso_token_recovery") or []
-        return sso_token.token_type in allowed
+        return token_type in allowed
+
+    def _sso_token_deploy_trusts(self):
+        """ Our sso_token_deploy_trusts, as stored: "<site uuid>" and
+        "<site uuid>:<object uuid>". An unreadable list grants nothing. """
+        site = backend.get_object(object_type="site", uuid=config.site_uuid)
+        if site is None:
+            return []
+        try:
+            trusts = site.get_config_parameter("sso_token_deploy_trusts",
+                                            apply_getter=False)
+        except Exception as e:
+            log_msg = _("Failed to read sso_token_deploy_trusts: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return []
+        return trusts or []
+
+    def _recovery_add_memberships(self, user, token, role_uuids,
+        accessgroup_uuids, callback, peer_versions=None):
+        """ Put a token the recovery just created into our roles and
+        access groups of the given ones.
+
+        Runs on the portal, which is where the token belongs to: its
+        name is the portal's default_sso_token_name. Only our own
+        objects, as those are the only ones we may write -- the others
+        named are another site's to decide, at its own portal. A user of
+        another site gets into one of them only where our
+        sso_token_deploy_trusts lists the user's site and that object:
+        the list comes from their home site, and that site cannot say
+        which of our objects its users get.
+
+        Never fatal. The token is created already; a membership that
+        fails is logged.
+
+        What our trusts refuse is logged as a warning, not for debug:
+        unlike a device token role that is not offered, the token is
+        there, and without its memberships the user cannot sign in with
+        it -- while the page says the recovery worked. An object of
+        another site is no mistake and is skipped without a word. """
+        foreign_user = user.site != config.site
+        trusts = []
+        if foreign_user:
+            trusts = self._sso_token_deploy_trusts()
+            if user.site_uuid not in trusts:
+                log_msg = _("Recovery deploy: site '{site}' not in sso_token_deploy_trusts, token '{token}' gets no memberships.", log=True)[1]
+                log_msg = log_msg.format(site=user.site, token=token.rel_path)
+                self.logger.warning(log_msg)
+                return
+        token_path = f"{user.name}/{token.name}"
+        added = []
+        for object_type, object_uuids in (('role', role_uuids),
+                                        ('accessgroup', accessgroup_uuids)):
+            for object_uuid in object_uuids or []:
+                if not isinstance(object_uuid, str):
+                    continue
+                x_object = backend.get_object(object_type=object_type,
+                                            uuid=object_uuid)
+                if x_object is None:
+                    continue
+                if x_object.site != config.site:
+                    continue
+                if foreign_user:
+                    trust = f"{user.site_uuid}:{x_object.uuid}"
+                    if trust not in trusts:
+                        log_msg = _("Recovery deploy: {object_type} '{name}' not listed for site '{site}' in sso_token_deploy_trusts.", log=True)[1]
+                        log_msg = log_msg.format(object_type=object_type,
+                                                name=x_object.name,
+                                                site=user.site)
+                        self.logger.warning(log_msg)
+                        continue
+                try:
+                    x_object.add_token(token_path=token_path,
+                                        force=True,
+                                        verify_acls=False,
+                                        run_policies=False,
+                                        callback=callback)
+                    x_object._write(callback=callback)
+                except Exception as e:
+                    log_msg = _("Recovery deploy: failed to add token '{token}' to {object_type} '{name}': {e}", log=True)[1]
+                    log_msg = log_msg.format(token=token.rel_path,
+                                            object_type=object_type,
+                                            name=x_object.name,
+                                            e=e)
+                    self.logger.warning(log_msg)
+                    continue
+                added.append(x_object)
+                log_msg = _("Recovery deploy: added token '{token}' to {object_type} '{name}'.", log=True)[1]
+                log_msg = log_msg.format(token=token.rel_path,
+                                        object_type=object_type,
+                                        name=x_object.name)
+                self.logger.info(log_msg)
+        # Nothing of ours at all -- refused, failed, or every entry names
+        # another site's object. The page says the recovery worked.
+        if not added:
+            log_msg = _("Recovery deploy: token '{token}' got no role or access group here, the user cannot sign in with it.", log=True)[1]
+            log_msg = log_msg.format(token=token.rel_path)
+            self.logger.warning(log_msg)
+            return
+        # The home site decides a login against its copy of our
+        # objects. Handed to it now the login works at once; the sync
+        # is asked to hurry in case that failed.
+        if foreign_user:
+            self._mirror_objects_to_home(user, added,
+                                        flow="Recovery deploy",
+                                        peer_versions=peer_versions or {})
+            self._notify_sync_peers("Recovery deploy")
 
     def _recovery_hash(self, raw_token):
         """ Persistent storage form of a raw recovery token. """
@@ -5562,9 +6015,10 @@ class OTPmeSsoP1(OTPmeServer1):
         # ---- User-config prerequisites ---------------------------------
         sso_token = self._recovery_lookup_target_token(user, command_args)
         if sso_token is None:
-            sso_token_name = self._sso_token_name(command_args)
-            return _skip(f"user '{user.name}' has no token named '{sso_token_name}' (default_sso_token_name)")
-        if not self._recovery_type_allowed(user, sso_token):
+            if not self._recovery_may_create(user):
+                sso_token_name = self._sso_token_name(command_args)
+                return _skip(f"user '{user.name}' has no token named '{sso_token_name}' (default_sso_token_name) and no sso_token_deploy_roles/sso_token_deploy_accessgroups to create one")
+        elif not self._recovery_type_allowed(user, sso_token.token_type):
             allowed = user.get_config_parameter("allow_sso_token_recovery") or []
             return _skip(f"SSO token '{sso_token.name}' type '{sso_token.token_type}' for user '{user.name}' not in allow_sso_token_recovery={allowed} (deploy-supported: {list(SSO_RECOVERY_DEPLOY_TYPES)})")
         values = user.get_attribute("otpmeRecoveryMail") or []
@@ -5661,34 +6115,38 @@ class OTPmeSsoP1(OTPmeServer1):
         hash+TTL and return the SSO-token metadata needed to render
         the deploy form. All failure paths return the same 'invalid'
         response shape -- no distinguishing state for attackers. """
-        raw_token = command_args.get('recovery_token')
-        if not isinstance(username, str) or not username:
-            return self._recovery_invalid()
-        if not isinstance(raw_token, str) or not raw_token:
-            return self._recovery_invalid()
-        user = backend.get_object(object_type="user",
-                                name=username,
-                                realm=config.realm)
-        if user is None:
-            return self._recovery_invalid()
+        user, err = self._recovery_gate(username, command_args)
+        if err is not None:
+            return err
         if user.site != config.site:
-            return self.ssod_redirect_command(command="get_sso_token_recovery_info",
-                                            user=user,
-                                            command_args=command_args,
-                                            mgmt=True)
-        if not user.get_config_parameter("allow_sso_account_recovery"):
-            return self._recovery_invalid()
-        if not self._recovery_verify_stored(user, raw_token):
-            return self._recovery_invalid()
-        sso_token = self._recovery_lookup_target_token(user, command_args)
-        if not self._recovery_type_allowed(user, sso_token):
-            return self._recovery_invalid()
+            status, response = self._remote_ssod_call(
+                                        user=user,
+                                        command="get_sso_token_recovery_info",
+                                        extra_args=command_args,
+                                        mgmt=True)
+            response = self._drop_untrusted_tiqr(user, response,
+                                                "allowed_deploy_types")
+            return self.build_response(status, response)
+        sso_token, err = self._recovery_gate_home(user, command_args)
+        if err is not None:
+            return err
         # Deploy-time type choices: same site/unit/user gate map as
         # the auth-flow get_allowed_deploy_token_types uses, so the
         # recovery-complete UI renders the same button set the
         # regular /deploy page would.
         allowed_deploy_types = [tt for tt in DEPLOY_TOKEN_TYPES
                                 if self._deploy_type_allowed(user, tt)]
+        if sso_token is None:
+            # A token to create: its type is the one asked about.
+            allowed_deploy_types = [tt for tt in allowed_deploy_types
+                                if self._recovery_type_allowed(user, tt)]
+            return self.build_response(True, {
+                    'valid':                True,
+                    'status':               True,
+                    'sso_token_name':       self._sso_token_name(command_args),
+                    'sso_token_type':       None,
+                    'allowed_deploy_types': allowed_deploy_types,
+                })
         return self.build_response(True, {
                 'valid':                True,
                 'status':               True,
@@ -5721,14 +6179,21 @@ class OTPmeSsoP1(OTPmeServer1):
         """ Second half of the gate, only called after any cross-site
         forwarding was already resolved by the caller. Verifies the
         stored token hash + freshness and returns the SSO target
-        token (never None on success). """
+        token. None on success means the user has none and the
+        recovery creates it (_recovery_may_create()); the caller then
+        gates the type the user picks with
+        _recovery_type_allowed(). """
         if not user.get_config_parameter("allow_sso_account_recovery"):
             return None, self._recovery_invalid()
         raw_token = command_args.get('recovery_token')
         if not self._recovery_verify_stored(user, raw_token):
             return None, self._recovery_invalid()
         sso_token = self._recovery_lookup_target_token(user, command_args)
-        if not self._recovery_type_allowed(user, sso_token):
+        if sso_token is None:
+            if not self._recovery_may_create(user):
+                return None, self._recovery_invalid()
+            return None, None
+        if not self._recovery_type_allowed(user, sso_token.token_type):
             return None, self._recovery_invalid()
         return sso_token, None
 
@@ -5747,9 +6212,16 @@ class OTPmeSsoP1(OTPmeServer1):
         if err is not None:
             return err
         if user.site != config.site:
+            forward_args = command_args
+            if token_type == "tiqr":
+                forward_args = self._tiqr_deploy_forward_args(
+                                                "recovery_deploy_begin",
+                                                user, command_args)
+                if forward_args is None:
+                    return self._recovery_invalid()
             return self.ssod_redirect_command(command="recovery_deploy_begin",
                                             user=user,
-                                            command_args=command_args,
+                                            command_args=forward_args,
                                             mgmt=True)
         sso_token, err = self._recovery_gate_home(user, command_args)
         if err is not None:
@@ -5764,6 +6236,15 @@ class OTPmeSsoP1(OTPmeServer1):
             return self._recovery_invalid()
         if not self._deploy_type_allowed(user, token_type):
             return self._recovery_invalid()
+        # No SSO token: the one to be created, of the type asked about.
+        if sso_token is None:
+            if not self._recovery_type_allowed(user, token_type):
+                return self._recovery_invalid()
+            sso_token_name = self._sso_token_name(command_args)
+            login_token_uuid = None
+        else:
+            sso_token_name = sso_token.name
+            login_token_uuid = sso_token.uuid
         # Password: no staging token. recovery_deploy_verify creates
         # the token with the user's chosen credential in one shot via
         # add_token(replace=True). No placeholder, no double-policy-
@@ -5771,7 +6252,7 @@ class OTPmeSsoP1(OTPmeServer1):
         if token_type == "password":
             response = {
                         'token_type'                : token_type,
-                        'deploy_login_token_name'   : sso_token.name,
+                        'deploy_login_token_name'   : sso_token_name,
                         'status'                    : True,
                     }
             log_msg = _("Recovery deploy started for user '{u}' (type 'password', no staging token).", log=True)[1]
@@ -5811,6 +6292,9 @@ class OTPmeSsoP1(OTPmeServer1):
         # membership -- but naming it makes the enrollment refuse if it
         # disappeared in the meantime, which would leave the move with
         # nothing to replace and the new token without any reach.
+        # Without an SSO token the grant names none: the reach then
+        # comes from sso_token_deploy_roles/accessgroups, which
+        # recovery_deploy_verify adds the token to.
         # Same as in deploy_begin: the types the SSO role can move
         # between are named by their owner, and the name has to be
         # usable before anything is created.
@@ -5829,38 +6313,16 @@ class OTPmeSsoP1(OTPmeServer1):
             if error is not None:
                 return error
         if token_type == "tiqr":
-            my_site = backend.get_object(object_type="site",
-                                        uuid=config.site_uuid)
-            expiry = time.time() + my_site.get_config_parameter("tiqr_enrollment_expiry")
-            enroll_key = tiqr_helpers.build_enroll_key(
-                                    tiqr_token.get_site_secret(),
-                                    tiqr_helpers.ENROLL_SCOPE_METADATA,
-                                    expiry,
-                                    user_uuid=user.uuid,
-                                    token_name=deploy_name,
-                                    device_name=device_name,
-                                    login_token_uuid=sso_token.uuid)
-            url_template = tiqr_helpers.build_metadata_url_template(my_site.sso_fqdn)
-            metadata_url = tiqr_helpers.build_metadata_url(url_template,
-                                                        enroll_key)
-            enroll_scheme = my_site.get_config_parameter("tiqr_enroll_scheme")
-            enroll_url = tiqr_helpers.build_enroll_url(enroll_scheme,
-                                                    metadata_url)
-            try:
-                qrcode_data = qrcode.gen_qrcode(enroll_url, fmt="svg")
-                if isinstance(qrcode_data, bytes):
-                    qrcode_data = qrcode_data.decode('utf-8')
-                qrcode_img = ("data:image/svg+xml;base64,"
-                            + base64.b64encode(qrcode_data.encode()).decode())
-            except Exception as e:
-                log_msg = _("Recovery deploy: tiqr QR code generation failed for '{u}': {e}", log=True)[1]
-                log_msg = log_msg.format(u=user.name, e=e)
-                self.logger.warning(log_msg)
+            enroll_url, qrcode_img, error = self._tiqr_deploy_enrollment(
+                                                "recovery_deploy_begin", user,
+                                                command_args, deploy_name,
+                                                device_name, login_token_uuid)
+            if error is not None:
                 return self._recovery_invalid()
             response = {
                         'token_type'                : token_type,
                         'deploy_token_name'         : deploy_name,
-                        'deploy_login_token_name'   : sso_token.name,
+                        'deploy_login_token_name'   : sso_token_name,
                         'enroll_url'                : enroll_url,
                         'qrcode_img'                : qrcode_img,
                         'status'                    : True,
@@ -5892,7 +6354,7 @@ class OTPmeSsoP1(OTPmeServer1):
         response = {
                     'token_type'                : token_type,
                     'deploy_token_name'         : deploy_name,
-                    'deploy_login_token_name'   : sso_token.name,
+                    'deploy_login_token_name'   : sso_token_name,
                     'status'                    : True,
                 }
         # FIDO2: WebAuthn dance provides the credential, no secret/QR.
@@ -6080,18 +6542,24 @@ class OTPmeSsoP1(OTPmeServer1):
         moves it in place of the user's default_sso_token_name
         (never a client-supplied target -- prevents pivoting). On
         success clears the recovery token from the user object so
-        the link is single-use. """
+        the link is single-use.
+
+        A user without an SSO token gets one created here, where
+        _recovery_may_create() allows it, and the portal adds it to its
+        roles and access groups of sso_token_deploy_roles and
+        sso_token_deploy_accessgroups (_recovery_add_memberships()). """
         user, err = self._recovery_gate(username, command_args)
         if err is not None:
             return err
         if user.site != config.site:
-            return self.ssod_redirect_command(command="recovery_deploy_verify",
-                                            user=user,
-                                            command_args=command_args,
-                                            mgmt=True)
+            return self._recovery_deploy_verify_remote(user, command_args)
         sso_token, err = self._recovery_gate_home(user, command_args)
         if err is not None:
             return err
+        if sso_token is None:
+            sso_token_name = self._sso_token_name(command_args)
+        else:
+            sso_token_name = sso_token.name
         callback = self.get_callback()
         callback.raise_exception = True
         token_data = command_args.get('token_data') or {}
@@ -6108,10 +6576,14 @@ class OTPmeSsoP1(OTPmeServer1):
                 return self._recovery_invalid()
             if confirm is not None and confirm != new_password:
                 return self._recovery_invalid()
+            if sso_token is None:
+                if not self._recovery_type_allowed(user, "password"):
+                    return self._recovery_invalid()
             try:
-                user.add_token(token_name=sso_token.name,
+                # replace=True wants a token to replace.
+                user.add_token(token_name=sso_token_name,
                                 token_type="password",
-                                replace=True,
+                                replace=sso_token is not None,
                                 password=new_password,
                                 no_token_infos=True,
                                 force=True,
@@ -6136,6 +6608,9 @@ class OTPmeSsoP1(OTPmeServer1):
             deploy_token = user.token(deploy_name)
             if not deploy_token:
                 return self._recovery_invalid()
+            if sso_token is None:
+                if not self._recovery_type_allowed(user, deploy_token.token_type):
+                    return self._recovery_invalid()
             if deploy_token.token_type == "fido2":
                 if not deploy_token.credential_data:
                     return self._recovery_invalid()
@@ -6169,7 +6644,9 @@ class OTPmeSsoP1(OTPmeServer1):
                     return self._recovery_invalid()
                 if not verify_result:
                     return self._recovery_invalid()
-            target_path = f"{user.name}/{sso_token.name}"
+            # replace=True also when there is no token to replace:
+            # move() asks only about one that exists.
+            target_path = f"{user.name}/{sso_token_name}"
             try:
                 deploy_token.move(target_path,
                                 replace=True,
@@ -6201,7 +6678,96 @@ class OTPmeSsoP1(OTPmeServer1):
         log_msg = _("Recovery deploy complete for user '{u}'.", log=True)[1]
         log_msg = log_msg.format(u=user.name)
         self.logger.info(log_msg)
-        return self.build_response(True, {'status': True})
+        if sso_token is not None:
+            # A replaced token keeps its memberships: the new one took
+            # over its UUID.
+            return self.build_response(True, {'status': True})
+        return self._recovery_created_token_reach(user, sso_token_name,
+                                                command_args, callback)
+
+    def _recovery_created_token_reach(self, user, sso_token_name,
+        command_args, callback):
+        """ The end of recovery_deploy_verify for a token it created: its
+        roles and access groups of sso_token_deploy_roles and
+        sso_token_deploy_accessgroups.
+
+        Added here when we are the portal. Else the portal adds the
+        token to its own of them and needs the token for it, so it goes
+        back with the answer, see _recovery_deploy_verify_remote(). """
+        response = {'status': True}
+        new_token = user.token(sso_token_name)
+        if new_token is None:
+            return self.build_response(True, response)
+        role_uuids, accessgroup_uuids = self._recovery_deploy_targets(user)
+        if self._portal_site(command_args) == config.site:
+            # We are the portal: our objects are ours to write.
+            self._recovery_add_memberships(user, new_token, role_uuids,
+                                        accessgroup_uuids, callback)
+            return self.build_response(True, response)
+        # The portal is another site. It adds the token to its own
+        # objects, and needs the token for it, see
+        # _recovery_deploy_verify_remote().
+        response['sso_token_created'] = True
+        response['sso_token_deploy_roles'] = role_uuids
+        response['sso_token_deploy_accessgroups'] = accessgroup_uuids
+        # What our code reads, for the copy of its roles and access
+        # groups the portal hands back (_mirror_objects_to_home()).
+        response['config_versions'] = config.get_config_versions()
+        response = self._token_sync_config(new_token, response, None)
+        return self.build_response(True, response)
+
+    def _recovery_deploy_verify_remote(self, user, command_args):
+        """ recovery_deploy_verify for a user of another site.
+
+        The home site verifies and creates the token. When it created
+        one, it sends it back with the roles and access groups of the
+        user's cascade, and we add it to ours of them -- the home site
+        cannot write our objects, and it is not the one to decide which
+        of them its users get (_recovery_add_memberships()).
+
+        _remote_ssod_call rather than ssod_redirect_command, because we
+        need the payload. What we read of it does not go on to the
+        browser. """
+        status, remote_resp = self._remote_ssod_call(user=user,
+                                        command="recovery_deploy_verify",
+                                        extra_args=command_args,
+                                        mgmt=True)
+        if not isinstance(remote_resp, dict):
+            return self.build_response(status, remote_resp)
+        response = dict(remote_resp)
+        created = response.pop('sso_token_created', False)
+        role_uuids = response.pop('sso_token_deploy_roles', None) or []
+        accessgroup_uuids = response.pop('sso_token_deploy_accessgroups', None) or []
+        # A home site that says nothing runs code from before the
+        # versions were counted and reads version 1, as in the sync.
+        peer_versions = response.pop('config_versions', None)
+        if not isinstance(peer_versions, dict):
+            peer_versions = {}
+        for key in ('token_full_oid', 'token_oc', 'login_token_uuid'):
+            response.pop(key, None)
+        if not status or not created:
+            return self.build_response(status, response)
+        token = self._mirror_remote_token(user, remote_resp,
+                                        flow="Recovery deploy")
+        if token is None:
+            return self.build_response(status, response)
+        # Our own token only: the one named by our default_sso_token_name,
+        # of the user the recovery was for. We are the portal.
+        own_sso_token_name = self._sso_token_name({'portal_site': config.site})
+        if token.owner_uuid != user.uuid \
+        or token.name != own_sso_token_name:
+            log_msg = _("Recovery deploy: home site '{site}' sent token '{token}', not the SSO token of user '{user_name}'.", log=True)[1]
+            log_msg = log_msg.format(site=user.site,
+                                    token=token.rel_path,
+                                    user_name=user.name)
+            self.logger.warning(log_msg)
+            return self.build_response(status, response)
+        callback = self.get_callback()
+        callback.raise_exception = True
+        self._recovery_add_memberships(user, token, role_uuids,
+                                    accessgroup_uuids, callback,
+                                    peer_versions=peer_versions)
+        return self.build_response(status, response)
 
     def change_language(self, username, sso_jwt, command_args):
         """ Persist the user's preferred UI language on the User object.
@@ -7470,6 +8036,8 @@ class OTPmeSsoP1(OTPmeServer1):
         # Same as in ssod_redirect_command(): the home site has to know
         # which portal is asking, not just which site it is itself.
         forward_args['portal_site'] = config.site
+        # And what our code reads, see ssod_redirect_command().
+        forward_args['config_versions'] = config.get_config_versions()
         try:
             ssod_conn = connections.get("ssod",
                                         mgmt=mgmt,
@@ -10465,6 +11033,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             "sso_create_device_token",
                             "sso_delete_device_token",
                             "sso_get_device_token_role_uuids",
+                            "sso_mirror_portal_objects",
                             "get_admin_access_state",
                             "set_admin_access_state",
                             "get_recovery_mail",
@@ -10520,6 +11089,16 @@ class OTPmeSsoP1(OTPmeServer1):
             message = message.format(command=command)
             status = False
             return self.build_response(status, message)
+        # What the code of a node that forwards to us reads, said by
+        # ssod_redirect_command() and _remote_ssod_call(). An object
+        # config we hand it to mirror goes down to that version, as in
+        # the sync (sync1.py). A node that says nothing runs code from
+        # before the versions were counted and reads version 1.
+        self.peer_config_versions = {}
+        if isinstance(command_args, dict):
+            peer_versions = command_args.get('config_versions')
+            if isinstance(peer_versions, dict):
+                self.peer_config_versions = peer_versions
 
         if not config.use_api:
             try:
@@ -10551,6 +11130,12 @@ class OTPmeSsoP1(OTPmeServer1):
                 'maintenance': maintenance.is_active(),
             })
 
+        # Sent by a node of another site, not by a user: who may send it
+        # is the peer, see sso_mirror_portal_objects().
+        if command == "sso_mirror_portal_objects":
+            log_msg = _("Processing command sso_mirror_portal_objects.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.sso_mirror_portal_objects(command_args)
         if command in tiqr_device_commands:
             log_msg = _("Processing tiqr device command {command}.", log=True)[1]
             log_msg = log_msg.format(command=command)

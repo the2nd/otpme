@@ -31,14 +31,6 @@ Only for \fBotpme\-agent\fR: how long the agent waits for an answer when it rene
 .B \-c \fIconfig_file\fR
 Use alternative config file.
 .TP
-.B \-\-no\-dns
-Do not resolve OTPme site address via DNS.
-This is the default, see \fBUSE_DNS\fR in
-.BR otpme.conf (5).
-.TP
-.B \-\-use\-dns
-Resolve OTPme site address via DNS.
-.TP
 .B \-\-login\-no\-dns
 Do not resolve OTPme login point via DNS.
 .TP
@@ -89,7 +81,7 @@ OTPme prints a warning in this case.
 .TP
 .B \-\-type \fIobject_type\fR
 Object type to act on, for example the token type.
-It goes before the command, for example \fBotpme\-token \-\-type totp add alice/totp\fR.
+It may stand anywhere on the line, for example \fBotpme\-token \-\-type totp add alice/totp\fR.
 .TP
 .B \-f
 Do not ask any questions: every confirmation counts as answered with yes.
@@ -304,7 +296,8 @@ Do not lock objects while changing them.
 This only has an effect with \fB\-\-api\fR, because normally mgmtd does the locking.
 Only use it when nothing else changes objects at the same time: changes can get lost.
 .SS Daemon Options
-These options are used when starting the daemons with \fBotpme\-controld\fR.
+These options are used when starting the daemons with \fBotpme\-controld\fR, see
+.BR otpme\-controld (8).
 .TP
 .B \-l \fIfile\fR
 Write the log to this file instead of stdout.
@@ -323,12 +316,37 @@ hostd syncs objects even if they change while syncing.
 .TP
 .B \-\-keep\-floating\-ip
 On the master node: do not remove the floating IP when the daemons stop.
+.SH SELECTING OBJECTS
+.B show
+and
+.B list
+take a name, and what they do with it is the same on every page.
+.TP
+.B show \fIname\fR
+The name of an object prints that object, one value per line.
+.TP
+.B show \fIname\fB$\fR
+The same object as a row of the table, as without a name.
+The \fB$\fR makes it no name of an object, and it is dropped before the search.
+.TP
+.B show \fIpattern\fR, \fBlist \fIpattern\fR
+Anything else is a pattern: \fB*\fR stands for any text, everything else for itself, and upper and lower case differ.
+\fBber*\fR finds \fBberlin\fR and \fBbern\fR.
+It is no regex: a \fB.\fR is a dot.
+.B list
+takes no \fB$\fR.
+.TP
+.B show \fIunit\fB/\fR, \fBlist \fIunit\fB/\fR
+A unit path that ends with \fB/\fR, e.g.\& \fBdevices/\fR or \fB/example.org/berlin/devices/\fR, asks for the objects of that unit; its sub units are not part of it.
 .SH SEE ALSO
 .BR otpme (7),
 .BR otpme.conf (5),
 .BR pam_otpme (8),
+.BR otpme-controld (8),
 .BR otpme-accessgroup (1),
+.BR otpme-aclgroup (1),
 .BR otpme-backup (1),
+.BR local-backup (1),
 .BR otpme-ca (1),
 .BR otpme-client (1),
 .BR otpme-cluster (1),
@@ -338,6 +356,7 @@ On the master node: do not remove the floating IP when the daemons stop.
 .BR otpme-group (1),
 .BR otpme-host (1),
 .BR otpme-inventory (1),
+.BR otpme-mount (1),
 .BR otpme-node (1),
 .BR otpme-pass (1),
 .BR otpme-policy (1),

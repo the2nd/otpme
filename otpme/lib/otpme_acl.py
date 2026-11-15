@@ -41,7 +41,7 @@ def denied_msg(o, acls, others=None):
     It names what would have done: any of <acls> on <o>, and each
     (object, acls) of <others>, e.g. delete:object on a group or
     delete:group on its unit. "Permission denied." alone left the user
-    to guess. The ACLs are no secret, otpme-acls(7) lists them, and a
+    to guess. The ACLs are no secret, tab completion offers them, and a
     refusal says the object is there anyway.
     """
     if isinstance(acls, str):
@@ -173,10 +173,11 @@ def decode(acl):
         else:
             if acl_owner_type == "role":
                 # Role from other realm (e.g. /otpme.org/berlin/Role1)
+                # The leading slash makes the first part empty.
                 if x.startswith("/"):
-                    object_realm = x.split("/")[0]
-                    object_site = x.split("/")[1]
-                    object_name = x.split("/")[2]
+                    object_realm = x.split("/")[1]
+                    object_site = x.split("/")[2]
+                    object_name = x.split("/")[3]
                 else:
                     # Role from own realm (e.g. berlin/Role1)
                     object_realm = config.realm
@@ -187,9 +188,9 @@ def decode(acl):
             if acl_owner_type == "token":
                 # Token from other realm (e.g. /otpme.org/user1/token1)
                 if x.startswith("/"):
-                    object_realm = x.split("/")[0]
+                    object_realm = x.split("/")[1]
                     object_site = None
-                    object_rel_path = "/".join(x.split("/")[1:])
+                    object_rel_path = "/".join(x.split("/")[2:])
                 else:
                     # Token from own realm (e.g. user1/token1)
                     object_realm = config.realm
@@ -337,6 +338,12 @@ def get_aclgroup_uuid(aclgroup):
     aclgroup_name = aclgroup
     if "/" in aclgroup:
         aclgroup_site, aclgroup_name = aclgroup.split("/", 1)
+    # As it is stored, see Aclgroup._set_name(): @usermanager is the
+    # base group USERMANAGER, any other name is in lower case.
+    if aclgroup_name.upper() in config.get_base_objects("aclgroup"):
+        aclgroup_name = aclgroup_name.upper()
+    else:
+        aclgroup_name = aclgroup_name.lower()
     result = backend.search(object_type="aclgroup",
                             attribute="name",
                             value=aclgroup_name,
@@ -366,13 +373,26 @@ def resolve_aclgroup_acl(acl_id):
         aclgroup_name = f"{object_id.site}/{aclgroup_name}"
     return f"{prefix}@{aclgroup_name}"
 
-ACLGROUP_ATTRIBUTES = ['uuid', 'enabled', 'entry', 'aclgroup']
+ACLGROUP_ATTRIBUTES = ['uuid', 'enabled', 'entry', 'inherit', 'site']
+
+def get_aclgroup_site(aclgroup_data):
+    """ The site of an ACL group, as the index returns it. """
+    x_site = aclgroup_data.get('site')
+    if isinstance(x_site, list):
+        if not x_site:
+            return None
+        return x_site[0]
+    return x_site
 
 def get_aclgroup_acls(aclgroup_uuid, object_type):
     """ What the ACL group grants on an object of the given type: its
-    entries for the type, and those of the groups it is a member of, and
-    so on up. A disabled group grants nothing, and passes nothing on.
+    entries for the type, and those of the groups it inherits from, and
+    so on. A disabled group grants nothing, and passes nothing on.
     Groups may come round to one seen before: every group counts once.
+
+    The list of the groups a group inherits from is on that group, so
+    only its own site writes it (Aclgroup.add_aclgroup()), and a group
+    of another site in it does not count: it is kept there.
 
     Read from the index, so the search cache keeps it, and a write of an
     ACL group throws it away (backend.outdate_object()). """
@@ -383,13 +403,18 @@ def get_aclgroup_acls(aclgroup_uuid, object_type):
                             attribute="uuid",
                             value=aclgroup_uuid,
                             return_attributes=ACLGROUP_ATTRIBUTES)
+    aclgroup_site = None
+    if aclgroup_uuid in result:
+        aclgroup_site = get_aclgroup_site(result[aclgroup_uuid])
     while result:
-        check_uuids = []
+        next_uuids = []
         for x_uuid in result:
             if x_uuid in seen:
                 continue
             seen.append(x_uuid)
             x_data = result[x_uuid]
+            if get_aclgroup_site(x_data) != aclgroup_site:
+                continue
             try:
                 x_enabled = x_data['enabled'][0]
             except Exception:
@@ -402,34 +427,48 @@ def get_aclgroup_acls(aclgroup_uuid, object_type):
                 x_acl = x_entry[len(prefix):]
                 if x_acl not in acls:
                     acls.append(x_acl)
-            check_uuids.append(x_uuid)
-        if not check_uuids:
+            for x_inherited in x_data.get('inherit') or []:
+                if x_inherited in seen:
+                    continue
+                next_uuids.append(x_inherited)
+        if not next_uuids:
             break
-        # The groups these are members of.
+        # The groups these inherit from.
         result = backend.search(object_type="aclgroup",
-                                attribute="aclgroup",
-                                values=check_uuids,
+                                attribute="uuid",
+                                values=next_uuids,
                                 return_attributes=ACLGROUP_ATTRIBUTES)
     return acls
 
 def get_entry_aclgroups(entries):
     """ The ACL groups that grant one of the given entries
     (<object_type>:<acl>): those that hold it, if enabled, and the
-    enabled groups that are members of those, and so on down. The other
-    way round of get_aclgroup_acls(), for a search by ACL. """
+    enabled groups that inherit from those, and so on. The other way
+    round of get_aclgroup_acls(), for a search by ACL: a group counts
+    only through one of its own site, as there. """
     aclgroups = []
     seen = []
+    # The site of each group found to grant it.
+    granting_sites = {}
     result = backend.search(object_type="aclgroup",
                             attribute="entry",
                             values=list(entries),
                             return_attributes=ACLGROUP_ATTRIBUTES)
+    holders = True
     while result:
-        member_uuids = []
+        next_uuids = []
         for x_uuid in result:
             if x_uuid in seen:
                 continue
-            seen.append(x_uuid)
             x_data = result[x_uuid]
+            x_site = get_aclgroup_site(x_data)
+            # One that inherits: only from a group of its own site.
+            if not holders:
+                inherited = x_data.get('inherit') or []
+                if not [x for x in inherited
+                        if granting_sites.get(x) == x_site]:
+                    continue
+            seen.append(x_uuid)
             try:
                 x_enabled = x_data['enabled'][0]
             except Exception:
@@ -437,14 +476,15 @@ def get_entry_aclgroups(entries):
             if not x_enabled:
                 continue
             aclgroups.append(x_uuid)
-            for x_member in x_data.get('aclgroup') or []:
-                if x_member not in seen:
-                    member_uuids.append(x_member)
-        if not member_uuids:
+            granting_sites[x_uuid] = x_site
+            next_uuids.append(x_uuid)
+        if not next_uuids:
             break
+        holders = False
+        # The groups that inherit from these.
         result = backend.search(object_type="aclgroup",
-                                attribute="uuid",
-                                values=member_uuids,
+                                attribute="inherit",
+                                values=next_uuids,
                                 return_attributes=ACLGROUP_ATTRIBUTES)
     return aclgroups
 

@@ -1,22 +1,107 @@
-.TH OTPME-REALM 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.TH OTPME-REALM 1 "2026-11-07" "OTPme 0.3.0a288" "OTPme Manual"
 .SH NAME
-otpme-realm \- manage OTPme realms
+otpme-realm \- set up a realm and manage the object at the top of it
 .SH SYNOPSIS
 .B otpme-realm
 .I command
 [\fIoptions\fR] [\fIrealm\fR]
 .SH DESCRIPTION
-.B otpme-realm
-manages realms in the OTPme system. A realm is the top-level organizational unit that contains all objects (users, tokens, hosts, nodes, groups, etc.). The realm is initialized with a CA hierarchy and a master site.
+A realm is the whole of an OTPme installation: its sites, and in them the units, users, tokens, hosts and all the rest.
+Its name is usually a DNS domain, e.g. \fBexample.org\fR, and it is the top entry of the LDAP tree, \fBdc=example,dc=org\fR.
+.PP
+The realm object is what this command works on.
+It holds the CA data of the realm, which site is its master site, its ACLs, its auth on action policy and its LDAP attributes.
+It holds no key, no secret and no config parameter.
+.PP
+\fBinit\fR creates the realm with its CA and its master site, on the first machine.
+Further sites are added on the master site with \fBotpme\-site add\fR, see
+.BR otpme\-site (1).
+.PP
+\fBThe realm is changed on its master site.\fR
+Every site has a copy of it, and the sync brings the one of the master site.
+On another site only its own description of the realm can be set, and \fBtouch\fR and the switches for authentication and sync run there.
+.PP
+There is one realm for now.
+Adding another realm, to trust it and its users, is not implemented yet.
+.PP
+For the bigger picture \(em realms, sites, how a login runs across them \(em see
+.BR otpme (7).
 .SH COMMANDS
 .SS Realm Initialization
 .TP
 .B init \fR[\fIoptions\fR] \fIrealm\fR \fIsite\fR \fIfqdn\fR [\fIaddress\fR]
-Initialize a new realm. Creates the realm with a master site, CA hierarchy, and initial node. This is the first command run when setting up a new OTPme installation.
+Create a new realm on the machine you run it on.
+This is the first command of a new OTPme installation.
+.br
+It creates the realm and its first site, the one named by \fIsite\fR, which is the master site of the realm.
+With them come the CA of the realm, the CA of the site, the certificate of the site, and the node of this machine, which is the master node.
+The node is named after the host name of the machine.
+Then init adds the base objects of the site and the admin user \fBroot\fR with its token.
+The realm gets its auth on action policy, see \fBPolicy Management\fR below.
+.br
+The names of the realm and the site are stored in lower case.
+.br
+\fIfqdn\fR becomes the auth, the management and the SSO FQDN of the site, as with \fBotpme\-site add\fR, see
+.BR otpme\-site (1).
+.br
+\fIaddress\fR is the floating address of the site.
+Without it the address is looked up in DNS under \fIfqdn\fR; a name with more than one address is refused, and so is one with none.
+Unless it is 127.0.0.1, init puts the address on an interface once to test it, and takes it off again:
+the interface \fBFLOATING_IP_IFACE\fR names in
+.BR otpme.conf (5),
+else the one whose network holds the address.
+An address that is already on an interface is refused.
+.br
+If \fBKEY_COMMAND\fR in
+.BR otpme.conf (5)
+names a file and there is no key in it yet, init makes the master key and asks for its password, or reads it with the global option \fB\-\-stdin\-pass\fR.
+.br
+A machine that already has a realm is refused.
+.br
+init runs on the machine itself, not through a daemon, and needs no ACL: there is nobody yet who could hold one.
+.br
+The options are under \fBINIT OPTIONS\fR.
 .SS Display
 .TP
-.B show \fR[\fIrealm\fR]
-Display realm information. Without arguments, shows all realms.
+.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIrealm\fR]
+Without a realm: a table of the realms, with their type, whether authentication and synchronization with them are on, their policies and their description.
+.br
+The type is \fBLocal\fR for your own realm and \fBRemote\fR for any other.
+Another realm cannot be added yet, that is not implemented: the table has your own realm alone.
+.RS
+.TP
+.B \-a
+Also the realms you may only look at, not just the ones you may change.
+.TP
+.B \-z \fIN\fR
+How many realms to print.
+.TP
+.B \-\-fields \fIF1,F2\fR
+Print these columns and no others, in the order they are named.
+The names are the ones in the header of the table.
+A name with a \fB+\fR in front is added to the columns that are shown anyway, and one with a \fB\-\fR is left out of them.
+.TP
+.B \-\-limit \fIN\fR, \fB\-\-policy\-limit \fIN\fR
+How many policies to print per realm.
+.TP
+.B \-\-sort\-by \fIfield\fR, \fB\-\-reverse\fR
+Which column to sort by, and the other way round.
+.TP
+.B \-\-raw\fR, \fB\-\-csv\fR, \fB\-\-csv\-sep\fR \fIsep\fR
+For reading with something other than your eyes: \fB\-\-raw\fR leaves the header and the borders out, \fB\-\-csv\fR prints one row per line with \fB;\fR between the columns, and \fB\-\-csv\-sep\fR uses another separator.
+.RE
+.IP
+A column you may not see says \fB\-\fR.
+Auth opens with \fBview:auth\fR, \fBenable:auth\fR or \fBdisable:auth\fR, Sync the same with \fBsync\fR,
+Policies with \fBview:policies\fR, \fBassign:policy\fR or \fBremove:policy\fR,
+Description with \fBview:description\fR or \fBedit:description\fR.
+.br
+With a realm named, this prints the object itself instead of a table row: one value per line, and with them what the table leaves out \(em the UUID of the master site (\fBview:master\fR), the path of the realm CA (\fBview:ca\fR) and its certificates and CRLs in base64 (\fBview:ca_data\fR).
+A value you may not see is left empty, or says \fB\-\fR for \fBAUTH_ENABLED\fR and \fBSYNC_ENABLED\fR.
+.br
+That needs the ACL \fBview_public:object\fR, also for a token in the admin role: here the admin role does not count.
+Only the admin token of the site, the one of \fBroot\fR, needs none.
+init gives it to the site admin role and to the realm user role of the first site, and \fBotpme\-site add\fR to those of the new site.
 .na
 .nh
 .TP
@@ -33,37 +118,87 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fIregex\fR]
-List realms, optionally filtered by regex pattern.
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+List the realm names, and with a pattern only those that match it, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
+You get the realms you may change; \fB\-a\fR adds those you may only look at.
+.br
+\fB\-\-attribute\fR matches the pattern against that attribute instead of the name.
 .SS Authentication and Synchronization
+These four are for a realm other than your own: whether its users may log in here, and whether objects are synchronized with it.
+Another realm cannot be added yet, that is not implemented, so for now they do nothing:
+with your own realm authentication and synchronization are always on.
+Enabling says so, and disabling is refused.
+.PP
+Each asks first; the global option \fB\-f\fR skips the question.
+Each writes an entry to the changelog.
 .TP
 .B enable_auth \fIrealm\fR
-Enable authentication with a trusted realm.
+Let the users of the realm log in again.
+.br
+Needs the ACL \fBenable:auth\fR.
 .TP
 .B disable_auth \fIrealm\fR
-Disable authentication with a trusted realm.
+Refuse logins of the users of the realm.
+Admins, and users with \fB\%enable_disabled_login\fR (see
+.BR otpme\-user (1)),
+still get in.
+.br
+Needs the ACL \fBdisable:auth\fR.
 .TP
 .B enable_sync \fIrealm\fR
-Enable synchronization with a trusted realm.
+Synchronize with the realm again.
+.br
+Needs the ACL \fBenable:sync\fR.
 .TP
 .B disable_sync \fIrealm\fR
-Disable synchronization with a trusted realm.
+Stop synchronizing with the realm.
+Nothing reads this setting of a realm yet.
+.br
+Needs the ACL \fBdisable:sync\fR.
 .SS CA Data
+The CA data of the realm is the chain OTPme trusts: the certificate and the CRL of the realm CA, and those of the CA of every site.
+It is kept in the realm, and every node and host writes it to
+.I /etc/otpme/ssl/ca.pem
+(\fBSSL_CA_FILE\fR in
+.BR otpme.conf (5)).
+.br
+It is brought up to date by itself: when a site gets its CA, and when a CA revokes a certificate or gets a new CRL.
+.PP
+Both need their ACL even for a token in the admin role: here the admin role does not count.
+Only the admin token of the site, the one of \fBroot\fR, needs none.
 .TP
 .B dump_ca_data \fIrealm\fR
-Dump realm CA data (certificates and CRLs) to stdout.
+Write the CA data to stdout, the certificates and CRLs one after the other in PEM.
+.br
+Needs the ACL \fBview:ca_data\fR.
 .TP
 .B update_ca_data \fIrealm\fR
-Update realm CA data (certificates and CRLs).
+Build the CA data again from the CAs and write it to the realm and to the CA file of this machine.
+If it changed, the daemons are reloaded.
+.br
+On a site other than the master site of the realm this changes the copy there, and the next sync brings the one of the master site.
+.br
+Asks first; the global option \fB\-f\fR skips the question.
+.br
+Needs the ACL \fBupdate_ca_data\fR.
 .SS Policy Management
 A realm takes one policy and no other: the auth-on-action policy that realm init attaches.
 .PP
 A policy object lives in a site, a realm does not.
 A realm that carried a policy would carry the one of whichever site answered first, and the admins of that site would then decide what the whole realm enforces.
-Auth on action is the exception because the realm has hooks of its own, and somebody has to be asked before they run.
 .PP
-Everything else is said on the site, on the unit, or on the object.
-Nothing ever looked for another policy here: policies are read from the object itself, and the search does not walk up to the realm.
+The policies of the realm run for its own hooks, and for the sites, which are its children: when a site is added
+(\fBpre_add_site\fR, \fBpost_add_site\fR).
+Any other policy type would act on every site added to the realm.
+Auth on action is the exception: somebody has to be asked before these run.
+See
+.B AUTH ON ACTION HOOKS
+below.
+.PP
+Below the sites the realm is never asked: a unit, a user or a token reads the policies of itself and of its parent, never those of the realm.
 .PP
 Attaching and detaching ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
@@ -88,54 +223,150 @@ Use \fB\-\-policy\-types\fR to list only policies of the given types; these are 
 .br
 Needs the ACL \fBview:policies\fR.
 .SS ACL Management
+An ACL says what somebody may do with the realm.
+The somebody is a role or a token, never a user, and it can be of any site.
+.PP
+For the realm a token in the admin role is not an admin: it needs the ACL like anybody else.
+Only the admin token of the site, the one of root, needs none.
+.PP
+ACLs are set on the master site, as all changes to the realm are; another site refuses \fBadd_acl\fR and \fBdel_acl\fR.
+The sync takes them to the other sites.
+.PP
+A realm only has normal ACLs, for the realm object alone.
+It hands nothing down: a site does not inherit from the realm.
+So a default ACL, \fB+acl\fR or \fB++acl\fR, is refused, and there is no \fB\-r\fR and no \fB\-a\fR.
+Tab completion after \fBadd_acl\fR offers the ACLs a realm knows.
+.PP
+Adding and removing ask first, once for the whole command; the global option \fB\-f\fR skips the question.
 .TP
-.B add_acl \fIrealm\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
-Add an access control entry.
+.B add_acl \fIrealm\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
+Give a role or a token one or more ACLs on the realm.
+.br
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
+\fIowner\fR names it the way \fBlist_acls\fR prints it: a role as \fIsite/name\fR, e.g. \fBmunich/helpdesk\fR, or by its name alone on its own site; a token as \fI\%user/token\fR, e.g. \fBalice/login\fR.
+An ACL can carry a value, for example \fBview:auth\fR.
+To give several ACLs at once, separate them with commas: \fB\%view:auth,view:sync\fR.
+.br
+Needs the ACL \fBadd:acl\fR.
 .TP
-.B del_acl \fIrealm\fR \fIacl\fR
-Remove an access control entry.
+.B del_acl \fIrealm\fR \fIacl\fR[,\fIacl\fR]
+Take those ACLs away again.
+.br
+Here an \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fBrole:munich/helpdesk:view:auth\fR.
+.br
+Needs the ACL \fBdelete:acl\fR.
 .TP
 .B list_acls \fIrealm\fR
-Display all ACLs for the realm.
-.SS Extension and Attribute Management
+Show the ACLs that lie on the realm, i.e. who may do what with it.
+This works on every site.
+.br
+Needs the ACL \fBview:acl\fR.
+.SS Extensions and LDAP Attributes
+The realm is also an LDAP entry, the top one: for the realm \fBexample.org\fR it is \fBdc=example,dc=org\fR.
+An extension is what gives it one: the object classes it is of, and the attributes those classes allow.
+What \fBldapd\fR serves and what \fBshow_ldif\fR prints comes from them.
+.PP
+A realm has the extension \fBbase\fR.
+It makes the realm a \fBdcObject\fR, with \fBdc\fR, the first part of the realm name.
+\fBdc\fR names the entry, so it cannot be changed or removed, and neither can \fBbase\fR.
+.PP
+The other class \fBbase\fR knows for a realm is \fBorganization\fR.
+A new realm does not have it.
+It needs a name, \fBo\fR, and setting one adds the class: \fB\%add_attribute example.org o=Example\fR.
+After that the realm can take what \fBorganization\fR allows, an address or a phone number for example.
+.PP
+These are changes to the realm, so they are made on the master site; another site refuses them.
+They ask first; the global option \fB\-f\fR skips the question.
 .TP
 .B add_extension \fIrealm\fR \fIextension\fR
 Add an extension to the realm.
+No other extension is for realms, so for a realm this is refused today.
+.br
+Needs the ACL \fBadd:extension\fR.
 .TP
 .B remove_extension \fIrealm\fR \fIextension\fR
-Remove an extension from the realm.
+Take it away again, with the classes and attributes it brought.
+An extension that brings the attribute naming the entry cannot be removed, and for a realm that is \fBbase\fR.
+.br
+Needs the ACL \fBremove:extension\fR.
 .TP
-.B add_attribute \fIrealm\fR \fIattribute\fR=\fIvalue\fR
-Add an LDAP attribute to the realm.
+.B add_attribute \fIrealm\fR \fIattribute\fR\fB=\fR[\fIvalue\fR]
+Set an LDAP attribute of the realm.
+.RS
+.PP
+Only an attribute one of its classes allows.
+One that only \fBorganization\fR allows gives the realm that class; set \fBo\fR first, the class needs it.
+An attribute can hold more than one value, so this adds one and leaves the others.
+.PP
+The ACL is per attribute, \fBadd:attribute:\fIattribute\fR, and a plain \fBadd:attribute\fR covers all of them.
+.RE
 .TP
 .B modify_attribute \fIrealm\fR \fIattribute\fR \fIold_value\fR \fInew_value\fR
-Modify an LDAP attribute of the realm.
+Put \fInew_value\fR in the place of \fIold_value\fR, and leave the other values of the attribute alone.
+.br
+The ACL is \fBedit:attribute:\fIattribute\fR.
 .TP
-.B del_attribute \fIrealm\fR \fIattribute\fR=\fIvalue\fR
-Remove an LDAP attribute from the realm.
+.B del_attribute \fIrealm\fR \fIattribute\fR\fB=\fR[\fIvalue\fR]
+Remove that value, or the whole attribute where no value is given.
+.br
+A mandatory attribute of a class the realm is of cannot be removed, \fBo\fR while it has \fBorganization\fR for example, and neither can \fBdc\fR.
+The ACL is \fBdelete:attribute:\fIattribute\fR.
 .TP
 .B add_object_class \fIrealm\fR \fIclass\fR
-Add an LDAP object class to the realm.
+Add an LDAP object class.
+For a realm that can only be \fBorganization\fR.
+This adds the class without \fBo\fR, which it needs; \fBadd_attribute\fR with \fBo\fR adds both.
+.br
+Needs the ACL \fBadd:object_class\fR.
 .TP
 .B del_object_class \fIrealm\fR \fIclass\fR
-Remove an LDAP object class from the realm.
+Remove an object class again, with the attributes only it allows: for \fBorganization\fR that is \fBo\fR and what was set with it.
+It says which ones before it asks, and changes nothing before the answer.
+\fBdcObject\fR stays, it allows \fBdc\fR.
+.br
+Needs the ACL \fBdelete:object_class\fR.
 .TP
-.B show_ldif \fR[\fB\-a\fR \fIattributes\fR] \fIrealm\fR
-Show LDIF representation of the realm. Use \fB\-a\fR to show only specific attributes.
+.B show_ldif \fIrealm\fR \fR[\fB\-a\fR \fIattribute1,attribute2\fR]
+The realm as LDAP sees it.
+.B \-a
+prints only those attributes.
+.br
+It shows the attributes in \fBldif_whitelist_attributes\fR, see
+.BR otpme (7),
+and the ones you have \fBview:attribute:\fIattribute\fR for; the others are left out.
+By default that leaves \fBdn\fR, \fBobjectClass\fR and \fBentryUUID\fR of a realm.
 .SS Configuration and Attributes
 .TP
 .B description \fIrealm\fR \fR[\fIdescription\fR]
-Set realm description.
+Set the description.
+Without one OTPme asks and offers the current text for editing.
+Each site keeps its own description of the realm: it can be set on any site, and the sync does not change it.
+.br
+Needs the ACL \fBedit:description\fR.
 .TP
 .B info \fR[\fB\-\-language\fR \fILANG\fR] \fIrealm\fR \fR[\fIinfo\fR]
-Set free-form info text. If \fIinfo\fR is omitted, the current info text is
-opened in the editor specified by the \fBEDITOR\fR environment variable.
+Set free-form info text.
+If \fIinfo\fR is omitted, the current text is opened in the editor named by the \fBEDITOR\fR environment variable, or in vim; that reads the text first and needs \fBview:info\fR as well.
+Without \fB\-\-language\fR the text is the administrator's own note.
+Nothing shows the info of a realm to a user, so a text for a language stays a note as well.
+The info is set on the master site and comes to the other sites with the sync; \%another site refuses it.
+.br
+Needs the ACL \fBedit:info\fR.
 .TP
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIrealm\fR
-Dump the info text to stdout.
+Write one of those texts to stdout.
+\fB\-\-language\fR picks which one; without it you get the note of the administrator.
+.br
+Needs the ACL \fBview:info\fR.
 .TP
 .B touch \fIrealm\fR
-Re-index the object to fix potential index problems.
+Write the index entries, the ACLs and the LDAP entry of the realm again, on this site.
+Any site can do that.
+.br
+Needs the ACL \fBtouch\fR.
+.PP
+description, info and touch ask first; the global option \fB\-f\fR skips the question.
+description and info write an entry to the changelog.
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
@@ -146,45 +377,70 @@ Only the comment of an entry can be changed or removed.
 What was done and by whom stays as it is.
 .PP
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
+.PP
+The changelog of the realm is kept on the master site and comes to the other sites with the sync.
+There \fBedit_changelog\fR, \fBdel_changelog\fR and \fBclear_changelog\fR are refused.
+A change another site may make, such as \fBdescription\fR or \fB\%enable_auth\fR, writes its entry on that site only; the next sync of the realm from the master site takes it away.
+.PP
+A realm holds no config parameters, so the parameter \fBchangelog\fR cannot switch its changelog off.
 .TP
 .B changelog \fIrealm\fR
-Show the changelog of the realm.
+Show the changelog of the realm, one entry per line: its \fIentry_id\fR, the time, who made the change and what was done, then a detail in round brackets and the comment in square brackets where there are any.
+.br
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fIrealm\fR \fIentry_id\fR \fIcomment\fR
 Set the comment of that entry, or replace the one it has.
+That writes an entry of its own.
+.br
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B del_changelog \fIrealm\fR \fIentry_id\fR
 Remove the comment of that entry.
 The entry itself stays, and an entry without a comment is refused.
+That writes an entry of its own.
+.br
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIrealm\fR
 Remove every entry of the changelog.
+Afterwards it holds one entry: that it was cleared.
 .br
 This needs more than the ACL \fBclear:changelog\fR: the config parameter
-.B allow_changelog_clearing
+\fB\%allow_changelog_clearing\fR
 has to allow it (see \fBotpme\fR(7)).
 It is true by default, but where no value is found at all, clearing is refused.
-A value set on the token you are signed in with counts first.
-Without one, the value of the object counts, read along its cascade.
-.SS Import/Export
+For a realm only the value set on the token you are signed in with counts: the realm itself has none.
+So clearing needs that token to have \fB\%allow_changelog_clearing\fR set to true, see \fBotpme\-token\fR(1).
+.SS Export and Cleanup
 .TP
-.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIrealm\fR
-Export realm configuration.
+.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIrealm\fR
+Write the whole object of the realm to stdout, as JSON: its ACLs, policies, LDAP attributes, the certificates and CRLs of the CA and the rest, but not the sites in it.
+\fBotpme\-tool import\fR reads it back.
+.br
+A realm holds no key and no secret, so \fB\-\-password\fR has nothing to encrypt: the output is in clear either way.
+.br
+Needs the ACL \fBexport\fR.
 .TP
 .B remove_orphans \fIrealm\fR
-Remove orphaned object references.
+Remove references to objects that are gone: ACLs of a role or token that was deleted, or of an ACL group that was deleted, and policies that were deleted.
+.br
+It asks once for what it found; the global option \fB\-f\fR skips the question.
+It is a change to the realm, so it is made on the master site; another site refuses it.
+.br
+Needs the ACL \fBremove:orphans\fR.
 .SH INIT OPTIONS
-These options are used with the \fBinit\fR command:
+These options are used with the \fBinit\fR command.
 .SS CA Certificate Options
+init makes two CAs: the CA of the realm, which signs itself, and the CA of the master site, which the CA of the realm signs.
 .TP
 .B \-\-ca\-valid \fIDAYS\fR
-CA certificate validity in days.
+How many days the certificates of both CAs are valid.
+The default is the config variable \fB\%default_ca_validity\fR, 5475 days.
 .TP
 .B \-\-ca\-key\-len \fIBITS\fR
-Key length for CA certificates in bits.
+The length of the keys of both CAs.
+The default is \fB\%default_ca_key_len\fR, 4096 bits.
 .TP
 .B \-\-country \fICOUNTRY\fR
 Set CA certificate country field.
@@ -203,89 +459,85 @@ Set CA certificate organizational unit field.
 .TP
 .B \-\-email \fIEMAIL\fR
 Set CA certificate email field.
+.PP
+The six fields go into both CAs, and from the CA of the site into the certificate of the site and the one of the master node.
+None of them is needed.
 .SS Site and Node Certificate Options
 .TP
 .B \-\-site\-valid \fIDAYS\fR
-Master site certificate validity in days.
+How many days the certificate of the site is valid.
+The default is \fB\%default_site_validity\fR, 5475 days.
 .TP
 .B \-\-site\-key\-len \fIBITS\fR
-Key length for master site certificate in bits.
+The length of the key of the site certificate.
+The default is \fB\%default_site_key_len\fR, 3072 bits.
+Note that \fBotpme\-tool join\fR uses \fB\-\-site\-key\-len\fR for the key of the CA, see
+.BR otpme\-tool (1).
 .TP
 .B \-\-node\-valid \fIDAYS\fR
-Master node certificate validity in days.
+How many days the certificate of the master node is valid.
+The default is \fB\%default_node_validity\fR, 5475 days.
 .TP
 .B \-\-node\-key\-len \fIBITS\fR
-Key length for master node certificate in bits.
+The length of the key of the master node certificate.
+The default is \fB\%default_node_key_len\fR, 4096 bits.
 .SS Dictionary and ID Range Options
 .TP
-.B \-\-no\-dicts
-Do not add any word dictionaries for password strength checking.
-.TP
 .B \-\-dicts \fIdict1,dict2\fR
-Add the given word dictionaries for password strength checking.
+The word dictionaries the master site checks the strength of a password against, as with \fBotpme\-site add\fR:
+only the ones OTPme comes with, put into the \fBpassword_strength\fR policy in this order.
+Without this option the site gets none.
+See
+.BR otpme\-site (1)
+for the names, and
+.BR otpme\-dictionary (1)
+to add more later.
 .TP
 .B \-\-id\-ranges \fIrange1,range2\fR
-ID ranges to add during initialization.
+The ranges the master site takes the numbers of new users and groups from, each written as \fIattribute\fB:\fItype\fB:\fIfirst\fB\-\fIlast\fR.
+They go into its ID range policy, see
+.BR otpme\-policy (1).
+.br
+Without this option the site gets \fB\%uidNumber:s:70000\-80000\fR and \fB\%gidNumber:s:70000\-80000\fR.
 .TP
 .B \-\-no\-index\-indices
-Skip creation of index-DB indices during
-.BR init .
-Use only for special setups (e.g. very small test realms) where the extra indices are not wanted; the default is to create them.
+Do not create the indices of the index database at the end of init.
+Use it only for special setups, like very small test realms.
 .SH OPTIONS
-.SS Display Options
-.TP
-.B \-a
-Show all realms.
-.TP
-.B \-z \fISIZE\fR
-Limit output size.
-.TP
-.B \-\-fields \fIFIELD1,FIELD2\fR
-Display only specified fields.
-.TP
-.B \-\-policy\-limit \fIN\fR
-Limit number of policies shown.
-.TP
-.B \-\-limit \fIN\fR
-Limit number of items shown per object.
-.TP
-.B \-\-sort\-by \fIFIELD\fR
-Sort output by field.
-.TP
-.B \-\-reverse
-Reverse sort order.
-.TP
-.B \-\-raw
-Output without headers/borders.
-.TP
-.B \-\-csv
-Output as CSV.
-.TP
-.B \-\-csv\-sep \fISEP\fR
-CSV separator character.
-.TP
-.B \-\-attribute \fIATTR\fR
-Of \fBlist\fR: match the regex against this attribute instead of the name.
-.SS General Options
-.TP
-.B \-\-password \fIPASS\fR
-Password for encrypting exports.
+Every option belongs to one command and is described with that command above; those of \fBinit\fR are under \fBINIT OPTIONS\fR.
 .PP
-Global options are available for all commands. See
-.BR otpme (1)
-for details.
+Global options work with every command, see
+.BR otpme (1).
 .SH EXAMPLES
-.SS Initializing a Realm
+.na
+.nh
+.SS A new realm
+On the first machine, as root:
 .TP
-.B otpme-realm init myrealm master node1.example.com 10.0.0.1
-Initialize a new realm with master site and node
+.B otpme-realm init example.org berlin login.berlin.example.org 10.0.0.10
+Create the realm \fBexample.org\fR with its master site \fBberlin\fR.
+\fBlogin.berlin.example.org\fR is the name the clients reach the site under, and 10.0.0.10 its floating address.
+This machine becomes the master node.
 .TP
-.B otpme-realm init \-\-ca\-key\-len 4096 myrealm master node1.example.com
-Initialize with 4096-bit CA keys
-.SS CA Data
+.B otpme-realm init \-\-organization Example \-\-country DE example.org berlin login.berlin.example.org
+The same, with two fields for the certificates of the CAs.
+The address is looked up in DNS under the name.
+.SS The name of the organization in LDAP
+On the master site:
 .TP
-.B otpme-realm dump_ca_data myrealm
-Export CA certificates and CRLs
+.B otpme-realm add_attribute example.org o=Example
+The realm becomes an \fBorganization\fR as well: \fBdc=example,dc=org\fR gets \fBo:\~Example\fR.
+.SS Letting a role of another site see the realm
+On the master site:
+.TP
+.B otpme-realm add_acl example.org role munich/helpdesk view
+The role \fBhelpdesk\fR of the site \fBmunich\fR may see the whole realm object, not only its public part.
+.SS The CA chain of the realm
+.TP
+.B otpme-realm dump_ca_data example.org > ca.pem
+The certificates and CRLs every node and host has in \fB/etc/otpme/ssl/ca.pem\fR.
+.hy
+.ad
 .\" BEGIN AUTH ON ACTION HOOKS
 .\" Generated by update_hooks_man.py. Do not edit, the next run
 .\" overwrites it.
@@ -300,27 +552,63 @@ A realm has the hooks every object type has, and these:
 .PP
 .na
 .nh
-add_site, disable_auth, disable_sync, enable_auth, enable_sync, set_config_parameter, show_config_parameters, update_ca_data.
+disable_auth, disable_sync, enable_auth, enable_sync, set_config_parameter, update_ca_data.
+.hy
+.ad
+.RE
+.PP
+It also has
+.B pre_add_<type>
+before an object of that type is added below the realm, and
+.B post_add_<type>
+after it, e.g.
+.BR pre_add_site .
+\fI<type>\fR is one of:
+.RS
+.PP
+.na
+.nh
+site.
 .hy
 .ad
 .RE
 .\" END AUTH ON ACTION HOOKS
 .SH FILES
+.na
+.nh
 .TP
-.I /var/lib/otpme/
-OTPme data directory
+\fI/var/lib/otpme/tree/\fR
+The objects of the realm, on the nodes and, by sync, on the hosts.
+The realm is the directory \fI<realm>.realm\fR, e.g. \fIexample.org.realm/\fR, with its settings in \fIobject.json\fR; the directories of its sites are in it.
+Change them with the commands above, not in the file.
+.TP
+\fI/etc/otpme/ssl/ca.pem\fR
+The CA data of the realm, as every node and host writes it, see \fBdump_ca_data\fR.
+\fBSSL_CA_FILE\fR in
+.BR otpme.conf (5)
+names another place.
+.hy
+.ad
 .SH SEE ALSO
+.na
+.nh
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
-.BR otpme-site (1),
-.BR otpme-ca (1),
-.BR otpme-node (1),
-.BR otpme-policy (1)
+.BR otpme.conf (5),
+.BR otpme\-site (1),
+.BR otpme\-node (1),
+.BR otpme\-ca (1),
+.BR otpme\-policy (1),
+.BR otpme\-dictionary (1),
+.BR otpme\-user (1),
+.BR otpme\-token (1),
+.BR otpme\-tool (1)
+.hy
+.ad
 
 .SH AUTHOR
 the2nd <the2nd@otpme.org>
 .SH NOTE
 This manual page was created with AI assistance.
 .SH COPYRIGHT
-Copyright \(co 2014-2025 the2nd. License: GPLv3
+Copyright \(co 2014-2026 the2nd. License: GPLv3

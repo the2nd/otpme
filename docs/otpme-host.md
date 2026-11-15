@@ -97,14 +97,14 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**-t**\] \[**--attribute** *attribute*\] \[*regex*\]**  
-List the host names, and with a regex only those that match it. You get
-the hosts you may change; **-a** adds those you may only look at. **-t**
-lists the host templates instead. Without **-a** these are the templates
-you may change or have **use** on, i.e. the ones you may give to **add
---template**.  
-**--attribute** matches the regex against that attribute instead of the
-name: **list --attribute enabled True** lists the hosts that are
+**list \[**-a**\] \[**-t**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+List the host names, and with a pattern only those that match it, see
+**SELECTING OBJECTS** in **otpme**(1). You get the hosts you may change;
+**-a** adds those you may only look at. **-t** lists the host templates
+instead. Without **-a** these are the templates you may change or have
+**use** on, i.e. the ones you may give to **add --template**.  
+**--attribute** matches the pattern against that attribute instead of
+the name: **list --attribute enabled True** lists the hosts that are
 enabled. A value that is not text has to be spelled out — **\*** matches
 none of it.
 
@@ -137,7 +137,16 @@ used counts from when this was set.
 **mac *host* *mac_address***  
 Set the host's MAC address. It is what the realm recognises the machine
 by when a switch port is opened without anybody logging in, see **Port
-Authentication** below.
+Authentication** below.  
+Write it as six pairs of hex digits, with **:** or **-** between them,
+as three groups of four with **.**, or without anything, e.g.
+**00:1a:2b:3c:4d:5e** or **001a2b3c4d5e**. It is kept in lower case with
+**:**, and that is how it is shown. The switch may send it in any of
+these forms.  
+A MAC address can be set on one host or device of the realm only. An
+empty *mac_address*, **""**, removes it.  
+Needs **edit:mac_address**. Seeing it, with **show**, needs
+**view:mac_address**.
 
 ## Token and Role Assignment
 
@@ -262,23 +271,31 @@ name. See **otpme-tool**(1) and **otpme.conf**(5).
 
 ## VLAN Assignment
 
-A host is not assigned a VLAN from here. Either the VLAN names the host,
-so that the assignment belongs to the site that runs the network (see
-**otpme-vlan**(1)):
+At MAB the realm answers with a VLAN as well, if the host has one. It is
+not set here, but in one of two ways.
+
+A VLAN names the host, see **otpme-vlan**(1):
 
 > **otpme-vlan add_host *vlan* *host***
 
-or the host names the VLAN through its **vlans** config parameter (see
-**otpme**(7)):
+This needs **add:host** on the VLAN. A host can be in one VLAN of a site
+only. It can also be in a VLAN through a role it is in; a VLAN that
+names the host itself wins over that.
+
+Or the host names the VLAN in its **vlans** config parameter, see
+**otpme**(7):
 
 > **otpme-host config *host* vlans *vlan***
 
-The VLAN is returned during MAB port authentication, where the host
-authenticates with its MAC address. Membership wins: the **vlans**
-parameter is only looked at when no VLAN of the site answering the
-RADIUS request names the host. A host that is in the VLAN only through a
-role is overridden by one that names the host itself. A disabled VLAN is
-skipped and said so in the log.
+This needs **assign** on the VLAN. Where the host has none, it is taken
+from the units above it, and else from its site. A VLAN of another site
+is written as *\<site\>/\<vlan\>*; it counts only where the
+**vlan_trusts** of the site that answers allow it.
+
+Only the VLANs of the site that answers the RADIUS request name a host.
+They win: the **vlans** parameter is only looked at when none of them
+names the host or a role it is in. A disabled VLAN gives nothing, and
+the log says so.
 
 ## Port Authentication
 
@@ -359,16 +376,22 @@ bringing it.
 
 ## Passwords
 
-Passwords can belong to the host, for example its root password, see
-**otpme-pass**(1). Each password decides itself whether you may see it.
+Passwords can belong to the host, for example its root password. A
+password is given to it with **otpme-pass add --host** or **otpme-pass
+add_host**, see **otpme-pass**(1). Each password decides itself whether
+you may see it; the host has no ACL for that.
 
 **find_passwords \[**--return-type** *TYPE*\] *host***  
-The password objects that belong to the host.
+List the passwords that belong to the host and that you may look at, by
+**view_public**, **view** or **view:entries** on the password. *TYPE* is
+**name** (the default), **read_oid**, **full_oid** or **uuid**. A name
+of another site is shown as *\<site\>/\<password\>*.
 
 **show_password *host* \[*entry*\]**  
 Show the entries of these passwords, with their passwords. With *entry*
 only the entries of that name.  
 Each password needs **view:entries**, and you need a key for it.
+Passwords you may not read are left out; when none is left, it says so.
 
 ## Dynamic Groups
 
@@ -589,18 +612,23 @@ A command that changes something asks first; the global option **-f**
 skips the question.
 
 **changelog *host***  
-Show the changelog of the host. Needs the ACL **view:changelog**.
+Show the changelog of the host, one entry per line: its *entry_id*, the
+time, who made the change and what was done, then a detail in round
+brackets and the comment in square brackets where there are any. Needs
+the ACL **view:changelog**.
 
 **edit_changelog *host* *entry_id* *comment***  
-Set the comment of that entry, or replace the one it has. Needs the ACL
-**edit:changelog**.
+Set the comment of that entry, or replace the one it has. That writes an
+entry of its own. Needs the ACL **edit:changelog**.
 
 **del_changelog *host* *entry_id***  
 Remove the comment of that entry. The entry itself stays, and an entry
-without a comment is refused. Needs the ACL **edit:changelog**.
+without a comment is refused. That writes an entry of its own. Needs the
+ACL **edit:changelog**.
 
 **clear_changelog *host***  
-Remove every entry of the changelog.  
+Remove every entry of the changelog. Afterwards it holds one entry: that
+it was cleared.  
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
@@ -617,10 +645,6 @@ Four types do something on a host: **logintimes** says when somebody may
 log in here, **forcetoken** which token they have to use,
 **autodisable** switches the host off after a time, and **authonaction**
 asks whoever changes something here to authenticate for it again.
-
-A **defaultpolicies** policy is taken as well, because it fits every
-object in the tree, but nothing reads it on a host: what gives a new
-host its policies is such a policy on the unit or the site above it.
 
 A policy on the host runs at every login to it. A policy on a role runs
 only where that role is assigned to the host and holds the token that is
@@ -664,10 +688,11 @@ skips the question.
 
 **add_acl *host* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this host.  
-*owner_type* is **role** or **token**. *owner* is the path of that role
-or token. An ACL can carry a value, for example **view:tokens**. To give
-several ACLs at once, separate them with commas:
-**view:tokens,view:status**.  
+*owner_type* is **role** or **token**. *owner* names it the way
+**list_acls** prints it: a role as *site/name*, or by its name alone on
+its own site; a token as *user/token*. An ACL can carry a value, for
+example **view:tokens**. To give several ACLs at once, separate them
+with commas: **view:tokens,view:status**.  
 Needs the ACL **add:acl**.
 
 **del_acl *host* *acl*\[,*acl*\]**  
@@ -782,7 +807,9 @@ Remove what the host still points at although it is gone.
 
 On a host that is its ACLs, its policies, the tokens and roles added to
 it, and the users and groups it syncs. A token that is gone takes the
-login interfaces and the SSH options that were stored with it.
+login interfaces and the SSH options that were stored with it. Config
+parameters set on the host that keep other objects lose the ones that
+are gone, e.g. a deleted VLAN in **vlans**, the way **config -d** does.
 
 The join node and the join token stay. Both keep a note of what they
 pointed at so they can still be shown, and they say what happened, not
@@ -912,14 +939,17 @@ groups that name the host let it go, and the object goes to the trash.
 
 An auth on action policy can ask for a login again before these actions.
 See **Auth On Action Policy** in **otpme-policy**(1). A host has the
-hooks every object type has, and these:
+hooks every object type has, and these; a command of another name is in
+brackets:
 
-> add_dynamic_group, add_role, add_sync_group, add_token,
-> change_public_key, disable_jotp_rejoin, disable_sync_by_login_token,
-> disable_sync_groups, enable_jotp_rejoin, enable_sync_by_login_token,
-> enable_sync_groups, join, leave, limit_logins, remove_dynamic_group,
-> remove_role, remove_sync_group, remove_token, renew_cert, revoke_cert,
-> set_config_parameter, unlimit_logins.
+> add_dynamic_group, add_role, add_sync_group, add_token, change_mac
+> (mac), change_public_key (public_key), disable_jotp,
+> disable_jotp_rejoin, disable_lotp, disable_sync_by_login_token,
+> disable_sync_groups, enable_jotp, enable_jotp_rejoin, enable_lotp,
+> enable_sync_by_login_token, enable_sync_groups, join, leave,
+> limit_logins, remove_dynamic_group, remove_role, remove_sync_group,
+> remove_token, renew_cert, revoke_cert, set_config_parameter (config),
+> unlimit_logins.
 
 # FILES
 
@@ -962,12 +992,12 @@ which is what the machine resolves them from.
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme.conf**(5),
-**pam_otpme**(8), **otpme-tool**(1), **otpme-node**(1),
-**otpme-token**(1), **otpme-role**(1), **otpme-accessgroup**(1),
-**otpme-vlan**(1), **otpme-pass**(1), **otpme-policy**(1),
-**otpme-deploy**(1), **otpme-inventory**(1), **otpme-shell**(1),
-**otpme-trash**(1), **otpme-ca**(1)
+**otpme**(1), **otpme**(7), **otpme.conf**(5), **pam_otpme**(8),
+**otpme-tool**(1), **otpme-node**(1), **otpme-token**(1),
+**otpme-role**(1), **otpme-accessgroup**(1), **otpme-vlan**(1),
+**otpme-pass**(1), **otpme-policy**(1), **otpme-deploy**(1),
+**otpme-inventory**(1), **otpme-shell**(1), **otpme-trash**(1),
+**otpme-ca**(1)
 
 # AUTHOR
 

@@ -42,7 +42,7 @@ from otpme.lib.protocols import status_codes
 from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
 from otpme.lib.daemon.controld import send_daemon_command
 #from otpme.lib.classes.object_config import ObjectConfig
-from otpme.lib.freeradius.utils import reload as freeradius_reload
+from otpme.lib.freeradius.utils import send_command as freeradius_command
 
 from otpme.lib.exceptions import *
 
@@ -204,10 +204,10 @@ def cluster_nsscache_sync():
 def cluster_radius_reload():
     if config.use_api:
         return
+    # Done by controld, which logs how it went: FreeRADIUS may run as
+    # another user than we do.
     try:
-        freeradius_reload()
-        log_msg = _("Radius reload successful.", log=True)[1]
-        config.logger.info(log_msg)
+        freeradius_command("reload_freeradius")
     except Exception as e:
         log_msg = _("Failed to reload radius: {error}", log=True)[1]
         log_msg = log_msg.format(error=e)
@@ -2920,7 +2920,9 @@ class ClusterDaemon(OTPmeDaemon):
             wait_for_second_node = True
         quorum_check_interval = 3
         quorum_message_sent = False
-        second_node_wait_timeout = 0
+        # When we started to wait for the second node. Measured in
+        # seconds, not in rounds: a round takes quorum_check_interval.
+        second_node_wait_start = None
         while True:
             if config.daemon_shutdown:
                 os._exit(0)
@@ -3092,8 +3094,10 @@ class ClusterDaemon(OTPmeDaemon):
             if wait_for_second_node:
                 if required_votes == 1:
                     if current_votes == 1:
-                        second_node_wait_timeout += 1
-                        if second_node_wait_timeout < config.two_node_timeout:
+                        if second_node_wait_start is None:
+                            second_node_wait_start = time.monotonic()
+                        waited = time.monotonic() - second_node_wait_start
+                        if waited < config.two_node_timeout:
                             do_master_node_election = False
                         else:
                             wait_for_second_node = False
@@ -5800,44 +5804,39 @@ class ClusterDaemon(OTPmeDaemon):
             self.logger.warning(log_msg)
 
     def start_freeradius(self):
-        from otpme.lib.freeradius.utils import start
+        """ Have controld start FreeRADIUS.
+
+        We run as the OTPme user, FreeRADIUS has to be started as root
+        to change to FREERADIUS_USER. Asked only while it is not running:
+        this is called on every round of the quorum check.
+        """
         from otpme.lib.freeradius.utils import status
         try:
             status()
-            freeradius_running = True
         except Exception:
-            freeradius_running = False
-        if freeradius_running:
+            pass
+        else:
             return
         try:
-            start()
+            self.comm_handler.send("controld", command="start_freeradius")
         except Exception as e:
             log_msg = _("Failed to start freeradius: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
-        else:
-            log_msg = _("Started freeradius.", log=True)[1]
-            self.logger.info(log_msg)
 
     def stop_freeradius(self):
-        from otpme.lib.freeradius.utils import stop
+        """ Have controld stop FreeRADIUS: it may run as another user. """
         from otpme.lib.freeradius.utils import status
         try:
             status()
-            freeradius_running = True
         except Exception:
-            freeradius_running = False
-        if not freeradius_running:
             return
         try:
-            stop()
+            self.comm_handler.send("controld", command="stop_freeradius")
         except Exception as e:
             log_msg = _("Failed to stop freeradius: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
-        else:
-            log_msg = _("Stopped freeradius.", log=True)[1]
-            self.logger.info(log_msg)
 
     def close_node_check_connection(self, node_name):
         """ Close all node check connections. """

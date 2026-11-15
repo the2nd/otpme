@@ -94,30 +94,12 @@ default_acls = []
 
 recursive_default_acls = []
 
+# No add, del, enable, disable and auto_disable: a realm has its CA and a
+# site its CA, made with them (Ca.add() from Site/Realm), and no other.
+# OTPme trusts only those (Realm.update_ca_data()), so a CA added beside
+# them issued certificates nothing accepts. And a base CA is not to be
+# deleted or switched off.
 commands = {
-    'add'   : {
-            'default'    : {
-                'missing'    : {
-                    'method'            : 'add',
-                    'args'              : [
-                                            'unit',
-                                            'country',
-                                            'state',
-                                            'locality',
-                                            'organization',
-                                            'ou',
-                                            'email',
-                                            'key_len',
-                                            'valid',
-                                        ],
-                    'job_type'          : 'process',
-                    },
-                'exists'    : {
-                    'method'            : 'add',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
     'get_config'   : {
             'default'    : {
                 'exists'    : {
@@ -187,15 +169,6 @@ commands = {
                     },
                 },
             },
-    'auto_disable'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'change_auto_disable',
-                    'args'              : ['auto_disable'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
     'show'   : {
             'default'    : {
                 'missing'    : {
@@ -251,15 +224,6 @@ commands = {
                     },
                 },
             },
-    'del'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'delete',
-                    'oargs'             : ['add_to_trash'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
     'create_client_cert'   : {
             'default'    : {
                 'exists'    : {
@@ -289,22 +253,6 @@ commands = {
                     'method'            : 'show_config_parameters',
                     'oargs'              : ['parameter'],
                     'job_type'          : 'thread',
-                    },
-                },
-            },
-    'enable'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'enable',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'disable'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'disable',
-                    'job_type'          : 'process',
                     },
                 },
             },
@@ -361,17 +309,8 @@ commands = {
     'revoke'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'revoke_cert',
-                    'args'              : ['object_unit'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'renew'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'renew_cert',
-                    'args'              : ['object_unit'],
+                    'method'            : 'revoke_client_cert',
+                    'args'              : ['cert'],
                     'job_type'          : 'process',
                     },
                 },
@@ -568,32 +507,6 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     'config'   : {
             'default'    : {
                 'exists'    : {
@@ -663,6 +576,31 @@ REGISTER_AFTER = [
                 "otpme.lib.classes.unit",
                 ]
 
+# Days a CRL is valid at least, see Ca.set_crl_validity().
+MIN_CRL_VALIDITY = 2
+
+def is_client_cert(cert):
+    """ Whether <cert> is a client certificate as create_client_cert()
+    makes them: for client authentication and nothing else, and no CA.
+    A host or node certificate is for the server side too, a site or
+    server certificate for the server side alone. """
+    from cryptography import x509
+    from cryptography.x509.oid import ExtendedKeyUsageOID
+    if isinstance(cert, str):
+        cert = cert.encode()
+    _cert = x509.load_pem_x509_certificate(cert)
+    try:
+        constraints = _cert.extensions.get_extension_for_class(x509.BasicConstraints)
+    except x509.ExtensionNotFound:
+        constraints = None
+    if constraints and constraints.value.ca:
+        return False
+    try:
+        ext_key_usage = _cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage)
+    except x509.ExtensionNotFound:
+        return False
+    return list(ext_key_usage.value) == [ExtendedKeyUsageOID.CLIENT_AUTH]
+
 def register():
     register_oid()
     config.register_config_parameter(name="max_ca_name_len",
@@ -718,15 +656,17 @@ def register_config():
             msg = _("Invalid key len.")
             raise ValueError(msg)
         return key_len
+    # 4096 as the default_*_key_len the certificates took before.
     config.register_config_parameter(name="cert_key_len",
                                     ctype=int,
-                                    default_value=3072,
+                                    default_value=4096,
                                     setter=key_len_setter,
                                     valid_values=VALID_CERT_KEY_LENS,
                                     object_types=object_types)
     # Sign algorithm for certificates.
     def sign_algo_setter(sign_algo, **kwargs):
-        valid_sign_algos = ["sha256", "sha512"]
+        # What pki.utils.SIGN_ALGOS can sign with.
+        valid_sign_algos = VALID_SIGN_ALGOS
         if sign_algo not in valid_sign_algos:
             msg = _("Invalid sign algo.")
             raise ValueError(msg)
@@ -751,10 +691,12 @@ def register_config():
     config.register_config_var("default_node_key_len", int, 4096)
     config.register_config_var("default_host_validity", int, 5475)
     config.register_config_var("default_host_key_len", int, 4096)
-    config.register_config_var("default_client_validity", int, 5475)
-    config.register_config_var("default_client_key_len", int, 4096)
+    # A client certificate is for a host outside of OTPme (backupd), so
+    # it should not outlive its use by much; --valid gives more.
+    config.register_config_var("default_client_validity", int, 365)
     config.register_config_var("default_server_validity", int, 5475)
-    config.register_config_var("default_server_key_len", int, 4096)
+    # The key of a client or server certificate (and of a host or node
+    # certificate made without a CSR) is cert_key_len of the CA.
 
 def register_oid():
     full_oid_schema = [ 'realm', 'site', 'unit', 'name' ]
@@ -992,7 +934,14 @@ class Ca(OTPmeObject):
         try:
             crl_validity = int(crl_validity)
         except Exception:
-            msg = "CRL validity must be <int>."
+            msg = _("CRL validity must be a number of days.")
+            return callback.error(msg)
+        # The master node signs the CRL anew once a day (hostd), so it
+        # must be valid for longer: a CRL past its next update is
+        # refused by every check, and nothing could connect.
+        if crl_validity < MIN_CRL_VALIDITY:
+            msg = _("CRL validity must be at least {days} days.")
+            msg = msg.format(days=MIN_CRL_VALIDITY)
             return callback.error(msg)
 
         msg = _("Set CRL validity of CA '{ca_name}' to '{crl_validity}'?: ")
@@ -1001,6 +950,11 @@ class Ca(OTPmeObject):
             return callback.abort()
 
         self.crl_validity = crl_validity
+        # Signed anew at once, not with the next daily run.
+        if not self.update_crl(force=True,
+                            verify_acls=False,
+                            callback=callback):
+            return callback.error()
         return self._cache(callback=callback)
 
     @check_acls(['create_cert'])
@@ -1183,8 +1137,7 @@ class Ca(OTPmeObject):
         **kwargs,
         ):
         """ Create server cert for given common name. """
-        if key_len is None:
-            key_len = config.default_server_key_len
+        # Without a key_len create_cert() takes cert_key_len.
         if valid is None:
             valid = config.default_server_validity
         if run_policies:
@@ -1249,8 +1202,7 @@ class Ca(OTPmeObject):
         **kwargs,
         ):
         """ Create client cert for given common name. """
-        if key_len is None:
-            key_len = config.default_client_key_len
+        # Without a key_len create_cert() takes cert_key_len.
         if valid is None:
             valid = config.default_client_validity
 
@@ -1332,15 +1284,13 @@ class Ca(OTPmeObject):
                 msg = denied_msg(self, acl)
                 return callback.error(msg, exception=PermissionDenied)
 
-        # Set default values.
+        # Set default values. Without a key_len create_cert() takes
+        # cert_key_len; a host or node that sends a CSR has made its key
+        # with default_host_key_len or default_node_key_len (join).
         if host_type == "host":
-            if not key_len:
-                key_len = config.default_host_key_len
             if not valid:
                 valid = config.default_host_validity
         else:
-            if not key_len:
-                key_len = config.default_node_key_len
             if not valid:
                 valid = config.default_node_validity
 
@@ -1451,19 +1401,17 @@ class Ca(OTPmeObject):
             except Exception as e:
                 return callback.error()
 
-        # Temp dict to hold new revoked list (without outdated serials)
-        revoked_certs = ['1']
-
-        # Walk through list of revoked certs.
-        for serial in self.revoked_certs:
-            # Get cert expiry timestamp from dict.
-            cert_expiry = self.revoked_certs[serial]
-
-            # Build dict without outdated revoked certs.
-            if cert_expiry > time.time():
-                revoked_certs.append(serial)
-
-        new_crl = self.crl
+        # The serials whose certificate has run out: revoke_cert() keeps
+        # them until 30 days after that, then they leave the CRL. The CRL
+        # was built from itself before and kept every one of them, and
+        # gave the others a new revocation date on every run.
+        now = time.time()
+        drop_serials = set()
+        for serial in list(self.revoked_certs):
+            if self.revoked_certs[serial] > now:
+                continue
+            drop_serials.add(serial)
+            self.revoked_certs.pop(serial)
 
         if sign_algo is None:
             sign_algo = self.get_config_parameter("crl_sign_algo")
@@ -1472,23 +1420,19 @@ class Ca(OTPmeObject):
 
         log_msg = _("Building new CRL.", log=True)[1]
         logger.debug(log_msg)
-        for serial in revoked_certs:
-            try:
-                revoke_serial, \
-                revoke_until, \
-                new_crl = utils.revoke_certificate(ca_cert=self.cert,
-                                                ca_key=self.key,
-                                                sn=serial,
-                                                sign_algo=sign_algo,
-                                                timezone=timezone,
-                                                ca_crl=new_crl,
-                                                crl_update=True,
-                                                next_update=self.crl_validity)
-            except Exception as e:
-                config.raise_exception()
-                msg = _("Problem adding cert '{serial}' to CRL: {e}")
-                msg = msg.format(serial=serial, e=e)
-                return callback.error(msg)
+        try:
+            new_crl = utils.rebuild_crl(ca_cert=self.cert,
+                                        ca_key=self.key,
+                                        ca_crl=self.crl,
+                                        drop_serials=drop_serials,
+                                        sign_algo=sign_algo,
+                                        timezone=timezone,
+                                        next_update=self.crl_validity)
+        except Exception as e:
+            config.raise_exception()
+            msg = _("Problem building CRL: {e}")
+            msg = msg.format(e=e)
+            return callback.error(msg)
 
         self.set_crl(new_crl, callback=callback)
 
@@ -1519,7 +1463,7 @@ class Ca(OTPmeObject):
         ):
         """ Get CA's CRL as base64 string """
         if not self.crl:
-            msg = "CA does not have a CRL."
+            msg = _("CA does not have a CRL.")
             return callback.error(msg)
         return callback.ok(self.crl)
 
@@ -1561,9 +1505,13 @@ class Ca(OTPmeObject):
         if timezone is None:
             timezone = config.timezone
 
-        # Make sure the cert was issued by ourselves.
+        # Make sure the cert was issued by ourselves: signed with our key,
+        # not only named so. Only the serial goes on the CRL, so a
+        # certificate of one's own with our name and the serial of a
+        # node certificate would have revoked that one.
         cert_issuer = utils.get_issuer(cert)
-        if cert_issuer != self.path:
+        if cert_issuer != self.path \
+        or not utils.is_issued_by(cert, self.cert):
             msg = _("Cert was not issued by this CA: {cert_issuer}")
             msg = msg.format(cert_issuer=cert_issuer)
             return callback.error(msg)
@@ -1607,6 +1555,42 @@ class Ca(OTPmeObject):
             return callback.error(msg)
 
         return callback.ok()
+
+    @check_acls(['revoke:cert'])
+    def revoke_client_cert(
+        self,
+        cert: str,
+        force: bool=False,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Revoke a client certificate, one create_client_cert() made.
+
+        Only those: the certificate of a host, a node, the site or a CA
+        goes with its object (leave, renew_cert), and revoked here it
+        would lock that one out.
+        """
+        try:
+            client_cert = is_client_cert(cert)
+        except Exception as e:
+            msg = _("Not a certificate: {error}")
+            msg = msg.format(error=e)
+            return callback.error(msg)
+        if not client_cert:
+            msg = _("Not a client certificate, only those can be revoked here.")
+            return callback.error(msg)
+        try:
+            return self.revoke_cert(cert=cert,
+                                    force=force,
+                                    run_policies=run_policies,
+                                    verify_acls=False,
+                                    _caller=_caller,
+                                    callback=callback)
+        except CertAlreadyRevoked:
+            msg = _("Certificate is already revoked.")
+            return callback.error(msg)
 
     # FIXME: implement generic renew that read subject, ext_key_usage etc. from given cert
     #        and renews it!!!
@@ -1689,6 +1673,8 @@ class Ca(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
+    @audit_log(ignore_args=['key'])
+    @object_changelog("add")
     def add(
         self,
         cn: Union[str,None]=None,
@@ -1720,7 +1706,7 @@ class Ca(OTPmeObject):
         # Make sure country code is of lenght 2.
         if country:
             if len(str(country)) > 2:
-                return callback.error("Country code to long.")
+                return callback.error(_("Country code too long."))
 
         # Set SSL cert fields.
         self.country = country
@@ -1767,6 +1753,7 @@ class Ca(OTPmeObject):
         force: bool=False,
         run_policies: bool=True,
         add_to_trash: bool=True,
+        verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         _caller: str="API",

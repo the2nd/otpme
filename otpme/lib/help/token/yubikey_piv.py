@@ -27,7 +27,7 @@ cmd_help = {
                 },
 
     'deploy' : {
-                    '_cmd_usage_help' : _('Usage: otpme-token --type yubikey_piv deploy -d -r -n --key-len <key_len> --sign-algo <algo> --encrypt-algo <algo> --backup <backup_file> --restore <restore_file> --restore-from-server --backup-key-file <key_file> --add-user-key {token}'),
+                    '_cmd_usage_help' : _('Usage: otpme-token --type yubikey_piv deploy [-d] [-r] [-n] [--key-len <key_len>] [--sign-algo <algo>] [--encrypt-algo <algo>] [--backup <backup_file>] [--restore <restore_file>] [--restore-from-server] [--backup-key-file <key_file>] [--add-user-key] {token}'),
                     'cmd'   :   '-n :no_token_write=True: --key-len :key_len: --sign-algo :"sign_algo": --encrypt-algo :"encrypt_algo": -r :replace=True: --backup :backup_file: --restore :restore_file: -d :debug=True: --restore-from-server :restore_from_server=True: --backup-key-file :backup_key_file: --add-user-key :add_user_key=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Initialize yubikey PIV applet.'),
@@ -86,7 +86,7 @@ cmd_help = {
                 },
 
     'sign'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token sign --stdin-pass [--tags tag1,tag2...] {name}'),
+                    '_cmd_usage_help' : _('Usage: otpme-token sign [--stdin-pass] [--tags tag1,tag2...] {name}'),
                     'cmd'   :   '--stdin-pass :stdin_pass=True: --tags :[tags]: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Sign token.'),
@@ -96,7 +96,7 @@ cmd_help = {
                 },
 
     'resign'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token resign --stdin-pass {name}'),
+                    '_cmd_usage_help' : _('Usage: otpme-token resign [--stdin-pass] {name}'),
                     'cmd'   :   '--stdin-pass :stdin_pass=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Resign token signatures.'),

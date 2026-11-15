@@ -35,6 +35,36 @@ from otpme.lib.smartcard.utils import detect_smartcard
 
 from otpme.lib.exceptions import *
 
+# Options that need a value. Given without one, a wrong one or one that
+# is no number, the option is left out with a warning and the default
+# stays: an exception in PamHandler.__init__() fails every login.
+VALUE_OPTIONS = (
+                "send_password",
+                "use_smartcard",
+                "use_ssh_agent",
+                "start_ssh_agent",
+                "do_dot1x",
+                "dot1x_connection",
+                "dot1x_token_types",
+                "dot1x_timeout",
+                "offline_key_func",
+                "message_timeout",
+                "connect_timeout",
+                "connection_timeout",
+                "home_skel",
+                )
+INT_OPTIONS = (
+                "dot1x_timeout",
+                "message_timeout",
+                "connect_timeout",
+                "connection_timeout",
+                )
+# The offline token key needs a password KDF that takes memory and
+# threads. PBKDF2 would get the 3 iterations meant for Argon2, HKDF
+# is no password KDF at all.
+OFFLINE_KEY_FUNCS = ("Argon2_i", "Argon2_d", "Argon2_id")
+OFFLINE_KEY_FUNC_OPTS = ("iterations", "memory", "min_mem", "max_mem", "threads")
+
 class PamHandler(object):
     """ Authenticate PAM user. """
     def __init__(self, pamh, argv):
@@ -87,7 +117,7 @@ class PamHandler(object):
         self.dot1x_timeout = 10
         self.dot1x_token_types = []
         self.dot1x_connection = "dot1x-lan"
-        self.failed_message = "Login failed"
+        self.failed_message = _("Login failed")
         self.auth_message = ""
         self.login_message = None
         self.message_timeout = 2
@@ -176,25 +206,36 @@ class PamHandler(object):
             config.reload(configure_logger=True)
             argv.remove("debug")
 
+        # Set by start_ssh_agent, see below the loop.
+        start_ssh_agent = None
+        # Options of offline_key_func given on the line.
+        given_key_func_opts = {}
         for x in argv[1:]:
-            val = None
-            if "=" in x:
-                try:
-                    arg = x.split("=")[0]
-                    val = x.split("=")[1]
-                    log_msg = _("Got option: {arg}={val}", log=True)[1]
-                    log_msg = log_msg.format(arg=arg, val=val)
-                    self.logger.debug(log_msg)
-                except Exception:
-                    log_msg = _("Ignoring malformed PAM parameter: {param}", log=True)[1]
-                    log_msg = log_msg.format(param=x)
-                    self.logger.warning(log_msg)
-                    continue
+            # partition(): a value may have a "=" in it.
+            arg, sep, val = x.partition("=")
+            if sep:
+                log_msg = _("Got option: {arg}={val}", log=True)[1]
+                log_msg = log_msg.format(arg=arg, val=val)
+                self.logger.debug(log_msg)
             else:
-                arg = x
+                val = None
                 log_msg = _("Got option: {arg}", log=True)[1]
                 log_msg = log_msg.format(arg=arg)
                 self.logger.debug(log_msg)
+
+            if arg in VALUE_OPTIONS and not val:
+                log_msg = _("Ignoring PAM parameter without value: {param}", log=True)[1]
+                log_msg = log_msg.format(param=x)
+                self.logger.warning(log_msg)
+                continue
+            if arg in INT_OPTIONS:
+                try:
+                    val = int(val)
+                except ValueError:
+                    log_msg = _("Ignoring unknown value for {option}: {value}", log=True)[1]
+                    log_msg = log_msg.format(option=arg, value=val)
+                    self.logger.warning(log_msg)
+                    continue
 
             if arg == "nullok":
                 self.allow_null_passwords = True
@@ -227,12 +268,7 @@ class PamHandler(object):
                     log_msg = log_msg.format(value=val)
                     self.logger.warning(log_msg)
             if arg == "dot1x_timeout":
-                try:
-                    self.dot1x_timeout = int(val)
-                except ValueError:
-                    log_msg = _("Ignoring unknown value for dot1x_timeout: {value}", log=True)[1]
-                    log_msg = log_msg.format(value=val)
-                    self.logger.warning(log_msg)
+                self.dot1x_timeout = val
             if arg == "dot1x_connection":
                 self.dot1x_connection = val
             if arg == "dot1x_token_types":
@@ -251,7 +287,6 @@ class PamHandler(object):
             if arg == "use_ssh_agent":
                 if val.lower() == "true":
                     self.use_ssh_agent = True
-                    self.ensure_ssh_agent = True
                 elif val.lower() == "false":
                     self.use_ssh_agent = False
                 elif val.lower() == "auto":
@@ -262,17 +297,21 @@ class PamHandler(object):
                     self.logger.warning(log_msg)
             if arg == "start_ssh_agent":
                 if val.lower() == "auto":
-                    self.ensure_ssh_agent = "auto"
+                    start_ssh_agent = "auto"
                 elif val.lower() == "true":
-                    self.ensure_ssh_agent = True
+                    start_ssh_agent = True
                 elif val.lower() == "false":
-                    self.ensure_ssh_agent = False
+                    start_ssh_agent = False
+                else:
+                    log_msg = _("Ignoring unknown value for start_ssh_agent: {value}", log=True)[1]
+                    log_msg = log_msg.format(value=val)
+                    self.logger.warning(log_msg)
             if arg == "cache_login_tokens":
                 self.cache_login_tokens = True
             if arg == "show_errors":
                 self.show_errors = True
             if arg == "message_timeout":
-                self.message_timeout = int(val)
+                self.message_timeout = val
             if arg == "online_greeting":
                 self.online_greeting = True
             if arg == "offline_greeting":
@@ -280,58 +319,76 @@ class PamHandler(object):
             if arg == "unlock_via_offline_token":
                 self.unlock_via_offline_token = True
             if arg == "connect_timeout":
-                self.connect_timeout = int(val)
+                self.connect_timeout = val
             if arg == "connection_timeout":
-                self.connection_timeout = int(val)
+                self.connection_timeout = val
             if arg == "check_offline_pass_strength":
-                self.offline_key_func_opts = {}
-                if val:
-                    self.check_offline_pass_strength = val.split(";")[0]
-                    if ";" in val:
-                        try:
-                            iterations_by_score = {}
-                            for x in val.split(";")[1].split(","):
-                                score = int(x.split(":")[0])
-                                iterations = int(x.split(":")[1])
-                                iterations_by_score[score] = iterations
-                            if iterations_by_score:
-                                self.iterations_by_score = iterations_by_score
-                        except Exception as e:
-                            log_msg = _("Malformed options for PAM parameter: check_offline_pass_strength", log=True)[1]
-                            self.logger.warning(log_msg)
-                else:
-                    self.check_offline_pass_strength = "auto"
+                policy, sep, pairs = (val or "").partition(";")
+                self.check_offline_pass_strength = policy or "auto"
+                # The pairs given replace these of the default. A score
+                # the map does not have failed writing the offline token.
+                if pairs:
+                    iterations_by_score = {}
+                    try:
+                        for pair in pairs.split(","):
+                            score, sep, iterations = pair.partition(":")
+                            score = int(score)
+                            iterations = int(iterations)
+                            if score < 0 or score > 10 or iterations < 1:
+                                raise ValueError(pair)
+                            iterations_by_score[score] = iterations
+                    except ValueError:
+                        log_msg = _("Malformed options for PAM parameter: check_offline_pass_strength", log=True)[1]
+                        self.logger.warning(log_msg)
+                    else:
+                        self.iterations_by_score.update(iterations_by_score)
             if arg == "offline_key_func":
-                # Try to get key derivation function.
-                try:
-                    offline_key_func = val.split(";")[0]
-                except Exception:
-                    offline_key_func = None
-                    log_msg = _("Ignoring malformed PAM parameter: offline_key_func", log=True)[1]
+                offline_key_func, sep, opts = val.partition(";")
+                if offline_key_func not in OFFLINE_KEY_FUNCS:
+                    log_msg = _("Ignoring unknown value for offline_key_func: {func}", log=True)[1]
+                    log_msg = log_msg.format(func=offline_key_func)
                     self.logger.warning(log_msg)
-
-                if offline_key_func:
-                    try:
-                        config.get_hash_type_default_otps(offline_key_func)
-                    except UnsupportedHashType:
-                        log_msg = _("Ignoring unknown value for offline_key_func: {func}", log=True)[1]
-                        log_msg = log_msg.format(func=offline_key_func)
-                        self.logger.warning(log_msg)
-                # Set offline key derivation function.
+                    continue
+                # The options given replace these of the default, the
+                # others stay. Before, they replaced all of them.
+                func_opts = {}
+                try:
+                    if opts:
+                        for opt in opts.split(","):
+                            name, sep, value = opt.partition(":")
+                            if name not in OFFLINE_KEY_FUNC_OPTS:
+                                raise ValueError(opt)
+                            if name != "memory" or value != "auto":
+                                value = int(value)
+                            func_opts[name] = value
+                except ValueError:
+                    log_msg = _("Malformed options for PAM parameter: offline_key_func", log=True)[1]
+                    self.logger.warning(log_msg)
+                    continue
                 self.offline_key_func = offline_key_func
-                # Try to get key derivation options.
-                if ";" in val:
-                    try:
-                        func_opts = {}
-                        for opt in val.split(";")[1].split(","):
-                            k = opt.split(":")[0]
-                            v = opt.split(":")[1]
-                            func_opts[k] = v
-                        if func_opts:
-                            self.offline_key_func_opts = func_opts
-                    except Exception as e:
-                        log_msg = _("Malformed options for PAM parameter: offline_key_func", log=True)[1]
-                        self.logger.warning(log_msg)
+                self.offline_key_func_opts.update(func_opts)
+                given_key_func_opts.update(func_opts)
+
+        # With check_offline_pass_strength the score picks the iterations.
+        # OfflineToken.derive_key() asks for the score only without them,
+        # so given ones turned the check off.
+        if self.check_offline_pass_strength:
+            if "iterations" in given_key_func_opts:
+                log_msg = _("Not using iterations of offline_key_func: check_offline_pass_strength is set", log=True)[1]
+                self.logger.info(log_msg)
+            self.offline_key_func_opts.pop("iterations", None)
+
+        # start_ssh_agent wins where it is given, wherever it stands on
+        # the line. Else use_ssh_agent says it: true starts the agent and
+        # false does not. Before, false still left it to "auto", which
+        # started the agent once the nodes sent SSH keys, and true set
+        # it only when it came after start_ssh_agent.
+        if start_ssh_agent is not None:
+            self.ensure_ssh_agent = start_ssh_agent
+        elif self.use_ssh_agent is True:
+            self.ensure_ssh_agent = True
+        elif self.use_ssh_agent is False:
+            self.ensure_ssh_agent = False
 
         # Try to get username.
         try:
@@ -387,6 +444,9 @@ class PamHandler(object):
             prompt = "Password: "
         if self.password:
             return self.password
+        # Without try_first_pass or use_first_pass we ask ourselves. It
+        # was not set then, and the login ended in an UnboundLocalError.
+        password = None
         # Try to get password/OTP from a previous stacked module.
         if self.use_first_pass:
             password = self.pamh.authtok
@@ -394,7 +454,10 @@ class PamHandler(object):
                 log_msg = _("No password received and 'use_first_pass' set. Authentication failed.", log=True)[1]
                 self.logger.warning(log_msg)
                 self.cleanup()
-                return self.pamh.PAM_AUTH_ERR
+                # Not PAM_AUTH_ERR as the return value: this is the
+                # password method of the login, which took it for the
+                # password.
+                raise AuthFailed(_("No password from the PAM module before."))
         elif self.try_first_pass:
             password = self.pamh.authtok
             if password is None:
@@ -922,6 +985,7 @@ class PamHandler(object):
         for token_type in self.dot1x_token_types:
             if token_type in supported_smartcards:
                 dot1x_smartcard_types.append(token_type)
+        smartcard = None
         if dot1x_smartcard_types:
             try:
                 smartcard = detect_smartcard(sc_types=dot1x_smartcard_types)
@@ -929,6 +993,16 @@ class PamHandler(object):
                 msg = _("Error detecting smartcard: {error}")
                 msg = msg.format(error=e)
                 raise OTPmeException(msg) from e
+        # No smartcard plugged in: the password if it may be used, else
+        # nothing. Going on took None for the smartcard, and its .type
+        # ended the login in an AttributeError.
+        if dot1x_smartcard_types and not smartcard:
+            if "password" not in self.dot1x_token_types:
+                log_msg = _("No smartcard found for 802.1X, skipping it: {types}", log=True)[1]
+                log_msg = log_msg.format(types=", ".join(dot1x_smartcard_types))
+                self.logger.warning(log_msg)
+                return
+        if smartcard:
             # Get smartcard handler.
             try:
                 smartcard_client_handler = config.get_smartcard_handler(smartcard.type)[0]
@@ -1588,6 +1662,7 @@ class PamHandler(object):
                                 offline_token=self.offline_token,
                                 endpoint=True, change_user=True,
                                 send_password=self.send_password,
+                                login_use_dns=config.login_use_dns,
                                 auth_only=auth_only,
                                 unlock=self.unlock,
                                 sync_token_data=True,
@@ -2022,10 +2097,16 @@ class PamHandler(object):
             try:
                 self.online_auth(login=True)
             except Exception:
-                # Try to get realm/site to connect to via DNS.
-                try:
-                    x = net.get_otpme_site(config.realm)
-                except Exception as e:
+                # Try to get realm/site to connect to via DNS. Only with
+                # LOGIN_USE_DNS: this asked DNS whatever it said.
+                if not config.login_use_dns:
+                    x = None
+                else:
+                    try:
+                        x = net.get_otpme_site(config.realm)
+                    except Exception:
+                        x = None
+                if x is None:
                     pass
                 else:
                     try:
@@ -2066,11 +2147,13 @@ class PamHandler(object):
 
         # Set PAM return value depending on login/auth status.
         if self.auth_status:
-            # Show login greeting via PAM message if configured.
-            if self.offline:
+            # Show login greeting via PAM message if configured. Not on
+            # a screen unlock, which is no login.
+            is_login = self.login_status is False
+            if is_login and self.offline:
                 if self.offline_greeting:
                     self.login_message = (_("You are logged in offline!"))
-            else:
+            elif is_login:
                 if self.online_greeting:
                     self.login_message = _("You are logged in to REALM '{realm}'.")
                     self.login_message = self.login_message.format(realm=config.realm)
@@ -2136,8 +2219,12 @@ class PamHandler(object):
                     self.logger.error(log_msg)
 
             # Show errors via PAM message if configured.
+            # "Login failed" is the prefix of the reason: shown alone,
+            # it never said why.
             if self.show_errors:
-                if self.failed_message:
+                if self.failed_message and self.auth_message:
+                    self.login_message = f"{self.failed_message}: {self.auth_message}"
+                elif self.failed_message:
                     self.login_message = self.failed_message
                 else:
                     self.login_message = self.auth_message

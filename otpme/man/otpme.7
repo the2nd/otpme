@@ -81,7 +81,8 @@ Such a client is created with \fB\-\-enable\-oidc\fR, see
 Here too, only tokens and roles in the access group of the client can log in.
 .SH ARCHITECTURE OVERVIEW
 OTPme runs as a set of daemons.
-\fBotpme\-controld\fR starts them.
+\fBotpme\-controld\fR starts them, see
+.BR otpme\-controld (8).
 Nodes run all daemons.
 Hosts only run hostd and confd, and httpd or backupd if they are configured as SSO or backup server.
 .SS Daemons
@@ -171,6 +172,14 @@ Runs on: nodes, and hosts with \fBBACKUP_SERVER\fR set in
 Sends events to the \fBotpme\-agent\fR of logged in users, for example that a share can be mounted.
 .br
 Runs on: the master node only. clusterd starts it on the new master node when the master changes.
+.TP
+.B racd
+Remote access daemon.
+The two ends of a remote access session meet here: the host and the user who asked for a shell, see
+.BR otpme\-shell (1).
+It passes the bytes between them and reads none of them.
+.br
+Runs on: the master node only, like idled.
 .TP
 .B confd
 Configuration daemon. It runs as root.
@@ -692,22 +701,21 @@ With \fBdisable_acl_inheritance\fR a move leaves its ACLs as they are, and so do
 It is on for tokens and passwords, and off for everything else.
 Creating an object, \fB\-a\fR and \fB\-r\fR reach it either way.
 .PP
-Which ACLs a kind of object knows is in
-.BR otpme\-acls (7).
-\fBlist_acls\fR shows the ACLs an object has, and the shell completion offers the ones it takes after \fBadd_acl\fR.
+\fBlist_acls\fR shows the ACLs an object has.
+Which ACLs a kind of object knows, the tab completion offers after \fBadd_acl\fR.
 .SS ACL Groups
 An ACL group is a set of ACLs, each for an object type, for example \fBuser:edit:attribute\fR.
 Give the group in place of an ACL, as \fB@\fIgroup\fR, \fB+@\fIgroup\fR or \fB++@\fIgroup\fR:
 .RS
-.B otpme\-unit add_acl \fIlinux/users\fB role \fIhelpdesk\fB @usermanager,++@usermanager\fR
+.B otpme\-unit add_acl \fIlinux/users\fB role \fIhelpdesk\fB @USERMANAGER,++@USERMANAGER\fR
 .RE
 The unit \fIlinux/users\fR and every object in the tree below it now grant the role \fIhelpdesk\fR what the group holds for their type.
 \fB++@\fR alone counts only below the unit, not on the unit itself.
 Change the group, and the change counts at once on every object it is given on.
-Every site has the groups \fBrealm_user\fR, \fBusermanager\fR, \fBuseradmin\fR and \fBgroupmanager\fR, see
+Every site has the groups \fBREALM_USERS\fR, \fBUSERMANAGER\fR, \fBUSERADMIN\fR, \fBGROUPMANAGER\fR and \fBPASSUSER\fR, see
 .BR otpme\-aclgroup (1).
 .PP
-\fBrealm_user\fR is what every user of the realm may see: the site, units, users, groups, roles, hosts and nodes.
+\fBREALM_USERS\fR is what every user of the realm may see: the site, units, users, groups, roles, hosts and nodes.
 The role \fBREALM_USER\fR has it on the whole site.
 A site from before the group gets it with \fBotpme\-site upgrade\fR, which also takes away the ACLs realm users had one by one.
 .SH OFFLINE AUTHENTICATION
@@ -1154,6 +1162,13 @@ This always works on the SSO token of the user, the one named by \fBdefault_sso_
 If the type of that token is not in this list, recovery is refused.
 The default is an empty list, so recovery is off.
 .br
+A user who has no SSO token yet gets a new one, but only where
+.B sso_token_deploy_roles
+or
+.B sso_token_deploy_accessgroups
+is set.
+Then the type the user picks has to be in this list.
+.br
 The mail address for it is kept on the user, in the LDAP attribute \fBotpmeRecoveryMail\fR.
 The value is looked up at the user, then at the unit, then at the site, on the home site of the user.
 .br
@@ -1186,6 +1201,64 @@ The language is the one of the user (\fBotpme\-user language\fR), or the one the
 .br
 Object types: site, unit, user
 .TP
+.B sso_token_deploy_roles \fR(list)
+Comma separated list of roles the SSO portal adds a new SSO token to.
+The recovery creates that token when the user has none yet (see \fBallow_sso_token_recovery\fR).
+Without this parameter and \fBsso_token_deploy_accessgroups\fR it creates none, and a user without an SSO token gets no recovery mail.
+.br
+A value is a role of the current site, or \fIsite\fB/\fIrole\fR for a role of another site.
+To set it you need the right to add tokens to the role (\fBadd:token\fR).
+The value is looked up at the user, then at the unit, then at the site, on the home site of the user.
+.br
+To sign in at the portal with the new token, name the \fBSSO_USER\fR role of that site: it is the role for SSO logins.
+.br
+The new token is the SSO token of the portal the recovery runs at.
+That portal adds it only to its own roles of the list.
+A role of another site is what the user gets when the recovery runs at that site's portal.
+For a user of another site, the portal adds the token only to the roles that
+.B sso_token_deploy_trusts
+allows.
+.br
+A token that the recovery replaces keeps its roles and gets no new ones.
+.br
+Object types: site, unit, user
+.TP
+.B sso_token_deploy_accessgroups \fR(list)
+Comma separated list of access groups the SSO portal adds a new SSO token to.
+It works like \fBsso_token_deploy_roles\fR, with access groups instead of roles.
+.br
+Object types: site, unit, user
+.TP
+.B sso_token_deploy_trusts \fR(list)
+Which of this site's roles and access groups get the new SSO token of a user of another site.
+Naming them in the user's
+.B sso_token_deploy_roles
+or
+.B sso_token_deploy_accessgroups
+is the home site's half of the decision, this parameter is the portal's half.
+Users of this site need no entry, and an entry for this site is refused.
+.br
+An entry is \fIsite\fR, \fIsite:role/name\fR or \fIsite:accessgroup/name\fR.
+\fIsite\fR is the home site of the user, \fIname\fR is a role or access group of \fIthis\fR site.
+Both kinds of entry are needed.
+.br
+So the entries on site \fImunich\fR mean:
+.RS
+.TP
+.B berlin
+adds new SSO tokens of users of site berlin here at all
+.TP
+.B berlin:role/SSO_USER
+adds them to this site's role \fISSO_USER\fR, if the user's own \fBsso_token_deploy_roles\fR names it
+.RE
+.IP
+Without the bare site entry the token is still created, but it gets into nothing here, and the user cannot sign in with it.
+.br
+The recovery page still says that it worked.
+So the portal writes a warning to its log for each entry that is missing here, and one more when the token got into no role or access group of this site at all.
+.br
+Object types: site
+.TP
 .B admin_access_role \fR(str)
 The SSO portal has an admin access: a member of this role can set a temporary password on the token of another user there.
 The admin or the IT support can then work as this user for a while, for example to set up a notebook (see \fBallow_temp_passwords\fR).
@@ -1199,10 +1272,14 @@ Can only be changed by an admin.
 Object types: site, unit, user, token
 .TP
 .B admin_access_trusts \fR(list)
-The sites this site trusts for \fBadmin_access_role\fR.
-When a user of one of these sites opens an admin access here, OTPme uses the role from the user of that site.
-For every other site only the \fBadmin_access_role\fR of this site is used.
-Users of the own site are always trusted.
+Comma-separated list of sites whose SSO portal may show and change the admin access of this site's users (see \fBadmin_access_role\fR).
+.br
+A user can sign in at the portal of another site.
+That portal sends the request to this site, the home site of the user, and this site only accepts it from a site in its list.
+It tells the requesting site by the certificate of its node, not by anything the request says.
+Without an entry, the users of this site do not get the admin access at the portals of other sites.
+.br
+Users of this site need no entry, and an entry for this site is refused.
 .br
 Object types: site
 .TP
@@ -1218,8 +1295,9 @@ Every site has its own CA.
 It issues the certificates of the nodes and hosts of the site, and the certificate of the site itself, which is used for TLS and for RADIUS.
 The CA of a site is signed by the CA of the realm, the CA of a sub-site by the CA of its parent site.
 .TP
-.B cert_key_len \fR(int, default: 3072)
-How long the RSA key of a new certificate is, in bits.
+.B cert_key_len \fR(int, default: 4096)
+How long the RSA key of a new certificate is, in bits: of a client or server certificate, and of a host or node certificate the CA makes the key for.
+A host or node that sends a request at join makes its key itself.
 Allowed: 2048, 3072, 4096 and 8192.
 .br
 Object types: site, unit, ca
@@ -1350,7 +1428,8 @@ Object types: site
 .TP
 .B hosts_accessgroup \fR(str)
 The access group that every new host is added to.
-The value is the name of an access group that exists.
+The value is the name of an access group that exists, and it must be an access group of the same site.
+When the access group is deleted later, a new host goes into none, and the add says so.
 .br
 This is for MAC Authentication Bypass (MAB): a device that can not log in by itself, for example a printer, is let into the network by its MAC address.
 The switch asks OTPme with that address, and the access group of the host says whether it is let in.
@@ -1376,7 +1455,8 @@ A host can have a MAC address too, so it can also be used for MAB.
 .TP
 .B devices_accessgroup \fR(str)
 The access group that every new device is added to.
-The value is the name of an access group that exists.
+The value is the name of an access group that exists, and it must be an access group of the same site.
+When the access group is deleted later, a new device goes into none, and the add says so.
 The switch asks OTPme with the MAC address of the device, and this access group says whether it is let in.
 .br
 You need the \fBadd:device\fR ACL on that access group to set this parameter, because the devices are added to it later without another check.
@@ -1391,6 +1471,20 @@ You can also write it as \fIsite\fB/\fIrole\fR, which is how a role is shown.
 You need the \fBadd:device\fR ACL on that role to set this parameter, because the devices are added to it later without another check.
 .br
 Object types: site, unit
+.SS Resolvers
+.TP
+.B add_resolver_objects_to_trash \fR(bool, default: true)
+Whether the objects a resolver deletes go to the trash.
+That is what \fBrun\fR does with \fBenable_deletions\fR, and what \fBdelete_objects\fR does, see
+.BR otpme\-resolver (1).
+They can be restored from there with
+.BR otpme\-trash (1).
+Set it to false to delete them right away.
+.br
+The value is looked up on the resolver, then on its unit and the units above it, then on the site.
+Without a value anywhere it is true.
+.br
+Object types: site, unit, resolver
 .SS VLAN
 .TP
 .B vlans \fR(list)
@@ -1487,7 +1581,7 @@ Naming a role in the user's
 .B device_token_roles
 is the home site's half of the decision, this parameter is the portal's half.
 This parameter is the only place where that is decided.
-Users of this site need no entry.
+Users of this site need no entry, and an entry for this site is refused.
 .br
 An entry is \fIsite\fR or \fIsite\fB:\fIrole\fR.
 \fIsite\fR is the home site of the user, \fIrole\fR is a role of \fIthis\fR site.
@@ -1645,7 +1739,7 @@ The home site protects its users from other sites, the portal site protects its 
 A site not in the list gets nothing.
 There is no fallback to the local
 .BR sso_allow_passkeys .
-Users of this site need no entry.
+Users of this site need no entry, and an entry for this site is refused.
 .br
 Object types: site
 .TP
@@ -1802,7 +1896,7 @@ The home site protects the secrets of its users, the portal site protects its ba
 A site not in the list gets nothing.
 There is no fallback to the local
 .BR sso_allow_totp .
-Users of this site need no entry.
+Users of this site need no entry, and an entry for this site is refused.
 .br
 Without the trust the Settings card is not offered at all, so an authenticator app cannot be deleted there either.
 Signing in with one is not affected.
@@ -1899,6 +1993,7 @@ This protects the portal site's backend and access groups from users of other si
 An enrolled phone is written into this site's backend and added to this site's SSO access group, roles and groups.
 So it gives a user of another site a new way in here.
 Without an entry the Settings card is not offered: listing, enrolling, enabling and disabling phones.
+Nor is tiqr offered when the user sets up a phone as the SSO token here, on the deploy page or by the account recovery.
 .IP \(bu 2
 On the user's home site, it lists the portal sites.
 This protects the secrets of the home site's users from other sites.
@@ -1913,7 +2008,7 @@ The home site protects the secrets of its users, the portal site protects its ba
 A site not in the list gets nothing.
 There is no fallback to the local
 .BR sso_allow_tiqr .
-Users of this site need no entry.
+Users of this site need no entry, and an entry for this site is refused.
 .br
 Without the trust the Settings card is not offered at all, so a phone cannot be deleted there either.
 Signing in with a phone is not affected: the phone answers a login with a one\-time response, and its secret stays on the phone.
@@ -3133,6 +3228,7 @@ Object types: site, unit, node, share
 .B backup_interval \fR(time)
 How much time passes between two backups of this object.
 It takes time units, e.g. \fB1h\fR or \fB1D\fR, and it is shown in those units.
+Unset means 23h.
 .br
 Object types: site, unit, node, share
 .TP
@@ -3157,7 +3253,10 @@ Object types: site, unit, node, share
 .TP
 .B backup_key \fR(str)
 The AES key the backups of this object are encrypted with, as 64 hex characters.
-OTPme makes one from 32 random bytes when the object is created, so there is no need to set one by hand.
+Set it without a value, and OTPme makes one from 32 random bytes.
+Without a key a backup is refused.
+Lose it, and the backups cannot be read any more.
+Set on the site or a unit, it is the key of every object below that has none of its own.
 .br
 It is stored encrypted with the key of the site.
 \fBshow_config\fR shows it in clear to whoever may read it, and \fB<hidden>\fR where the site key is not available.
@@ -3291,19 +3390,39 @@ Object types: node, share
 .B backup_script \fR(str)
 The OTPme script
 .B backupd
-runs around every backup, as a path relative to the scripts unit.
+runs around every backup it starts by itself, as a path relative to the scripts unit.
+\fBotpme\-backup start\fR does not run it.
 .br
 It is called with a
 .B pre
 hook before the backup and a
 .B post
-hook after it.
-An exit code other than 0 stops the run.
+hook after a backup that worked.
+What a pre hook that fails does is \fBbackup_pre_script_fail\fR.
+A post hook that fails is logged.
 .br
 The default is the
 .B backup_script.sh
 that OTPme ships, in the default scripts unit.
 Only an admin may set this parameter.
+.br
+Object types: site, unit, share, node
+.TP
+.B backup_pre_script_fail \fR(str, default: report)
+What happens when the pre hook of \fBbackup_script\fR fails, with an exit code other than 0.
+.RS
+.TP
+.B abort
+No backup.
+It counts as a failed backup and is reported as one.
+.TP
+.B report
+The backup runs all the same.
+The failure is logged, and it is at the top of the report mail of the backup, and in its line of a summary report.
+.RE
+.IP
+A pre hook is there to get something ready, a database dump for example.
+With \fBreport\fR a backup without it holds what was there before.
 .br
 Object types: site, unit, share, node
 .SS HOTP Tokens
@@ -3584,12 +3703,13 @@ The log files, one per daemon.
 The settings of one user, e.g. which agent to talk to.
 .SH SEE ALSO
 .BR otpme (1),
-.BR otpme\-acls (7),
 .BR otpme.conf (5),
 .BR pam_otpme (8),
+.BR otpme-controld (8),
 .BR otpme-accessgroup (1),
 .BR otpme-aclgroup (1),
 .BR otpme-backup (1),
+.BR local-backup (1),
 .BR otpme-ca (1),
 .BR otpme-client (1),
 .BR otpme-cluster (1),
@@ -3610,6 +3730,7 @@ The settings of one user, e.g. which agent to talk to.
 .BR otpme-scope (1),
 .BR otpme-script (1),
 .BR otpme-share (1),
+.BR otpme-shell (1),
 .BR otpme-site (1),
 .BR otpme-token (1),
 .BR otpme-tool (1),

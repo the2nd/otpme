@@ -243,9 +243,8 @@ def get_host(host, callback=default_callback):
     the one that answers for it. What we have an inventory of is what
     we can say something about, whoever the host belongs to.
 
-    A host name is unique within its site and not within the realm, so
-    the first of two is taken -- as everywhere else a host is named
-    without saying where it is.
+    A host or node name is unique in the realm (see OTPmeHost.add()),
+    so the name alone finds it.
     """
     result = backend.search(object_types=["host", "node"],
                             attribute="name",
@@ -692,15 +691,33 @@ def search_inventory(package=None, os_version=None, kernel=None,
                                 hardware_search=hardware and hw_search,
                                 callback=callback)
 
-    # Hosts by package: in the inventories.
-    name_pattern = package
-    version_pattern = "*"
-    if "=" in package:
-        name_pattern, version_pattern = package.split("=", 1)
-    search_value = f"{name_pattern}={version_pattern}"
+    return search_packages(host_uuids, package, callback=callback)
+
+def package_name_matches(name, name_pattern):
+    """ Whether an installed package is the one <name_pattern> asks for.
+
+    dpkg names a multi-arch package with its architecture (libc6:amd64,
+    libssl3:amd64), and nobody types that: "libssl3" has to find it.
+    So the name counts with and without the architecture, and
+    "libc6:amd64" still finds exactly that one. """
+    if fnmatch.fnmatchcase(name, name_pattern):
+        return True
+    if ":" not in name:
+        return False
+    return fnmatch.fnmatchcase(name.split(":", 1)[0], name_pattern)
+
+def search_packages(host_uuids, package, callback=default_callback):
+    """ The hosts that have <package>, one line per package: the host
+    and the package with its version. <host_uuids> None means every
+    host whose inventory we keep. """
+    name_pattern, version_pattern = split_package_pattern(package)
+    # With a "*" behind the name, for the architecture dpkg puts behind
+    # it (see package_name_matches()). The index search is a LIKE, where
+    # "_" matches any character as well; what is shown matches the
+    # pattern exactly.
     inventories = backend.search(object_type="host_inventory",
                                 attribute="package",
-                                value=search_value,
+                                value=f"{name_pattern}*={version_pattern}",
                                 return_type="instance")
     lines = []
     for inventory in inventories:
@@ -712,10 +729,8 @@ def search_inventory(package=None, os_version=None, kernel=None,
         if not inventory_read_allowed(x_host):
             continue
         packages = inventory.packages
-        # The index search is a LIKE, where "_" matches any character;
-        # what is shown matches the pattern exactly.
         for name in sorted(packages):
-            if not fnmatch.fnmatchcase(name, name_pattern):
+            if not package_name_matches(name, name_pattern):
                 continue
             if not fnmatch.fnmatchcase(packages[name], version_pattern):
                 continue

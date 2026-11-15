@@ -53,8 +53,6 @@ write_acls =  []
 
 read_value_acls = {
                 "view"      : [
-                            "2ftoken",
-                            "2ftoken_status",
                             "card_type",
                             "key_type",
                             "ssh_public_key",
@@ -79,7 +77,6 @@ write_value_acls = {
                             "signature",
                             ],
                 "edit"      : [
-                            "2ftoken",
                             "card_type",
                             "key_type",
                             "password",
@@ -89,13 +86,11 @@ write_value_acls = {
                             "offline_unused_expiry",
                             ],
                 "enable"    : [
-                            "2ftoken",
                             "auth_script",
                             "offline",
                             "session_keep",
                             ],
                 "disable"   : [
-                            "2ftoken",
                             "auth_script",
                             "offline",
                             "session_keep",
@@ -144,31 +139,6 @@ commands = {
                 'exists'    : {
                     'method'            : 'test',
                     'oargs'             : ['password'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    '2f_token'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'change_2f_token',
-                    'args'              : ['second_factor_token'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'enable_2f'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'enable_2f_token',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'disable_2f'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'disable_2f_token',
                     'job_type'          : 'process',
                     },
                 },
@@ -308,12 +278,8 @@ def register():
                     sub_type_attribute="token_type")
 
 def register_hooks():
-    config.register_auth_on_action_hook("token", "resync")
     config.register_auth_on_action_hook("token", "change_key_type")
     config.register_auth_on_action_hook("token", "change_card_type")
-    config.register_auth_on_action_hook("token", "change_2f_token")
-    config.register_auth_on_action_hook("token", "enable_2f_token")
-    config.register_auth_on_action_hook("token", "disable_2f_token")
     config.register_auth_on_action_hook("token", "add_sign")
     config.register_auth_on_action_hook("token", "del_sign")
     config.register_auth_on_action_hook("token", "change_ssh_public_key")
@@ -394,8 +360,6 @@ class SshToken(Token):
                                 'principals',
                                 'tunnel',
                                 ]
-        # Valid token pass types that could be used as a second factor.
-        self.valid_2f_pass_types = [ 'otp' ]
         # Hardware card/token type.
         self.card_type = None
         self.allow_offline = False
@@ -461,19 +425,6 @@ class SshToken(Token):
             'CARD_TYPE'                 : {
                                             'var_name'      : 'card_type',
                                             'type'          : str,
-                                            'required'      : False,
-                                        },
-
-            'SECOND_FACTOR_TOKEN'       : {
-                                            'var_name'      : 'second_factor_token',
-                                            'type'          : 'uuid',
-                                            'required'      : False,
-                                        },
-
-
-            'SECOND_FACTOR_TOKEN_ENABLED': {
-                                            'var_name'      : 'second_factor_token_enabled',
-                                            'type'          : bool,
                                             'required'      : False,
                                         },
 
@@ -715,27 +666,11 @@ class SshToken(Token):
         private_key = key.private_key_base64
         return private_key
 
-    def resync(self, callback: JobCallback=default_callback, **kwargs):
-        """ Wrapper method to call resync() of 2ftoken. """
-        try:
-            sftoken = self.get_sftoken()
-        except Exception as e:
-            msg = _("Error loading second factor token: {error}")
-            msg = msg.format(error=e)
-            return callback.error(msg)
-        return sftoken.resync(callback=callback, **kwargs)
-
     def gen_challenge(self, **kwargs):
         """ Generate challenge to be sigend by users private SSH key. """
         if not self.ssh_public_key:
             raise Exception(_("No SSH public key set."))
-        if self.second_factor_token_enabled:
-            sftoken = self.get_sftoken()
-            otp_len = sftoken.otp_len
-            if sftoken.pin_enabled:
-                otp_len = otp_len + sftoken.pin_len
-            return ssh.gen_challenge(self.ssh_public_key, otp_len=otp_len)
-        return ssh.gen_challenge(self.ssh_public_key, otp_len=0)
+        return ssh.gen_challenge(self.ssh_public_key)
 
     def test(
         self,
@@ -757,15 +692,11 @@ class SshToken(Token):
         response = callback.sshauth(challenge=challenge,
                                     token_test=True)
 
-        otp = None
-        if self.second_factor_token_enabled:
-            pass_prompt = _("OTP: ")
-            if not otp:
-                otp = callback.askpass(pass_prompt)
-            if not otp:
-                return callback.error(_("Unable to get OTP."))
-
-        status = self.verify(challenge=challenge, response=response, otp=otp)
+        # The client signs a test challenge with a tag, see
+        # protocols/utils.tag_test_challenge().
+        from otpme.lib.protocols.utils import tag_test_challenge
+        status = self.verify(challenge=tag_test_challenge(challenge),
+                            response=response)
 
         if status:
             return callback.ok(ok_message)
@@ -787,36 +718,9 @@ class SshToken(Token):
             logger.warning(log_msg)
             return None
 
-        if self.second_factor_token_enabled:
-            try:
-                sftoken = self.get_sftoken()
-            except Exception as e:
-                log_msg = _("Error loading second factor token: {error}", log=True)[1]
-                log_msg = log_msg.format(error=e)
-                logger.critical(log_msg)
-                return None
-
-            # Check if token PIN is mandatory. by default we dont want a user to
-            # type in the token PIN when used as second factor token.
-            if sftoken.pin_mandatory:
-                verify_pin = True
-                otp_includes_pin = True
-            else:
-                verify_pin = False
-                otp_includes_pin = False
-
-            cutoff_len = sftoken.otp_len
-            if otp_includes_pin:
-                cutoff_len += sftoken.pin_len
-
-            if len(otp) <= cutoff_len:
-                log_msg = _("Second factor OTP token enabled but password is too short to include a OTP.", log=True)[1]
-                logger.debug(log_msg)
-                return None
-            password = otp[:-cutoff_len]
-            otp = otp[-cutoff_len:]
-        else:
-            password = otp
+        # A password is the passphrase of the private key kept on the
+        # server, see below.
+        password = otp
 
         # In offline mode the token config is encrypted via challenge/response
         # procedure using the SSH private key. The offline challenge is the MD5
@@ -867,157 +771,7 @@ class SshToken(Token):
         else:
             return None
 
-        # If no second factor token is configured we are done.
-        if not self.second_factor_token_enabled:
-            return True
-
-        # Verify second factor token.
-        log_msg = _("Verifying second factor token: {sftoken_rel_path}", log=True)[1]
-        log_msg = log_msg.format(sftoken_rel_path=sftoken.rel_path)
-        logger.debug(log_msg)
-        if sftoken.verify_otp(otp,
-                            session_uuid=session_uuid,
-                            otp_includes_pin=otp_includes_pin,
-                            verify_pin=verify_pin, sft=True):
-            return True
-        return False
-
-    @check_acls(['edit:2ftoken'])
-    @object_lock(full_lock=True)
-    @backend.transaction
-    @audit_log()
-    @object_changelog("change second factor token to {second_factor_token}")
-    def change_2f_token(
-        self,
-        second_factor_token: str,
-        force: bool=False,
-        run_policies: bool=True,
-        callback: JobCallback=default_callback,
-        _caller: str="API",
-        **kwargs,
-        ):
-        """ Change token second factor token. """
-        msg = _("Change second factor token of token '{token_path}' to '{second_factor_token}'?: ")
-        msg = msg.format(token_path=self.rel_path,
-                        second_factor_token=second_factor_token)
-        if not self.ask_change_confirmation(msg, force=force, callback=callback):
-            return callback.abort()
-
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("change_2f_token",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception:
-                return callback.error()
-
-        if second_factor_token == "":
-            self.second_factor_token = None
-        else:
-            # Get user instance of token owner.
-            user = backend.get_object(object_type="user", uuid=self.owner_uuid)
-            # Get token instance of 2f_token by name.
-            token = user.token(second_factor_token)
-
-            if not token:
-                msg = _("Token '{second_factor_token}' does not exist.")
-                msg = msg.format(second_factor_token=second_factor_token)
-                return callback.error(msg)
-            if token.pass_type != "otp":
-                msg = _("Token '{second_factor_token}' is not an OTP token.")
-                msg = msg.format(second_factor_token=second_factor_token)
-                return callback.error(msg)
-
-            # Set 2f token.
-            self.second_factor_token = token.uuid
-        self.update_index('second_factor_token', self.second_factor_token)
-        return self._cache(callback=callback)
-
-    @check_acls(['enable:2ftoken'])
-    @object_lock()
-    @backend.transaction
-    @audit_log()
-    @object_changelog("enable second factor token")
-    def enable_2f_token(
-        self,
-        force: bool=False,
-        run_policies: bool=True,
-        callback: JobCallback=default_callback,
-        _caller: str="API",
-        **kwargs,
-        ):
-        """ Enable the second factor token. """
-        if self.second_factor_token_enabled:
-            return callback.error(_("Second factor token already enabled."))
-
-        if not self.second_factor_token:
-            return callback.error(_("No second factor token configured."))
-
-        # Check if second factor token is available.
-        try:
-            self.get_sftoken(callback=callback)
-        except Exception as e:
-            msg = _("Unable to enable second factor token: {error}")
-            msg = msg.format(error=e)
-            return callback.error(msg)
-
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("enable_2f_token",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception:
-                return callback.error()
-
-        msg = _("Enable second factor token?: ")
-        if not self.ask_change_confirmation(msg, force=force, callback=callback):
-            return callback.abort()
-
-        self.second_factor_token_enabled = True
-        self.update_index('second_factor_token_enabled', True)
-        return self._cache(callback=callback)
-
-    @check_acls(['disable:2ftoken'])
-    @object_lock()
-    @backend.transaction
-    @audit_log()
-    @object_changelog("disable second factor token")
-    def disable_2f_token(
-        self,
-        force: bool=False,
-        run_policies: bool=True,
-        callback: JobCallback=default_callback,
-        _caller: str="API",
-        **kwargs,
-        ):
-        """ Disable the second factor token. """
-        if not self.second_factor_token_enabled:
-            return callback.error(_("Second factor token already disabled."))
-
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("disable_2f_token",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception:
-                return callback.error()
-
-        msg = _("Disable second factor token?: ")
-        if not self.ask_change_confirmation(msg, force=force, callback=callback):
-            return callback.abort()
-
-        self.second_factor_token_enabled = False
-        self.update_index('second_factor_token_enabled', False)
-        return self._cache(callback=callback)
+        return True
 
     @object_lock(full_lock=True)
     @backend.transaction
@@ -1204,17 +958,6 @@ class SshToken(Token):
             msg = denied_msg(self, "view_public:object")
             return callback.error(msg, exception=PermissionDenied)
 
-        second_factor_token_name = ""
-        if self.verify_acl("view:2ftoken"):
-            # Get 2f token instance.
-            if self.second_factor_token:
-                try:
-                    sftoken = self.get_sftoken()
-                    second_factor_token_name = sftoken.name
-                except Exception as e:
-                    msg = _("Error loading second factor token: {error}")
-                    msg = msg.format(error=e)
-                    callback.send(msg)
         lines = []
 
         if self.verify_acl("view:ssh_public_key"):
@@ -1231,13 +974,6 @@ class SshToken(Token):
             lines.append(f'KEY_TYPE="{self.key_type}"')
         else:
             lines.append('KEY_TYPE=""')
-
-        lines.append(f'SECOND_FACTOR_TOKEN="{second_factor_token_name}"')
-
-        if self.verify_acl("view:2ftoken_status"):
-            lines.append(f'SECOND_FACTOR_TOKEN_ENABLED="{self.second_factor_token_enabled}"')
-        else:
-            lines.append('SECOND_FACTOR_TOKEN_ENABLED=""')
 
         if self.verify_acl("view:card_type"):
             lines.append(f'CARD_TYPE="{self.card_type}"')

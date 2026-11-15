@@ -378,8 +378,12 @@ class ConnectSocket(object):
             if timeout is not None and self.connected:
                 self.set_timeout(org_timeout)
 
-    def recv(self, recv_buffer=config.max_request_size, blocking=None, timeout=None, **kwargs):
+    def recv(self, recv_buffer=None, blocking=None, timeout=None, **kwargs):
         """ Receive data. """
+        # Read at call time: a default argument would keep the value
+        # from import over a config reload.
+        if recv_buffer is None:
+            recv_buffer = config.max_request_size
         org_timeout = self.timeout
         if timeout is not None:
             self.set_timeout(timeout)

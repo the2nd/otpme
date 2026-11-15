@@ -31,6 +31,8 @@ TIMEOUT = 60
 BUSY_TIMEOUT = TIMEOUT * 1000
 INDEX_DB = f"{INDEX_DIR}/objects.sqlite"
 DB_URI = f"sqlite:////{INDEX_DB}"
+# What PRAGMA synchronous takes, see https://www.sqlite.org/pragma.html.
+SYNCHRONOUS_VALUES = ["OFF", "NORMAL", "FULL", "EXTRA"]
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = []
@@ -169,20 +171,22 @@ def get_db_engine():
     from sqlalchemy.orm import scoped_session
     global engine
     global Session
+    # Checked before anything connects: a value SQLite does not know was
+    # passed over in silence before, and SQLite stayed at its own
+    # default, FULL, with nothing to say so.
+    synchronous = config.sqlite3_pragma_synchronous
+    if synchronous not in SYNCHRONOUS_VALUES:
+        valid_values = ", ".join(SYNCHRONOUS_VALUES)
+        msg = _("Invalid SQLITE3_PRAGMA_SYNCHRONOUS: {value}: must be one of {valid_values}")
+        msg = msg.format(value=synchronous, valid_values=valid_values)
+        raise OTPmeException(msg)
     def creator():
         db_uri = INDEX_DB
         conn = sqlite3.connect(db_uri, timeout=TIMEOUT, isolation_level=None)
         conn.execute('PRAGMA journal_mode=WAL')
         #conn.execute('PRAGMA journal_mode=MEMORY')
         conn.execute(f'PRAGMA busy_timeout = {BUSY_TIMEOUT}')
-        if config.sqlite3_pragma_synchronous == "OFF":
-            conn.execute("PRAGMA synchronous=OFF")
-        if config.sqlite3_pragma_synchronous == "FULL":
-            conn.execute("PRAGMA synchronous=FULL")
-        if config.sqlite3_pragma_synchronous == "EXTRA":
-            conn.execute("PRAGMA synchronous=EXTRA")
-        if config.sqlite3_pragma_synchronous == "NORMAL":
-            conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute(f"PRAGMA synchronous={synchronous}")
         return conn
     if not engine:
         # Get DB engine

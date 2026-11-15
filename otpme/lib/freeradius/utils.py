@@ -1,7 +1,6 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
-import shutil
 
 from otpme.lib import stuff
 from otpme.lib import config
@@ -30,6 +29,53 @@ freeradius_pidfile = os.path.join(config.pidfile_dir, "freeradius.pid")
 LOCK_TYPE = "freeradius"
 locking.register_lock_type(LOCK_TYPE, module=__file__)
 
+def get_user():
+    """ The user and group FreeRADIUS runs as.
+
+    With the Python module it is FREERADIUS_USER: the module asks hostd
+    for the clients and sessions it needs. Without it every request runs
+    otpme-auth, which reads the auth cache of the node, and that takes
+    the OTPme user.
+    """
+    if config.use_radius_mod:
+        return config.freeradius_user, config.freeradius_group
+    return config.user, config.group
+
+def get_log_dir():
+    """ Where FreeRADIUS writes its log. """
+    user, group = get_user()
+    if user == config.user:
+        return config.log_dir
+    return config.freeradius_log_dir
+
+def create_dirs():
+    """ Make the config directory readable for FreeRADIUS and give it a
+    log directory it can write. """
+    user, group = get_user()
+    if not os.path.exists(freeradius_dir):
+        filetools.create_dir(freeradius_dir)
+    # It holds the secrets of the clients and the RADIUS key: the OTPme
+    # user writes, FreeRADIUS reads, nobody else.
+    filetools.set_fs_ownership(freeradius_dir, user=config.user, group=group)
+    filetools.set_fs_permissions(freeradius_dir, mode=0o750)
+    log_dir = get_log_dir()
+    if not os.path.exists(log_dir):
+        filetools.create_dir(log_dir, user=user, group=group, mode=0o750)
+
+def write_file(path, content):
+    """ Write a file FreeRADIUS reads. """
+    user, group = get_user()
+    filetools.create_file(path,
+                        content=content,
+                        user=config.user,
+                        group=group,
+                        mode=0o640)
+    # create_file() gives a file that is there already what it had, and
+    # one from before FREERADIUS_USER is otpme:otpme 0660, which
+    # FreeRADIUS could not read.
+    filetools.set_fs_ownership(path, user=config.user, group=group)
+    filetools.set_fs_permissions(path, mode=0o640)
+
 # The clear-text password is handed to otpme-auth via the USER_PASSWORD
 # environment variable, NOT via "%{User-Password}" argv substitution.
 # FreeRADIUS 3.x's backtick-exec exports every request attribute as an
@@ -38,7 +84,7 @@ locking.register_lock_type(LOCK_TYPE, module=__file__)
 # /proc/<pid>/cmdline. The --env-password flag must sit immediately
 # before <username> -- see bin/command.py for the resolution path.
 PASSWORD_CONFIG_CMD = '''
-                Auth-Type := `otpme-auth verify --socket --cache ''' + str(config.radius_cache_time) + ''' --env-password USER_PASSWORD '%{User-Name}' '%{NAS-Identifier}' '%{%{Client-IP-Address}:-%{Packet-Src-IPv6-Address}}'`
+                Auth-Type := `otpme-auth verify --socket --cache --env-password USER_PASSWORD '%{User-Name}' '%{NAS-Identifier}' '%{%{Client-IP-Address}:-%{Packet-Src-IPv6-Address}}'`
                 '''
 
 PASSWORD_CONFIG_MOD = '''
@@ -110,6 +156,8 @@ PYTHON_MOD_POSTAUTH_TEMPLATE = '''
       '''
 
 def create_freeradius_conf():
+    # FreeRADIUS is started as root and changes to this user itself.
+    radius_user, radius_group = get_user()
     if config.use_radius_mod:
         PYTHON_MOD_CONFIG = PYTHON_MOD_CONFIG_TEMPLATE
         PYTHON_MOD_POSTAUTH_CONFIG = PYTHON_MOD_POSTAUTH_TEMPLATE
@@ -127,7 +175,7 @@ def create_freeradius_conf():
     sysconfdir = /etc
     localstatedir = /var
     sbindir = ${exec_prefix}/sbin
-    logdir = /var/log/otpme
+    logdir = ''' + get_log_dir() + '''
     raddbdir = /var/run/otpme/freeradius/
     radacctdir = ${logdir}/radacct
     name = freeradius
@@ -162,8 +210,8 @@ def create_freeradius_conf():
     }
 
     security {
-        user = ''' + config.user + '''
-        group = ''' + config.group + '''
+        user = ''' + radius_user + '''
+        group = ''' + radius_group + '''
         allow_core_dumps = no
         max_attributes = 200
         reject_delay = 1
@@ -303,16 +351,14 @@ def create_freeradius_conf():
     }
     '''
 
-    if not os.path.exists(freeradius_dir):
-        filetools.create_dir(freeradius_dir)
+    create_dirs()
     if os.path.exists(freeradius_custom_conf):
-        shutil.copyfile(freeradius_custom_conf, freeradius_conf)
+        with open(freeradius_custom_conf, "r") as fd:
+            x = fd.read()
     else:
         otpme_auth_path = os.path.join(config.bin_dir, "otpme-auth")
         x = freeradius_conf_template.replace("otpme-auth", otpme_auth_path)
-        filetools.create_file(freeradius_conf,
-                            content=x,
-                            mode=0o660)
+    write_file(freeradius_conf, x)
 
 def create_cert_files():
     site = backend.get_object(object_type="site",
@@ -320,24 +366,18 @@ def create_cert_files():
     radius_cert = site.cert
     if site.radius_cert:
         radius_cert = site.radius_cert
-    filetools.create_file(freeradius_cert_file,
-                        content=radius_cert,
-                        mode=0o660)
+    write_file(freeradius_cert_file, radius_cert)
     radius_key = site.key
     if site.radius_key:
         radius_key = site.radius_key
-    filetools.create_file(freeradius_key_file,
-                        content=radius_key,
-                        mode=0o660)
+    write_file(freeradius_key_file, radius_key)
     if site.radius_ca_cert:
         ca_data = site.radius_ca_cert
     else:
         realm = backend.get_object(object_type="realm",
                                 uuid=config.realm_uuid)
         ca_data = realm.ca_data
-    filetools.create_file(freeradius_ca_cert_file,
-                        content=ca_data,
-                        mode=0o660)
+    write_file(freeradius_ca_cert_file, ca_data)
 
 def create_clients_conf():
     clients = backend.search(object_type="client",
@@ -363,9 +403,7 @@ def create_clients_conf():
 
     lines = "\n".join(lines)
 
-    filetools.create_file(freeradius_clients,
-                        content=lines,
-                        mode=0o660)
+    write_file(freeradius_clients, lines)
 
 def get_pid():
     fd = open(freeradius_pidfile, "r")
@@ -391,16 +429,43 @@ def start():
         create_freeradius_conf()
         create_cert_files()
         create_clients_conf()
-        start_cmd = [config.freeradius_bin, "-d", freeradius_dir]
-        system_command.run(command=start_cmd,
-                            user=config.user,
-                            group=config.group,
-                            close_fds=True,
-                            return_proc=True,
-                            shell=False,
-                            call=True)
+        run_freeradius()
     finally:
         lock.release_lock(lock_caller=lock_caller)
+
+def run_freeradius():
+    """ Start the FreeRADIUS program. """
+    # No user/group here on purpose: FreeRADIUS changes to the user of
+    # "security" in the config we write, and only root may do that. So
+    # it is started by otpme-controld, see send_command().
+    # The callers made sure it is not running. A PID file left behind
+    # may belong to another user, and in the sticky PID directory
+    # FREERADIUS_USER could not replace it.
+    if os.path.exists(freeradius_pidfile):
+        os.remove(freeradius_pidfile)
+    start_cmd = [config.freeradius_bin, "-d", freeradius_dir]
+    # The parent waits until the server is up and exits with how that
+    # went. Not looked at, it was "Started freeradius." for one that
+    # failed to load a module, every round of the quorum check.
+    returncode = system_command.run(command=start_cmd,
+                                    close_fds=True,
+                                    return_proc=True,
+                                    shell=False,
+                                    call=True)
+    if returncode != 0:
+        log_file = os.path.join(get_log_dir(), "radius.log")
+        msg = _("FreeRADIUS exited with {returncode}, see {log_file}")
+        msg = msg.format(returncode=returncode, log_file=log_file)
+        raise OTPmeException(msg)
+
+def send_command(command):
+    """ Ask otpme-controld to start, stop or reload FreeRADIUS.
+
+    The daemons run as the OTPme user and can neither start FreeRADIUS
+    as root nor stop it once it runs as FREERADIUS_USER.
+    """
+    from otpme.lib.daemon.controld import send_daemon_command
+    send_daemon_command(daemon="freeradius", command=command)
 
 def stop():
     try:
@@ -463,13 +528,6 @@ def reload():
         stuff.kill_pid(pid)
         while stuff.check_pid(pid):
             time.sleep(0.1)
-        start_cmd = [config.freeradius_bin, "-d", freeradius_dir]
-        system_command.run(command=start_cmd,
-                            user=config.user,
-                            group=config.group,
-                            close_fds=True,
-                            return_proc=True,
-                            shell=False,
-                            call=True)
+        run_freeradius()
     finally:
         lock.release_lock(lock_caller=lock_caller)

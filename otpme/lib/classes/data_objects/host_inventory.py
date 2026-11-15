@@ -47,6 +47,7 @@ from otpme.lib import filetools
 from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.otpme_object import OTPmeDataObject
 from otpme.lib.classes.otpme_object import token_role_list_setter
+from otpme.lib.classes.otpme_object import uuid_orphans
 from otpme.lib.classes.otpme_object import token_role_list_getter
 
 logger = config.logger
@@ -143,6 +144,7 @@ def register_config_params():
                                     warn_if_exists=True,
                                     setter=token_role_list_setter,
                                     getter=token_role_list_getter,
+                                    orphans=uuid_orphans,
                                     object_types=[
                                                 'site',
                                                 'unit',
@@ -163,6 +165,7 @@ def register_config_params():
                                     warn_if_exists=True,
                                     setter=token_role_list_setter,
                                     getter=token_role_list_getter,
+                                    orphans=uuid_orphans,
                                     object_types=['site'])
     def site_setter(site_name, **kwargs):
         result = backend.search(object_type="site",
@@ -199,6 +202,7 @@ def register_config_params():
                                     warn_if_exists=True,
                                     setter=site_setter,
                                     getter=site_getter,
+                                    orphans=uuid_orphans,
                                     object_types=[
                                                 'site',
                                                 'unit',
@@ -234,6 +238,7 @@ def register_config_params():
                                     warn_if_exists=True,
                                     setter=sites_setter,
                                     getter=sites_getter,
+                                    orphans=uuid_orphans,
                                     object_types=['site'])
 
 def register_oid():

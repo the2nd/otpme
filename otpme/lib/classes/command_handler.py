@@ -2,12 +2,14 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import sys
+import stat
 import time
 import glob
 import pydoc
 import pprint
 import datetime
 import subprocess
+import urllib.parse
 #from prettytable import ALL
 from prettytable import FRAME
 from prettytable import HEADER
@@ -1024,10 +1026,6 @@ class CommandHandler(object):
         if command == "script" and subcommand == "edit":
             return self.handle_script_edit_command(command, subcommand)
 
-        # When running a script we need to dump it to a local file first.
-        if command == "script" and subcommand == "run":
-            return self.handle_script_run_command(command, subcommand)
-
         # When generating users RSA keys on server side we may have to read
         # key password from stdin.
         if command == "user" and subcommand == "gen_keys" \
@@ -1249,12 +1247,26 @@ class CommandHandler(object):
 
     def handle_daemon_command(self, command_line, command, subcommand):
         """ Handle daemon command. """
+        from otpme.lib.daemon.controld import KNOWN_DAEMONS
         from otpme.lib.daemon.controld import ControlDaemon
         from otpme.lib.daemon.controld import send_daemon_command
         control_daemon = ControlDaemon(config.controld_pidfile)
         ## Init cache.
         #cache.init()
         #cache.enable()
+
+        def check_daemon_command(daemon):
+            """ A command for one daemon goes into the queue of controld
+            and gets no answer. Without a running controld it would
+            wait there for the next start, and a name controld does not
+            know it drops -- both with exit code 0. """
+            if daemon not in KNOWN_DAEMONS:
+                msg = _("Unknown daemon: {daemon}")
+                msg = msg.format(daemon=daemon)
+                raise OTPmeException(msg)
+            if not control_daemon.status(quiet=True)[0]:
+                msg = _("otpme-controld is not running.")
+                raise OTPmeException(msg)
 
         if subcommand == "start":
             control_daemon.start()
@@ -1295,6 +1307,7 @@ class CommandHandler(object):
             except IndexError:
                 daemon = None
             if daemon:
+                check_daemon_command(daemon)
                 send_daemon_command(daemon=daemon, command="restart")
             else:
                 control_daemon.restart()
@@ -1306,6 +1319,7 @@ class CommandHandler(object):
             except IndexError:
                 daemon = None
             if daemon:
+                check_daemon_command(daemon)
                 send_daemon_command(daemon=daemon, command="reload")
             else:
                 control_daemon.reload()
@@ -1608,21 +1622,25 @@ class CommandHandler(object):
 
     def load_backup_object(self, backup_object):
         from otpme.lib.classes.backup import KEY_SIZE
+        from otpme.lib.classes.backup import BACKUP_MODES
         if backup_object == "localhost":
             if not config.backup_repository:
                 msg = _("No backup configured.")
                 raise OTPmeException(msg)
-            try:
-                x = config.backup_repository.split(":")
-                backup_server = x[0]
-                repository = x[1]
-            except ValueError as err:
+            # server:type/site/name. Without the colon this used to be
+            # an IndexError the except below did not catch.
+            backup_server, sep, repository = config.backup_repository.partition(":")
+            if not sep or not backup_server or not repository:
                 msg = _("Invalid backup repository: {repository}")
                 msg = msg.format(repository=config.backup_repository)
-                raise OTPmeException(msg) from err
+                raise OTPmeException(msg)
             source_dir = "/"
             backup_key = config.backup_key
             backup_mode = config.backup_mode
+            if backup_mode not in BACKUP_MODES:
+                msg = _("Invalid BACKUP_MODE: {mode}: must be pack or tree")
+                msg = msg.format(mode=backup_mode)
+                raise OTPmeException(msg)
             backup_excludes = config.backup_excludes
             backup_includes = config.backup_includes
             backup_repo_password = config.backup_repo_pass
@@ -1774,12 +1792,7 @@ class CommandHandler(object):
                 dry_run = command_args['dry_run']
             except KeyError:
                 dry_run = False
-            try:
-                mode = command_args['mode']
-            except KeyError:
-                mode = None
             return self.start_backup(backup_object,
-                                    mode=mode,
                                     exclude=exclude,
                                     include=include,
                                     skip_special=skip_special,
@@ -1851,7 +1864,7 @@ class CommandHandler(object):
 
     def start_backup(self, backup_object, exclude=None, include=None,
         return_result=False, skip_special=None, apply_retention=True,
-        mode=None, dry_run=False):
+        dry_run=False):
         from otpme.lib import pidfile
         from otpme.lib.classes.backup import BackupClient
         if exclude is None:
@@ -1892,11 +1905,13 @@ class CommandHandler(object):
                                     password=repo_pass,
                                     write=True)
         if not dry_run:
-            pidfile_name = repository.replace("/", "_")
+            # The repository (<type>/<site>/<name>) quoted, so that
+            # list_running_backups() gets it back as it was: a name may
+            # have a "_" in it, and "/" written as "_" made share
+            # my_data into share/<site>/my/data.
+            pidfile_name = urllib.parse.quote(repository, safe="")
             pidfile_name = f"backup-{pidfile_name}.pid"
             pid_file = os.path.join(config.pidfile_dir, pidfile_name)
-            if mode is None:
-                mode = backup_mode
             log_msg = _("Starting backup: {backup_object}", log=True)[1]
             log_msg = log_msg.format(backup_object=backup_object)
             self.logger.info(log_msg)
@@ -1962,7 +1977,7 @@ class CommandHandler(object):
             backup_start = datetime.datetime.fromtimestamp(backup_start)
             backup_start = backup_start.strftime('%H:%M:%S %d.%m.%Y')
             backup_object = re.sub('^backup-(.*).pid$', r'\1', x)
-            backup_object = backup_object.replace("_", "/")
+            backup_object = urllib.parse.unquote(backup_object)
             print(backup_object, f"(running since {backup_start})")
 
     def list_backup_snapshots(self, backup_object):
@@ -2042,6 +2057,10 @@ class CommandHandler(object):
         backupd_conn.start_restore()
         if snap_name is None:
             snaps = backupd_conn.list_snapshots()
+            if not snaps:
+                msg = _("No snapshots in repository: {backup_object}")
+                msg = msg.format(backup_object=backup_object)
+                raise OTPmeException(msg)
             snap_name = snaps[-1]['name']
         client = BackupClient(server=backupd_conn, key=aes_key)
         client.restore(snap_name, destination_dir, path, dry_run=dry_run)
@@ -2901,6 +2920,10 @@ class CommandHandler(object):
         except Exception:
             jotp = None
         try:
+            host_name = command_args['host_name']
+        except Exception:
+            host_name = None
+        try:
             unit = command_args['unit']
         except Exception:
             unit = None
@@ -3001,6 +3024,7 @@ class CommandHandler(object):
         # Join realm.
         result = self.join_realm(host_type,
                         domain=object_identifier,
+                        host_name=host_name,
                         socket_uri=joind_uri,
                         jotp=jotp, unit=unit,
                         host_key_len=host_key_len,
@@ -3107,11 +3131,16 @@ class CommandHandler(object):
             msg = "Host is not a realm member."
             raise OTPmeException(msg)
 
-        if config.master_node:
-            msg = "Master node cannot leave the realm."
-            raise OTPmeException(msg)
-
+        # Only a node can be master, and only while the cache that holds
+        # the master runs. Asking a cache that is down costs seconds per
+        # call (redis retries) to learn nothing.
         host_type = config.host_data['type']
+        if host_type == "node":
+            _cache = config.get_cache_module()
+            if _cache.status() and config.master_node:
+                msg = "Master node cannot leave the realm."
+                raise OTPmeException(msg)
+
         if host_type == "node" and stuff.controld_status():
             self.init()
             search_attrs = {
@@ -4431,8 +4460,14 @@ class CommandHandler(object):
             realm = config.realm
         if site is None:
             site = config.site
-        # Get script OID.
-        script_unit, script_name = script_path.split("/")
+        # Get script OID. The unit is all before the last "/": a unit in
+        # a unit is a path too (linux/scripts/login.sh), and split("/")
+        # gave a ValueError for it.
+        if "/" not in script_path:
+            msg = _("Script path is not unit/name: {script_path}")
+            msg = msg.format(script_path=script_path)
+            raise OTPmeException(msg)
+        script_unit, script_name = script_path.rsplit("/", 1)
         x_oid = oid.get(object_type="script",
                         realm=realm,
                         site=site,
@@ -4909,13 +4944,17 @@ class CommandHandler(object):
 
     def do_sync(self, sync_type="objects", resync=False, offline=False,
         sync_older_objects=False, ignore_changed_objects=False, sync_last_used=False,
-        skip_object_deletion=False, max_tries=config.hostd_sync_retry_count,
+        skip_object_deletion=False, max_tries=None,
         realm=None, site=None, sync_cache_on_failure=True, socket_uri=None,
         check_connected_site=True, remove_orphan_objects=False):
         """ Do a manual hostd sync. """
         from otpme.lib import nsscache
         from otpme.lib import protocols
         from otpme.lib.sync_cache import SyncCache
+        # Read at call time: a default argument would be bound on import,
+        # before the config file is loaded.
+        if max_tries is None:
+            max_tries = config.hostd_sync_retry_count
         if config.host_data['type'] == "host":
             if sync_type == "token_counters" or sync_type == "used_otps":
                 if not offline:
@@ -6344,7 +6383,8 @@ class CommandHandler(object):
         return output
 
     def join_realm(self, host_type, realm=None, site=None,
-        domain=None, socket_uri=None, jotp=None, unit=None, host_key_len=None,
+        domain=None, host_name=None, socket_uri=None, jotp=None, unit=None,
+        host_key_len=None,
         ca_key_len=None, site_key_len=None, ca_valid=None, site_valid=None,
         trust_site_cert=False, no_daemon_start=False,
         check_site_cert=None, fingerprint_digest=None, create_db_indexes=False):
@@ -6369,6 +6409,7 @@ class CommandHandler(object):
                                             site=site,
                                             socket_uri=socket_uri,
                                             host_type=host_type,
+                                            host_name=host_name,
                                             host_key_len=host_key_len,
                                             ca_key_len=ca_key_len,
                                             site_key_len=site_key_len,
@@ -6461,7 +6502,6 @@ class CommandHandler(object):
                                 password=password,
                                 node=node,
                                 interactive=True,
-                                use_dns=config.use_dns,
                                 authorize_host=authorize_host,
                                 #cache_login_tokens=True,
                                 start_otpme_agent=False,
@@ -6950,7 +6990,8 @@ class CommandHandler(object):
 
         self.subcommand = "word_import"
         self.command_line = [ object_identifier ]
-        self.command_args = { 'word_list' : word_list }
+        # Pieces for a dictionary of type guessing, see add_words().
+        self.command_args = { 'word_list' : word_list, 'guessing' : True }
 
     def handle_pass_command(self, command, subcommand, client_type="CLIENT"):
         """ Handle the commands that name an entry of a password.
@@ -7056,10 +7097,12 @@ class CommandHandler(object):
             if not self.interactive:
                 msg = _("Cannot call key script in non-interactive mode.")
                 raise OTPmeException(msg)
-            fernet_key = stuff.decrypt_share_key(username,
-                                                encrypted_key,
-                                                key_mode,
-                                                encode=False)
+            # What otpme-agent shows when it asks to confirm.
+            fernet_key = stuff.pkey_decrypt(username,
+                                            encrypted_key,
+                                            key_mode,
+                                            reason=f"otpme-pass {subcommand} --offline",
+                                            encode=False)
             if not fernet_key:
                 msg = _("Key script returned an empty key.")
                 raise OTPmeException(msg)
@@ -7118,83 +7161,15 @@ class CommandHandler(object):
         spsc = SPSC()
         spsc.import_from_file(filename=dict_file,
                                 dict_name=object_identifier,
-                                dict_type="words",
+                                dict_type="list",
                                 min_word_len=3,
                                 progressbar=pbar)
 
         word_list = spsc.dump(object_identifier)
         self.command_line = [ object_identifier ]
-        self.command_args = { 'word_list' : word_list }
-
-    def handle_script_run_command(self, command, subcommand):
-        """ Handle script run command. """
-        from otpme.lib import script
-        # Init otpme.
-        #init_otpme()
-        self.init()
-
-        # Get command syntax.
-        try:
-            command_syntax = self.get_command_syntax(command, subcommand)
-        except Exception:
-            msg = _("Unknown command: {subcommand}")
-            msg = msg.format(subcommand=subcommand)
-            return self.get_help(msg)
-
-        # Remember original command line to get script options.
-        org_cmdline = list(self.command_line)
-
-        # Parse command line.
-        local_command_args = {}
-        try:
-            object_cmd, \
-            object_required, \
-            object_identifier, \
-            local_command_args = cli.get_opts(command_syntax=command_syntax,
-                                            command_line=self.command_line,
-                                            command_args=local_command_args,
-                                            ignore_unknown_opts=True)
-        except Exception as e:
-            if str(e) == "help":
-                return self.get_help()
-            elif str(e) != "":
-                return self.get_help(str(e))
-
-        script_type = local_command_args['script_type']
-
-        # Get script options from command line
-        script_opts = []
-        script_opts_start = False
-        for x in org_cmdline:
-            if x == object_identifier:
-                script_opts_start = True
-                continue
-            if script_opts_start:
-                script_opts.append(x)
-        script_options = script_opts
-
-        # Run the script
-        script_status, \
-        script_stdout, \
-        script_stderr, \
-        script_pid = script.run(script_path=object_identifier,
-                                options=script_options,
-                                script_type=script_type)
-                                #**command_args)
-        # Make sure script output is string.
-        script_stdout = script_stdout.decode()
-        script_stderr = script_stderr.decode()
-        if script_stdout:
-            message(_("Script stdout:"))
-            message(script_stdout, newline=False)
-        if script_stderr:
-            message(_("Script stderr:"))
-            message(script_stderr, newline=False)
-
-        if script_status != 0:
-            raise OTPmeException()
-
-        return ""
+        # Whole words, not for a dictionary of type guessing, see
+        # add_words().
+        self.command_args = { 'word_list' : word_list, 'guessing' : False }
 
     def handle_script_add_command(self, command, subcommand):
         """ Handle script add command. """
@@ -7410,6 +7385,30 @@ class CommandHandler(object):
         self.newline = False
         return script_stdout
 
+    def get_edit_file(self, name):
+        """ The file to edit in: ~/.otpme/edit/<md5 of name>.tmp.
+
+        The same name gives the same file, so vim finds the last cursor
+        position again. The file was in /tmp, where any user can make it
+        first, as a file of their own or as a symlink, and create_file()
+        follows a symlink (realpath). They could read what was edited and
+        change it before it was saved, and with root editing a symlink
+        let them write over any file. In a directory that only we can
+        write to, nobody else can make the file first.
+        """
+        conf_dir = config.get_user_conf_dir(config.system_user())
+        edit_dir = os.path.join(conf_dir, "edit")
+        os.makedirs(edit_dir, mode=0o700, exist_ok=True)
+        # makedirs() takes a directory that is there as it is.
+        dir_stat = os.lstat(edit_dir)
+        if not stat.S_ISDIR(dir_stat.st_mode) \
+        or dir_stat.st_uid != os.geteuid():
+            msg = _("Not a directory of our own: {path}")
+            msg = msg.format(path=edit_dir)
+            raise OTPmeException(msg)
+        os.chmod(edit_dir, 0o700)
+        return os.path.join(edit_dir, f"{stuff.gen_md5(name)}.tmp")
+
     def handle_script_edit_command(self, command, subcommand):
         """ Handle script edit command. """
         register_module("otpme.lib.multiprocessing")
@@ -7468,9 +7467,7 @@ class CommandHandler(object):
                                         parse_command_syntax=False,
                                         client_type="RAPI")
 
-        # We always use the same filename/path for the temp file to allow
-        # vim features like "jump to the last cursor position".
-        tmp_file = f"{config.tmp_dir}/{stuff.gen_md5(script_path)}.tmp"
+        tmp_file = self.get_edit_file(script_path)
         # Generate script md5sum before editing.
         old_script_sum = stuff.gen_md5(script_content)
         # Write script to temp file.
@@ -7489,7 +7486,7 @@ class CommandHandler(object):
         # Check if file has changed.
         if new_script_sum == old_script_sum:
             os.remove(tmp_file)
-            msg = "Nothing changed."
+            msg = _("Nothing changed.")
             return msg
 
         script_base64 = encode(file_content, "base64")
@@ -7572,9 +7569,7 @@ class CommandHandler(object):
                                         parse_command_syntax=False,
                                         client_type="RAPI")
 
-        # We always use the same filename/path for the temp file to allow
-        # vim features like "jump to the last cursor position".
-        tmp_file = f"{config.tmp_dir}/{stuff.gen_md5(command)}.tmp"
+        tmp_file = self.get_edit_file(command)
         # Generate info md5sum before editing.
         old_info_sum = stuff.gen_md5(info_content)
         # Write info to temp file.
@@ -7593,7 +7588,7 @@ class CommandHandler(object):
         # Check if file has changed.
         if new_info_sum == old_info_sum:
             os.remove(tmp_file)
-            msg = "Nothing changed."
+            msg = _("Nothing changed.")
             return msg
 
         # Build final command to replace OTPme info with new one.
@@ -7964,11 +7959,17 @@ class CommandHandler(object):
             error_message(msg)
             cancel_request()
             sys.exit(rac_client.ABORTED)
-        except Exception:
+        except Exception as e:
             # The wait ran out, or what turned up was not the host the
             # job was for. Either way nobody is going to meet it here.
             cancel_request()
-            raise
+            config.raise_exception()
+            # The connection failed and not the command: 255, the way
+            # ssh says it. As an exception it ended with 1, or with a
+            # traceback, and a script could not tell it from a command
+            # that exited with 1.
+            error_message(str(e) or e.__class__.__name__)
+            sys.exit(rac_client.CONNECTION_FAILED)
         try:
             exit_status, \
             ended_by, \
@@ -7984,13 +7985,16 @@ class CommandHandler(object):
             error_message(msg)
             cancel_request()
             sys.exit(rac_client.ABORTED)
-        except Exception:
+        except Exception as e:
             # The handshake, the keys or the binding -- a session that
             # never came about. The host it was for is at the other end
             # already, so this says nothing to that one, but the job is
             # spent and must not be waiting for the next host to ask.
             cancel_request()
-            raise
+            config.raise_exception()
+            # 255, see above.
+            error_message(str(e) or e.__class__.__name__)
+            sys.exit(rac_client.CONNECTION_FAILED)
         finally:
             try:
                 sock.close()
@@ -8034,7 +8038,7 @@ class CommandHandler(object):
         parser.add_argument("--add-share-key", dest="add_share_key", action="store_true", help="Add share key to share")
         parser.add_argument("--master-password-mount", dest="master_password_mount", action="store_true", help="Use master password to mount encrypted share.")
         parser.add_argument("-a", dest="mount_all", action="store_true", help="Mount all shares")
-        parser.add_argument("-u", dest="umount", action="store_true", help="Mount all shares")
+        parser.add_argument("-u", dest="umount", action="store_true", help="Unmount shares")
         parser.add_argument('share', nargs='?')
         parser.add_argument('mount', nargs='?')
         args = parser.parse_args(sys.argv)
@@ -8077,6 +8081,13 @@ class CommandHandler(object):
                 raise OTPmeException(msg)
             if add_share_key:
                 msg = _("--add-share-key not valid with -a")
+                raise OTPmeException(msg)
+            # The agent mounts them, and it takes neither.
+            if hard:
+                msg = _("--hard not valid with -a")
+                raise OTPmeException(msg)
+            if args.nodes:
+                msg = _("--nodes not valid with -a")
                 raise OTPmeException(msg)
             response = self.send_command(daemon="mgmtd",
                                     command="get_shares",
@@ -8144,6 +8155,25 @@ class CommandHandler(object):
                 msg = msg.format(error=e)
                 raise Exception(msg) from e
             return
+
+        # Without a mountpoint the agent mounts the share, at the usual
+        # place and with nothing of these: they were dropped without a
+        # word, a --master-password-mount mounted with the key of the
+        # token and a --hard mount failed its writes all the same.
+        if not mount_point:
+            given = [
+                    ("--nodes", args.nodes),
+                    ("--hard", hard),
+                    ("--master-password-mount", master_password_mount),
+                    ("--add-share-key", add_share_key),
+                    ("--foreground", foreground),
+                    ]
+            for option, value in given:
+                if not value:
+                    continue
+                msg = _("{option} needs a mountpoint.")
+                msg = msg.format(option=option)
+                raise OTPmeException(msg)
 
         nodes = None
         if args.nodes:
@@ -9477,9 +9507,14 @@ class CommandHandler(object):
         except Exception:
             return self.get_help()
 
-        try:
-            key_out_file = command_args.pop('key_out_file')
-        except Exception:
+        # With --csr the key stays where the request was made, and
+        # there is no key to write.
+        key_out_file = command_args.pop('key_out_file', None)
+        if command_args.get('cert_req'):
+            if key_out_file:
+                msg = _("With --csr there is no key file to write.")
+                raise OTPmeException(msg)
+        elif not key_out_file:
             return self.get_help()
 
         result = self.send_command(daemon="mgmtd",
@@ -9495,7 +9530,7 @@ class CommandHandler(object):
             client_cert_pem = result[0]
             client_key_pem = result[1]
         except Exception:
-            msg = _("Invalid server resonse.")
+            msg = _("Invalid server response.")
             raise OTPmeException(msg) from None
         try:
             filetools.create_file(cert_out_file,
@@ -9505,6 +9540,8 @@ class CommandHandler(object):
             msg = _("Error writing cert file: {e}")
             msg = msg.format(e=e)
             raise OTPmeException(msg) from e
+        if not key_out_file:
+            return
         try:
             filetools.create_file(key_out_file,
                                 content=client_key_pem,

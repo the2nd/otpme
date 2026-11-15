@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import base64
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -200,14 +201,43 @@ def bind_challenge(challenge, session_key):
     the signer nothing.
 
     Used for the SSH challenge (lib/ssh.gen_challenge), where it is the
-    fifth field and the four before it keep their index -- time, OTP
-    length, nonce, public key -- and for the one a yubikey_piv token
-    signs at login (smartcard/yubikey_piv).
+    fourth field and the three before it keep their index -- time,
+    nonce, public key -- for the one a yubikey_piv token signs at
+    login (smartcard/yubikey_piv) and for the one of a fido2 token
+    (smartcard/fido2, as fido2_challenge()).
     """
     if not session_key:
         msg = _("Unable to bind challenge: No session key.")
         raise OTPmeException(msg)
     return f"{challenge}:{stuff.gen_sha256(session_key)}"
+
+# What a token test signs after the challenge, see tag_test_challenge().
+TOKEN_TEST_TAG = "token_test"
+
+def tag_test_challenge(challenge):
+    """ What the client signs for a token test, where there is nothing
+    to bind to: the job that verifies it has no session key.
+
+    The client signed the challenge of a token test as the server sent
+    it. A server that sent a challenge it got from a second one, bound
+    there to its own connection (bind_challenge()), got back a signature
+    that logs in there. With this tag the signature of a test ends in
+    something a login never takes: bind_challenge() ends in a hash. The
+    client checks the challenge as well before it signs, so that it is
+    one the server generated and not one bound already. """
+    return f"{challenge}:{TOKEN_TEST_TAG}"
+
+def fido2_challenge(challenge):
+    """ The FIDO2 challenge for a challenge bound by bind_challenge() or
+    tagged by tag_test_challenge().
+
+    A FIDO2 key signs the challenge as bytes, and the server compares
+    the base64url form of them (state["challenge"] of python-fido2).
+    So the string itself is the challenge, in the form both ends compare:
+    the client puts it into the request options, the server into the
+    auth state. """
+    challenge = base64.urlsafe_b64encode(challenge.encode("utf-8"))
+    return challenge.rstrip(b"=").decode("ascii")
 
 def sshauth(message_id, challenge, token_test=False):
     """ Sends request to client to do SSH authentication. """

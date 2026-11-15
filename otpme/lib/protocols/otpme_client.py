@@ -54,6 +54,7 @@ from otpme.lib.protocols.request import build_request
 from otpme.lib.socket.handler import SocketProtoHandler
 from otpme.lib.protocols.response import decode_response
 from otpme.lib.protocols.utils import bind_challenge
+from otpme.lib.protocols.utils import tag_test_challenge
 
 from otpme.lib.exceptions import *
 
@@ -198,7 +199,7 @@ class OTPmeClient(OTPmeClientBase):
     def __init__(self, daemon, use_ssl=True, cert=None, key=None,
         ca_data=None, verify_server=True, connect_timeout=None, timeout=None,
         client=None, username=None, autoconnect=True, auto_auth=True,
-        auto_preauth=False, do_preauth=None, use_dns=False, local_socket=False,
+        auto_preauth=False, do_preauth=None, local_socket=False,
         socket_uri=None, site_ident=False, site_ident_digest="sha256",
         trust_site_cert=False, trust_site_cert_fp=None, encrypt_session=True,
         quiet_autoconnect=False, realm=None, site=None, **kwargs):
@@ -247,10 +248,10 @@ class OTPmeClient(OTPmeClientBase):
         # realm/site we connect to.
         self.realm = realm
         self.site = site
+        # The passphrase sign() read from stdin, for the next request.
+        self._sign_stdin_pass = None
         # Socket URI to connect to.
         self.socket_uri = socket_uri
-        # Use DNS to get site address?
-        self.use_dns = use_dns
         # Indicates that we should use SSL.
         self.use_ssl = use_ssl
         self.cert = cert
@@ -1021,8 +1022,7 @@ class OTPmeClient(OTPmeClientBase):
                                         binary_data=binary_data,
                                         realm=realm, site=site,
                                         encode_request=encode_request,
-                                        encrypt_request=encrypt_request,
-                                        use_dns=config.use_dns)
+                                        encrypt_request=encrypt_request)
         else:
             # Build request.
             encoding = None
@@ -1181,7 +1181,15 @@ class OTPmeClient(OTPmeClientBase):
     def sshauth(self, command_dict):
         """ Handle SSH authentication. """
         challenge = command_dict['challenge']
-        otp_len = int(challenge.split(":")[1])
+        # As lib/ssh.gen_challenge() makes it: time, nonce, public key.
+        # One with more fields may be bound already, to a connection of
+        # the server with another one, and a signature over it would log
+        # in there (protocols/utils.tag_test_challenge).
+        challenge_fields = str(challenge).split(":")
+        if len(challenge_fields) != 3 \
+        or not challenge_fields[0].isdigit():
+            msg = _("Invalid SSH challenge.")
+            raise AuthFailed(msg)
         try:
             token_test = command_dict['token_test']
         except KeyError:
@@ -1213,11 +1221,7 @@ class OTPmeClient(OTPmeClientBase):
         # If we should use a running ssh-agent, got its PID and a password set
         # the key passphrase.
         if self.ssh_agent_pid and password:
-            # Check if SSH token needs a OTP (second factor token enabled)
-            if otp_len > 0:
-                self.ssh_key_pass = password[:-otp_len]
-            else:
-                self.ssh_key_pass = password
+            self.ssh_key_pass = password
 
             if not self.agent_conn:
                 self.agent_conn = connections.get("agent",
@@ -1238,12 +1242,14 @@ class OTPmeClient(OTPmeClientBase):
         log_msg = _("Signing SSH challenge...", log=True)[1]
         self.logger.debug(log_msg)
         from otpme.lib import ssh
-        sign_challenge = challenge
-        if not token_test:
+        if token_test:
+            # A token test cannot be bound: the challenge is verified by
+            # the job that asked for it, which has no session key. It is
+            # tagged instead, so that no login takes the signature.
+            sign_challenge = tag_test_challenge(challenge)
+        else:
             # Bind our answer to this connection, so that nobody can
-            # use it on another one. A token test is the one case that
-            # cannot be bound: the challenge is verified by the job
-            # that asked for it, which has no session key.
+            # use it on another one.
             sign_challenge = bind_challenge(challenge, self.session_key)
         # Try to sign challenge with via running SSH agent.
         try:
@@ -1472,8 +1478,12 @@ class OTPmeClient(OTPmeClientBase):
 
         password = None
         if stdin_pass:
-            # Get password from stdin.
-            password = stuff.read_pass_from_stdin()
+            # Get password from stdin, once: resign sends a request for
+            # each signature, and stdin was empty from the second on.
+            password = self._sign_stdin_pass
+            if password is None:
+                password = stuff.read_pass_from_stdin()
+                self._sign_stdin_pass = password
 
         # Load sign data.
         try:
@@ -1691,10 +1701,10 @@ class OTPmeClient(OTPmeClientBase):
         # User to encrypt share key for.
         share_user = self.username
         # Encrypt share key with key script.
-        encrypted_share_key = stuff.encrypt_share_key(username,
-                                                    share_user,
-                                                    share_key,
-                                                    key_mode)
+        encrypted_share_key = stuff.pkey_encrypt(username,
+                                                share_user,
+                                                share_key,
+                                                key_mode)
         share_key_response = {
                             'share_key'     : encrypted_share_key,
                             'hash_params'   : hash_data,
@@ -1715,18 +1725,19 @@ class OTPmeClient(OTPmeClientBase):
         # Get username to run key script for.
         username = self.username
         # Decrypt share key with key script.
-        decrypted_share_key = stuff.decrypt_share_key(username,
-                                                    encrypted_share_key,
-                                                    key_mode,
-                                                    encode=False)
+        decrypted_share_key = stuff.pkey_decrypt(username,
+                                                encrypted_share_key,
+                                                key_mode,
+                                                reason=f"Share key for user: {share_user}",
+                                                encode=False)
         if not decrypted_share_key:
             msg = _("Key script returned emtpy share key.")
             raise OTPmeException(msg)
         # Encrypt share key with key script.
-        encrypted_share_key = stuff.encrypt_share_key(username,
-                                                    share_user,
-                                                    decrypted_share_key,
-                                                    key_mode)
+        encrypted_share_key = stuff.pkey_encrypt(username,
+                                                share_user,
+                                                decrypted_share_key,
+                                                key_mode)
         return encrypted_share_key
 
     def pass_crypt(self, command_dict):
@@ -1765,11 +1776,21 @@ class OTPmeClient(OTPmeClientBase):
             check_keys = user_key_pins.check_keys
 
         username = self.username
+        # Which password a key belongs to, for what otpme-agent shows
+        # when it asks to confirm.
+        action = pass_request.get('action')
+        key_names = {}
+        for x_object in pass_request.get('objects', []):
+            x_key = x_object.get('fernet_key')
+            if x_key:
+                key_names[x_key] = x_object.get('name')
         def unwrap_key(encrypted_key):
-            fernet_key = stuff.decrypt_share_key(username,
-                                                encrypted_key,
-                                                key_mode,
-                                                encode=False)
+            reason = f"otpme-pass {action}: {key_names.get(encrypted_key, '')}"
+            fernet_key = stuff.pkey_decrypt(username,
+                                            encrypted_key,
+                                            key_mode,
+                                            reason=reason,
+                                            encode=False)
             if not fernet_key:
                 msg = _("Key script returned an empty key.")
                 raise OTPmeException(msg)
@@ -2785,7 +2806,6 @@ class OTPmeClient1(OTPmeClientBase):
                             use_ssh_agent=self.use_ssh_agent,
                             ssh_agent_method=self.ssh_agent_method,
                             #use_agent=self.use_agent,
-                            use_dns=self.connection.use_dns,
                             endpoint=self.endpoint,
                             authorize_host=self.authorize_host,
                             #handle_response=self.handle_response,

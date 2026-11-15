@@ -21,6 +21,7 @@ from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
+from otpme.lib.protocols.utils import register_commands
 
 from otpme.lib.classes.token \
             import get_acls \
@@ -55,10 +56,20 @@ read_value_acls = {
                             "offline_expiry",
                             "offline_unused_expiry",
                             "session_keep",
+                            "signatures",
                             ],
             }
 
 write_value_acls = {
+                "add"       : [
+                            "signature",
+                            ],
+                "delete"    : [
+                            "signature",
+                            ],
+                "verify"    : [
+                            "signature",
+                            ],
                 "edit"      : [
                             "auth_script",
                             ],
@@ -75,6 +86,73 @@ write_value_acls = {
 default_acls = []
 
 recursive_default_acls = []
+
+# A link is signed itself, over the key of its destination (see
+# LinkToken.get_sign_data()): the commands of an SSH token.
+commands = {
+    'sign'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'sign',
+                    'oargs'             : ['tags', 'stdin_pass'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'resign'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'resign',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_sign'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'add_sign',
+                    'oargs'             : ['signature', 'tags'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_sign'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'del_sign',
+                    'oargs'             : ['username', 'tags'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'verify_sign'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'verify_sign',
+                    'oargs'             : ['username', 'user_uuid', 'tags'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'get_sign_data'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'get_sign_data',
+                    'oargs'             : ['tags'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'get_sign'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'get_sign',
+                    'oargs'             : ['username', 'user_uuid', 'tags'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    }
 
 def get_acls(split=False, **kwargs):
     """ Get all supported object ACLs """
@@ -123,6 +201,10 @@ REGISTER_AFTER = []
 def register():
     """ Register object. """
     register_token_type()
+    register_commands("token",
+                    commands,
+                    sub_type="link",
+                    sub_type_attribute="token_type")
 
 def register_token_type():
     """ Register token type. """
@@ -176,6 +258,23 @@ class LinkToken(Token):
         self.offline_expiry = 0
         self.offline_unused_expiry = 0
         self.keep_session = False
+        # Signed itself, over the key of its destination. A host verifies
+        # these signatures before it lets the key in (see
+        # ssh.update_authorized_keys()), so they go where the ones of an
+        # SSH token go.
+        self.signatures = {}
+        self._sub_sync_fields = {
+                    'host'  : {
+                        'trusted'  : [
+                            "SIGNATURES",
+                            ]
+                        },
+                    'node'  : {
+                        'untrusted'  : [
+                            "SIGNATURES",
+                            ]
+                        },
+                    }
 
     def _get_object_config(self):
         """ Merge token config with config from parent class. """
@@ -184,6 +283,11 @@ class LinkToken(Token):
                                             'var_name'      : 'destination_token',
                                             'type'          : 'uuid',
                                             'required'      : False,
+                                        },
+            'SIGNATURES'                : {
+                                            'var_name'  : 'signatures',
+                                            'type'      : dict,
+                                            'required'  : False,
                                         },
             }
 
@@ -206,6 +310,64 @@ class LinkToken(Token):
     def dst_token(self):
         dst_token = self.get_destination_token()
         return dst_token
+
+    @property
+    def signable(self):
+        """ A link is signable when its destination is.
+
+        The signature stays on the link: it is the link that is added to
+        a host or a role, by and for the user who owns the link, and
+        remove_token() takes the signature off the same token. What is
+        signed is the data of the destination (its SSH public key, see
+        get_sign_data()), so a new destination or a new key is no longer
+        covered by it.
+        """
+        if not stuff.is_uuid(self.destination_token):
+            return False
+        dst_token = backend.get_object(object_type="token",
+                                    uuid=self.destination_token)
+        if not dst_token:
+            return False
+        return dst_token.signable
+
+    @signable.setter
+    def signable(self, value):
+        # OTPmeObject.__init__() sets it to False, there is nothing to
+        # set: it is the destination that decides.
+        pass
+
+    def get_default_sign_tags(self):
+        """ Get default sign tags for this token. """
+        default_tags = super().get_default_sign_tags()
+        # The user who owns the link, the one a host lets in with it.
+        user_tag = f"user:{self.owner_uuid}"
+        default_tags.append(user_tag)
+        return default_tags
+
+    def verify_acl(self, action: str, **kwargs):
+        """ Verify ACLs required to allow <action>. """
+        # The parent class cannot know the ACLs that allow to verify or
+        # read the signatures of a link (see SshToken.verify_acl()).
+        if action == "verify_signature":
+            if self._verify_acl("verify:signature") \
+            or self._verify_acl("view:signatures"):
+                return True
+        if action == "get_signatures":
+            if self._verify_acl("view:signatures"):
+                return True
+        # The kwargs go only here: the ACLs above are other ones than the
+        # action.
+        if self._verify_acl(action, **kwargs):
+            return True
+        return False
+
+    def get_sign_data(self, callback: JobCallback=default_callback, **kwargs):
+        """ Return the sign data of the destination token. """
+        dst_token = self.dst_token
+        if not dst_token:
+            msg = _("Destination token does not exist.")
+            return callback.error(msg)
+        return dst_token.get_sign_data(callback=callback, **kwargs)
 
     def test(
         self,

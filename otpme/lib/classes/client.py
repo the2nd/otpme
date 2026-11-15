@@ -1003,32 +1003,6 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     'config'   : {
             'default'    : {
                 'exists'    : {
@@ -3286,6 +3260,8 @@ class Client(OTPmeClientObject):
 
     @object_lock(full_lock=True)
     @run_pre_post_add_policies()
+    @audit_log()
+    @object_changelog("add")
     def add(
         self,
         address: Union[str,None]=None,

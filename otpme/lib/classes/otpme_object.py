@@ -216,11 +216,17 @@ global_write_value_acls = {
                                 "object",
                                 "attribute",
                                 "acl",
+                                # del_object_class() asks for it, and it
+                                # was in no list: nobody but an admin
+                                # could ever hold it.
+                                "object_class",
                                 ],
                     "add"       : [
                                 "extension",
                                 "attribute",
                                 "acl",
+                                # add_object_class(), see above.
+                                "object_class",
                                 ],
                     "assign"    : [
                                 "policy",
@@ -253,6 +259,27 @@ global_write_value_acls = {
 global_default_acls = []
 
 global_recursive_default_acls = []
+
+def format_acl(raw_acl):
+    """ An ACL as it is shown: the owner by its name and the ACL group by
+    its name, e.g. "role:berlin/helpdesk:++@USERMANAGER". A role of our
+    realm with its site, one of another realm with the realm in front, a
+    token by its path. An owner that is gone keeps its UUID. """
+    o_type = raw_acl.split(":")[0]
+    o_uuid = raw_acl.split(":")[1]
+    acl = ":".join(raw_acl.split(":")[2:])
+    acl = otpme_acl.resolve_aclgroup_acl(acl)
+    result = backend.search(attribute="uuid",
+                            value=o_uuid,
+                            return_type="path")
+    if not result:
+        return f"{o_type}:{o_uuid}:{acl}"
+    x = oid.resolve_path(result[0], object_type=o_type)
+    if o_type == "role":
+        if x['realm'] == config.realm:
+            return f"{o_type}:{x['site']}/{x['name']}:{acl}"
+        return f"{o_type}:/{x['realm']}/{x['site']}/{x['name']}:{acl}"
+    return f"{o_type}:{x['rel_path']}:{acl}"
 
 def get_acls(read_acls, write_acls, split=False):
     """ Get all supported object ACLs """
@@ -968,6 +995,38 @@ def name_len_setter(value, **kwargs):
         msg = _("max name length must be positive")
         raise ValueError(msg)
     return value
+
+def uuid_exists(object_uuid):
+    """ Whether an object with this UUID is there, of whatever type. """
+    return bool(backend.get_oid(object_uuid))
+
+def uuid_orphans(value):
+    """ The orphans of a config parameter that keeps one UUID or a list
+    of them (see register_config_parameter()): the UUIDs of objects that
+    are gone. A renamed or moved object keeps its UUID and is no orphan.
+    """
+    if not value:
+        return []
+    if isinstance(value, str):
+        value = value.split(",")
+    return [x for x in value if not uuid_exists(x)]
+
+def trust_orphans(value):
+    """ The orphans of a trust parameter (vlan_trusts,
+    device_token_roles_trusts): its entries are "<site>",
+    "<site>:<site>", "<site>:<site>/<vlan>" or "<site>:<role>", all of
+    them UUIDs. An entry is an orphan when one of them is gone. """
+    if not value:
+        return []
+    if isinstance(value, str):
+        value = value.split(",")
+    orphans = []
+    for entry in value:
+        for x_uuid in entry.replace("/", ":").split(":"):
+            if not uuid_exists(x_uuid):
+                orphans.append(entry)
+                break
+    return orphans
 
 def token_role_list_setter(object_ids, **kwargs):
     """ Shared setter for a config parameter naming tokens and roles.
@@ -2964,13 +3023,22 @@ class OTPmeBaseObject(OTPmeLockObject):
         self.last_modified = int(time.time())
         # Update index.
         self.update_index('last_modified', self.last_modified)
-        # Set last last_modified_by.
+        # Set last last_modified_by: who changed it by hand, the token or
+        # "API" for otpme-* --api and the other tools that run as root in
+        # API mode (realm init, join, index rebuild). A daemon without a
+        # token (e.g. hostd, which writes memberUid of a group) changes
+        # the object, but nobody did: last_modified_by stays. The time
+        # is set all the same, last_modified tells a change (the checks
+        # of auth_user and auth_token, modifyTimestamp for LDAP).
         if update_last_modified_by:
-            modifier = "API"
-            modifier_cache = "API"
             if config.auth_token:
                 modifier = config.auth_token.uuid
                 modifier_cache = config.auth_token.rel_path
+            elif config.use_api:
+                modifier = "API"
+                modifier_cache = "API"
+            else:
+                return
             self.last_modified_by = modifier
             self.last_modified_by_cache = modifier_cache
             # Update index.
@@ -5265,6 +5333,10 @@ class OTPmeObject(OTPmeBaseObject):
                     update_childs.append(child_data)
             also_update[extension.name] = update_childs
 
+        # Whether a hook ran on this object. Without one nothing of it
+        # changed, e.g. a role, whose members the posix extension writes
+        # into its groups.
+        hooks_run = False
         # Update extensions of this object.
         self.acquire_lock(lock_caller="update_extensions")
         try:
@@ -5284,6 +5356,7 @@ class OTPmeObject(OTPmeBaseObject):
                         msg = msg.format(oid=self.oid, hook=hook, ext_name=extension.name)
                         return callback.error(msg)
                     continue
+                hooks_run = True
                 # Logging.
                 msg, log_msg = _("Updating extension: {oid}: {ext_name} ({hook})", log=True)
                 msg = msg.format(oid=self.oid, ext_name=extension.name, hook=hook)
@@ -5316,6 +5389,12 @@ class OTPmeObject(OTPmeBaseObject):
                 if x_result is None:
                     continue
                 updated_childs.append(x_child.oid)
+
+        # It was written on every call, also with nothing changed: the
+        # nsscache sync of hostd wrote every role it looked at, with a
+        # new last_modified and modifyTimestamp each time.
+        if not hooks_run:
+            return update_status, updated_childs
 
         self._cache(callback=callback)
 
@@ -6030,6 +6109,33 @@ class OTPmeObject(OTPmeBaseObject):
         except Exception:
             current_login_interfaces = None
 
+        # Handle auto sign stuff. Before anything is changed: a token that
+        # is refused here must neither be announced as added nor be taken
+        # off the object by the remove_token() below.
+        if auto_sign is None:
+            # Check user auto-sign feature.
+            if config.auth_user:
+                if config.auth_user.autosign_enabled:
+                    auto_sign = True
+            # Check for auto sign config parameter.
+            if self.auto_sign:
+                auto_sign = True
+
+        # A signature the user asked for explicitly (--sign) must not be
+        # skipped silently below.
+        sign_requested = sign
+
+        if auto_sign:
+            sign = True
+
+        # Disable signing if token is not signable.
+        if not token.signable:
+            if sign_requested:
+                msg = _("Token {token_path} is not signable.")
+                msg = msg.format(token_path=token.rel_path)
+                return callback.error(msg)
+            sign = False
+
         if token.uuid in self.tokens:
             token_modify = False
             exception = AlreadyExists
@@ -6068,37 +6174,12 @@ class OTPmeObject(OTPmeBaseObject):
                             _caller=_caller,
                             force=force)
 
-        msg = _("Adding token {token_path} to {obj_type} {obj_name}.")
-        msg = msg.format(token_path=token.rel_path, obj_type=self.type, obj_name=self.name)
-        callback.send(msg)
-
         # The ACL cache is cleared once a role is written, see
         # backend.outdate_object().
 
-        # Handle auto sign stuff.
-        if auto_sign is None:
-            # Check user auto-sign feature.
-            if config.auth_user:
-                if config.auth_user.autosign_enabled:
-                    auto_sign = True
-            # Check for auto sign config parameter.
-            if self.auto_sign:
-                auto_sign = True
-
-        # A signature the user asked for explicitly (--sign) must not be
-        # skipped silently below.
-        sign_requested = sign
-
-        if auto_sign:
-            sign = True
-
-        # Disable signing if token is not signable.
-        if not token.signable:
-            if sign_requested:
-                msg = _("Token {token_path} is not signable.")
-                msg = msg.format(token_path=token.rel_path)
-                return callback.error(msg)
-            sign = False
+        msg = _("Adding token {token_path} to {obj_type} {obj_name}.")
+        msg = msg.format(token_path=token.rel_path, obj_type=self.type, obj_name=self.name)
+        callback.send(msg)
 
         # Add signature to token.
         if sign:
@@ -6599,9 +6680,9 @@ class OTPmeObject(OTPmeBaseObject):
             raise OTPmeException(msg)
 
         if not device_uuid:
+            # Device names are unique in the realm, see device.py.
             device = backend.get_object(object_type="device",
                                     realm=config.realm,
-                                    site=self.site,
                                     name=device_name)
             if not device:
                 msg = _("Device does not exist: {device_name}")
@@ -6655,35 +6736,41 @@ class OTPmeObject(OTPmeBaseObject):
         ):
         """ Removes a device from this object.
 
-        The device may be given by UUID, which is what callers that hold
-        a device of another site need: the name lookup is limited to our
-        own site, but e.g. a role of the master site may hold devices of
-        any site.
+        The device is given by its name, which is unique in the realm
+        (see device.py), or by its UUID.
         """
         if self.devices is None:
             msg = _("Object does not support devices.")
             raise OTPmeException(msg)
 
+        # A device that is gone has no name to be found by: it is taken
+        # out by its UUID, as remove_host() does it for a host.
+        if not device_uuid and device_name and stuff.is_uuid(device_name):
+            device_uuid = device_name
         if device_uuid:
             device = backend.get_object(object_type="device",
                                         uuid=device_uuid)
         else:
             device = backend.get_object(object_type="device",
                                     realm=config.realm,
-                                    site=self.site,
                                     name=device_name)
-        if not device:
+        if device:
+            device_uuid = device.uuid
+            device_label = device.name
+        elif device_uuid and device_uuid in self.devices:
+            device_label = device_uuid
+        else:
             msg = _("Device does not exist: {device_name}")
             msg = msg.format(device_name=device_name or device_uuid)
             return callback.error(msg)
 
-        if device.uuid not in self.devices:
+        if device_uuid not in self.devices:
             msg = _("Device not in {object_type}.")
             msg = msg.format(object_type=self.type)
             return callback.error(msg)
 
         msg = _("Remove device '{device_name}' from {object_type} '{object_name}'?: ")
-        msg = msg.format(device_name=device.name,
+        msg = msg.format(device_name=device_label,
                         object_type=self.type,
                         object_name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -6701,9 +6788,9 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error()
 
         # Remove device UUID from object.
-        self.devices.remove(device.uuid)
+        self.devices.remove(device_uuid)
         # Update index.
-        self.del_index("device", device.uuid)
+        self.del_index("device", device_uuid)
         return self._cache(callback=callback)
 
     @cli.check_rapi_opts()
@@ -6736,7 +6823,7 @@ class OTPmeObject(OTPmeBaseObject):
         if skip_disabled:
             search_attr['enabled'] = {}
             search_attr['enabled']['value'] = True
-        return_attributes = ['site', return_type]
+        return_attributes = [return_type]
         search_result = backend.search(object_type="device",
                                     attribute="uuid",
                                     values=self.devices,
@@ -6747,10 +6834,8 @@ class OTPmeObject(OTPmeBaseObject):
                 x_result = search_result[uuid][return_type]
             except Exception:
                 continue
-            if return_type == "name":
-                x_site = search_result[uuid]['site']
-                if x_site != config.site:
-                    x_result = f"{x_site}/{x_result}"
+            # A name is unique in the realm (see device.py), as that of
+            # a host: no site in front of it.
             result.append(x_result)
 
         result.sort()
@@ -6762,6 +6847,7 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(result)
 
     @object_lock()
+    @audit_log()
     @object_changelog("add node {node_name}")
     def add_node(
         self,
@@ -6831,6 +6917,7 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @object_lock()
+    @audit_log()
     @object_changelog("remove node {node_name}")
     def remove_node(
         self,
@@ -8772,10 +8859,17 @@ class OTPmeObject(OTPmeBaseObject):
         ldap_search_cache.invalidate()
 
     def del_ldif_attributes(self, ldif: List):
-        """ Add LDIF attributes to object. """
+        """ Remove LDIF attributes from object, the ones without a value.
+
+        del_ldif() removes one value, and an attribute with more than
+        one (objectClass, mail) keeps the others. It was taken off this
+        list all the same, and verify() reads its mandatory attributes
+        from here: an attribute that was there was reported missing. """
         for x in ldif:
             a = x[0]
             if a not in self.ldif_attributes:
+                continue
+            if a in self.ldif:
                 continue
             self.ldif_attributes.remove(a)
         ldif_cache.invalidate()
@@ -9020,14 +9114,16 @@ class OTPmeObject(OTPmeBaseObject):
         ):
         """ Enable ACL inheritance for the object """
         if self.acl_inheritance_enabled is None:
-            return callback.error("Object cannot inherit ACLs.")
+            msg = _("Object cannot inherit ACLs.")
+            return callback.error(msg)
 
         if not self.verify_acl("enable:acl_inheritance"):
             msg = denied_msg(self, "enable:acl_inheritance")
             return callback.error(msg, exception=PermissionDenied)
 
         if self.acl_inheritance_enabled:
-            return callback.error("ACL inheritance already enabled.")
+            msg = _("ACL inheritance already enabled.")
+            return callback.error(msg)
 
         msg = _("Enable ACL inheritance?: ")
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -9065,14 +9161,16 @@ class OTPmeObject(OTPmeBaseObject):
         ):
         """ Disable ACL inheritance for the object """
         if self.acl_inheritance_enabled is None:
-            return callback.error("Object cannot inherit ACLs.")
+            msg = _("Object cannot inherit ACLs.")
+            return callback.error(msg)
 
         if not self.verify_acl("disable:acl_inheritance"):
             msg = denied_msg(self, "disable:acl_inheritance")
             return callback.error(msg, exception=PermissionDenied)
 
         if not self.acl_inheritance_enabled:
-            return callback.error("ACL inheritance already disabled.")
+            msg = _("ACL inheritance already disabled.")
+            return callback.error(msg)
 
         msg = _("Disable ACL inheritance?: ")
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -9273,23 +9371,6 @@ class OTPmeObject(OTPmeBaseObject):
 
         return False
 
-    def get_supported_acls(
-        self,
-        _caller: str="API",
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Get all supported ACLs of object """
-        # The answer goes out here and not in _get_supported_acls().
-        # That one is cached, and callback.ok() sends the answer to a
-        # client instead of returning it, so the cache would hold what
-        # the sending returned and every later call would answer with
-        # nothing.
-        acls = self._get_supported_acls(**kwargs)
-        if _caller == "CLIENT":
-            acls = "\n".join(acls)
-        return callback.ok(acls)
-
     @supported_acls_cache.cache_method()
     def _get_supported_acls(
         self,
@@ -9298,9 +9379,8 @@ class OTPmeObject(OTPmeBaseObject):
         ):
         """ The ACLs the object supports, and nothing else.
 
-        Whoever asked for them is answered by get_supported_acls().
-        This is cached, and a cached answer is handed back without
-        anything being sent.
+        This is cached, so it returns them and sends nothing: a cached
+        callback.ok() would cache the sending, not the answer.
         """
         if acl_types is None:
             acl_types = ['acls']
@@ -9677,36 +9757,7 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = str(e)
                 return callback.error(msg)
 
-        acls = []
-        for i in self.acls:
-            o_type = i.split(":")[0]
-            o_uuid = i.split(":")[1]
-            acl = ":".join(i.split(":")[2:])
-            acl = otpme_acl.resolve_aclgroup_acl(acl)
-            result = backend.search(attribute="uuid",
-                                    value=o_uuid,
-                                    return_type="path")
-            if result:
-                o_path = result[0]
-                x = oid.resolve_path(o_path, object_type=o_type)
-                o_realm = x['realm']
-                o_site = x['site']
-                o_rel_path = x['rel_path']
-                o_name = x['name']
-
-                if o_type == "role":
-                    if o_realm == config.realm:
-                        resolved_acl = f"{o_type}:{o_site}/{o_name}:{acl}"
-                    else:
-                        resolved_acl = f"{o_type}:/{o_realm}/{o_site}/{o_name}:{acl}"
-                if o_type == "token":
-                    resolved_acl = f"{o_type}:{o_rel_path}:{acl}"
-                acls.append(resolved_acl)
-            else:
-                # FIXME: remove orphan ACLs here? (e.g. deleted tokens?)
-                uuid_acl = f"{o_type}:{o_uuid}:{acl}"
-                acls.append(uuid_acl)
-
+        acls = [format_acl(x) for x in self.acls]
         acls.sort()
 
         if _caller == "CLIENT":
@@ -10001,20 +10052,27 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Try to get owner UUID from backend.
         if owner_type and not owner_uuid:
-            # FIXME: how to add tokens from other realms and roles from other realms/sites!?
+            # FIXME: how to add tokens from other realms and roles from other realms!?
+            search_value = owner_name
             if owner_type == "token":
                 search_attribute = "rel_path"
                 search_site = None
+            elif owner_name.startswith("/"):
+                # The full path, unit and all.
+                search_attribute = "path"
+                search_site = None
+            elif "/" in owner_name:
+                # <site>/<name>, the way list_acls prints a role and
+                # otpme_acl.decode() reads it. It was taken for a path,
+                # which always starts with a slash, and found nothing.
+                search_site, search_value = owner_name.split("/", 1)
+                search_attribute = "name"
             else:
-                if "/" in owner_name:
-                    search_attribute = "path"
-                    search_site = None
-                else:
-                    search_attribute = "name"
-                    search_site = config.site
+                search_attribute = "name"
+                search_site = config.site
 
             result = backend.search(attribute=search_attribute,
-                                    value=owner_name,
+                                    value=search_value,
                                     object_type=owner_type,
                                     realm=self.realm,
                                     site=search_site)
@@ -10671,7 +10729,7 @@ class OTPmeObject(OTPmeBaseObject):
             path_data = oid.resolve_path(new_unit, object_type="user")
             new_site = path_data['site']
             if new_site != self.site:
-                msg = "Cross-site moves are not support by this object."
+                msg = _("Cross-site moves are not supported by this object.")
                 return callback.error(msg)
         else:
             # Build absolute path.
@@ -10973,6 +11031,25 @@ class OTPmeObject(OTPmeBaseObject):
                 user_list.append(user)
         return user_list
 
+    def resolve_sign_tags(self, tags, _caller="API"):
+        """ Tags from the command line, taken as add_signer takes them.
+
+        An OID or <type>:<name> of an object of this site stands for that
+        object and becomes <type>:<uuid>, the tag a signer asks for. One
+        for an object that does not exist raises InvalidTag. Anything
+        else stays as it is. Taken verbatim, "group:admins" made
+        get_sign_info() fail (it wants a UUID there), and an OID gave a
+        signature no signer would ever accept.
+
+        Only for the command line: in code the tags already carry UUIDs
+        (resign, add_token --sign), and those would be looked up as
+        names.
+        """
+        if not tags or _caller != "CLIENT":
+            return tags
+        from otpme.lib.classes.signing import resolve_tags
+        return resolve_tags(tags=tags, from_uuid=False)
+
     def get_default_sign_tags(self):
         """ Get default sign tags for this object. """
         # FIXME: which tags to add what do they mean????
@@ -10997,6 +11074,7 @@ class OTPmeObject(OTPmeBaseObject):
     def resign(
         self,
         force: bool=False,
+        stdin_pass: bool=False,
         run_policies: bool=False,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -11005,7 +11083,7 @@ class OTPmeObject(OTPmeBaseObject):
         ):
         """ Resign all signatures of the current auth user.. """
         if not config.auth_token:
-            msg = "Not logged in."
+            msg = _("Not logged in.")
             raise NotLoggedIn(msg)
 
         msg = _("Renew all your signatures of {object_type} '{object_name}'?: ")
@@ -11020,7 +11098,7 @@ class OTPmeObject(OTPmeBaseObject):
         try:
             user_signs = script_signs[auth_user_uuid]
         except Exception:
-            msg = "No signatures found."
+            msg = _("No signatures found.")
             return callback.error(msg, exception=NoSignature)
 
         # Recreate each signature.
@@ -11028,8 +11106,10 @@ class OTPmeObject(OTPmeBaseObject):
             # Get signature object.
             signature = script_signs[auth_user_uuid][sign_id]
             # Add new signature. This will also revoke the old signature.
+            # stdin_pass went nowhere, and the passphrase was asked for.
             resign_status = self.sign(tags=signature.tags,
                                     sign_ref=signature.sign_ref,
+                                    stdin_pass=stdin_pass,
                                     callback=callback,
                                     force=True)
             if not resign_status:
@@ -11044,6 +11124,9 @@ class OTPmeObject(OTPmeBaseObject):
 
         return callback.ok()
 
+    # Checked here and not only in add_sign(): that comes after the user
+    # was asked to sign, and had typed the passphrase for nothing.
+    @check_acls(['add:signature'])
     @object_lock(full_lock=True)
     def sign(
         self,
@@ -11061,7 +11144,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         signer = config.auth_user
         if not signer:
-            msg = "Not logged in."
+            msg = _("Not logged in.")
             raise NotLoggedIn(msg)
 
         if run_policies:
@@ -11079,6 +11162,11 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Reload auth user (e.g. new keys).
         signer._load()
+
+        try:
+            tags = self.resolve_sign_tags(tags, _caller=_caller)
+        except InvalidTag as e:
+            return callback.error(str(e))
 
         # Make sure tags is a list.
         if not tags:
@@ -11189,10 +11277,10 @@ class OTPmeObject(OTPmeBaseObject):
         """ Add signature to object. """
         from otpme.lib.classes.signing import OTPmeSignature
         if not config.auth_token:
-            return callback.error("Not logged in.")
+            return callback.error(_("Not logged in."))
 
         if not config.auth_user:
-            return callback.error("Unable to find login user")
+            return callback.error(_("Unable to find login user."))
 
         if not isinstance(signature, OTPmeSignature):
             msg = _("Invalid signature type: {signature_type}")
@@ -11318,6 +11406,11 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = str(e)
                 return callback.error(msg)
 
+        try:
+            tags = self.resolve_sign_tags(tags, _caller=_caller)
+        except InvalidTag as e:
+            return callback.error(str(e))
+
         # Make sure tags is a list.
         if tags is None:
             tags = []
@@ -11349,7 +11442,7 @@ class OTPmeObject(OTPmeBaseObject):
             user = backend.get_object(object_type="user", uuid=user_uuid)
         else:
             if not config.auth_token:
-                return callback.error("Not logged in.")
+                return callback.error(_("Not logged in."))
             username = config.auth_user.name
             user = config.auth_user
 
@@ -11431,6 +11524,11 @@ class OTPmeObject(OTPmeBaseObject):
             if isinstance(tags, str):
                 tags = tags.split(",")
 
+        try:
+            tags = self.resolve_sign_tags(tags, _caller=_caller)
+        except InvalidTag as e:
+            return callback.error(str(e))
+
         # Get list with users signed this object.
         try:
             user_list = self.get_sign_users(username=username,
@@ -11441,7 +11539,7 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error(msg)
 
         if not user_list:
-            msg = ("No signature exists for this object.")
+            msg = _("No signature exists for this object.")
             return callback.error(msg)
 
         if sign_id:
@@ -11503,37 +11601,35 @@ class OTPmeObject(OTPmeBaseObject):
                     _sig.verify(public_key=user.sign_public_key,
                                 sign_data=sign_data,
                                 tags=check_tags)
+                    # One valid signature is enough. A signature that
+                    # fails below no longer takes it back: the result
+                    # was that of whichever signature came last.
                     verify_status = True
                 except VerificationFailed as e:
                     msg = _("{user_name}: signature verification failed: {sign_info}: {e}")
                     msg = msg.format(user_name=user.name, sign_info=sign_info, e=e)
                     callback.error(msg)
-                    verify_status = False
                     continue
                 except InvalidPublicKey:
                     msg = _("{user_name}: Unable to load public key.")
                     msg = msg.format(user_name=user.name)
                     callback.send(msg)
-                    verify_status = False
                     continue
                 except SignatureRevoked:
                     msg = _("{user_name}: Signature revoked ({sign_info})")
                     msg = msg.format(user_name=user.name, sign_info=sign_info)
                     callback.send(msg)
-                    verify_status = False
                     continue
                 except FaultySignature:
                     msg = _("{user_name}: Faulty signature ({sign_info})")
                     msg = msg.format(user_name=user.name, sign_info=sign_info)
                     callback.send(msg)
-                    verify_status = False
                     continue
                 except Exception:
                     #config.raise_exception()
                     msg = _("{user_name}: Invalid signature ({sign_info})")
                     msg = msg.format(user_name=user.name, sign_info=sign_info)
                     callback.send(msg)
-                    verify_status = False
                     continue
 
                 msg = _("{user_name}: Signature OK ({sign_info})")
@@ -11556,6 +11652,10 @@ class OTPmeObject(OTPmeBaseObject):
         if verify_status:
             return callback.ok()
 
+        # No signature matched, e.g. none with the default tags of this
+        # object. That ended with an empty message.
+        if not msg:
+            msg = _("No valid signature found.")
         return callback.error(msg)
 
     # NOTE: No need to check ACLs for this method. Any user needs access
@@ -11579,11 +11679,24 @@ class OTPmeObject(OTPmeBaseObject):
             msg = str(e)
             return callback.error(msg)
 
-        # If we got a user and tags we can search by sign ID.
-        if (username or user_uuid) and tags:
-            # Create signature ID.
-            tags.sort()
-            sign_id = stuff.gen_sha256(",".join(tags))
+        try:
+            tags = self.resolve_sign_tags(tags, _caller=_caller)
+        except InvalidTag as e:
+            return callback.error(str(e))
+
+        # With tags we can search by sign ID. It is made of all tags of
+        # the signature, the default tags of the object among them, as
+        # in sign() and del_sign(). Made of the given tags alone it
+        # matched no signature, and without a user the tags were not
+        # looked at at all.
+        if tags:
+            sign_tags = list(tags)
+            for x in self.get_default_sign_tags():
+                if x in sign_tags:
+                    continue
+                sign_tags.append(x)
+            sign_tags.sort()
+            sign_id = stuff.gen_sha256(",".join(sign_tags))
         else:
             sign_id = None
 
@@ -11884,6 +11997,35 @@ class OTPmeObject(OTPmeBaseObject):
                                 _caller=_caller,
                                 **kwargs)
 
+    def _name_in_use(self, object_id: oid.OTPmeOid) -> bool:
+        """ Is the name of object_id taken where it has to be unique? """
+        if backend.object_exists(object_id):
+            return True
+        # The file of an object lies in its unit, so object_exists() only
+        # looks there. Where the read OID names no unit (e.g.
+        # role|realm/site/name), the name has to be unique in the site,
+        # or in the realm where it names no site either (e.g.
+        # device|realm/name). Else the read OID
+        # gives two objects, and a lookup by name takes either one.
+        read_schema = oid.read_oid_schema.get(self.type)
+        if not read_schema:
+            return False
+        if "unit" in read_schema or "user" in read_schema:
+            return False
+        site = None
+        if "site" in read_schema:
+            site = object_id.site
+        result = backend.search(object_type=self.type,
+                                attribute="name",
+                                value=object_id.name,
+                                realm=object_id.realm,
+                                site=site,
+                                return_type="uuid")
+        for x in result:
+            if x != self.uuid:
+                return True
+        return False
+
     def _prepare_add(
         self,
         uuid: Union[str,None]=None,
@@ -11902,13 +12044,7 @@ class OTPmeObject(OTPmeBaseObject):
         ):
         """ Will do some basic stuff like lock the object, verify ACLs etc. """
         if check_exists:
-            realm = config.realm
-            site = config.site
-            if self.type == "user" \
-            or self.type == "group":
-                realm = None
-                site = None
-            if backend.object_exists(self.oid, realm=realm, site=site):
+            if self._name_in_use(self.oid):
                 msg = _("{object_type} already exists.")
                 msg = msg.format(object_type=f"{self.type[0].upper()}{self.type[1:]}")
                 return callback.error(msg)
@@ -12264,7 +12400,7 @@ class OTPmeObject(OTPmeBaseObject):
         if name_len_error is not None:
             return name_len_error
 
-        if backend.object_exists(object_id=new_oid):
+        if self._name_in_use(new_oid):
             msg = _("Cannot rename. {object_type} '{new_name}' exists.")
             msg = msg.format(object_type=f"{self.type[0].upper()}{self.type[1:]}", new_name=new_oid.name)
             return callback.error(msg)
@@ -12419,6 +12555,11 @@ class OTPmeObject(OTPmeBaseObject):
         if self.auto_revoke and len(self.signatures) > 0:
             log_msg = _("Auto revoking of signatures enabled.", log=True)[1]
             logger.debug(log_msg)
+            # Part of the delete, which was checked and ran its policies:
+            # no ACLs and no policies of del_sign() here. Who may delete
+            # the object but not delete:signature got PermissionDenied,
+            # raised as the callback was off, and the error below raised
+            # again as it still was: the delete stopped, after the trash.
             for user_uuid in dict(self.signatures):
                 for sign_id in dict(self.signatures[user_uuid]):
                     callback.disable()
@@ -12426,8 +12567,11 @@ class OTPmeObject(OTPmeBaseObject):
                         self.del_sign(user_uuid=user_uuid,
                                         sign_id=sign_id,
                                         force=True,
+                                        verify_acls=False,
+                                        run_policies=False,
                                         callback=callback)
                     except Exception as e:
+                        callback.enable()
                         msg = _("Failed to revoke signature: {exception}")
                         msg = msg.format(exception=e)
                         return callback.error(msg)
@@ -12766,6 +12910,60 @@ class OTPmeObject(OTPmeBaseObject):
             self.del_index_refs(orphan_set)
         return object_changed
 
+    def get_orphan_config_params(self):
+        """ The config parameters set on this object that point at objects
+        that are gone, as [(parameter, orphans, report_only)].
+
+        Asked of every parameter that registered <orphans> (see
+        register_config_parameter()): only the parameter knows how its
+        value is built. A parameter that is not registered any more is
+        no business of this, "config -d" removes it.
+        """
+        found = []
+        for parameter in sorted(self.config_params):
+            try:
+                para_data = config.get_config_parameter(parameter)
+            except NotRegistered:
+                continue
+            get_orphans = para_data.get('orphans')
+            if not get_orphans:
+                continue
+            orphans = get_orphans(self.config_params[parameter])
+            if not orphans:
+                continue
+            report_only = para_data.get('orphans_report_only', False)
+            found.append((parameter, orphans, report_only))
+        return found
+
+    def remove_orphan_config_entries(self, parameter, orphans,
+        callback: JobCallback=default_callback):
+        """ Take the orphans of a config parameter out, the way
+        "config -d <object> <parameter> [<entry>]" does: a single UUID
+        removes the parameter, an entry of a list only that entry. Setter,
+        deller and what a site may not lose (set_config_param()) apply.
+        No ACL of its own: remove_orphans() checked remove:orphans. """
+        value = self.config_params.get(parameter)
+        changed = False
+        if isinstance(value, list):
+            for entry in orphans:
+                result = self.set_config_param(parameter,
+                                            value=entry,
+                                            delete=True,
+                                            force=True,
+                                            run_policies=False,
+                                            verify_acls=False,
+                                            callback=callback)
+                if result:
+                    changed = True
+            return changed
+        result = self.set_config_param(parameter,
+                                    delete=True,
+                                    force=True,
+                                    run_policies=False,
+                                    verify_acls=False,
+                                    callback=callback)
+        return bool(result)
+
     @check_acls(['remove:orphans'])
     @object_lock()
     @audit_log()
@@ -12830,6 +13028,7 @@ class OTPmeObject(OTPmeBaseObject):
             items = hook['get']()
             if items:
                 hooks_found.append((hook, items))
+        config_found = self.get_orphan_config_params()
 
         # Single confirmation for everything found.
         msg = ""
@@ -12849,6 +13048,17 @@ class OTPmeObject(OTPmeBaseObject):
             msg += _("{type}|{name}: Found the following orphan {label}: {x}\n").format(
                     type=self.type, name=self.name, label=hook['label'],
                     x=','.join(str(i) for i in items))
+        for parameter, orphans, report_only in config_found:
+            if report_only:
+                # Said, not asked: nothing is done with it here.
+                note = _("{type}|{name}: Config parameter {parameter} names objects that are gone, change it by hand: {x}")
+                note = note.format(type=self.type, name=self.name,
+                                parameter=parameter, x=','.join(orphans))
+                callback.send(note)
+                continue
+            msg += _("{type}|{name}: Found the following orphan entries of config parameter {parameter}: {x}\n").format(
+                    type=self.type, name=self.name, parameter=parameter,
+                    x=','.join(orphans))
         if msg:
             msg = _("{msg}Remove? ").format(msg=msg)
             if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -12876,6 +13086,12 @@ class OTPmeObject(OTPmeBaseObject):
         for hook, items in hooks_found:
             if hook['remove'](items):
                 object_changed = True
+        for parameter, orphans, report_only in config_found:
+            if report_only:
+                continue
+            if self.remove_orphan_config_entries(parameter, orphans,
+                                                callback=callback):
+                object_changed = True
 
         # Optional type specific recursive cascade. Each member writes
         # itself, and what it answers says nothing about this object:
@@ -12888,6 +13104,9 @@ class OTPmeObject(OTPmeBaseObject):
 
         if not object_changed:
             if not report_nothing:
+                return callback.ok()
+            # What was only said above is not "nothing found".
+            if [x for x in config_found if x[2]]:
                 return callback.ok()
             msg = _("No orphan objects found for {type}: {name}")
             msg = msg.format(type=self.type, name=self.name)

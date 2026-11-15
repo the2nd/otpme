@@ -16,6 +16,8 @@ otpme-mount \- mount and unmount OTPme file shares
 .br
 .B otpme-mount \-\-list
 .SH DESCRIPTION
+.na
+.nh
 .B otpme-mount
 mounts a file share of your realm with FUSE.
 The share lives on the nodes, the mount runs on your computer, and every request goes to a node over the network.
@@ -51,6 +53,7 @@ Leave it out and \fBotpme\-agent\fR mounts the share at the usual place:
 The first part is the mount root (\fBMOUNT_ROOT_DIR\fR, see
 .BR otpme.conf (5)).
 The directories are made as needed and belong to you.
+Options that change how it is mounted, \fB\-\-nodes\fR, \fB\-\-hard\fR, \fB\-\-master\-password\-mount\fR, \fB\-\-add\-share\-key\fR and \fB\-\-foreground\fR, need a mountpoint of your own, see \fBOPTIONS\fR.
 .PP
 This is also where the shares of a user are mounted at login.
 A mount made by hand with a mountpoint of your own is yours alone: the agent does not know about it, so it is not unmounted with the others.
@@ -106,11 +109,17 @@ Log in as root and run it there:
 .PP
 This is also how a share is taken over whose data is older than its share object, see \fB\-\-no\-key\-gen\fR in
 .BR otpme\-share (1).
+.hy
+.ad
 .SH OPTIONS
+.na
+.nh
+\fB\-\-nodes\fR, \fB\-\-hard\fR, \fB\-\-master\-password\-mount\fR, \fB\-\-add\-share\-key\fR and \fB\-\-foreground\fR need a \fImountpoint\fR of your own.
+Without one the agent mounts the share, at the usual place and with its own settings, and they are refused.
 .TP
 .B \-a
 Mount all shares you may mount, each at the usual place.
-Not for a mountpoint of your own, and not together with \fB\-\-foreground\fR, \fB\-\-master\-password\-mount\fR or \fB\-\-add\-share\-key\fR.
+Not for a mountpoint of your own, and not together with the options above.
 .TP
 .B \-u
 Unmount the share.
@@ -146,7 +155,11 @@ See \fBEncrypted shares\fR.
 Keep the mount in this process instead of leaving it behind in one of its own.
 The command ends when the share is unmounted.
 Useful for looking at what a mount does.
+.hy
+.ad
 .SH EXAMPLES
+.na
+.nh
 .TP
 .B otpme-mount berlin/projects
 Mount the share \fIprojects\fR of site \fIberlin\fR at \fI/otpme/<user>/<realm>/berlin/projects\fR.
@@ -175,10 +188,20 @@ Mount an encrypted share with its master password.
 .B otpme-mount \-\-master\-password\-mount \-\-add\-share\-key berlin/secure /mnt/secure
 The same, and keep the key for your own token, so the next mount needs no master password.
 Runs in the login session of root.
+.TP
+.B otpme-mount \-\-nodes node1 berlin/projects /mnt/projects
+Mount it from \fBnode1\fR only.
+.TP
+.B fusermount \-u /mnt/projects
+Unmount a share at a mountpoint of your own; \fB\-u\fR does not reach it.
+.hy
+.ad
 .SH NOTES
-An unencrypted share connects in the background and answers with \fBENOENT\fR until the connection stands.
+.na
+.nh
+A share connects in the background and answers with \fBENOENT\fR until the connection stands.
 So a program that looks at the mountpoint in the first moment is told the path is not there, instead of waiting for it.
-An encrypted share waits instead: getting its key may ask for a password, and that needs a command that waits for the answer.
+It waits instead where getting the connection may ask something or must not fail: an encrypted share, whose key may ask for a password, a share with SOTP signing, a write of a \fB\-\-hard\fR mount, and the connection made again after \fBmount_timeout\fR.
 .PP
 A share can drop its connection when nothing uses it for a while, and with it the share key (\fBmount_timeout\fR, see
 .BR otpme\-share (1)).
@@ -186,19 +209,20 @@ The next request connects again.
 For an encrypted share that means the key is asked for again, so a token that has to be plugged in has to be plugged in again.
 .PP
 A node asks once a second whether your token may still use the share, and stops serving the mount when it may not.
-Taking a permission away also tells the hosts to unmount the share, see \fB\-\-share\-notify\fR in
+Taking a permission away also tells the hosts to unmount the share where it is done with \fB\-\-share\-notify\fR or \fBsend_share_notifications\fR is set, see
 .BR otpme\-share (1).
 .PP
-After a mount that went to the background, the readahead of the mountpoint is set with
-.B sudo -n setreadahead
-.IR mountpoint .
+After a mount that went to the background, the readahead of the mountpoint is set with \fBsudo \-n setreadahead\fR \fImountpoint\fR.
 Without that sudo rule the mount still works, only slower on large reads.
+.hy
+.ad
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
 .BR otpme\-share (1),
 .BR otpme\-tool (1),
-.BR otpme.conf (5)
+.BR otpme.conf (5),
+.BR fusermount (1)
 .SH AUTHOR
 the2nd <the2nd@otpme.org>
 .SH NOTE

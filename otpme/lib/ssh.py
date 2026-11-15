@@ -315,11 +315,14 @@ def filter_key_options(token_options, valid_options):
         options.append(option)
     return options, dropped
 
-def gen_challenge(ssh_public_key, otp_len=0):
-    """ Generate OTPme SSH challenge. """
+def gen_challenge(ssh_public_key):
+    """ Generate OTPme SSH challenge: time, nonce, public key.
+
+    The OTP length of a second factor token was the second field; SSH
+    tokens have none any more. """
     epoch_time = str(int(time.time()))
     nonce = stuff.gen_secret(len=32)
-    challenge = f"{epoch_time}:{otp_len}:{nonce}:{ssh_public_key}"
+    challenge = f"{epoch_time}:{nonce}:{ssh_public_key}"
     return challenge
 
 def sign_challenge(challenge):
@@ -327,7 +330,7 @@ def sign_challenge(challenge):
     from paramiko.agent import Agent
 
     rsa_message = None
-    public_key = challenge.split(":")[3]
+    public_key = challenge.split(":")[2]
 
     sign_data_kwargs = {'data' : challenge}
     agent = Agent()
@@ -824,7 +827,11 @@ def update_authorized_keys():
         # Get signers.
         signers = get_signers(signer_type="token", username=system_user.name)
         if signers:
-            signatures = verify_token.signatures
+            # The signatures of the token that was added, for a link the
+            # link and not its destination: a link is signed for the
+            # user who owns it. The sign data is the key below, which
+            # for a link is the key of the destination.
+            signatures = token.signatures
             # Without signatures the key will not be allowed to login.
             if not signatures:
                 log_msg = _("Ignoring SSH key without signatures: {token_path}", log=True)[1]

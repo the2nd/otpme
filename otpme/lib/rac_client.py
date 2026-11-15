@@ -662,6 +662,94 @@ def send_environment(channel):
             pass
 
 
+class WindowResize(object):
+    """ Send the size of our terminal again when the window changes.
+
+    The size went to the host once, with the pty, and a window resized
+    during a session stayed at the size it had: the host takes a new
+    one (check_channel_window_change_request), we never sent one.
+
+    The signal handler only says that it happened, with a flag and a
+    byte into a pipe. The size is sent from the loop of run_channel(),
+    which has the pipe in its select(): a handler that talked to the
+    channel could do so while the loop is in the middle of sendall().
+    """
+    def __init__(self, channel, get_size=os.get_terminal_size):
+        self.channel = channel
+        self.get_size = get_size
+        self.changed = False
+        self.read_fd = None
+        self.write_fd = None
+        self.old_handler = None
+        self.started = False
+
+    def start(self):
+        """ Listen for SIGWINCH. Says whether it does: only the main
+        thread may set a signal handler, and without one a session goes
+        on at the size it started with. """
+        import signal
+        read_fd, write_fd = os.pipe()
+        os.set_blocking(read_fd, False)
+        os.set_blocking(write_fd, False)
+        try:
+            self.old_handler = signal.signal(signal.SIGWINCH,
+                                            self.handle_signal)
+        except ValueError:
+            os.close(read_fd)
+            os.close(write_fd)
+            return False
+        self.read_fd = read_fd
+        self.write_fd = write_fd
+        self.started = True
+        return True
+
+    def handle_signal(self, signum, frame):
+        self.changed = True
+        try:
+            os.write(self.write_fd, b"x")
+        except OSError:
+            # The pipe is full: a resize is waiting to be sent anyway.
+            pass
+
+    def fileno(self):
+        return self.read_fd
+
+    def send(self):
+        """ Send the size if the window changed. Says whether it did. """
+        if not self.changed:
+            return False
+        self.changed = False
+        try:
+            while os.read(self.read_fd, 4096):
+                pass
+        except (BlockingIOError, OSError):
+            pass
+        try:
+            size = self.get_size()
+        except OSError:
+            return False
+        try:
+            self.channel.resize_pty(width=size.columns, height=size.lines)
+        except Exception:
+            # A channel that is going away: the loop finds that out by
+            # itself, and says how it ended.
+            return False
+        return True
+
+    def stop(self):
+        """ Put the handler that was there back. """
+        if not self.started:
+            return
+        import signal
+        signal.signal(signal.SIGWINCH, self.old_handler)
+        for x_fd in (self.read_fd, self.write_fd):
+            try:
+                os.close(x_fd)
+            except OSError:
+                pass
+        self.started = False
+
+
 def run_channel(channel, command=None):
     """ Put our terminal at the other end of the channel.
 
@@ -687,11 +775,15 @@ def run_channel(channel, command=None):
     else:
         channel.invoke_shell()
     old_mode = None
+    resize = None
     if interactive:
         old_mode = termios.tcgetattr(sys.stdin)
         # Raw, so what the user types reaches the shell at the other
         # end instead of being line edited here.
         tty.setraw(sys.stdin.fileno())
+        resize = WindowResize(channel)
+        if not resize.start():
+            resize = None
     def ended_cleanly():
         """ Whether the far end said the session was over.
 
@@ -729,7 +821,12 @@ def run_channel(channel, command=None):
     reason = None
     try:
         while True:
-            readable = select.select([channel, sys.stdin], [], [], 1.0)[0]
+            watched = [channel, sys.stdin]
+            if resize:
+                watched.append(resize)
+            readable = select.select(watched, [], [], 1.0)[0]
+            if resize:
+                resize.send()
             if channel in readable:
                 if channel.recv_ready():
                     data = channel.recv(65536)
@@ -761,6 +858,8 @@ def run_channel(channel, command=None):
         ended_by = ENDED_LOST
         reason = str(e) or type(e).__name__
     finally:
+        if resize:
+            resize.stop()
         if old_mode is not None:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_mode)
     if ended_by == ENDED_LOST and not reason:

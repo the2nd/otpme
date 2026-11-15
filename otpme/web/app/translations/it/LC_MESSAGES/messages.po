@@ -890,6 +890,11 @@ msgstr "Controllo del tuo telefono..."
 msgid "Re-deploying token '{token_name}' for user '{user_name}'."
 msgstr "Ridistribuzione del token '{token_name}' per l'utente '{user_name}'."
 
+#: templates/recover_complete.html:45
+#, python-brace-format
+msgid "Setting up token '{token_name}' for user '{user_name}'."
+msgstr "Configurazione del token '{token_name}' per l'utente '{user_name}'."
+
 #: templates/recover_complete.html:74
 msgid "Set New Password"
 msgstr "Imposta nuova password"

@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-dictionary {command} [dict_name]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-dictionary show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [dict_name]'),
+                    '_cmd_usage_help' : _('Usage: otpme-dictionary show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [dict_name]'),
                     'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show dictionaries'),
@@ -39,12 +39,12 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-dictionary list [--attribute attribute] [-a] [regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-dictionary list [--attribute attribute] [-a] [pattern]'),
                     'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List dictionaries.'),
                                     '-a'                        : _('List all dictionaries.'),
-                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
+                                    '--attribute <attribute>'   : _('Match the pattern against this attribute instead of the name.')
                                 },
                 },
 
@@ -73,7 +73,7 @@ cmd_help = {
                                 },
                 },
     'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-dictionary config -d -a {dictionary} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-dictionary config [-d] [-a] {dictionary} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to dictionary.'),
@@ -234,7 +234,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-dictionary info {dict_name} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-dictionary info [--language <language>] {dict_name} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set dictionary info'),
@@ -243,7 +243,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-dictionary dump_info {dict_name}'),
+                    '_cmd_usage_help' : _('Usage: otpme-dictionary dump_info [--language <language>] {dict_name}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump dictionary info'),
@@ -263,28 +263,24 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                 },
 
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
     '_show_config'    : {
                     'cmd'   :   '<|object|>',
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-dictionary export --password <password> {dict_name}'),
+                    '_cmd_usage_help' : _('Usage: otpme-dictionary export [--password <password>] {dict_name}'),
                     'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export dictionary config to stdout'),
                                     '--password <password>' : _('Encrypt object config with password.'),
+                                },
+                },
+
+    'remove_orphans'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-dictionary remove_orphans {dictionary}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove orphan UUIDs'),
                                 },
                 },
 
@@ -320,7 +316,7 @@ cmd_help = {
                     '_cmd_usage_help' : _('Usage: otpme-dictionary word_learning {dict_name} {file}'),
                     'cmd'   :   '<|object|> ["dict_file"]',
                     '_help' :   {
-                                    'cmd'                   : _('"Learn" words from file'),
+                                    'cmd'                   : _('Build the entries of a guessing dictionary from the words of a file'),
                                 },
                 },
 

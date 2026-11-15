@@ -59,7 +59,7 @@ class LoginHandler(object):
         save_offline_token=None, offline_key_derivation_func=None, offline_token=None,
         request_token=None, mount_shares=False, offline_key_func_opts=None,
         check_offline_pass_strength=False, offline_iterations_by_score=None, login_session_id=None,
-        add_agent_acl=False, cleanup_method=None, socket_uri=None, login_use_dns=False, use_dns=False):
+        add_agent_acl=False, cleanup_method=None, socket_uri=None, login_use_dns=False):
         """ Send realm login request. """
         if offline_key_func_opts is None:
             offline_key_func_opts = {}
@@ -109,7 +109,6 @@ class LoginHandler(object):
             auth_conn = connections.get(daemon="authd",
                                     timeout=timeout,
                                     connect_timeout=connect_timeout,
-                                    use_dns=use_dns,
                                     use_agent=False,
                                     use_ssh_agent=use_ssh_agent,
                                     start_ssh_agent=start_ssh_agent,

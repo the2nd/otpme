@@ -38,6 +38,8 @@ from otpme.lib.encoding.base import decode
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.protocols.utils import register_commands
+from otpme.lib.protocols.utils import fido2_challenge
+from otpme.lib.protocols.utils import tag_test_challenge
 
 from otpme.lib.classes.token \
             import get_acls \
@@ -610,8 +612,13 @@ class Fido2Token(Token):
         except Exception:
             msg = _("Failed to decode auth response.")
             return callback.error(msg)
+        # The client answers a test over the tagged challenge, see
+        # smartcard/fido2.tag_request_options().
+        auth_state = dict(self.auth_state)
+        challenge = tag_test_challenge(auth_state['challenge'])
+        auth_state['challenge'] = fido2_challenge(challenge)
         try:
-            fido2_server.authenticate_complete(self.auth_state,
+            fido2_server.authenticate_complete(auth_state,
                                                 credentials,
                                                 auth_response)
         except Exception as e:

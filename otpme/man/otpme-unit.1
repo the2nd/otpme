@@ -97,10 +97,13 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
-List the unit names, and with a regex only those that match it.
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+List the unit names, and with a pattern only those that match it, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
 You get the units you may change; \fB\-a\fR adds those you may only look at.
-\fB\-\-attribute\fR matches the regex against that attribute instead of the name.
+\fB\-\-attribute\fR matches the pattern against that attribute instead of the name.
 .TP
 .B enable \fIunit\fR
 .TQ
@@ -261,16 +264,18 @@ What was done and by whom stays as it is.
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIunit\fR
-Show the changelog of the unit.
+Show the changelog of the unit, one entry per line: its \fIentry_id\fR, the time, who made the change and what was done, then a detail in round brackets and the comment in square brackets where there are any.
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fIunit\fR \fIentry_id\fR \fIcomment\fR
 Set the comment of that entry, or replace the one it has.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B del_changelog \fIunit\fR \fIentry_id\fR
 Remove the comment of that entry.
 The entry itself stays, and an entry without a comment is refused.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIunit\fR
@@ -324,10 +329,9 @@ The somebody is a role or a token, never a user.
 .PP
 A normal ACL is for the unit object alone.
 A default ACL, \fB+acl\fR or \fB++acl\fR, is not for the unit: it is for the objects in it, and a new object gets it when it is created.
-What the three forms mean, and which ACLs exist, is under \fBACLs\fR in
-.BR otpme (7)
-and in
-.BR otpme\-acls (7).
+What the three forms mean is under \fBACLs\fR in
+.BR otpme (7).
+Tab completion after \fBadd_acl\fR offers the ACLs a unit knows.
 .PP
 Adding and removing ask first, once for the whole command; the global option \fB\-f\fR skips the question.
 .TP
@@ -335,7 +339,7 @@ Adding and removing ask first, once for the whole command; the global option \fB
 Give a role or a token one or more ACLs on this unit.
 .br
 \fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
-\fIowner\fR is the path of that role or token.
+\fIowner\fR names it the way \fBlist_acls\fR prints it: a role as \fIsite/name\fR, or by its name alone on its own site; a token as \fI\%user/token\fR.
 An ACL can carry a value, for example \fBview:policies\fR.
 To give several ACLs at once, separate them with commas: \fB\%+user:edit,+user:view\fR.
 .br
@@ -504,7 +508,10 @@ A unit holds no key and no secret, so \fB\-\-password\fR has nothing to encrypt:
 Needs the ACL \fBexport\fR.
 .TP
 .B remove_orphans \fR[\fB\-r\fR] \fIunit\fR
-Remove references to objects that are gone: orphan ACLs, policies and signatures of the unit.
+Remove references to objects that are gone: orphan ACLs and policies of the unit.
+Config parameters set on the unit that keep other objects lose the ones that are gone, e.g. a deleted VLAN in \fBvlans\fR, the way \fBconfig \-d\fR does.
+\fBpassword_store_members\fR is only named, not changed: its signatures would no longer fit, so change it with \fBconfig \-d\fR and sign the members again, see
+.BR otpme\-pass (1).
 .br
 .B \-r
 goes on through the objects in the unit and in its units below, and cleans those up as well.
@@ -549,8 +556,8 @@ New users go there when a \fBdefaultunits\fR policy names the unit, see
 .B otpme-unit add_acl \-r \-a linux role helpdesk \(dq++user:edit\(dq
 The role may change every user in \fBlinux\fR and in the units below it, the ones that are there and the ones that come later.
 .TP
-.B otpme-unit add_acl \-r \-a linux role helpdesk @usermanager,++@usermanager
-The same with the ACL group \fBusermanager\fR: the role may add, change and delete the users and add their tokens, see
+.B otpme-unit add_acl \-r \-a linux role helpdesk @USERMANAGER,++@USERMANAGER
+The same with the ACL group \fBUSERMANAGER\fR: the role may add, change and delete the users and add their tokens, see
 .BR otpme\-aclgroup (1).
 A change of the group counts at once, without another \fBadd_acl\fR.
 .SS Putting two units together
@@ -577,12 +584,12 @@ See
 .B Auth On Action Policy
 in
 .BR otpme\-policy (1).
-A unit has the hooks every object type has, and these:
+A unit has the hooks every object type has, and these; a command of another name is in brackets:
 .RS
 .PP
 .na
 .nh
-set_config_parameter.
+set_config_parameter\ (config).
 .hy
 .ad
 .RE
@@ -619,7 +626,6 @@ Change them with the commands above, not in the files.
 .nh
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
 .BR otpme\-site (1),
 .BR otpme\-policy (1),
 .BR otpme\-user (1),

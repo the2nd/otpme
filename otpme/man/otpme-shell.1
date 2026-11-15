@@ -6,10 +6,12 @@ otpme-shell \- get a shell on a host
 [\fIoptions\fR]
 .I host
 .SH DESCRIPTION
+.na
+.nh
 .B otpme-shell
 gives you a shell on a host of your realm.
 You do not need to reach the host over the network, and the host does not need an open SSH port.
-The host connects out to a node of the realm, and your shell goes through that node.
+The host connects out to the master node of its site, and your shell goes through that node.
 .PP
 This is for a host you cannot reach otherwise.
 A machine behind NAT, a machine in a customer network, a machine whose sshd is broken.
@@ -20,7 +22,7 @@ A \fBremote_access\fR job is created for the host and signed with your sign key.
 It is a configuration job like any other, see
 .BR otpme\-deploy (1).
 .IP 2. 4
-The host hears about the job and connects out to a node.
+The host hears about the job and connects out to the master node of its site.
 .IP 3. 4
 You connect out to the same node.
 Both sides meet there under the UUID of the job.
@@ -46,20 +48,26 @@ The host must trust you for this job type.
 Add the signer on the host once:
 .PP
 .RS
-.B otpme\-tool add_signer \-\-signer\-type remote_access 'user|example.org/berlin/alice'
+.B otpme\-tool add_signer \-\-signer\-type remote_access 'user|example.org/alice'
 .RE
 .PP
 You must also be allowed to create jobs for the host.
 This is set with the config parameter \fBallow_confd_jobs\fR.
 .PP
-A \fBremote_access\fR signer can get a root shell on the host.
-Only add signers you trust with root access.
+A \fBremote_access\fR signer may ask for a shell, and gets in with the key of an SSH token that may log in to this host as the user the shell runs as: the keys OTPme hands to sshd, see \fBFILES\fR.
+A key in \fI~/.ssh/authorized_keys\fR does not count.
+A signer that may bring its own key (\fB\-\-allow\-throwaway\-key\fR) needs nothing but its signature, and gets any shell, root included.
+Give that one only to whom you trust with root access.
+See
+.BR otpme\-tool (1)
+for signers.
 .SS Which key gets you in
 Your SSH agent offers its keys and the host takes the first one it allows.
-The host allows the keys of its own \fBauthorized_keys\fR file for the user the shell runs as.
+The host allows the keys of the \fBauthorized_keys\fR file OTPme keeps for the user the shell runs as, see \fBFILES\fR.
 Those are the same keys
 .B otpme\-get\-authorized\-keys
 hands to sshd.
+A key in \fI~/.ssh/authorized_keys\fR does not count.
 .PP
 So nothing has to be set up for a session.
 The key you log into the host with is the key you get a shell with.
@@ -77,18 +85,21 @@ means not from here, and a session through a node does not come from where you a
 .BR no\-pty ,
 .B restrict
 and the others each say something this does not do.
+Only
+.B environment=
+is fine: it says what the key is, not what it may do.
 Such a key is skipped and the job log says so.
 .SS A key the job brings along
 With
 .B \-\-throwaway\-key
 a new key pair is made for this one session.
 The job carries its public half, and then the host allows that key and no other.
-The key exists for the minutes the job lives and is written nowhere.
+The private half exists for the minutes the job lives and is written nowhere.
 .PP
 This way in is weaker, and not because the key is new.
 It is weaker because it needs one thing where the ordinary way needs two.
 .PP
-The ordinary way needs the signature of the job \fBand\fR a key in the \fBauthorized_keys\fR of the host.
+The ordinary way needs the signature of the job \fBand\fR a key in the \fBauthorized_keys\fR OTPme keeps for the user on the host.
 Take either away and the door is shut.
 A job that brings its own key needs only the signature: it names the key it will be entered with, so whoever can sign such a job for the host has a shell.
 .PP
@@ -96,17 +107,19 @@ So the host says who may ask for it, and it says so per signer.
 On the host, as root:
 .PP
 .RS
-.B otpme\-tool add_signer \-\-signer\-type remote_access \-\-allow\-throwaway\-key 'user|example.org/berlin/alice'
+.B otpme\-tool add_signer \-\-signer\-type remote_access \-\-allow\-throwaway\-key 'user|example.org/alice'
 .RE
 .PP
 Or with a job, which needs a \fBsigner_mgmt\fR signer, and such a signer can do anything to the host anyway:
 .PP
 .RS
-.B otpme\-deploy add \-\-host client1 \-\-arg type=remote_access \-\-arg 'signer=user|example.org/berlin/alice' \-\-arg allow_throwaway_key=yes signer_mgmt add_signer
+.B otpme\-deploy add \-\-host client1 \-\-arg type=remote_access \-\-arg 'signer=user|example.org/alice' \-\-arg allow_throwaway_key=yes signer_mgmt add_signer
 .RE
 .PP
 Without it the host refuses the job and says so.
-That is a refusal and not a failure: the job stays, and it runs as soon as the signer has the permission.
+That is a refusal and not a failure: the job stays, and the host takes it up again when its signers change.
+.B otpme\-shell
+waits for the host only two minutes and then takes the request back, so ask again once the signer has the permission.
 .PP
 .B otpme\-tool show_signer
 has a column for it, so you can see which signers may.
@@ -195,14 +208,18 @@ Without \fB\-s\fR the command works against your own site, so a host of another 
 .PP
 An open session holds the master failover off while it lasts.
 So a shell that is left open overnight keeps the master role where it is.
+.hy
+.ad
 .SH OPTIONS
+.na
+.nh
 .TP
 .B \-\-user \fIuser\fR
 Run the shell as this user.
 Default is \fBroot\fR.
 The user must exist on the host.
 .br
-Lower case, up to 32 characters, and it may hold digits, \fB_\fR, \fB\-\fR and \fB.\fR, for example \fBfirstname.lastname\fR.
+Lower case, up to 32 characters, starting with a letter or \fB_\fR, and it may hold digits, \fB_\fR, \fB\-\fR and \fB.\fR, for example \fBfirstname.lastname\fR.
 .TP
 .B \-\-command \fIcommand\fR
 Run this instead of a shell.
@@ -224,16 +241,13 @@ It works from the moment you asked for the shell until the session is up.
 Once the session is up, Ctrl+C belongs to the shell at the other end, the same as in
 .BR ssh (1).
 .PP
-The request is not taken back by giving up.
-It stands until it expires, and asking again uses it, so there is nothing to clean up.
-Take it back with
-.B otpme\-deploy cancel
-and the UUID it printed, if you want it gone now.
+Giving up takes the request back, and so does a session that never came about: a host that has not picked it up yet does not open one for it any more.
+Where taking it back fails, you are told so: then it stands until it expires, and \fBotpme\-deploy cancel\fR with its UUID takes it back by hand.
 .SH EXIT STATUS
 .B otpme-shell
 exits with the exit status of the shell or of the command.
 .PP
-It exits with \fB255\fR when the connection failed and not the command.
+It exits with \fB255\fR when the connection failed and not the command: no session came about, or it was lost.
 This is what
 .BR ssh (1)
 does, so a script around it reads the two apart the same way.
@@ -249,7 +263,11 @@ Connection to \fIhost\fR closed.
 .RS
 Connection to \fIhost\fR closed by remote host: \fIreason\fR
 .RE
+.hy
+.ad
 .SH EXAMPLES
+.na
+.nh
 .TP
 .B otpme-shell client1
 A root shell on client1.
@@ -268,13 +286,22 @@ Run one command and print what it says.
 A shell on a key made for this session, and a request that is good for 30 seconds.
 Needs a signer with \fB\-\-allow\-throwaway\-key\fR on that host.
 .TP
+.B otpme-tool add_signer \-\-signer\-type remote_access 'user|example.org/alice'
+On the host, once: let alice ask for shells there.
+She gets in with the key of an SSH token that may log in as that user, see
+.BR otpme\-tool (1).
+.TP
 .B otpme-tool show_signer \-\-signer\-type remote_access
 On the host: which signers may ask for a shell, and which of them may bring their own key.
 .TP
 .B otpme-deploy results \fIjob_uuid\fR
 What came of a session.
 Says who got in, how the session ended and which keys were skipped.
+.hy
+.ad
 .SH FILES
+.na
+.nh
 .TP
 \fI/var/cache/otpme/ssh/authorized_keys/<user>/authorized_keys\fR
 The keys the host allows, on the host.
@@ -283,7 +310,11 @@ Written by \fBhostd\fR from the SSH tokens of the realm.
 \fI/var/log/otpme/confd/<job_uuid>.log\fR
 The log of one session, on the host.
 Never what was said in the session.
+.hy
+.ad
 .SH NOTES
+.na
+.nh
 A session is written into the login history of the host, so
 .BR last (1)
 there shows it like any other login:
@@ -306,19 +337,27 @@ So the audit of the host puts what happens in the session under the user the she
 It is not in \fBwho\fR(1).
 That reads another file, one in which a record has to be found and replaced rather than appended, and which every other login on the host writes too.
 .PP
-The size of your terminal is sent when the shell starts.
-It is not sent again, so a window you resize during a session stays at the size it had.
+The size of your terminal is sent when the shell starts, and again whenever you resize the window.
 .PP
 Your language is offered to the shell (\fBLANG\fR and the \fBLC_*\fR variables).
 Nothing else from your environment is sent.
 A shell that ran with the environment of whoever asked for it would run their code.
+.hy
+.ad
 .SH SEE ALSO
+.na
+.nh
+.BR otpme (1),
 .BR otpme (7),
 .BR otpme\-deploy (1),
 .BR otpme\-tool (1),
 .BR otpme\-host (1),
 .BR otpme\-node (1),
-.BR ssh (1)
+.BR ssh (1),
+.BR last (1),
+.BR who (1)
+.hy
+.ad
 .SH AUTHOR
 the2nd <the2nd@otpme.org>
 .SH NOTE

@@ -80,6 +80,12 @@ def _split_list(value):
     return [x for x in items if x] or None
 
 
+def _agent_reason():
+    """What otpme-agent tells the user when it asks to confirm a use of
+    the private key: OTPME_AGENT_REASON, the key script's --reason."""
+    return os.environ.get("OTPME_AGENT_REASON") or None
+
+
 def _get_agent():
     """Connect to otpme-agent and return AgentConn."""
     from otpme.lib.otpme_config import OTPmeConfig
@@ -177,6 +183,7 @@ def main():
                 challenge=args.challenge,
                 slot=slot,
                 length=args.derive_length,
+                reason=_agent_reason(),
             )
         else:
             pin = _resolve_pin(args.pin) or getpass.getpass("PIN: ")
@@ -215,6 +222,7 @@ def main():
                 data=data,
                 slot=slot,
                 padding=args.padding or "oaep",
+                reason=_agent_reason(),
             )
             plain_text = bytes.fromhex(plain_text)
         else:
@@ -243,6 +251,7 @@ def main():
                 data=blob.hex(),
                 slot=slot,
                 info=info_str,
+                reason=_agent_reason(),
             )
             plain_text = bytes.fromhex(plain_text_hex)
         else:
@@ -306,6 +315,7 @@ def main():
                 data=data,
                 slot=slot,
                 padding=args.padding or "pss",
+                reason=_agent_reason(),
             )
             signature = bytes.fromhex(signature)
         else:
@@ -322,19 +332,29 @@ def main():
     elif args.csr:
         if not args.subject:
             parser.error("--csr requires --subject")
-        # No --use-agent: the agent signs data, and a request has to be
-        # built around the signature. The card is asked directly, which
-        # means the PIN is asked for here.
-        pin = _resolve_pin(args.pin) or getpass.getpass("PIN: ")
-        csr = gen_csr(
-            subject=args.subject,
-            slot=args.slot or SIGN_SLOT_DEFAULT,
-            pin=pin,
-            san_email=_split_list(args.san_email),
-            key_usage=_split_list(args.key_usage),
-            ext_key_usage=_split_list(args.ext_key_usage),
-            serial=args.serial,
-        )
+        if args.use_agent:
+            # The agent builds the request with its PIV session and
+            # asks for the PIN itself where it has none.
+            agent = _get_agent()
+            csr = agent.piv_csr(
+                subject=args.subject,
+                slot=args.slot or SIGN_SLOT_DEFAULT,
+                san_email=_split_list(args.san_email),
+                key_usage=_split_list(args.key_usage),
+                ext_key_usage=_split_list(args.ext_key_usage),
+                reason=_agent_reason(),
+            )
+        else:
+            pin = _resolve_pin(args.pin) or getpass.getpass("PIN: ")
+            csr = gen_csr(
+                subject=args.subject,
+                slot=args.slot or SIGN_SLOT_DEFAULT,
+                pin=pin,
+                san_email=_split_list(args.san_email),
+                key_usage=_split_list(args.key_usage),
+                ext_key_usage=_split_list(args.ext_key_usage),
+                serial=args.serial,
+            )
         sys.stdout.write(csr)
 
     elif args.public_key_out:

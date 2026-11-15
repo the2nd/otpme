@@ -42,6 +42,7 @@ from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.register import register_module
 from otpme.lib.classes.otpme_object import load_object
+from otpme.lib.classes.otpme_object import uuid_orphans
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.data_objects.used_otp import UsedOTP
@@ -672,32 +673,6 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     '_list_card_types'   : {
             'default'    : {
                 'exists'    : {
@@ -1007,6 +982,7 @@ def register_config_parameters():
                                     ctype=str,
                                     setter=admin_access_role_setter,
                                     getter=admin_access_role_getter,
+                                    orphans=uuid_orphans,
                                     admin_only=True,
                                     object_types=object_types)
 
@@ -1173,45 +1149,37 @@ class Token(OTPmeObject):
     oidc_amr_values = ['pwd']
 
     @classmethod
+    def get_token_memberships(cls, object_type, object_uuid):
+        """ The objects of <object_type> of our site the token is in, as
+        (uuid, token options, login interfaces) -- what delete() takes
+        the token out of and restore_object_data() puts it back in. """
+        result = backend.search(object_type=object_type,
+                                attribute="token",
+                                value=object_uuid,
+                                realm=config.realm,
+                                site=config.site)
+        memberships = []
+        for x in result:
+            x_object = backend.get_object(uuid=x)
+            try:
+                x_token_opts = x_object.token_options[object_uuid]
+            except KeyError:
+                x_token_opts = None
+            try:
+                x_token_login_interfaces = x_object.token_login_interfaces[object_uuid]
+            except KeyError:
+                x_token_login_interfaces = []
+            memberships.append((x, x_token_opts, x_token_login_interfaces))
+        return memberships
+
+    @classmethod
     def get_backup_data(cls, object_id, object_uuid, object_config, file_content):
-        # Get token roles.
-        token_roles = backend.search(object_type="role",
-                                    attribute="token",
-                                    value=object_uuid,
-                                    realm=config.realm,
-                                    site=config.site)
-        x_token_roles_opts = []
-        for x in token_roles:
-            x_token_role = backend.get_object(uuid=x)
-            try:
-                x_token_opts = x_token_role.token_options[object_uuid]
-            except KeyError:
-                x_token_opts = None
-            try:
-                x_token_login_interfaces = x_token_role.token_login_interfaces[object_uuid]
-            except KeyError:
-                x_token_login_interfaces = []
-            x_token_roles_opts.append((x, x_token_opts, x_token_login_interfaces))
-        file_content['token_roles'] = x_token_roles_opts
-        # Get token groups.
-        token_groups = backend.search(object_type="group",
-                                    attribute="token",
-                                    value=object_uuid,
-                                    realm=config.realm,
-                                    site=config.site)
-        x_token_groups_opts = []
-        for x in token_groups:
-            x_token_group = backend.get_object(uuid=x)
-            try:
-                x_token_opts = x_token_group.token_options[object_uuid]
-            except KeyError:
-                x_token_opts = None
-            try:
-                x_token_login_interfaces = x_token_group.token_login_interfaces[object_uuid]
-            except KeyError:
-                x_token_login_interfaces = []
-            x_token_groups_opts.append((x, x_token_opts, x_token_login_interfaces))
-        file_content['token_groups'] = x_token_groups_opts
+        file_content['token_roles'] = cls.get_token_memberships("role", object_uuid)
+        file_content['token_groups'] = cls.get_token_memberships("group", object_uuid)
+        # delete() takes the token out of its access groups as well, and
+        # a restore that did not know them left it out of them for good.
+        file_content['token_accessgroups'] = cls.get_token_memberships("accessgroup",
+                                                                    object_uuid)
         return file_content
 
     @classmethod
@@ -1252,6 +1220,27 @@ class Token(OTPmeObject):
             x_role.add_token(token_path=object_id.rel_path,
                             token_options=x_token_opts,
                             login_interfaces=x_token_login_interfaces,
+                            callback=callback,
+                            force=True,
+                            changelog=False,
+                            verify_acls=False)
+        # Not in what was backed up before the access groups were.
+        token_accessgroups = object_data.get('token_accessgroups') or []
+        for x in token_accessgroups:
+            x_ag_uuid = x[0]
+            x_token_opts = x[1]
+            x_token_login_interfaces = x[2]
+            x_ag = backend.get_object(uuid=x_ag_uuid)
+            if not x_ag:
+                msg = _("Unknown access group: {x_ag_uuid}")
+                msg = msg.format(x_ag_uuid=x_ag_uuid)
+                return callback.error(msg)
+            # Only this token, the way delete() took it out: the tokens
+            # an SSO portal manages beside it are in there still.
+            x_ag.add_token(token_path=object_id.rel_path,
+                            token_options=x_token_opts,
+                            login_interfaces=x_token_login_interfaces,
+                            skip_portal_token=True,
                             callback=callback,
                             force=True,
                             changelog=False,
@@ -4586,8 +4575,19 @@ class Token(OTPmeObject):
         # Whether the token gives up the default ACLs of its old user
         # and takes those of the new one, as an object that changes its
         # unit does.
-        inherit_acls, \
-        inherit_acls_message = self.get_move_acl_inheritance(keep_acls)
+        #
+        # Not asked when the token stays with its user and only gets a
+        # new name: there are no other default ACLs to take. The check
+        # in get_move_acl_inheritance() is about handing a token the
+        # default ACLs of somebody else, and it refuses anyone not
+        # logged in -- the SSO recovery renaming its staging token
+        # logged a denial for nothing.
+        if new_owner.uuid == owner.uuid:
+            inherit_acls = False
+            inherit_acls_message = None
+        else:
+            inherit_acls, \
+            inherit_acls_message = self.get_move_acl_inheritance(keep_acls)
 
         # What the token ACLs policy of the old user gave the token for
         # being its token goes, whatever the inheritance says: it is not
@@ -4671,9 +4671,15 @@ class Token(OTPmeObject):
 
         # Add token to new owner.
         try:
+            # Never replace=True: the replace is done above -- the token
+            # it replaces is gone, and this one has its UUID. Asked to
+            # replace, add_token() found this very token under the name,
+            # put it into the trash, deleted it and returned before
+            # adding it to the user: a token moved onto a name nobody
+            # had was then missing from user.tokens.
             new_owner.add_token(token_name=new_token_name,
                             new_token=self,
-                            replace=replace,
+                            replace=False,
                             force=True,
                             verify_acls=verify_acls,
                             _caller=_caller,

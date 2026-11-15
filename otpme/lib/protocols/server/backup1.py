@@ -30,6 +30,7 @@ from otpme.lib import multiprocessing
 
 from otpme.lib.protocols import status_codes
 from otpme.lib.classes.backup import BackupServer
+from otpme.lib.classes.backup import BACKUP_MODES
 from otpme.lib.multiprocessing import drop_privileges
 from otpme.lib.protocols.server.fs import ACL_XATTRS
 from otpme.lib.protocols.server.fs import OTPmeFsServer1
@@ -640,6 +641,13 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 mode = command_args['mode']
             except KeyError:
                 mode = "pack"
+            # A new repository writes it to its mode file for good, and
+            # code that asks for != "pack" took anything else for tree.
+            if mode not in BACKUP_MODES:
+                status = False
+                message = _("Invalid backup mode: {mode}: must be pack or tree")
+                message = message.format(mode=mode)
+                return self.build_response(status, message)
             if os.path.exists(self.pass_file):
                 try:
                     self.verify_client_pass()

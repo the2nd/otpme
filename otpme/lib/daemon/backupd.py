@@ -42,10 +42,16 @@ REGISTER_AFTER = ['otpme.lib.classes.unit']
 # the default of a parameter is written to a site when the site is made.
 DEFAULT_BACKUP_RETRY_INTERVAL = 300
 DEFAULT_BACKUP_RETRY_COUNT = 12
+# The backup script a site comes with, from /etc/otpme/scripts/.
+BACKUP_SCRIPT_NAME = "backup_script.sh"
+# What backup_pre_script_fail takes, see register_config_params().
+BACKUP_PRE_SCRIPT_FAIL_MODES = ["abort", "report"]
 
 def register():
     """ Register OTPme daemon. """
     config.register_otpme_daemon("backupd")
+    # A base script: it cannot be deleted, renamed or moved.
+    config.register_base_object("script", BACKUP_SCRIPT_NAME)
     register_config_params()
     # Backup reports of backup_report_mode=summary. The backups run in
     # child processes, so we need a shared dict to collect their reports.
@@ -87,12 +93,34 @@ def register_config_params():
     # Default scripts unit.
     scripts_unit = config.get_default_unit("script")
     # Default mount script to add to new shares.
-    backup_script = f"{scripts_unit}/backup_script.sh"
+    backup_script = f"{scripts_unit}/{BACKUP_SCRIPT_NAME}"
+    # Imported where it is used: this module takes nothing else from the
+    # object classes.
+    from otpme.lib.classes.otpme_object import uuid_orphans
     config.register_config_parameter(name="backup_script",
                                     ctype=str,
                                     getter=script_getter,
                                     setter=script_setter,
                                     default_value=backup_script,
+                                    orphans=uuid_orphans,
+                                    object_types=object_types)
+    # What a failed pre hook of the backup script does. A pre hook is
+    # there to get something ready, e.g. a database dump, and a backup
+    # that runs without it backs up what was there before.
+    #   abort: no backup, and it is reported as a failed one.
+    #   report: the backup runs, the failure goes into the log and into
+    #   the report mail of the backup.
+    def pre_script_fail_setter(value, **kwargs):
+        if value not in BACKUP_PRE_SCRIPT_FAIL_MODES:
+            msg = _("Invalid value: {value}: Must be one of {modes}")
+            msg = msg.format(value=value,
+                            modes=", ".join(BACKUP_PRE_SCRIPT_FAIL_MODES))
+            raise ValueError(msg)
+        return value
+    config.register_config_parameter(name="backup_pre_script_fail",
+                                    ctype=str,
+                                    setter=pre_script_fail_setter,
+                                    default_value="report",
                                     object_types=object_types)
 
 class BackupDaemon(OTPmeDaemon):
@@ -252,6 +280,11 @@ class BackupDaemon(OTPmeDaemon):
         if not status:
             # Without counters the report line has to tell why.
             report['message'] = result['log'][-1]
+        # A backup that ran with something to say about it, e.g. a
+        # failed pre hook (backup_pre_script_fail report).
+        warnings = result.get('warnings')
+        if warnings:
+            report['warning'] = "; ".join(warnings)
         multiprocessing.backup_reports[report_name] = report
         return True
 
@@ -320,6 +353,9 @@ class BackupDaemon(OTPmeDaemon):
                     x_total = _format_size(x_report['total_bytes'] or 0)
                     x_stored = _format_size(x_report['stored_bytes'] or 0)
                     x_info = f"{x_total} -> {x_stored}"
+                x_warning = x_report.get('warning')
+                if x_warning and x_warning != x_info:
+                    x_info = f"{x_info} ({x_warning})"
                 x_line = f"{x_report['name']:<20} {x_status:<8} {x_duration:<10} {x_info}"
                 message.append(x_line)
             message = "\n".join(message)
@@ -372,6 +408,10 @@ class BackupDaemon(OTPmeDaemon):
                 x_total = _format_size(x_report['total_bytes'] or 0)
                 x_stored = _format_size(x_report['stored_bytes'] or 0)
                 x_info = html.escape(f"{x_total} → {x_stored}")
+            x_warning = x_report.get('warning')
+            if x_warning and x_warning != x_report.get('message'):
+                x_info = (f'{x_info}<br><span style="color:{red};">'
+                        f'{html.escape(x_warning)}</span>')
             rows.append(f'<tr style="{row_style}">'
                         f'<td style="{cell}">{html.escape(x_report["name"])}</td>'
                         f'<td style="{cell}{status_style}">{html.escape(x_status)}</td>'
@@ -589,7 +629,8 @@ class BackupDaemon(OTPmeDaemon):
             self.backup_childs[o.uuid] = backup_child
 
     def run_backup_script(self, script_path, backup_object, hook):
-        # Run backup script.
+        """ Run the backup script with <hook>. Returns None where it
+        worked, else what went wrong, which is logged as well. """
         variables = {
                     'backup_object' : backup_object,
                     'backup_hook'   : hook,
@@ -610,10 +651,13 @@ class BackupDaemon(OTPmeDaemon):
                 log_msg = _("Failed to run backup script: {script_path}: {script_output}", log=True)[1]
                 log_msg = log_msg.format(script_path=script_path, script_output=script_output)
                 self.logger.warning(log_msg)
+                return log_msg
         except Exception as e:
             log_msg = _("Failed to run backup script: {script_path}: {e}", log=True)[1]
             log_msg = log_msg.format(script_path=script_path, e=e)
             self.logger.warning(log_msg)
+            return log_msg
+        return None
 
     def start_backup(self, o):
         from otpme.lib.classes.command_handler import CommandHandler
@@ -624,17 +668,31 @@ class BackupDaemon(OTPmeDaemon):
         self.logger = log.setup_logger(banner=banner, pid=True,
                                         existing_logger=config.logger)
         backup_object = f"{o.type}:{o.name}"
+        subject = _("Backup {status} {backup_object}")
+        failed = None
+        # What goes into the report of a backup that ran.
+        warnings = []
+        backup_start_time = time.time()
         backup_script = o.get_config_parameter("backup_script")
         if backup_script:
-            self.run_backup_script(backup_script, backup_object, "pre")
-
-        subject = _("Backup {status} {backup_object}")
+            pre_script_error = self.run_backup_script(backup_script,
+                                                    backup_object, "pre")
+            if pre_script_error:
+                pre_script_fail = o.get_config_parameter("backup_pre_script_fail")
+                if pre_script_fail == "abort":
+                    failed = _("Backup pre script failed, backup not started: {backup_object}: {error}", log=True)[1]
+                    failed = failed.format(backup_object=backup_object,
+                                            error=pre_script_error)
+                else:
+                    warning = _("Backup pre script failed, backup started anyway: {backup_object}: {error}", log=True)[1]
+                    warning = warning.format(backup_object=backup_object,
+                                            error=pre_script_error)
+                    warnings.append(warning)
 
         command_handler = CommandHandler()
         retry_interval, retry_count = self.get_backup_retry_settings(o)
-        failed = None
         attempt = 0
-        while True:
+        while failed is None:
             attempt += 1
             backup_start_time = time.time()
             try:
@@ -692,12 +750,17 @@ class BackupDaemon(OTPmeDaemon):
             self.send_backup_report(backup_object=o,
                                     status=False,
                                     subject=subject,
-                                    result={'log':[failed]})
+                                    result={'log':warnings + [failed],
+                                            'warnings':warnings})
             self.logger.warning(failed)
             multiprocessing.cleanup(keep_queues=True)
             sys.exit(1)
         if backup_script:
             self.run_backup_script(backup_script, backup_object, "post")
+        if warnings:
+            # First, so that it is read before the files of the backup.
+            result['log'] = warnings + list(result.get('log') or [])
+            result['warnings'] = warnings
         subject = subject.format(status="successful", backup_object=backup_object)
         self.send_backup_report(backup_object=o,
                                 status=True,

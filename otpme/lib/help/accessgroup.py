@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-accessgroup {command} [accessgroup]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [accessgroup]'),
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [accessgroup]'),
                     'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show accessgroup(s)'),
@@ -39,12 +39,12 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup list [--attribute attribute] [-a]  [regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup list [--attribute attribute] [-a] [pattern]'),
                     'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                   : _('List accessgroups'),
                                     '-a'                    : _('List all accessgroups.'),
-                                    '--attribute attribute' : _('Output given attribute.'),
+                                    '--attribute <attribute>' : _('Match the pattern against this attribute instead of the name.'),
                                 },
                 },
 
@@ -157,7 +157,7 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup config -d -a {accessgroup} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup config [-d] [-a] {accessgroup} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to accessgroup.'),
@@ -297,7 +297,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup info {accessgroup} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup info [--language <language>] {accessgroup} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set accessgroup info'),
@@ -306,7 +306,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup dump_info {accessgroup}'),
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup dump_info [--language <language>] {accessgroup}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump accessgroup info'),
@@ -326,24 +326,12 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                 },
 
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
     '_show_config'    : {
                     'cmd'   :   '<|object|>',
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup export --password <password> {accessgroup}'),
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup export [--password <password>] {accessgroup}'),
                     'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export accessgroup config to stdout'),
@@ -434,7 +422,7 @@ cmd_help = {
                 },
 
     'list_tokens'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup list_tokens {accessgroup}'),
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup list_tokens [--return-type <type>] [--token-types <hotp,totp>] {accessgroup}'),
                     'cmd'   :   '--return-type :"return_type": --token-types :[token_types]: [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('List assigned tokens.'),

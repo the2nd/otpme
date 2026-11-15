@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-node {command} [node]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-node show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [node]'),
+                    '_cmd_usage_help' : _('Usage: otpme-node show [--policy-limit <limit>] [--role-limit <limit>] [--token-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [node]'),
                     'cmd'   :   '--policy-limit :max_policies: --role-limit :max_roles: --token-limit :max_tokens: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show node(s)'),
@@ -41,12 +41,12 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-node list [--attribute attribute] [-a] [regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-node list [--attribute attribute] [-a] [pattern]'),
                     'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List nodes.'),
                                     '-a'                        : _('List all nodes.'),
-                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
+                                    '--attribute <attribute>'   : _('Match the pattern against this attribute instead of the name.')
                                 },
                 },
 
@@ -154,7 +154,7 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-node config -d -a {node} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-node config [-d] [-a] {node} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to node.'),
@@ -299,7 +299,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-node info {node} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-node info [--language <language>] {node} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set node info'),
@@ -308,7 +308,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-node dump_info {node}'),
+                    '_cmd_usage_help' : _('Usage: otpme-node dump_info [--language <language>] {node}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump node info'),
@@ -328,24 +328,12 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                 },
 
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
     '_show_config'    : {
                     'cmd'   :   '<|object|>',
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-node export --password <password> {node}'),
+                    '_cmd_usage_help' : _('Usage: otpme-node export [--password <password>] {node}'),
                     'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export node config to stdout'),
@@ -382,7 +370,7 @@ cmd_help = {
                                 },
                 },
     'list_users'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-node list_users {node}'),
+                    '_cmd_usage_help' : _('Usage: otpme-node list_users [--return-type <type>] {node}'),
                     'cmd'   :   '--return-type :"return_type": [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List users.'),
@@ -390,7 +378,7 @@ cmd_help = {
                                 },
                 },
     'list_tokens'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-node list_tokens {node}'),
+                    '_cmd_usage_help' : _('Usage: otpme-node list_tokens [--return-type <type>] [--token-types <hotp,totp>] {node}'),
                     'cmd'   :   '--return-type :"return_type": --token-types :[token_types]: [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('List assigned tokens.'),
@@ -596,7 +584,7 @@ cmd_help = {
                 },
 
     'remove_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-node remove_token --keep-sign {node} {token}'),
+                    '_cmd_usage_help' : _('Usage: otpme-node remove_token [--keep-sign] {node} {token}'),
                     'cmd'   :   '--keep-sign :keep_sign=True: <|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Remove token from node'),

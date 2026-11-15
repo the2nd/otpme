@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-group {command} [group]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-group show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [group]'),
+                    '_cmd_usage_help' : _('Usage: otpme-group show [--policy-limit <limit>] [--role-limit <limit>] [--token-limit <limit>] [--host-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [group]'),
                     'cmd'   :   '--policy-limit :max_policies: --role-limit :max_roles: --token-limit :max_tokens: --host-limit :max_hosts: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show group(s)'),
@@ -42,12 +42,12 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-group list [--attribute attribute] [-a] [regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-group list [--attribute attribute] [-a] [pattern]'),
                     'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List groups.'),
                                     '-a'                        : _('List all groups.'),
-                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
+                                    '--attribute <attribute>'   : _('Match the pattern against this attribute instead of the name.')
                                 },
                 },
 
@@ -167,7 +167,7 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-group config -d -a {group} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-group config [-d] [-a] {group} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to group.'),
@@ -208,6 +208,14 @@ cmd_help = {
                                 },
                 },
 
+     'modify_attribute'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-group modify_attribute {group} {attribute} {old_value} {new_value}'),
+                    'cmd'   :   '<|object|> <"attribute"> <old_value> <new_value>',
+                    '_help' :   {
+                                    'cmd'                   : _('Modify (LDAP) attribute of group'),
+                                },
+                },
+
      'del_attribute'    : {
                     '_cmd_usage_help' : _('Usage: otpme-group del_attribute {group} {attribute}=[value]'),
                     'cmd'   :   '<|object|> <attribute>=[value]',
@@ -233,7 +241,7 @@ cmd_help = {
                 },
 
      'show_ldif'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-group show_ldif {group} -a attribute1,attribute2'),
+                    '_cmd_usage_help' : _('Usage: otpme-group show_ldif {group} [-a attribute1,attribute2]'),
                     'cmd'   :   '<|object|> -a :[attributes]:',
                     '_help' :   {
                                     'cmd'                   : _('Show LDIF representation of group'),
@@ -312,7 +320,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-group info {group} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-group info [--language <language>] {group} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set group info'),
@@ -321,7 +329,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-group dump_info {group}'),
+                    '_cmd_usage_help' : _('Usage: otpme-group dump_info [--language <language>] {group}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump group info'),
@@ -420,24 +428,12 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                 },
 
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
     '_show_config'    : {
                     'cmd'   :   '<|object|>',
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-group export --password <password> {group}'),
+                    '_cmd_usage_help' : _('Usage: otpme-group export [--password <password>] {group}'),
                     'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export group config to stdout'),

@@ -13,6 +13,8 @@ objects are stored for, or while somebody switched it on:
   version 1.
 - Site.maintenance is set: by "otpme-site maintenance on", or by
   "otpme-site upgrade" while it runs or after it failed.
+- The site has not had every migration of SITE_UPGRADES (see
+  Site.get_pending_upgrades()).
 
 Nothing is written to say so. Each node compares its own code with
 what the site says, so an update of the code starts the mode on that
@@ -79,6 +81,16 @@ def get_reasons(site):
         msg = msg.format(key=key,
                         site_version=site_version,
                         code_version=code_version)
+        reasons.append(msg)
+    # A migration the code needs and the site has not had, e.g. the
+    # index entries of a changed read OID. An update that brings one
+    # need not change major or minor, so nothing else would say it.
+    pending_upgrades = site.get_pending_upgrades()
+    if pending_upgrades:
+        upgrades = [f"{number} ({version})"
+                    for number, version, _method in pending_upgrades]
+        msg = _("Upgrades pending: {upgrades}. Run: otpme-site upgrade {site}")
+        msg = msg.format(upgrades=", ".join(upgrades), site=site.name)
         reasons.append(msg)
     return reasons
 

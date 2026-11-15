@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-scope {command} [scope]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-scope show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [scope]'),
+                    '_cmd_usage_help' : _('Usage: otpme-scope show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [scope]'),
                     'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show scope(s)'),
@@ -39,12 +39,12 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-scope list [--attribute attribute] [-a] [regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-scope list [--attribute attribute] [-a] [pattern]'),
                     'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List scopes'),
                                     '-a'                        : _('List all scopes.'),
-                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.'),
+                                    '--attribute <attribute>'   : _('Match the pattern against this attribute instead of the name.'),
                                 },
                 },
 
@@ -166,7 +166,7 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-scope config -d -a {scope} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-scope config [-d] [-a] {scope} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to scope.'),
@@ -308,7 +308,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-scope info {scope} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-scope info [--language <language>] {scope} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set scope info'),
@@ -317,7 +317,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-scope dump_info {scope}'),
+                    '_cmd_usage_help' : _('Usage: otpme-scope dump_info [--language <language>] {scope}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump scope info'),
@@ -337,24 +337,12 @@ cmd_help = {
     #                'cmd'   :   '<|object|>',
     #            },
 
-    #'_show_supported_acls'    : {
-    #                'cmd'   :   '<|object|>',
-    #            },
-
-    #'_show_supported_default_acls'    : {
-    #                'cmd'   :   '<|object|>',
-    #            },
-
-    #'_show_supported_recursive_default_acls'    : {
-    #                'cmd'   :   '<|object|>',
-    #            },
-
     #'_show_config'    : {
     #                'cmd'   :   '<|object|>',
     #            },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-scope export --password <password> {scope}'),
+                    '_cmd_usage_help' : _('Usage: otpme-scope export [--password <password>] {scope}'),
                     'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export scope config to stdout'),
@@ -379,7 +367,7 @@ cmd_help = {
                 },
 
     'list_tokens'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-scope list_tokens {scope}'),
+                    '_cmd_usage_help' : _('Usage: otpme-scope list_tokens [--return-type <type>] [--token-types <hotp,totp>] {scope}'),
                     'cmd'   :   '--return-type :"return_type": --token-types :[token_types]: [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List assigned tokens.'),

@@ -467,12 +467,18 @@ class AgentConn(object):
             return True
         return False
 
-    def piv_sign(self, data, slot="AUTHENTICATION", padding="pss"):
-        """ Sign data via PIV session in otpme-agent. """
+    def piv_sign(self, data, slot="AUTHENTICATION", padding="pss",
+        reason=None):
+        """ Sign data via PIV session in otpme-agent.
+
+        <reason> is what the agent tells the user when it asks to
+        confirm. The same for the other commands that use the private
+        key. """
         command_args = {
                         'data'      : data,
                         'slot'      : slot,
                         'padding'   : padding,
+                        'reason'    : reason,
                     }
         status, status_code, response = self.send("piv_sign", command_args)
         if status_code != status_codes.OK:
@@ -481,12 +487,14 @@ class AgentConn(object):
             raise Exception(msg)
         return response
 
-    def piv_decrypt(self, data, slot="KEY_MANAGEMENT", padding="oaep"):
+    def piv_decrypt(self, data, slot="KEY_MANAGEMENT", padding="oaep",
+        reason=None):
         """ Decrypt data via PIV session in otpme-agent. """
         command_args = {
                         'data'      : data,
                         'slot'      : slot,
                         'padding'   : padding,
+                        'reason'    : reason,
                     }
         status, status_code, response = self.send("piv_decrypt", command_args)
         if status_code != status_codes.OK:
@@ -495,12 +503,14 @@ class AgentConn(object):
             raise Exception(msg)
         return response
 
-    def piv_hpke_decrypt(self, data, slot="KEY_MANAGEMENT", info=None):
+    def piv_hpke_decrypt(self, data, slot="KEY_MANAGEMENT", info=None,
+        reason=None):
         """ HPKE-decap an X25519 HPKE blob via PIV session in otpme-agent.
         Data is the hex-encoded blob, response is the hex-encoded plaintext. """
         command_args = {
                         'data'      : data,
                         'slot'      : slot,
+                        'reason'    : reason,
                     }
         if info is not None:
             command_args['info'] = info
@@ -511,16 +521,37 @@ class AgentConn(object):
             raise Exception(msg)
         return response
 
-    def piv_derive_password(self, challenge, slot="AUTHENTICATION", length=32):
+    def piv_derive_password(self, challenge, slot="AUTHENTICATION", length=32,
+        reason=None):
         """ Derive password via PIV session in otpme-agent. """
         command_args = {
                         'challenge' : challenge,
                         'slot'      : slot,
                         'length'    : length,
+                        'reason'    : reason,
                     }
         status, status_code, response = self.send("piv_derive_password", command_args)
         if status_code != status_codes.OK:
             msg = _("PIV derive password failed: {response}")
+            msg = msg.format(response=response)
+            raise Exception(msg)
+        return response
+
+    def piv_csr(self, subject, slot="AUTHENTICATION", san_email=None,
+        key_usage=None, ext_key_usage=None, reason=None):
+        """ A certificate signing request for the key in a slot, made by
+        the PIV session in otpme-agent. Returns it as PEM. """
+        command_args = {
+                        'subject'       : subject,
+                        'slot'          : slot,
+                        'san_email'     : san_email,
+                        'key_usage'     : key_usage,
+                        'ext_key_usage' : ext_key_usage,
+                        'reason'        : reason,
+                    }
+        status, status_code, response = self.send("piv_csr", command_args)
+        if status_code != status_codes.OK:
+            msg = _("PIV CSR failed: {response}")
             msg = msg.format(response=response)
             raise Exception(msg)
         return response
@@ -613,9 +644,6 @@ class AgentConn(object):
         if command_args is None:
             command_args = {}
         response = ""
-
-        if 'use_dns' not in command_args:
-            command_args['use_dns'] = config.use_dns
 
         try:
             request = build_request(command=command,

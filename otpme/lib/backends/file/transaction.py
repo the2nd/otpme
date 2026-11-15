@@ -1846,11 +1846,16 @@ class ObjectTransaction(BaseTransaction):
             object_config = self.journal_objects[read_oid][-1]
         except Exception:
             return
+        # A new dict with the parameters asked for. Filtered in place,
+        # the config this transaction holds shrank to them: the next
+        # read got e.g. only CHECKSUM and SYNC_CHECKSUM, and a commit
+        # without another write would have written just that. Renaming
+        # the token of the session ran into it -- config.auth_token read
+        # the token back without TOKEN_TYPE.
         if parameters:
-            for x in object_config.copy():
-                if x in parameters:
-                    continue
-                object_config.pop(x)
+            object_config = {x: object_config[x]
+                            for x in object_config
+                            if x in parameters}
         return object_config
 
     def rename_object(self, object_id, new_object_id, **kwargs):

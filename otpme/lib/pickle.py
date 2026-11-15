@@ -1,13 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-
-try:
-    import larch.pickle as _lpickle
-    PICKLE_TYPE = "larch"
-except Exception:
-    PICKLE_TYPE = "pickle"
-    import pickle as _pickle
+import pickle as _pickle
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -17,35 +11,20 @@ try:
 except Exception:
     pass
 
-from otpme.lib.exceptions import *
-
 class PickleHandler(object):
-    def __init__(self, pickle_type):
-        if pickle_type == "auto":
-            pickle_type = PICKLE_TYPE
-        # Set pickler.
-        self.pickler = self.get_pickler(pickle_type)
-        self.pickle_type = pickle_type
+    """ Pickles what goes into the cache, with the pickle of the standard
+    library.
 
-    def get_pickler(self, pickle_type):
-        if pickle_type == "pickle":
-            import pickle as _pickle
-            pickle = _pickle
-        if pickle_type == "larch":
-            try:
-                import larch.pickle as _lpickle
-                pickle = _lpickle
-            except Exception:
-                msg = "Please install larch-pickle."
-                raise OTPmeException(msg) from None
-        return pickle
-
+    It used to offer larch-pickle as well, through PICKLE_CACHE_MODULE
+    (and by itself, with "auto", once larch was installed). larch does
+    not call __setstate__, which is what puts the incremental objects of
+    an OTPme object back together, so what came out of the cache was
+    broken.
+    """
     def dumps(self, instance, protocol=None, **kwargs):
-        if self.pickle_type == "pickle":
-            if protocol is None:
-                protocol = self.pickler.HIGHEST_PROTOCOL
-                kwargs['protocol'] = protocol
-        return self.pickler.dumps(instance, **kwargs)
+        if protocol is None:
+            protocol = _pickle.HIGHEST_PROTOCOL
+        return _pickle.dumps(instance, protocol=protocol, **kwargs)
 
     def loads(self, dump_data, **kwargs):
-        return self.pickler.loads(dump_data, **kwargs)
+        return _pickle.loads(dump_data, **kwargs)

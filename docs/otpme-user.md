@@ -35,7 +35,7 @@ new users of the unit **linux/users**, add the ACLs to that unit:
     otpme-unit add_acl linux/users role helpdesk ++token:view:initial_pin
 
 They only count when the token is added, so the role does not see the
-secret later. The ACL group **usermanager** holds both, see
+secret later. The ACL group **USERMANAGER** holds both, see
 **otpme-aclgroup**(1). Without them, give the user a way in with a
 temporary password, see **temp_password** in **otpme-token**(1). More in
 **otpme-token**(1) under **add**.
@@ -66,13 +66,14 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**-t**\] \[**--attribute** *ATTR*\] \[*regex*\]**  
-List the users, and with a regex only those whose name matches it.  
+**list \[**-a**\] \[**-t**\] \[**--attribute** *ATTR*\] \[*pattern*\]**  
+List the users, and with a pattern only those whose name matches it, see
+**SELECTING OBJECTS** in **otpme**(1).  
 You get the users you may change; **-a** adds those you may only look
 at. **-t** lists the user templates instead. Without **-a** these are
 the templates you may change or have **use** on, i.e. the ones you may
-give to **add --template**. **--attribute** shows the given attribute
-instead of the name.
+give to **add --template**. **--attribute** matches the pattern against
+that attribute instead of the name.
 
 **enable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *user***  
 Enable a disabled user account.
@@ -281,13 +282,119 @@ three below do not.
 Enable / disable the user's authorization script.
 
 **key_script *user* \[*script*\] **--** \[*script_options*\]**  
-Set the user's key script.
+Set the user's key script. OTPme runs it for all work with the user's
+keys: make them, sign, verify, encrypt, decrypt, make a CSR and change
+the key password. It gives the command first, then the script options
+set here, then the options of the call.
+
+The default key script **key_script.sh** takes these script options:
+
+**--yubikey-piv \[*slot*\]**  
+The private keys are on a YubiKey in PIV mode. Signing and decrypting
+happen on the card, always through otpme-agent; the key script never
+sees the PIN.  
+The agent holds the PIN login of the card, its PIV session. Logging in
+with the token opens it; where there is none, the agent asks for the
+PIN. It stays open for the **key_cache_time** of the user, or for
+**YUBIKEY_PIV_TIMEOUT** seconds where that is set in
+*\~/.otpme/otpme-agent.conf*; with neither, until the agent ends.  
+While the session is open, the agent asks to confirm each use of the
+card, with what it is for, e.g. the share or the password. It asks only
+in a graphical session: on a console the shell reads the terminal, so
+the agent uses the card without asking. **AGENT_CONFIRM_ACTIONS** in
+**otpme.conf**(5) switches it off for a host.  
+*slot* is the slot **gen_csr** uses when it is not told one:
+**AUTHENTICATION**, **SIGNATURE**, **KEY_MANAGEMENT** or **CARD_AUTH**.
+It can be left out.
+
+**--use-agent-piv**  
+Taken for settings from before, and does nothing: **--yubikey-piv**
+always goes through otpme-agent.
+
+**--yubikey-hmac *slot***  
+The passphrase of the private key goes through the HMAC
+challenge-response of the YubiKey in *slot* (1 or 2). Without the
+YubiKey the private key does not open. Encrypted files stay with the
+public key. It needs the program **ykchalresp**.
+
+**--use-gpg *id***  
+The private key is encrypted with the GPG key *id*, not with a
+passphrase.
+
+**--key-enc rsa\|**aes**\|**gpg**\|**yubikey-hmac****  
+How **encrypt** protects the key of a file. **rsa** is the default: the
+public key of the user, or of the user of **-u**. **aes**: a passphrase.
+**gpg**: the GPG key of **--use-gpg**. **yubikey-hmac**: a passphrase
+that goes through the YubiKey of **--yubikey-hmac**. With anything but
+**rsa**, **encrypt -u** and **encrypt --rsa** are refused. Decrypting
+follows what the file says, not this option.
+
+**--salt-file *file***  
+The SHA1 sum of *file* goes before every passphrase: that of the private
+key and that of a file. Without the file nothing opens. A file that
+cannot be read is an error. A file encrypted with a salt does not
+decrypt itself with a passphrase: it calls **otpme-tool decrypt**.
+
+**--no-self-decrypt**  
+Encrypted files get no script. Normally a file has a script at its
+start, and running the file decrypts it.
+
+OTPme gives these options itself, for the call it makes: **-u**,
+**--rsa**, **--no-rsa** and **--force-pass** (from **otpme-tool
+encrypt**), **--algo** and **-b** (from **gen_keys**), **--server-key**
+(key mode server), **--reason** (the text of the PIN prompt), **--api**
+and **--auth-token** (API mode).
 
 **get_key_script *user* \[**name**\|**uuid**\]**  
 Show the name or UUID of the user's key script.
 
 **agent_script *user* \[*script*\] **--** \[*script_options*\]**  
-Set the user's agent script.
+Set the user's agent script. It starts and stops the SSH agent of the
+user, see **SSH Agent** in **otpme-tool**(1). PAM runs it as well:
+**add_key** after a login, **unlock** when the screen is unlocked with
+an SSH token.
+
+The default agent script **agent_script.sh** starts ssh-agent and takes
+these script options:
+
+**--gpg-agent**  
+Start gpg-agent with SSH support, not ssh-agent.
+
+**--gpg-smartcard**  
+Like **--gpg-agent**, for a GPG smartcard. On screen unlock the card
+asks for its PIN again. Only one gpg-agent of the user can run then, so
+**status** counts all of them.
+
+**--pinentry *program***  
+The pinentry program of gpg-agent. The default is **otpme-pinentry**.
+
+**--yubikey-piv**  
+**add_key** adds the key of the YubiKey PIV token to the agent. The
+password of the login is taken as its PIN.
+
+**--no-confirm**  
+Only with **--yubikey-piv**. The agent uses the key without asking each
+time. Without it every use of the key has to be confirmed.
+
+**Examples.** Key script and agent script go together. For a user whose
+keys are on a YubiKey in PIV mode:
+
+<!-- -->
+
+    otpme-user key_script alice scripts/key_script.sh -- --yubikey-piv AUTHENTICATION
+    otpme-user agent_script alice scripts/agent_script.sh -- --yubikey-piv
+
+> For a user with a GPG smartcard, e.g. a YubiKey deployed as
+> **yubikey_gpg**: the private key is encrypted with the GPG key of the
+> card, and gpg-agent is the SSH agent.
+
+    otpme-user key_script alice scripts/key_script.sh -- --use-gpg alice@example.org
+    otpme-user agent_script alice scripts/agent_script.sh -- --gpg-smartcard
+
+> **otpme-user show** then lists them, e.g.
+
+    key_script:    scripts/key_script.sh --yubikey-piv AUTHENTICATION
+    agent_script:  scripts/agent_script.sh --yubikey-piv
 
 **login_script *user* \[*script*\] **--** \[*script_options*\]**  
 Set the user's login script.
@@ -380,8 +487,9 @@ Whether the signed certificate carries all of it is up to the CA: a
 request asks, it does not decide.
 
 A user whose private key is on a YubiKey in PIV mode gets a request
-signed by the card, because the key does not come off it. The card asks
-for its PIN. The key is the one the key script is set to
+signed by the card, because the key does not come off it. otpme-agent
+does it, and asks for the PIN or to confirm, see **--yubikey-piv** under
+**key_script**. The key is the one the key script is set to
 (**--yubikey-piv**), and **--slot** asks for another one. Where neither
 says a slot, it is **AUTHENTICATION**, the same one signing uses.
 
@@ -574,18 +682,23 @@ A command that changes something asks first; the global option **-f**
 skips the question.
 
 **changelog *user***  
-Show the changelog of the user. Needs the ACL **view:changelog**.
+Show the changelog of the user, one entry per line: its *entry_id*, the
+time, who made the change and what was done, then a detail in round
+brackets and the comment in square brackets where there are any. Needs
+the ACL **view:changelog**.
 
 **edit_changelog *user* *entry_id* *comment***  
-Set the comment of that entry, or replace the one it has. Needs the ACL
-**edit:changelog**.
+Set the comment of that entry, or replace the one it has. That writes an
+entry of its own. Needs the ACL **edit:changelog**.
 
 **del_changelog *user* *entry_id***  
 Remove the comment of that entry. The entry itself stays, and an entry
-without a comment is refused. Needs the ACL **edit:changelog**.
+without a comment is refused. That writes an entry of its own. Needs the
+ACL **edit:changelog**.
 
 **clear_changelog *user***  
-Remove every entry of the changelog.  
+Remove every entry of the changelog. Afterwards it holds one entry: that
+it was cleared.  
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
@@ -608,10 +721,11 @@ Their tokens do; see **otpme-token**(1).
 
 **add_acl \[**-r**\] \[**-a**\] *user* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this user.  
-*owner_type* is **role** or **token**. *owner* is the path of that role
-or token. An ACL can carry a value, for example **edit:password**. To
-give several ACLs at once, separate them with commas:
-**edit:password,view:status**.  
+*owner_type* is **role** or **token**. *owner* names it the way
+**list_acls** prints it: a role as *site/name*, or by its name alone on
+its own site; a token as *user/token*. An ACL can carry a value, for
+example **edit:password**. To give several ACLs at once, separate them
+with commas: **edit:password,view:status**.  
 **-r** adds the ACL to the tokens of the user as well. **-a** applies
 the default ACLs of the user to the tokens it already has.  
 Needs the ACL **add:acl**.
@@ -714,7 +828,10 @@ Reading it back in is **otpme-tool** **import**, see **otpme-tool**(1).
 
 **remove_orphans \[**-r**\] *user***  
 Remove what the user still points at although it is gone: ACLs,
-policies, signatures and tokens whose object does not exist any more.  
+policies, signatures and tokens whose object does not exist any more.
+Config parameters set on the user that keep other objects lose the ones
+that are gone, e.g. a deleted VLAN in **vlans** or a deleted role in
+**admin_access_role**, the way **config -d** does.  
 It shows everything it found and asks once. **-r** does the same for the
 tokens of the user.
 
@@ -874,8 +991,8 @@ Write the table as CSV.
 The character between two CSV fields.
 
 **--attribute *ATTR***  
-Of **list**: match the regex against this attribute instead of the name,
-as in **list --attribute enabled True**.
+Of **list**: match the pattern against this attribute instead of the
+name, as in **list --attribute enabled True**.
 
 ## Other Options
 
@@ -1072,27 +1189,29 @@ itself.
 
 An auth on action policy can ask for a login again before these actions.
 See **Auth On Action Policy** in **otpme-policy**(1). A user has the
-hooks every object type has, and these:
+hooks every object type has, and these; a command of another name is in
+brackets:
 
-> add_photo, add_token, change_agent_script, change_auth_script,
-> change_encrypt_private_key, change_encrypt_public_key, change_group,
-> change_key_cache_time, change_key_pass, change_key_script,
-> change_login_script, change_sign_private_key, change_sign_public_key,
-> decrypt, del_keys, del_photo, del_token, deploy_token,
-> disable_admin_access, disable_auth_script, disable_auto_mount,
-> disable_autosign, disable_disabled_login, disable_key_caching,
-> disable_login_script, dump_photo, enable_admin_access,
-> enable_auth_script, enable_auto_mount, enable_autosign,
-> enable_disabled_login, enable_key_caching, enable_login_script,
-> encrypt, gen_keys, move, pre_add_token, set_config_parameter, sign,
-> unblock, verify.
+> add_photo (photo), add_token, change_agent_script (agent_script),
+> change_auth_script (auth_script), change_encrypt_private_key
+> (encrypt_private_key), change_encrypt_public_key (encrypt_public_key),
+> change_group (group), change_key_cache_time (key_cache_time),
+> change_key_pass (key_pass), change_key_script (key_script),
+> change_login_script (login_script), change_sign_private_key
+> (sign_private_key), change_sign_public_key (sign_public_key), decrypt,
+> del_keys, del_photo, del_token, deploy_token, disable_admin_access,
+> disable_auth_script, disable_auto_mount, disable_autosign,
+> disable_disabled_login, disable_key_caching, disable_login_script,
+> dump_photo, enable_admin_access, enable_auth_script,
+> enable_auto_mount, enable_autosign, enable_disabled_login,
+> enable_key_caching, enable_login_script, encrypt, gen_keys, move,
+> pre_add_token, set_config_parameter (config), sign, unblock, verify.
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-token**(1),
-**otpme-group**(1), **otpme-role**(1), **otpme-policy**(1),
-**otpme-script**(1), **otpme-vlan**(1), **otpme-unit**(1),
-**otpme-trash**(1)
+**otpme**(1), **otpme**(7), **otpme-token**(1), **otpme-group**(1),
+**otpme-role**(1), **otpme-policy**(1), **otpme-script**(1),
+**otpme-vlan**(1), **otpme-unit**(1), **otpme-trash**(1)
 
 # AUTHOR
 

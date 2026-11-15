@@ -31,6 +31,7 @@ from otpme.lib.cache import assigned_host_cache
 from otpme.lib.daemon.scriptd import run_script
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.classes.otpme_object import name_len_setter
+from otpme.lib.classes.otpme_object import uuid_orphans
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 
@@ -131,16 +132,16 @@ write_value_acls = {
                                     "root_mount_token",
                                     "no_mount_token",
                                 ],
+                    # The add script cannot be switched off, only
+                    # changed (edit:add_script).
                     "enable"    : [
                                     "read_only",
                                     "sotp_signing",
-                                    "add_script",
                                     "mount_script",
                                 ],
                     "disable"    : [
                                     "read_only",
                                     "sotp_signing",
-                                    "add_script",
                                     "mount_script",
                                 ],
                     "edit"    : [
@@ -941,32 +942,6 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     'config'   : {
             'default'    : {
                 'exists'    : {
@@ -1169,6 +1144,7 @@ def register_config_parameters():
                                     getter=script_getter,
                                     setter=script_setter,
                                     default_value=ADD_SCRIPT_PATH,
+                                    orphans=uuid_orphans,
                                     object_types=object_types)
     # Default mount script to add to new shares.
     MOUNT_SCRIPT_PATH = f"{scripts_unit}/{MOUNT_SCRIPT_NAME}"
@@ -1177,6 +1153,7 @@ def register_config_parameters():
                                     getter=script_getter,
                                     setter=script_setter,
                                     default_value=MOUNT_SCRIPT_PATH,
+                                    orphans=uuid_orphans,
                                     object_types=object_types)
 
 def register_oid():

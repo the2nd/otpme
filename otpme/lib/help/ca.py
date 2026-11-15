@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-ca {command} [ca]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [ca]'),
+                    '_cmd_usage_help' : _('Usage: otpme-ca show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [ca]'),
                     'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show CA(s)'),
@@ -39,37 +39,12 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca list [--attribute attribute] [-a] [regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-ca list [--attribute attribute] [-a] [pattern]'),
                     'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                   : _('List CAs'),
                                     '-a'                    : _('List all CAs.'),
-                                    '--attribute <attribute>' : _('Match the regex against this attribute instead of the name.'),
-                                },
-                },
-
-    'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca add {ca}'),
-                    'cmd'   :   '--country :"country": --state :"state": --locality :"locality": --organization :"organization": --ou :"ou": --email :"email": --valid :valid: --key-len :key_len: <|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Add new CA'),
-                                    '--valid'               : _('CA certificate validity in days.'),
-                                    '--key-len'             : _('Key length for CA certificate in bits.'),
-                                    '--country'             : _('Set CA certificate <country> field.'),
-                                    '--state'               : _('Set CA certificate <state> field.'),
-                                    '--locality'            : _('Set CA certificate <locality> field.'),
-                                    '--organization'        : _('Set CA certificate <organization> field.'),
-                                    '--ou'                  : _('Set CA certificate <ou> field.'),
-                                    '--email'               : _('Set CA certificate <email> field.'),
-                                },
-                },
-
-    'del'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca del [--no-trash] {ca}'),
-                    'cmd'   :   '--no-trash :add_to_trash=False: <|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Delete CA'),
-                                    '--no-trash'            : _('Delete without moving the object to the trash.'),
+                                    '--attribute <attribute>' : _('Match the pattern against this attribute instead of the name.'),
                                 },
                 },
 
@@ -132,35 +107,13 @@ cmd_help = {
                                 },
                 },
 
-    'auto_disable'          : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca auto_disable {ca} {time}'),
-                    'cmd'   :   '<|object|> <auto_disable>',
-                    '_help' :   {
-                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023", 0 removes it).'),
-                                },
-                },
-
-    'enable'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca enable {ca}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Enable CA'),
-                                },
-                },
-
-    'disable'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca disable {ca}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Disable CA'),
-                                },
-                },
 
     'create_client_cert'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca create_client_cert {ca} {cn} {cert_out_file} {key_out_file}'),
-                    'cmd'   :   '--country :"country": --state :"state": --locality :"locality": --organization :"organization": --ou :"ou": --email :"email": --valid :valid: --key-len :key_len: <|object|> <"cn"> <"cert_out_file"> <"key_out_file">',
+                    '_cmd_usage_help' : _('Usage: otpme-ca create_client_cert [--csr <csr_file>] [--valid <days>] [--key-len <bits>] [--country <country>] [--state <state>] [--locality <locality>] [--organization <organization>] [--ou <ou>] [--email <email>] {ca} {cn} {cert_out_file} [key_out_file]'),
+                    'cmd'   :   '--csr :file:cert_req: --country :"country": --state :"state": --locality :"locality": --organization :"organization": --ou :"ou": --email :"email": --valid :valid: --key-len :key_len: <|object|> <"cn"> <"cert_out_file"> ["key_out_file"]',
                     '_help' :   {
                                     'cmd'                   : _('Create client certificate.'),
+                                    '--csr <csr_file>'      : _('Sign this certificate request; the key stays with it, and there is no key file.'),
                                     '--valid'               : _('Certificate validity in days.'),
                                     '--key-len'             : _('Key length for certificate in bits.'),
                                     '--country'             : _('Set certificate <country> field.'),
@@ -169,6 +122,14 @@ cmd_help = {
                                     '--organization'        : _('Set certificate <organization> field.'),
                                     '--ou'                  : _('Set certificate <ou> field.'),
                                     '--email'               : _('Set certificate <email> field.'),
+                                },
+                },
+
+    'revoke'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-ca revoke {ca} {cert_file}'),
+                    'cmd'   :   '<|object|> <file:cert>',
+                    '_help' :   {
+                                    'cmd'                   : _('Revoke a client certificate made with create_client_cert.'),
                                 },
                 },
 
@@ -181,7 +142,7 @@ cmd_help = {
     #            },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca config -d -a {ca} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-ca config [-d] [-a] {ca} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to CA.'),
@@ -279,23 +240,8 @@ cmd_help = {
                 },
 
 
-     'enable_acl_inheritance'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca enable_acl_inheritance {ca}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Enable ACL inheritance for CA'),
-                                },
-                },
-
-
-     'disable_acl_inheritance'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca disable_acl_inheritance {ca}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Disable ACL inheritance for CA'),
-                                },
-                },
-
+    # No enable_acl_inheritance and disable_acl_inheritance: they say
+    # whether a move swaps the default ACLs, and a CA is not moved.
 
     #'move'    : {
     #                '_cmd_usage_help' : 'Usage: otpme-ca move {ca} {unit}',
@@ -324,7 +270,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca info {ca} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-ca info [--language <language>] {ca} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set CA info'),
@@ -333,7 +279,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca dump_info {ca}'),
+                    '_cmd_usage_help' : _('Usage: otpme-ca dump_info [--language <language>] {ca}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump CA info'),
@@ -353,24 +299,12 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                 },
 
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
     '_show_config'    : {
                     'cmd'   :   '<|object|>',
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca export --password <password> {ca}'),
+                    '_cmd_usage_help' : _('Usage: otpme-ca export [--password <password>] {ca}'),
                     'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export CA config to stdout'),
@@ -430,7 +364,7 @@ cmd_help = {
                     '_cmd_usage_help' : _('Usage: otpme-ca dump_ca_chain {ca}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Dump CA certificate chain of node cert to stdout'),
+                                    'cmd'                   : _('Dump the certificate chain of the CA to stdout'),
                                 },
                 },
 

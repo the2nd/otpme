@@ -380,6 +380,8 @@ def setup_logger(*args, **kwargs):
                                 syslog_key=client_key_file,
                                 syslog_relp=relp,
                                 timestamps=timestamps,
+                                # Else get_logger() sends LOCAL7.
+                                facility=config.syslog_facility,
                                 **kwargs)
     return logger
 

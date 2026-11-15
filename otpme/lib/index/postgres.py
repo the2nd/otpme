@@ -39,11 +39,6 @@ CONF_FILE = os.path.join(INDEX_DIR, CONF_FILE_NAME)
 LOGFILE = os.path.join(config.log_dir, "postgresql.log")
 ETC_CONF_FILE = os.path.join(config.config_dir, CONF_FILE_NAME)
 
-LC_TIME="en_US.UTF-8"
-LC_NUMERIC="en_US.UTF-8"
-LC_MESSAGES="en_US.UTF-8"
-LC_MONETARY="en_US.UTF-8"
-
 AUTOVACUUM = "on"
 AUTOVACUUM_WORK_MEM = -1
 AUTOVACUUM_MAX_WORKERS = 5
@@ -124,14 +119,6 @@ def register_config_vars():
                         config_file_parameter="POSTGRES_TIMEZONE")
     config.register_config_var("postgres_log_timezone", str, LOG_TIMEZONE,
                         config_file_parameter="POSTGRES_LOG_TIMEZONE")
-    config.register_config_var("postgres_lc_time", str, LC_TIME,
-                        config_file_parameter="POSTGRES_LC_TIME")
-    config.register_config_var("postgres_lc_numeric", str, LC_NUMERIC,
-                        config_file_parameter="POSTGRES_LC_NUMERIC")
-    config.register_config_var("postgres_lc_messages", str, LC_MESSAGES,
-                        config_file_parameter="POSTGRES_LC_MESSAGES")
-    config.register_config_var("postgres_lc_monetary", str, LC_MONETARY,
-                        config_file_parameter="POSTGRES_LC_MONETARY")
     config.register_config_var("postgres_default_text_search_config", str, DEFAULT_TEXT_SEARCH_CONFIG,
                         config_file_parameter="POSTGRES_DEFAULT_TEXT_SEARCH_CONFIG")
     config.register_config_var("postgres_fsync", str, FSYNC,
@@ -155,10 +142,6 @@ def get_default_config():
     timezone = f"timezone = '{config.postgres_timezone}'"
     datestyle = f"datestyle = '{config.postgres_datestyle}'"
     log_timezone = f"log_timezone = '{config.postgres_log_timezone}'"
-    #lc_time = f"lc_time = '{config.postgres_lc_time}'"
-    #lc_numeric = f"lc_numeric = '{config.postgres_lc_numeric}'"
-    #lc_messages = f"lc_messages = '{config.postgres_lc_messages}'"
-    #lc_monetary = f"lc_monetary = '{config.postgres_lc_monetary}'"
     autovacuum = f"autovacuum = {config.postgres_autovacuum}"
     autovacuum_naptime = f"autovacuum_naptime = {config.postgres_autovacuum_naptime}"
     autovacuum_work_mem = f"autovacuum_work_mem = {config.postgres_autovacuum_work_mem}"
@@ -178,10 +161,6 @@ def get_default_config():
     default_config.append(log_timezone)
     default_config.append(datestyle)
     default_config.append(timezone)
-    #default_config.append(lc_messages)
-    #default_config.append(lc_monetary)
-    #default_config.append(lc_numeric)
-    #default_config.append(lc_time)
     default_config.append(default_text_search_config)
     default_config.append(autovacuum)
     default_config.append(autovacuum_work_mem)

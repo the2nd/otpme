@@ -678,32 +678,6 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     'config'   : {
             'default'    : {
                 'exists'    : {
@@ -771,7 +745,7 @@ def register():
     register_oid()
     config.register_config_parameter(name="max_group_name_len",
                                     ctype=int,
-                                    default_value=32,
+                                    default_value=64,
                                     setter=name_len_setter,
                                     object_types=['site', 'unit'])
     register_hooks()
@@ -1273,6 +1247,11 @@ class Group(OTPmeObject):
             msg = msg.format(group_name=self.name)
             return callback.error(msg)
 
+        if new_name == config.group:
+            msg = _("Name is reserved for the system group of OTPme: {name}")
+            msg = msg.format(name=new_name)
+            return callback.error(msg)
+
         # A group name is unique in the realm, as add() makes sure.
         # _rename() only looks into the unit of the group.
         result = backend.search(object_type="group",
@@ -1300,6 +1279,8 @@ class Group(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
+    @audit_log()
+    @object_changelog("add")
     def add(
         self,
         ldif_attributes: Union[str,None]=None,
@@ -1309,6 +1290,12 @@ class Group(OTPmeObject):
         **kwargs,
         ):
         """ Add a group. """
+        # The name of the system group of OTPme resolves to it, so scriptd
+        # would run scripts of its members with its rights.
+        if self.name == config.group:
+            msg = _("Name is reserved for the system group of OTPme: {name}")
+            msg = msg.format(name=self.name)
+            return callback.error(msg)
         # Check if group exist on any site.
         if default_attributes is None:
             default_attributes = {}

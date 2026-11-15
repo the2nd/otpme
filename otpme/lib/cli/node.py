@@ -255,9 +255,9 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
             or check_acl("enable:acl_inheritance") \
             or check_acl("disable:acl_inheritance"):
                 if acl_inheritance_enabled:
-                    acl_inheritance_string = "Enabled"
+                    acl_inheritance_string = _("Enabled")
                 else:
-                    acl_inheritance_string = "Disabled"
+                    acl_inheritance_string = _("Disabled")
                 row.append(acl_inheritance_string)
             else:
                 row.append("-")

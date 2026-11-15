@@ -1,41 +1,101 @@
-.TH OTPME-DEVICE 1 "2026" "OTPme" "OTPme Manual"
+.TH OTPME-DEVICE 1 "2026-11-05" "OTPme 0.3.0a288" "OTPme Manual"
 .SH NAME
-otpme-device \- manage OTPme network devices for MAB port authentication
+otpme-device \- manage devices: network equipment that logs in by its MAC address
 .SH SYNOPSIS
 .B otpme-device
 .I command
 [\fIoptions\fR] [\fIdevice\fR]
 .SH DESCRIPTION
 .B otpme-device
-manages network devices in the OTPme system. Devices represent network
-equipment such as IP phones or printers that authenticate via MAC
-Authentication Bypass (MAB). Each device has a MAC address and can be
-assigned to an access group to control network access.
+manages the devices of a realm: network equipment such as IP phones or printers that cannot log in by itself.
+A device has no tokens.
+It logs in by MAC Authentication Bypass (MAB): the switch sends its MAC address as user name and as password.
 .PP
-To use a device for MAB port authentication, add it with
-.BR otpme-device ,
-set its MAC address and add it to the appropriate access group with
-.BR otpme-accessgroup (1).
-A VLAN can be assigned on top of that, see
+Which access group counts is the one of the RADIUS client that asks, i.e. the switch, see
+.BR otpme\-client (1).
+The device has to be in that group, directly or through a role in it, see
+.BR otpme\-accessgroup (1).
+The answer can carry a VLAN, see
 .B VLAN Assignment
 below.
+.PP
+A password can belong to the device, for example the admin password of the phone's web interface, see
+.B Passwords
+below.
+.PP
+A new device goes into the unit \fBdevices\fR, unless a path or a \fBdefaultunits\fR policy names another.
+Its name is unique in the realm.
+Devices are kept on the nodes only; a host never gets one.
 .SH COMMANDS
 .SS Device Management
-.TP
-.B add \fIdevice\fR
-Create a new device.
-.TP
-.B del \fIdevice\fR
-Delete a device.
-The passwords of the device stay; the question says how many there are.
-.TP
-.B show \fR[\fIdevice\fR]
-Display device information.
 .na
 .nh
 .TP
+.B add \fIdevice\fR
+Add a device.
+With a path, e.g. \fBberlin/phone1\fR, it goes into that unit; else into the unit a \fBdefaultunits\fR policy names, see
+.BR otpme\-policy (1),
+or into \fBdevices\fR.
+The name is unique in the realm, whatever site and unit it is in, as MAB finds a device of any site; it is taken in lower case.
+It may be \fBmax_device_name_len\fR long (64 by default).
+.br
+A new device is enabled and has no MAC address yet, see \fBmac\fR.
+It is put into the access group of \fBdevices_accessgroup\fR and into the role of \fBdevices_role\fR, where they are set, see
+.BR otpme (7).
+.br
+Needs \fBadd:device\fR on the unit.
+.TP
+.B del \fR[\fB\-\-no\-trash\fR] \fIdevice\fR
+Delete the device.
+It goes to the trash, see
+.BR otpme\-trash (1);
+\fB\-\-no\-trash\fR deletes it right away.
+.br
+It is taken out of its access groups and roles.
+Its passwords stay, see
+.BR otpme\-pass (1);
+the question says how many there are.
+.br
+Needs \fBdelete:object\fR on the device or \fBdelete:device\fR on the unit.
+.TP
+.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIdevice\fR]
+Without a device: a table of all of them, with their unit, status, MAC address, roles, access groups, policies, ACL inheritance and description.
+The access groups are those the device is in and, in brackets, those it gets through a role.
+.RS
+.TP
+.B \-a
+Also the devices you may only look at, not just the ones you may change.
+.TP
+.B \-z \fIN\fR
+How many devices to print.
+.TP
+.B \-\-fields \fIF1,F2\fR
+Print these columns and no others, in the order they are named.
+A name with a \fB+\fR in front is added to the columns that are shown anyway, and one with a \fB\-\fR is left out of them.
+.TP
+.B \-\-limit \fIN\fR
+How many of each kind to print per device: roles, policies.
+.TP
+.B \-\-role\-limit \fIN\fR, \fB\-\-policy\-limit \fIN\fR
+The same for one of them.
+.TP
+.B \-\-sort\-by \fIfield\fR, \fB\-\-reverse\fR
+Which column to sort by, and the other way round.
+.TP
+.B \-\-raw\fR, \fB\-\-csv\fR, \fB\-\-csv\-sep\fR \fIsep\fR
+\fB\-\-raw\fR leaves the header and the borders out, \fB\-\-csv\fR prints one row per line with \fB;\fR between the columns, and \fB\-\-csv\-sep\fR uses another separator.
+.RE
+.IP
+A column you may not see says \fB\-\fR.
+With a device named, this prints the object itself instead of a table row, one value per line.
+\fBshow\fR \fIdevice\fB$\fR prints that one device as a table row.
+A name that is no device is a pattern with \fB*\fR, not a regex, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
+.TP
 .B show_oid \fR[\fB\-\-full\fR] \fIdevice\fR
-Show the OID of the device: \fB\%device|<realm>/<site>/<name>\fR.
+Show the OID of the device: \fB\%device|<realm>/<name>\fR.
 With \fB\-\-full\fR the full OID, which names the unit as well: \fB\%device|<realm>/<site>/<unit_path>/<name>\fR.
 .br
 Needs the ACL \fBview_public:object\fR.
@@ -44,23 +104,37 @@ Needs the ACL \fBview_public:object\fR.
 Show the UUID of the device.
 .br
 Needs the ACL \fBview_public:object\fR.
-.hy
-.ad
 .TP
-.B list \fR[\fIregex\fR]
-List devices, optionally filtered by regex pattern.
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+List the device names, and with a pattern only those that match it, e.g. \fBberlin\-*\fR.
+You get the devices you may change; \fB\-a\fR adds those you may only look at.
+\fB\-\-attribute\fR matches the pattern against that attribute instead of the name, e.g. \fBmac_address\fR.
 .TP
 .B enable \fIdevice\fR
-Enable a disabled device.
-.TP
+.TQ
 .B disable \fIdevice\fR
-Disable a device without deleting it.
+A disabled device is refused at MAB, whatever access group it is in.
+Tables show the status.
+.br
+Needs \fBenable:object\fR or \fBdisable:object\fR.
 .TP
-.B touch \fIdevice\fR
-Re-index the device to fix potential index problems.
+.B rename \fIdevice\fR \fInew_name\fR
+Rename the device.
+The new name must not be in use in the realm, and is taken in lower case.
+.br
+Needs \fBrename:object\fR.
 .TP
 .B move \fR[\fB\-\-keep\-acls\fR] \fIdevice\fR \fIunit\fR
-Move device to a different unit.
+Move the device into another unit.
+The device keeps its ACLs; where ACL inheritance is on for it (off for devices by default, see \fBenable_acl_inheritance\fR), the default ACLs of the old unit are taken away and those of the new one given.
+\fB\-\-keep\-acls\fR keeps all ACLs as they are.
+.br
+Needs \fBmove\fR on the device and \fBadd:device\fR on the unit.
+.TP
+.B touch \fIdevice\fR
+Write the index entries of the device again.
+.br
+Needs \fBtouch\fR.
 .TP
 .B auto_disable \fR[\fB\-u\fR] \fIdevice\fR \fItime\fR
 Set auto\-disable time.
@@ -69,76 +143,145 @@ The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, 
 .BR otpme (7).
 A relative time counts from when it is set, and again from when the device is enabled.
 \fB0\fR removes it.
-It is refused for an object the realm or a site comes with, e.g. the admin user; a time set on one before does nothing.
-Use \fB\-u\fR to disable the device once it was unused for the given time.
+Use \fB\-u\fR to disable the device once it was unused for the given time; a device is used when it logs in by MAB.
 That takes a relative time; a device that was never used counts from when this was set.
+.br
+Needs \fBedit:auto_disable\fR.
+.hy
+.ad
 .SS MAC Address
+.na
+.nh
 .TP
 .B mac \fIdevice\fR \fImac_address\fR
-Set the MAC address of the device. The MAC address is used for MAB port
-authentication.
+Set the MAC address of the device.
+At MAB the switch sends it as the user name, and the realm finds the device by it; whether the port opens says its access group, see
+.BR otpme\-accessgroup (1).
+.br
+Write it as six pairs of hex digits, with \fB:\fR or \fB\-\fR between them, as three groups of four with \fB.\fR, or without anything, e.g. \fB00:1a:2b:3c:4d:5e\fR or \fB001a2b3c4d5e\fR.
+It is kept in lower case with \fB:\fR, and that is how it is shown.
+The switch may send it in any of these forms.
+.br
+A MAC address can be set on one host or device of the realm only.
+An empty \fImac_address\fR, \fB""\fR, removes it.
+.br
+Needs \fBedit:mac_address\fR.
+Seeing it, with \fBshow\fR, needs \fBview:mac_address\fR.
+.hy
+.ad
 .SS VLAN Assignment
-A device is not assigned a VLAN from here. Either the VLAN names the device,
-so that the assignment belongs to the site that runs the network (see
-.BR otpme-vlan (1)):
+At MAB the realm answers with a VLAN as well, if the device has one.
+It is not set here, but in one of two ways.
+.PP
+A VLAN names the device, see
+.BR otpme\-vlan (1):
 .PP
 .RS
-.B otpme-vlan add_device \fIvlan\fR \fIdevice\fR
+.B otpme\-vlan add_device \fIvlan\fR \fIdevice\fR
 .RE
 .PP
-or the device names the VLAN through its
-.B vlans
-config parameter (see
-.BR otpme (7)):
+This needs \fBadd:device\fR on the VLAN.
+A device can be in one VLAN of a site only.
+It can also be in a VLAN through a role it is in; a VLAN that names the device itself wins over that.
+.PP
+Or the device names the VLAN in its \fBvlans\fR config parameter, see
+.BR otpme (7):
 .PP
 .RS
-.B otpme-device config \fIdevice\fR vlans \fIvlan\fR
+.B otpme\-device config \fIdevice\fR vlans \fIvlan\fR
 .RE
 .PP
-The VLAN is returned during MAB port authentication, together with the
-access granted through the access group. Membership wins: the
-.B vlans
-parameter is only looked at when no VLAN of the site answering the RADIUS
-request names the device. A device that is in a VLAN only through a role is
-overridden by one that names the device itself.
+This needs \fBassign\fR on the VLAN.
+Where the device has none, it is taken from the units above it, and else from its site.
+A VLAN of another site is written as \fI<site>/<vlan>\fR; it counts only where the \fBvlan_trusts\fR of the site that answers allow it.
+.PP
+Only the VLANs of the site that answers the RADIUS request name a device.
+They win: the \fBvlans\fR parameter is only looked at when none of them names the device or a role it is in.
+A disabled VLAN gives nothing, and the log says so.
 .SS Passwords
-Passwords can belong to the device, for example the admin password of a
-switch, see
+Passwords can belong to the device, for example the admin password of the phone's web interface.
+A password is given to it with \fBotpme\-pass add \-\-device\fR or \fBotpme\-pass add_device\fR, see
 .BR otpme\-pass (1).
-Each password decides itself whether you may see it.
+Each password decides itself whether you may see it; the device has no ACL for that.
 .TP
 .B find_passwords \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIdevice\fR
-The password objects that belong to the device.
+List the passwords that belong to the device and that you may look at, by \fBview_public\fR, \fBview\fR or \fBview:entries\fR on the password.
+\fITYPE\fR is \fBname\fR (the default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
+A name of another site is shown as \fI<site>/<password>\fR.
 .TP
 .B show_password \fIdevice\fR [\fIentry\fR]
 Show the entries of these passwords, with their passwords.
 With \fIentry\fR only the entries of that name.
 .br
 Each password needs \fBview:entries\fR, and you need a key for it.
+Passwords you may not read are left out; when none is left, it says so.
 .SS Configuration
+A config parameter is looked for on the device, then on the units above it, then on the site.
+The first value found is the one that applies, and the realm holds none.
+A site can turn that around for a parameter it names in
+.B force_site_config_parameters\fR,
+and then its own value wins over the device and its units (see \fBotpme\fR(7)).
+.PP
+Which parameters a device takes is in
+.B CONFIG PARAMETERS
+below.
 .TP
 .B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIdevice\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to
-default), \fB\-a\fR to append a value.
+Set a parameter on the device.
+.RS
 .TP
-.B show_config \fIdevice\fR [\fIparameter\fR]
-Show all configuration parameters.
+.B \-d
+Remove the parameter from the device, or with a value only that one value from a list.
+It is not set back to a default: what applies afterwards is whatever the unit or the site says.
+.TP
+.B \-a
+Append the value to a parameter that holds a list, instead of replacing what is there.
+.RE
+.IP
+A parameter that devices do not take is refused.
+The ACL is per parameter, \fBset:config:\fIparameter\fR.
+Removing a parameter that is not registered any more, which is what a rename or a dropped feature leaves behind, is for admins only.
+.TP
+.B show_config \fIdevice\fR \fR[\fIparameter\fR]
+The parameters set on the device itself, or only the one named.
+Nothing is shown for a parameter that the device gets from a unit or from the site.
+.br
+Each parameter needs \fBview:config:\fIparameter\fR.
 .TP
 .B get_config \fIdevice\fR \fIparameter\fR
-Show the value of a single configuration parameter.
+What the parameter comes to for this device, once the device, its units and its site have been looked at.
+So this answers what applies, where \fBshow_config\fR answers what was set here.
+.br
+Needs \fBview:config:\fIparameter\fR.
 .TP
 .B description \fIdevice\fR \fR[\fIdescription\fR]
-Set device description.
+Set the description.
+Without one OTPme asks and offers the current text for editing.
+.br
+Needs \fBedit:description\fR.
 .TP
 .B info \fR[\fB\-\-language\fR \fILANG\fR] \fIdevice\fR \fR[\fIinfo\fR]
-Set free-form info text. If \fIinfo\fR is omitted, the current info text is
-opened in the editor specified by the \fBEDITOR\fR environment variable.
+Set free-form info text.
+If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
+.br
+Without
+.B \-\-language
+the text is the administrator's own note.
+Nothing shows the info of a device to a user, so a text for a language stays a note as well.
+.br
+Needs \fBedit:info\fR.
 .TP
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIdevice\fR
-Dump the info text to stdout.
+Write one of those texts to stdout, for reading it with something other than the editor.
+.br
+Needs \fBview:info\fR.
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
+.PP
+The \fBchangelog\fR config parameter can switch that off.
+It is read along the cascade of the device, and nothing is written where it is off \(em not for that device, and not for the ones below a unit that switched it off.
+Without any value anywhere it is on.
 .PP
 An \fIentry_id\fR is the number the listing shows in front of an entry, counted from 0.
 .PP
@@ -148,20 +291,23 @@ What was done and by whom stays as it is.
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIdevice\fR
-Show the changelog of the device.
+Show the changelog of the device, one entry per line: its \fIentry_id\fR, the time, who made the change and what was done, then a detail in round brackets and the comment in square brackets where there are any.
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fIdevice\fR \fIentry_id\fR \fIcomment\fR
 Set the comment of that entry, or replace the one it has.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B del_changelog \fIdevice\fR \fIentry_id\fR
 Remove the comment of that entry.
 The entry itself stays, and an entry without a comment is refused.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIdevice\fR
 Remove every entry of the changelog.
+Afterwards it holds one entry: that it was cleared.
 .br
 This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
@@ -174,6 +320,13 @@ A \fIpolicy\fR is the name of a policy, not a path.
 It is looked for in the site of the device.
 Which policies there are, and what each of them does, is in
 .BR otpme\-policy (1).
+.PP
+Two types do something on a device:
+.B autodisable
+switches it off after a time, or once it was unused that long (a device is used when it logs in by MAB), and
+.B authonaction
+asks whoever changes the device to authenticate for it again, see \fBAUTH ON ACTION HOOKS\fR below.
+Every other type is refused.
 .PP
 Attaching and detaching ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
@@ -198,15 +351,35 @@ Use \fB\-\-policy\-types\fR to list only policies of the given types; these are 
 .br
 Needs the ACL \fBview:policies\fR.
 .SS ACL Management
+An ACL says what somebody may do with this device.
+The somebody is a role or a token, never a user.
+.PP
+What the three forms \fBacl\fR, \fB+acl\fR and \fB++acl\fR mean, and which ACLs exist, is under \fBACLs\fR in
+.BR otpme (7).
+A device has nothing below it, so only the plain form is taken; \fB+acl\fR and \fB++acl\fR are refused.
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
-.B add_acl \fIdevice\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
-Add an access control entry.
+.B add_acl \fIdevice\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
+Give a role or a token one or more ACLs on this device.
+.br
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
+\fIowner\fR names it the way \fBlist_acls\fR prints it: a role as \fIsite/name\fR, or by its name alone on its own site; a token as \fI\%user/token\fR.
+An ACL can carry a value, for example \fBview:mac_address\fR.
+To give several ACLs at once, separate them with commas: \fB\%view:mac_address,edit:mac_address\fR.
+.br
+Needs the ACL \fBadd:acl\fR.
 .TP
-.B del_acl \fIdevice\fR \fIacl\fR
-Remove an access control entry.
+.B del_acl \fIdevice\fR \fIacl\fR[,\fIacl\fR]
+Take those ACLs away again.
+.br
+Here an \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fBrole:berlin/net\-admins:view\fR.
+.br
+Needs the ACL \fBdelete:acl\fR.
 .TP
 .B list_acls \fIdevice\fR
-Display all ACLs for the device.
+Show the ACLs that lie on this device, i.e. who may do what with it.
+Needs the ACL \fBview:acl\fR.
 .TP
 .B enable_acl_inheritance \fIdevice\fR
 Let a move of the device swap its default ACLs: what the old unit handed down is taken away, and what the new unit hands down is given.
@@ -227,79 +400,87 @@ Needs the ACL \fBenable:acl_inheritance\fR.
 A move leaves the ACLs of the device as they are again.
 .br
 Needs the ACL \fBdisable:acl_inheritance\fR.
-.SS Import/Export
+.SS Export and Cleanup
+Both write to stdout.
+There is no import on this page: reading an export back in is
+.B otpme\-tool import\fR,
+see
+.BR otpme\-tool (1).
+.PP
+.B remove_orphans
+asks before it changes anything; the global option \fB\-f\fR skips the question.
 .TP
-.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIdevice\fR
-Export device configuration.
+.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIdevice\fR
+Write the whole object of the device to stdout, as JSON.
+.RS
+.PP
+Without \fB\-\-password\fR it is written as it is, in clear.
+With one, a key is derived from that password and the object is encrypted with it; the salt goes into the output, so the password is all you need to read it back.
+.PP
+Its roles and access groups are not in it: they hold the device, not the other way round.
+.PP
+Needs the ACL \fBexport\fR.
+.RE
 .TP
 .B remove_orphans \fIdevice\fR
-Remove orphaned object references.
-.SH OPTIONS
-.SS Display Options
-.TP
-.B \-a
-Show all devices (across all units).
-.TP
-.B \-z \fISIZE\fR
-Limit output size.
-.TP
-.B \-\-fields \fIFIELD1,FIELD2\fR
-Display only specified fields.
-.TP
-.B \-\-policy\-limit \fIN\fR
-Limit number of policies shown.
-.TP
-.B \-\-limit \fIN\fR
-Limit number of items shown per object.
-.TP
-.TP
-.B \-\-sort\-by \fIFIELD\fR
-Sort output by field.
-.TP
-.B \-\-reverse
-Reverse sort order.
-.TP
-.B \-\-raw
-Output without headers/borders.
-.TP
-.B \-\-csv
-Output as CSV.
-.TP
-.B \-\-csv\-sep \fISEP\fR
-CSV separator character.
-.TP
-.B \-\-attribute \fIATTR\fR
-Of \fBlist\fR: match the regex against this attribute instead of the name.
-.SS General Options
-.TP
-.B \-\-keep\-acls
-Preserve ACLs when moving device.
-.TP
-.B \-\-password \fIPASS\fR
-Password for encrypting exports.
+Remove what the device still points at although it is gone: its ACLs, its policies and its signatures.
+Config parameters set on the device that keep other objects lose the ones that are gone, e.g. a deleted VLAN in \fBvlans\fR, the way \fBconfig \-d\fR does.
+.RS
 .PP
-Global options are available for all commands. See
-.BR otpme (1)
-for details.
+It shows everything it found and asks once for all of it.
+It asks nothing and changes nothing when it finds nothing.
+.PP
+Needs the ACL \fBremove:orphans\fR.
+.RE
+.SH OPTIONS
+Every option belongs to one command and is described with that command above.
+A short option means what that command makes of it.
+.PP
+Global options work with every command, see
+.BR otpme (1).
+.SH CONFIG PARAMETERS
+Each parameter is described with the thing it is about:
+.B vlans
+under \fBVLAN Assignment\fR, and
+.B changelog
+and
+.B allow_changelog_clearing
+under \fBObject Changelog\fR.
+What each of them does is in
+.BR otpme (7).
 .SH EXAMPLES
+The examples use the site \fBberlin\fR of the realm \fBexample.org\fR and an IP phone called \fBip\-phone\-1\fR.
+.SS A phone on a MAB port
 .TP
-.B otpme-device add ip-phone-1
-Create a device for an IP phone
+.B otpme-device add ip\-phone\-1
+Create the device.
+Where \fBdevices_accessgroup\fR is set, it is in that access group already.
 .TP
-.B otpme-device mac ip-phone-1 90:1b:0e:46:46:15
-Set the MAC address
+.B otpme-device mac ip\-phone\-1 00:1a:2b:3c:4d:5e
+The address the switch sends at MAB.
 .TP
-.B otpme-accessgroup add_device lan ip-phone-1
-Add device to access group for MAB
+.B otpme-accessgroup add_device lan ip\-phone\-1
+Let it in through the access group \fBlan\fR, where \fBdevices_accessgroup\fR does not do it.
 .TP
-.B otpme-vlan add_device voice ip-phone-1
-Put the device into the voice VLAN
+.B otpme-vlan add_device voice ip\-phone\-1
+Put it into the VLAN \fBvoice\fR.
 .TP
-.B otpme-device description ip-phone-1 \(dqReception IP Phone\(dq
-Set description
+.B otpme-device config ip\-phone\-1 vlans voice
+The other way: the device names the VLAN.
+A VLAN that names the device wins over this.
 .TP
-.B otpme-device show ip-phone-1
-Show device details
+.B otpme-device description ip\-phone\-1 \(dqReception phone\(dq
+A text to find it by.
+.SS Looking it up
+.TP
+.B otpme-device show ip\-phone\-1
+The device itself, one value per line.
+.TP
+.B otpme-device show ip\-phone\-1$
+The same device as a row of the table.
+.TP
+.B otpme-device list \(dqip\-phone\-*\(dq
+The names of all phones.
 .\" BEGIN AUTH ON ACTION HOOKS
 .\" Generated by update_hooks_man.py. Do not edit, the next run
 .\" overwrites it.
@@ -309,20 +490,42 @@ See
 .B Auth On Action Policy
 in
 .BR otpme\-policy (1).
-A device has the hooks every object type has, and no others.
+A device has the hooks every object type has, and these; a command of another name is in brackets:
+.RS
+.PP
+.na
+.nh
+change_mac\ (mac).
+.hy
+.ad
+.RE
 .\" END AUTH ON ACTION HOOKS
 .SH FILES
+.na
+.nh
 .TP
-.I /var/lib/otpme/
-OTPme data directory
+\fI/var/lib/otpme/tree/\fR
+The objects of the realm, on the nodes; devices are not synced to hosts.
+A device is the directory \fI<device>.device\fR in the directory of its unit, e.g. \fI<realm>.realm/<site>.site/devices.unit/ip\-phone\-1.device/\fR, with its settings in \fIobject.json\fR.
+Change them with the commands above, not in the file.
+.hy
+.ad
 .SH SEE ALSO
+.na
+.nh
+.BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
-.BR otpme-accessgroup (1),
-.BR otpme-host (1),
-.BR otpme-vlan (1),
-.BR otpme-pass (1),
-.BR otpme-client (1)
+.BR otpme\-accessgroup (1),
+.BR otpme\-vlan (1),
+.BR otpme\-role (1),
+.BR otpme\-client (1),
+.BR otpme\-host (1),
+.BR otpme\-pass (1),
+.BR otpme\-policy (1),
+.BR otpme\-tool (1),
+.BR otpme\-trash (1)
+.hy
+.ad
 .SH AUTHOR
 the2nd <the2nd@otpme.org>
 .SH NOTE

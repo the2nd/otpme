@@ -27,7 +27,7 @@ cmd_help = {
                 },
 
     'password'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token password --generate [--weak-password] {token} [password]'),
+                    '_cmd_usage_help' : _('Usage: otpme-token password [--generate] [--weak-password] {token} [password]'),
                     'cmd'   :   '--generate :auto_password=True: --weak-password :weak_password=True: <|object|> ["password"]',
                     '_help' :   {
                                     'cmd'                   : _('Change token password.'),
@@ -60,32 +60,8 @@ cmd_help = {
                                 },
                 },
 
-    '2f_token'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token 2f_token {token} {2f_token}'),
-                    'cmd'   :   '<|object|> <"second_factor_token">',
-                    '_help' :   {
-                                    'cmd'                   : _('Change second factor token.'),
-                                },
-                },
-
-    'enable_2f'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token enable_2f {token}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Enable second factor token.'),
-                                },
-                },
-
-    'disable_2f'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token disable_2f {token}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Disable second factor token.'),
-                                },
-                },
-
     'sign'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token sign --stdin-pass [--tags tag1,tag2...] {name}'),
+                    '_cmd_usage_help' : _('Usage: otpme-token sign [--stdin-pass] [--tags tag1,tag2...] {name}'),
                     'cmd'   :   '--stdin-pass :stdin_pass=True: --tags :[tags]: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Sign token.'),
@@ -95,7 +71,7 @@ cmd_help = {
                 },
 
     'resign'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token resign --stdin-pass {name}'),
+                    '_cmd_usage_help' : _('Usage: otpme-token resign [--stdin-pass] {name}'),
                     'cmd'   :   '--stdin-pass :stdin_pass=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Resign token signatures.'),

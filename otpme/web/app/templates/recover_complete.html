@@ -38,7 +38,12 @@
 <div class="login-wrapper">
   <div class="deploy-card">
     <h1>{{ gettext("Recover Your Account") }}</h1>
+    {% if sso_token_type %}
     <p class="deploy-desc">{{ gettext("Re-deploying token '{token_name}' for user '{user_name}'.").format(token_name=sso_token_name, user_name=recovery_username) }}</p>
+    {% else %}
+    <!-- No SSO token yet: the recovery creates it. -->
+    <p class="deploy-desc">{{ gettext("Setting up token '{token_name}' for user '{user_name}'.").format(token_name=sso_token_name, user_name=recovery_username) }}</p>
+    {% endif %}
 
     <!-- Step 1: choose a deploy type (same shape as /deploy). The
          admin controls the list via sso_allow_*_deploy site/unit/

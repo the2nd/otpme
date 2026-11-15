@@ -51,13 +51,13 @@ read_acls =   [
 
 write_acls =   []
 
-read_value_acls = {
-                    "view"      : [ "dictionaries" ],
-            }
+# Adding and deleting a dictionary are the ACLs add:dictionary and
+# delete:dictionary on its unit.
+read_value_acls = {}
 write_value_acls = {
-                    "add"       : [ "words", "dictionary" ],
+                    "add"       : [ "words" ],
                     "set"       : [ "config" ],
-                    "delete"    : [ "words", "dictionary" ],
+                    "delete"    : [ "words" ],
             }
 
 default_acls = []
@@ -287,11 +287,13 @@ commands = {
                     },
                 },
             },
+    # word_learning comes here as well, with guessing=True.
     'word_import'   : {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_words',
                     'args'              : ['word_list'],
+                    'oargs'             : ['guessing'],
                     'job_type'          : 'process',
                     },
                 },
@@ -424,32 +426,6 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     'config'   : {
             'default'    : {
                 'exists'    : {
@@ -498,6 +474,12 @@ REGISTER_AFTER = [
                 "otpme.lib.compression",
                 ]
 
+def register_hooks():
+    # Run by dump() and add_words(). Not registered, an auth on action
+    # policy refused them as unknown hooks.
+    config.register_auth_on_action_hook("dictionary", "dump")
+    config.register_auth_on_action_hook("dictionary", "add_words")
+
 def register():
     register_oid()
     config.register_config_parameter(name="max_dictionary_name_len",
@@ -505,6 +487,7 @@ def register():
                                     default_value=64,
                                     setter=name_len_setter,
                                     object_types=['site', 'unit'])
+    register_hooks()
     register_backend()
     register_base_object()
     register_object_unit()
@@ -823,13 +806,29 @@ class Dictionary(OTPmeObject):
     def add_words(
         self,
         word_list: List,
+        guessing: Union[bool,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Add words to dictionary. """
+        """ Add words to dictionary.
+
+        <guessing> says what the command made: the pieces of
+        word_learning (True) or whole words of word_import (False). Put
+        into a dictionary of the other kind they are never matched.
+        """
+        if guessing is not None:
+            if guessing and self.dictionary_type != "guessing":
+                msg = _("word_learning is for a dictionary of type guessing, {dict_name} is of type {dict_type}.")
+                msg = msg.format(dict_name=self.name, dict_type=self.dictionary_type)
+                return callback.error(msg)
+            if not guessing and self.dictionary_type == "guessing":
+                msg = _("word_import is for a dictionary of type list or sorted-list, {dict_name} is of type guessing.")
+                msg = msg.format(dict_name=self.name)
+                return callback.error(msg)
+
         msg = _("Add {word_count} words to dictionary '{dict_name}'?: ")
         msg = msg.format(word_count=len(word_list), dict_name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -891,6 +890,8 @@ class Dictionary(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
+    @audit_log()
+    @object_changelog("add")
     def add(
         self,
         dict_type: str="list",
@@ -920,7 +921,6 @@ class Dictionary(OTPmeObject):
         return OTPmeObject.add(self, verbose_level=verbose_level,
                                 callback=callback, **kwargs)
 
-    @check_acls(['delete'])
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
@@ -930,6 +930,7 @@ class Dictionary(OTPmeObject):
         force: bool=False,
         run_policies: bool=True,
         add_to_trash: bool=True,
+        verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -938,6 +939,17 @@ class Dictionary(OTPmeObject):
         """ Delete dictionary. """
         if not self.exists():
             return callback.error("Dictionary does not exist.")
+
+        # As the other types: delete:object on the dictionary, or
+        # delete:dictionary on its unit.
+        parent_object = self.get_parent_object()
+        if verify_acls:
+            if not self.verify_acl("delete:object"):
+                del_acl = f"delete:{self.type}"
+                if not parent_object.verify_acl(del_acl):
+                    msg = denied_msg(self, "delete:object",
+                                    others=[(parent_object, del_acl)])
+                    return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:
             try:

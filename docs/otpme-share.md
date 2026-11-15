@@ -226,13 +226,14 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
-List the share names, and with a regex only those that match it. You get
-the shares you may change; **-a** adds those you may only look at.  
-**--attribute** matches the regex against that attribute instead of the
-name: **list --attribute encrypted True** lists the encrypted shares. A
-value that is not text has to be spelled out — **\*** matches none of
-it.
+**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+List the share names, and with a pattern only those that match it, see
+**SELECTING OBJECTS** in **otpme**(1). You get the shares you may
+change; **-a** adds those you may only look at.  
+**--attribute** matches the pattern against that attribute instead of
+the name: **list --attribute encrypted True** lists the encrypted
+shares. A value that is not text has to be spelled out — **\*** matches
+none of it.
 
 **enable \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share***  
 Enable a disabled share.  
@@ -358,8 +359,10 @@ Needs the ACL **edit:description**.
 Set free-form info text. If *info* is omitted, the current text is
 opened in the editor named by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note about
-the object, which no user is ever shown. With a language it is text for
-the users in that language.  
+the object, which no user is ever shown. A text can be written for a
+language as well, for the places that show such a text to a user;
+nothing shows the info of a share, so for a share it stays a note either
+way.  
 Needs the ACL **edit:info**.
 
 **dump_info \[**--language** *LANG*\] *share***  
@@ -828,10 +831,11 @@ skips the question.
 
 **add_acl *share* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this share.  
-*owner_type* is **role** or **token**. *owner* is the path of that role
-or token. An ACL can carry a value, for example **view:tokens**. To give
-several ACLs at once, separate them with commas:
-**view:tokens,view:status**.  
+*owner_type* is **role** or **token**. *owner* names it the way
+**list_acls** prints it: a role as *site/name*, or by its name alone on
+its own site; a token as *user/token*. An ACL can carry a value, for
+example **view:tokens**. To give several ACLs at once, separate them
+with commas: **view:tokens,view:status**.  
 Needs the ACL **add:acl**.
 
 **del_acl *share* *acl*\[,*acl*\]**  
@@ -880,18 +884,23 @@ A command that changes something asks first; the global option **-f**
 skips the question.
 
 **changelog *share***  
-Show the changelog of the share. Needs the ACL **view:changelog**.
+Show the changelog of the share, one entry per line: its *entry_id*, the
+time, who made the change and what was done, then a detail in round
+brackets and the comment in square brackets where there are any. Needs
+the ACL **view:changelog**.
 
 **edit_changelog *share* *entry_id* *comment***  
-Set the comment of that entry, or replace the one it has. Needs the ACL
-**edit:changelog**.
+Set the comment of that entry, or replace the one it has. That writes an
+entry of its own. Needs the ACL **edit:changelog**.
 
 **del_changelog *share* *entry_id***  
 Remove the comment of that entry. The entry itself stays, and an entry
-without a comment is refused. Needs the ACL **edit:changelog**.
+without a comment is refused. That writes an entry of its own. Needs the
+ACL **edit:changelog**.
 
 **clear_changelog *share***  
-Remove every entry of the changelog.  
+Remove every entry of the changelog. Afterwards it holds one entry: that
+it was cleared.  
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
@@ -922,7 +931,9 @@ Needs the ACL **export**.
 Remove what the share still points at although it is gone.  
 On a share that is its ACLs, its policies, its tokens of every kind, its
 roles, host groups, hosts, nodes and pools, and the share keys and sign
-public keys of users that are gone.  
+public keys of users that are gone. Config parameters set on the share
+that keep other objects lose the ones that are gone, e.g. a deleted
+backup server in **backup_server**, the way **config -d** does.  
 It shows everything it found and asks once for all of it. It asks
 nothing and changes nothing when it finds nothing.  
 Needs the ACL **remove:orphans**.
@@ -1056,26 +1067,27 @@ mount it
 
 An auth on action policy can ask for a login again before these actions.
 See **Auth On Action Policy** in **otpme-policy**(1). A share has the
-hooks every object type has, and these:
+hooks every object type has, and these; a command of another name is in
+brackets:
 
 > add_group, add_host, add_master_password_token, add_no_mount_token,
 > add_pool, add_root_mount_token, add_share_key, change_add_script,
-> change_mount_script, change_mount_timeout, del_share_key,
-> disable_mount_script, disable_ro, disable_sotp_signing,
-> enable_mount_script, enable_ro, enable_sotp_signing,
-> force_create_mode, force_directory_mode, force_group, get_share_key,
-> limit_hosts, remove_group, remove_host, remove_master_password_token,
-> remove_no_mount_token, remove_pool, remove_root_mount_token,
-> set_config_parameter, set_home_share_permissions, set_root_dir,
-> show_config_parameters, unlimit_hosts, update_sign_public_keys.
+> change_mount_script (mount_script), change_mount_timeout
+> (mount_timeout), del_share_key, disable_mount_script, disable_ro,
+> disable_sotp_signing, enable_mount_script, enable_ro,
+> enable_sotp_signing, force_create_mode, force_directory_mode,
+> force_group, get_share_key, limit_hosts, remove_group, remove_host,
+> remove_master_password_token, remove_no_mount_token, remove_pool,
+> remove_root_mount_token, set_config_parameter (config),
+> set_home_share_permissions (home_share_permissions), set_root_dir
+> (root_dir), unlimit_hosts, update_sign_public_keys.
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-mount**(1),
-**otpme-backup**(1), **otpme-trash**(1), **otpme-token**(1),
-**otpme-role**(1), **otpme-group**(1), **otpme-accessgroup**(1),
-**otpme-host**(1), **otpme-pool**(1), **otpme-policy**(1),
-**otpme-tool**(1)
+**otpme**(1), **otpme**(7), **otpme-mount**(1), **otpme-backup**(1),
+**otpme-trash**(1), **otpme-token**(1), **otpme-role**(1),
+**otpme-group**(1), **otpme-accessgroup**(1), **otpme-host**(1),
+**otpme-pool**(1), **otpme-policy**(1), **otpme-tool**(1)
 
 # AUTHOR
 

@@ -95,11 +95,11 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
-List the unit names, and with a regex only those that match it. You get
-the units you may change; **-a** adds those you may only look at.
-**--attribute** matches the regex against that attribute instead of the
-name.
+**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+List the unit names, and with a pattern only those that match it, see
+**SELECTING OBJECTS** in **otpme**(1). You get the units you may change;
+**-a** adds those you may only look at. **--attribute** matches the
+pattern against that attribute instead of the name.
 
 **enable *unit***  
 **disable *unit***  
@@ -255,15 +255,19 @@ A command that changes something asks first; the global option **-f**
 skips the question.
 
 **changelog *unit***  
-Show the changelog of the unit. Needs the ACL **view:changelog**.
+Show the changelog of the unit, one entry per line: its *entry_id*, the
+time, who made the change and what was done, then a detail in round
+brackets and the comment in square brackets where there are any. Needs
+the ACL **view:changelog**.
 
 **edit_changelog *unit* *entry_id* *comment***  
-Set the comment of that entry, or replace the one it has. Needs the ACL
-**edit:changelog**.
+Set the comment of that entry, or replace the one it has. That writes an
+entry of its own. Needs the ACL **edit:changelog**.
 
 **del_changelog *unit* *entry_id***  
 Remove the comment of that entry. The entry itself stays, and an entry
-without a comment is refused. Needs the ACL **edit:changelog**.
+without a comment is refused. That writes an entry of its own. Needs the
+ACL **edit:changelog**.
 
 **clear_changelog *unit***  
 Remove every entry of the changelog. Afterwards it holds one entry: that
@@ -318,18 +322,20 @@ or a token, never a user.
 
 A normal ACL is for the unit object alone. A default ACL, **+acl** or
 **++acl**, is not for the unit: it is for the objects in it, and a new
-object gets it when it is created. What the three forms mean, and which
-ACLs exist, is under **ACLs** in **otpme**(7) and in **otpme-acls**(7).
+object gets it when it is created. What the three forms mean is under
+**ACLs** in **otpme**(7). Tab completion after **add_acl** offers the
+ACLs a unit knows.
 
 Adding and removing ask first, once for the whole command; the global
 option **-f** skips the question.
 
 **add_acl \[**-r**\] \[**-a**\] \[**--objects** *types*\] \[**--procs** *num*\] *unit* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this unit.  
-*owner_type* is **role** or **token**. *owner* is the path of that role
-or token. An ACL can carry a value, for example **view:policies**. To
-give several ACLs at once, separate them with commas:
-**+user:edit,+user:view**.  
+*owner_type* is **role** or **token**. *owner* names it the way
+**list_acls** prints it: a role as *site/name*, or by its name alone on
+its own site; a token as *user/token*. An ACL can carry a value, for
+example **view:policies**. To give several ACLs at once, separate them
+with commas: **+user:edit,+user:view**.  
 Without an option only the unit is changed. A default ACL then reaches
 what is created from now on, and nothing that is already there.
 
@@ -499,8 +505,12 @@ encrypt: the output is in clear either way.
 Needs the ACL **export**.
 
 **remove_orphans \[**-r**\] *unit***  
-Remove references to objects that are gone: orphan ACLs, policies and
-signatures of the unit.  
+Remove references to objects that are gone: orphan ACLs and policies of
+the unit. Config parameters set on the unit that keep other objects lose
+the ones that are gone, e.g. a deleted VLAN in **vlans**, the way
+**config -d** does. **password_store_members** is only named, not
+changed: its signatures would no longer fit, so change it with **config
+-d** and sign the members again, see **otpme-pass**(1).  
 **-r** goes on through the objects in the unit and in its units below,
 and cleans those up as well. An object with nothing to clean up says
 nothing; one without the ACL is skipped with “Permission denied”.  
@@ -550,8 +560,8 @@ names the unit, see **otpme-policy**(1).
 The role may change every user in **linux** and in the units below it,
 the ones that are there and the ones that come later.
 
-**otpme-unit add_acl -r -a linux role helpdesk @usermanager,++@usermanager**  
-The same with the ACL group **usermanager**: the role may add, change
+**otpme-unit add_acl -r -a linux role helpdesk @USERMANAGER,++@USERMANAGER**  
+The same with the ACL group **USERMANAGER**: the role may add, change
 and delete the users and add their tokens, see **otpme-aclgroup**(1). A
 change of the group counts at once, without another **add_acl**.
 
@@ -577,9 +587,10 @@ What applies in **linux/users**: **normal**, from **linux**.
 
 An auth on action policy can ask for a login again before these actions.
 See **Auth On Action Policy** in **otpme-policy**(1). A unit has the
-hooks every object type has, and these:
+hooks every object type has, and these; a command of another name is in
+brackets:
 
-> set_config_parameter.
+> set_config_parameter (config).
 
 It also has **pre_add\_\<type\>** before an object of that type is added
 below the unit, and **post_add\_\<type\>** after it, e.g.
@@ -602,9 +613,9 @@ files.
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-site**(1),
-**otpme-policy**(1), **otpme-user**(1), **otpme-pass**(1),
-**otpme-trash**(1), **otpme-tool**(1)
+**otpme**(1), **otpme**(7), **otpme-site**(1), **otpme-policy**(1),
+**otpme-user**(1), **otpme-pass**(1), **otpme-trash**(1),
+**otpme-tool**(1)
 
 # AUTHOR
 

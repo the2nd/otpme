@@ -60,16 +60,21 @@ def emit_audit(prefix, event, level='info', **fields):
     else:
         audit_logger.info(msg)
 
-def get_audit_file_logger():
+def get_audit_file_logger(logfile=None):
     """ Audit logger writing to file.
 
     Where no audit log server is configured this is where the events
     go, so that they are written down somewhere rather than dropped.
     Cached per process like the one above, because building it opens
     the file and writes a banner.
+
+    logfile: another file than audit.log in the log directory, for one
+    that runs as another user (the FreeRADIUS module).
     """
     from otpme.lib import log
     global audit_file_loggers
+    if logfile is None:
+        logfile = os.path.join(config.log_dir, "audit.log")
     proc_pid = os.getpid()
     try:
         return audit_file_loggers[proc_pid]
@@ -79,7 +84,7 @@ def get_audit_file_logger():
         audit_logger = log.get_logger(log_name="audit",
                                     pid=proc_pid,
                                     banner=True,
-                                    logfile="/var/log/otpme/audit.log",
+                                    logfile=logfile,
                                     level="DEBUG",
                                     color_logs=False,
                                     timestamps=True)

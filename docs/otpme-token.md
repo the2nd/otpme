@@ -40,9 +40,11 @@ An SSH public key.
 
 **fido2**  
 A hardware security key, e.g. a YubiKey or a Nitrokey. It signs a
-challenge, so nothing that can be typed is enough to sign in, and the
-signature is bound to the site that asked — which is what makes it
-phishing resistant.  
+challenge, so nothing that can be typed is enough to sign in. The
+signature is bound to the site that asked: in the browser to the address
+of the page, at the OTPme client to its connection to the server. A
+signature that a fake portal or a fake server got from the user is
+worthless at the real one — which is what makes it phishing resistant.  
 Next to **passkey** this is the type where OTPme keeps the credential
 and hands it to the key at every login, and where the key is not asked
 to verify the user. The login itself looks the same: name first, then
@@ -127,10 +129,11 @@ Neither is a value for **--type**.
 
 **--type *type* add \[**-r**\] *user***/***name***  
 Add a token to a user.  
-**--type** comes before the command, and it has to: the type decides
-which arguments and options **add** takes, and OTPme reads it before it
-parses the rest of the line. **-r** replaces a token of that name and
-keeps its UUID, which is what a setup run does when it runs again.  
+The type decides which arguments and options **add** takes, so OTPme
+reads **--type** before the rest of the line. It may stand anywhere on
+the line; this page puts it in front. **-r** replaces a token of that
+name and keeps its UUID, which is what a setup run does when it runs
+again.  
 An **hotp**, **totp** or **motp** token shows its new secret and PIN, a
 **password** or **otp_push** token the password it made up. You only see
 them with the right ACLs on the new token. The secret and the password
@@ -220,9 +223,10 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[*regex*\]**  
-List the token paths, and with a regex only those that match it, e.g.
-**alice/\*** for the tokens of one user.  
+**list \[**-a**\] \[*pattern*\]**  
+List the token paths, and with a pattern only those that match it, e.g.
+**alice/\*** for the tokens of one user, see **SELECTING OBJECTS** in
+**otpme**(1).  
 You get the tokens you may change; **-a** adds those you may only look
 at.
 
@@ -736,18 +740,23 @@ A command that changes something asks first; the global option **-f**
 skips the question.
 
 **changelog *token***  
-Show the changelog of the token. Needs the ACL **view:changelog**.
+Show the changelog of the token, one entry per line: its *entry_id*, the
+time, who made the change and what was done, then a detail in round
+brackets and the comment in square brackets where there are any. Needs
+the ACL **view:changelog**.
 
 **edit_changelog *token* *entry_id* *comment***  
-Set the comment of that entry, or replace the one it has. Needs the ACL
-**edit:changelog**.
+Set the comment of that entry, or replace the one it has. That writes an
+entry of its own. Needs the ACL **edit:changelog**.
 
 **del_changelog *token* *entry_id***  
 Remove the comment of that entry. The entry itself stays, and an entry
-without a comment is refused. Needs the ACL **edit:changelog**.
+without a comment is refused. That writes an entry of its own. Needs the
+ACL **edit:changelog**.
 
 **clear_changelog *token***  
-Remove every entry of the changelog.  
+Remove every entry of the changelog. Afterwards it holds one entry: that
+it was cleared.  
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
@@ -797,10 +806,11 @@ skips the question.
 
 **add_acl *token* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this token.  
-*owner_type* is **role** or **token**. *owner* is the path of that role
-or token. An ACL can carry a value, for example **view:token_type**. To
-give several ACLs at once, separate them with commas:
-**view:token_type,view:status**.  
+*owner_type* is **role** or **token**. *owner* names it the way
+**list_acls** prints it: a role as *site/name*, or by its name alone on
+its own site; a token as *user/token*. An ACL can carry a value, for
+example **view:token_type**. To give several ACLs at once, separate them
+with commas: **view:token_type,view:status**.  
 Needs the ACL **add:acl**.
 
 **del_acl *token* *acl***  
@@ -900,7 +910,9 @@ Remove what the token still points at although it is gone.
 
 On a token that is its ACLs, its policies and its signatures. An ACL for
 a role that was deleted is one, and so is a signature of a user that is
-gone.
+gone. Config parameters set on the token that keep other objects lose
+the ones that are gone, e.g. a deleted VLAN in **vlans** or a deleted
+role in **admin_access_role**, the way **config -d** does.
 
 It shows everything it found and asks once for all of it. It asks
 nothing and changes nothing when it finds nothing.
@@ -909,8 +921,8 @@ Needs the ACL **remove:orphans**.
 
 # TOKEN TYPE COMMANDS
 
-Each type has commands of its own. They need **--type** in front of the
-command, because the name of a command says nothing about the type:
+Each type has commands of its own. They need **--type**, because the
+name of a command says nothing about the type:
 
 > **otpme-token --type hotp resync alice/phone**
 
@@ -1054,12 +1066,6 @@ The kind of key: **rsa**, **ed25519** or **ecdsa**.
 Set the password of the token. See the password token above for
 **--weak-password**.
 
-**2f_token *token* *second_factor_token***  
-Set the token that is asked for as the second factor.
-
-**enable_2f *token* / **disable_2f** *token***  
-Ask for that second token, or stop asking.
-
 **get_sign_data \[**--tags** *tag1,tag2*\] *token***  
 The bytes that have to be signed, for signing somewhere else.
 
@@ -1072,6 +1078,14 @@ An SSH token can be signed, so it also takes **sign**, **resign**,
 **add *token* *destination_token***  
 Make the link and say which token it points at, as *user***/***name*.
 Whoever signs in with the link uses the credential of that token.
+
+A link can be signed when the token it points at can, e.g. an SSH token.
+The signature is on the link, and it covers the key of that token: point
+the link at another token, or give that token a new key, and it no
+longer verifies. A host takes the signature of the link, for the user
+who owns the link, not the one of the token it points at. A link takes
+the same signing commands as an SSH token, see **Signing a token**
+below.
 
 ## YubiKey HMAC
 
@@ -1220,8 +1234,8 @@ One option is not a command's own:
 Which type of token. **add** needs it, and so does every command under
 **TOKEN TYPE COMMANDS** — the type decides which commands there are at
 all.  
-It goes in front of the command, not after it: OTPme reads the type
-before it parses the rest of the line.
+It may stand anywhere on the line; this page puts it in front of the
+command.
 
 Global options work with every command, see **otpme**(1).
 
@@ -1330,24 +1344,29 @@ alice has to scan the new QR code.
 
 An auth on action policy can ask for a login again before these actions.
 See **Auth On Action Policy** in **otpme-policy**(1). A token has the
-hooks every object type has, and these:
+hooks every object type has, and these; a command of another name is in
+brackets:
 
-> add_dynamic_group, add_sign, change_2f_token, change_auth_script,
-> change_counter_check_range, change_encrypt_public_key,
-> change_key_type, change_mode, change_offline_expiry,
-> change_offline_unused_expiry, change_password, change_phone_number,
-> change_pin, change_push_script, change_push_token,
-> change_sign_public_key, change_ssh_public_key,
-> change_timedrift_tolerance, change_validity_time, del_sign, deploy,
-> disable_2f_token, disable_auth_script, disable_mschap,
+> add_dynamic_group, add_sign, change_2f_token (2f_token),
+> change_auth_script (auth_script), change_counter_check_range
+> (counter_check_range), change_encrypt_public_key (encrypt_public_key),
+> change_key_type (key_type), change_mode (mode), change_offline_expiry
+> (offline_expiry), change_offline_unused_expiry
+> (offline_unused_expiry), change_password (password),
+> change_phone_number (phone_number), change_pin (pin),
+> change_push_script (push_script), change_push_token (push_token),
+> change_sign_public_key (sign_public_key), change_ssh_public_key
+> (ssh_public_key), change_timedrift_tolerance (timedrift_tolerance),
+> change_validity_time (validity_time), del_sign, deploy,
+> disable_2f_token (disable_2f), disable_auth_script, disable_mschap,
 > disable_offline, disable_pin, disable_session_keep,
-> disable_sso_deploy, dump_token_data, enable_2f_token,
+> disable_sso_deploy, dump_token_data, enable_2f_token (enable_2f),
 > enable_auth_script, enable_mschap, enable_offline, enable_pin,
 > enable_session_keep, enable_sso_deploy, encrypt_public_key,
 > gen_mschap, gen_qrcode, get_otp, key_type, move, remove_dynamic_group,
-> resync, set_config_parameter, set_temp_password, set_token_data,
-> show_config_parameters, show_pin, show_secret, sign_public_key,
-> ssh_public_key.
+> resync, set_config_parameter (config), set_temp_password
+> (temp_password), set_token_data, show_pin, show_secret,
+> sign_public_key, ssh_public_key.
 
 # FILES
 
@@ -1366,10 +1385,9 @@ Written by **hostd** from the tokens of the realm.
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-user**(1),
-**otpme-role**(1), **otpme-policy**(1), **otpme-accessgroup**(1),
-**otpme-vlan**(1), **otpme-tool**(1), **otpme-trash**(1),
-**otpme-site**(1)
+**otpme**(1), **otpme**(7), **otpme-user**(1), **otpme-role**(1),
+**otpme-policy**(1), **otpme-accessgroup**(1), **otpme-vlan**(1),
+**otpme-tool**(1), **otpme-trash**(1), **otpme-site**(1)
 
 # AUTHOR
 

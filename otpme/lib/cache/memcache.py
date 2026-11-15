@@ -195,8 +195,7 @@ class MemcacheClient(object):
         self.pool_getter = pool_getter
         self.connection_error_logged = False
         if self.pickle:
-            pickel_type = config.pickle_cache_module
-            self.pickle_handler = PickleHandler(pickel_type)
+            self.pickle_handler = PickleHandler()
 
     @property
     def pool(self):

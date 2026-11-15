@@ -37,10 +37,11 @@ from otpme.lib.register import register_module
 #register_module("otpme.lib.protocols.server")
 register_module("otpme.lib.protocols.otpme_client")
 
-# Init OTPme.
-init_otpme(load_host_data=False)
+# Init OTPme. Never with the backend: we run as FREERADIUS_USER and ask
+# hostd. Left to guess it looked at the real user, which is still root
+# while FreeRADIUS loads us, and wanted the master key.
+init_otpme(use_backend=False, load_host_data=False)
 
-from otpme.lib import backend
 from otpme.lib import auth_cache
 
 from otpme.lib.exceptions import *
@@ -62,7 +63,6 @@ from otpme.lib import mschap
 from otpme.lib import connections
 from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
-from otpme.lib.audit import get_audit_logger
 from otpme.lib.audit import get_audit_file_logger
 
 # Get logger.
@@ -108,30 +108,19 @@ def get_client(nasid, client_ip):
         cache_age = now - cache_time
         if cache_age <= cache_timeout:
             return auth_client
-    if nasid:
-        result = backend.search(object_type="client",
-                                attribute="name",
-                                value=nasid,
-                                realm=config.realm,
-                                site=config.site,
-                                return_type="instance")
-    elif client_ip:
-        result = backend.search(object_type="client",
-                                attribute="address",
-                                value=client_ip,
-                                realm=config.realm,
-                                site=config.site,
-                                return_type="instance")
-    else:
+    if not nasid and not client_ip:
         return None
-    if not result:
+    # We run as FREERADIUS_USER and have no backend: hostd looks the
+    # client up for us.
+    hostd_conn = connections.get("hostd")
+    auth_client = hostd_conn.get_radius_client(nasid=nasid, client_ip=client_ip)
+    if not auth_client:
         return
-    auth_client = result[0]
     client_cache[client_key] = {}
     client_cache[client_key]['time'] = time.time()
     client_cache[client_key]['instance'] = auth_client
-    if auth_client.auth_cache_timeout:
-        client_cache[client_key]['timeout'] = auth_client.auth_cache_timeout
+    if auth_client['auth_cache_timeout']:
+        client_cache[client_key]['timeout'] = auth_client['auth_cache_timeout']
     else:
         client_cache[client_key]['timeout'] = 120
     return auth_client
@@ -219,12 +208,13 @@ def authenticate(authData):
     # Default return code should be reject.
     return_code = radiusd.RLM_MODULE_REJECT
 
-    # Get audit logger. Without an audit log server there is none, and
-    # then the file is where it goes -- the daemons do the same when
-    # they fork, and an event of ours is worth as much as one of theirs.
-    audit_logger = get_audit_logger()
-    if not audit_logger:
-        audit_logger = get_audit_file_logger()
+    # Get audit logger. We run as FREERADIUS_USER: we may not write the
+    # audit.log of OTPme, nor read the client certificate and key of the
+    # node for the audit log server (it ended in a PermissionError, and
+    # every request failed). So ours is a file of its own. authd sends
+    # what it does for us to the server as always.
+    audit_logfile = os.path.join(config.freeradius_log_dir, "audit.log")
+    audit_logger = get_audit_file_logger(logfile=audit_logfile)
 
     # Set empty response_tuple and config_tuple. Both will be filled in while
     # processing the request.
@@ -377,7 +367,13 @@ def authenticate(authData):
         vlan = None
         session_uuid = None
         if auth_type == "clear-text":
-            auth_client = get_client(nasid, client_ip)
+            try:
+                auth_client = get_client(nasid, client_ip)
+            except Exception as e:
+                log_msg = _("Failed to get client from hostd: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                logger.critical(log_msg)
+                return radiusd.RLM_MODULE_FAIL
             if not auth_client:
                 log_msg = _("Unknown client {nasid} {client_ip}", log=True)[1]
                 log_msg = log_msg.format(nasid=nasid, client_ip=client_ip)
@@ -387,16 +383,16 @@ def authenticate(authData):
             cache_auth = False
             auth_status = False
             auth_response = None
-            if auth_client and auth_client.auth_cache_enabled:
+            if auth_client and auth_client['auth_cache_enabled']:
                 cache_auth = True
                 try:
-                    auth_cache_timeout = auth_client.auth_cache_timeout
-                    auth_cache.verify(auth_client.name,
+                    auth_cache_timeout = auth_client['auth_cache_timeout']
+                    auth_cache.verify(auth_client['name'],
                                     username,
                                     password,
                                     auth_cache_timeout)
                     log_msg = _("User authenticated for {client} (radius) by cache: {username}", log=True)[1]
-                    log_msg = log_msg.format(client=auth_client.name, username=username)
+                    log_msg = log_msg.format(client=auth_client['name'], username=username)
                     logger.info(log_msg)
                     # We run inside freeradius and are not a daemon, so
                     # config.daemon_name is None here. The tool name is
@@ -484,7 +480,7 @@ def authenticate(authData):
 
                 # Cache auth request.
                 if cache_auth:
-                    auth_cache.add(auth_client.name, username, password, session_uuid)
+                    auth_cache.add(auth_client['name'], username, password, session_uuid)
 
                 # Set return code.
                 return_code = radiusd.RLM_MODULE_OK

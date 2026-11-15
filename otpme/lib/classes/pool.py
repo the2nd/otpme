@@ -51,7 +51,6 @@ write_acls = []
 read_value_acls = {
                     "view"      : [
                                     "nodes",
-                                    "dynamic_groups",
                                 ],
             }
 
@@ -198,8 +197,6 @@ commands = {
                                         'realm',
                                         'site',
                                         'max_nodes',
-                                        'max_roles',
-                                        'max_tokens',
                                         'max_policies',
                                         'limit',
                                         ],
@@ -446,32 +443,6 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     }
 
 def get_acls(**kwargs):
@@ -616,24 +587,8 @@ class Pool(OTPmeObject):
         self._default_acls = get_default_acls()
         self._recursive_default_acls = get_recursive_default_acls()
 
-        # Roles should not inherit ACLs by default.
+        # Pools should not inherit ACLs by default.
         self.acl_inheritance_enabled = False
-
-        self._sync_fields = {
-                    'host'  : {
-                        'trusted'  : [
-                            "TOKENS",
-                            "ROLES",
-                            ]
-                        },
-
-                    'node'  : {
-                        'untrusted'  : [
-                            "TOKENS",
-                            "ROLES",
-                            ]
-                        },
-                    }
 
     def _set_name(self, name: str):
         """ Set object name. """

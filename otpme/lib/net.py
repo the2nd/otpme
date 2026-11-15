@@ -182,9 +182,9 @@ def get_otpme_site(domain):
     """
     Resolve OTPme realm/site via DNS.
 
-    You need to add the following DNS SRV records:
-        _otpme-realm    TXT "otpme.org"
-        _otpme-site     TXT "berlin"
+    You need to add the following DNS TXT records:
+        _otpme-realm._tcp    TXT "otpme.org"
+        _otpme-site._tcp     TXT "berlin"
 
     """
     realm_record = f'_otpme-realm._tcp.{domain}'
@@ -223,16 +223,15 @@ def get_daemon_uri(daemon, domain):
     """
     Resolve OTPme daemon socket URI via DNS.
 
-    Currently we support resolving of authd and joind socket URIs.
+    Only joind, for the join: a login reaches authd by the FQDNs of the
+    site. There was a branch for authd as well (_otpme-login), which
+    nothing ever called.
 
-    You need to add the following DNS SRV records:
-        _otpme-login    SRV 10 1 2020 login.otpme.org.
-        _otpme-join     SRV 10 1 2024 login.otpme.org.
+    You need to add the following DNS SRV record:
+        _otpme-join._tcp    SRV 10 1 2024 login.otpme.org.
 
     """
-    if daemon == "authd":
-        srv_record = f'_otpme-login._tcp.{domain}'
-    elif daemon == "joind":
+    if daemon == "joind":
         srv_record = f'_otpme-join._tcp.{domain}'
     else:
         msg = _("Unsupported daemon: {daemon}")

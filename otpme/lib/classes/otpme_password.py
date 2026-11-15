@@ -25,6 +25,8 @@ from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.classes.otpme_object import name_len_setter
+from otpme.lib.classes.otpme_object import uuid_orphans
+from otpme.lib.classes.otpme_object import uuid_exists
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 from otpme.lib.pass_crypt import members_tag
@@ -54,6 +56,21 @@ OFFLINE_CACHE_PARAMETER = "password_offline_cache"
 OFFLINE_CACHE_TYPES = ["host", "group", "role"]
 REGISTER_BEFORE = []
 REGISTER_AFTER = ["otpme.lib.classes.site"]
+# The auth on action hooks of a password, see register_hooks().
+PASS_HOOKS = [
+            "add_entry",
+            "change_entry",
+            "del_entry",
+            "update_keys",
+            "add_node",
+            "remove_node",
+            "add_host",
+            "remove_host",
+            "add_device",
+            "remove_device",
+            "add_client",
+            "remove_client",
+            ]
 
 read_acls = []
 
@@ -106,7 +123,9 @@ commands = {
                     },
                 'exists'    : {
                     'method'            : 'add_entry',
-                    'oargs'             : ['with_entry'],
+                    # node and the others only to refuse them, see
+                    # add_entry().
+                    'oargs'             : ['with_entry', 'node', 'host', 'device', 'client'],
                     'job_type'          : 'process',
                     },
                 },
@@ -154,6 +173,8 @@ commands = {
                     },
                 'exists'    : {
                     'method'            : 'update_keys',
+                    # Only to refuse them, see update_keys().
+                    'oargs'             : ['all_passwords', 'unit'],
                     'job_type'          : 'process',
                     },
                 },
@@ -314,15 +335,6 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'auto_disable'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'change_auto_disable',
-                    'args'              : ['auto_disable'],
                     'job_type'          : 'process',
                     },
                 },
@@ -538,32 +550,6 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     }
 
 def get_acls(**kwargs):
@@ -577,16 +563,21 @@ def get_value_acls(split=False, **kwargs):
         set_acls = result[1]['set']
         enable_acls = result[1]['enable']
         disable_acls = result[1]['disable']
+        edit_acls = result[1]['edit']
     else:
         read_acls = result['view']
         set_acls = result['set']
         enable_acls = result['enable']
         disable_acls = result['disable']
+        edit_acls = result['edit']
     # A password has no status: nothing would read it. Who may read one
-    # is said by view:entries and the keys.
+    # is said by view:entries and the keys. So there is no time to
+    # disable it at either.
     read_acls.remove("status")
+    read_acls.remove("auto_disable")
     enable_acls.remove("object")
     disable_acls.remove("object")
+    edit_acls.remove("auto_disable")
     for x in config_params:
         acl = f"config:{x}"
         read_acls.append(acl)
@@ -625,6 +616,15 @@ def load_members(value):
     elif isinstance(value, list):
         data['members'] = list(value)
     return data
+
+def members_orphans(value):
+    """ The members of password_store_members that are gone. Only said by
+    remove_orphans(), not taken out (orphans_report_only): the
+    signatures were made over the members, and a changed list needs
+    sign_password_members and update_keys, which is for an admin to
+    run. """
+    members = load_members(value)['members']
+    return [x for x in members if not uuid_exists(x)]
 
 def dump_members(member_uuids, signatures):
     """ The value of password_store_members, see load_members(). """
@@ -1119,8 +1119,9 @@ def update_keys_of_all(all_passwords=False, unit=None,
             msg = _("Unknown unit: {unit}")
             msg = msg.format(unit=unit)
             return callback.error(msg)
-        unit_path = list(result)[0]
-        unit_path = result[unit_path]['path']
+        # One return attribute gives a list of its values, not a dict
+        # per UUID.
+        unit_path = result[0]
     passwords = backend.search(object_type="pass",
                             attribute="uuid",
                             value="*",
@@ -1368,6 +1369,8 @@ def register():
                                     setter=members_setter,
                                     getter=members_getter,
                                     merging_setter=True,
+                                    orphans=members_orphans,
+                                    orphans_report_only=True,
                                     object_types=['site', 'unit'])
     # The hosts that may keep the passwords below for offline use, see
     # get_pass_cache().
@@ -1377,6 +1380,7 @@ def register():
                                     getter=offline_cache_getter,
                                     deller=offline_cache_deller,
                                     merging_setter=True,
+                                    orphans=uuid_orphans,
                                     object_types=['site', 'unit'])
     register_backend()
     register_object_unit()
@@ -1398,6 +1402,19 @@ def register():
                                     object_types=pass_types)
     config.register_index_attribute("client", sync=[],
                                     object_types=pass_types)
+    register_hooks()
+
+def register_hooks():
+    """ The auth on action hooks of a password.
+
+    The methods ran these policies already, but without the hooks an
+    auth on action policy could not name them, only "modify", which
+    every change runs. Reading has no hook: with --offline the host
+    reads what it keeps, without asking a node, so the key of the user
+    is the hurdle there, not a policy.
+    """
+    for hook in PASS_HOOKS:
+        config.register_auth_on_action_hook("pass", hook)
 
 def register_object_unit():
     """ Register default unit for this object type. """
@@ -1540,7 +1557,9 @@ class OTPmePassword(OTPmeObject):
         # _write().
         self._cache_notify_users = set()
 
-        # Nodes of other sites get the name and nothing more.
+        # No fields for other peers: a password goes to the nodes of its
+        # own site only, never to a host and never to another site or
+        # realm (see skip_passwords in backend.get_sync_list()).
         self._sync_fields = {}
 
     def _set_name(self, name: str):
@@ -1845,12 +1864,25 @@ class OTPmePassword(OTPmeObject):
     def add_entry(
         self,
         with_entry: bool=True,
+        node: Union[str,None]=None,
+        host: Union[str,None]=None,
+        device: Union[str,None]=None,
+        client: Union[str,None]=None,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Add an entry. Its name and fields stay on the client. """
+        """ Add an entry. Its name and fields stay on the client.
+
+        <node>, <host>, <device> and <client> come from "add" on a
+        password that is there already. They are refused: before, they
+        never got here and were dropped without a word.
+        """
+        if node or host or device or client:
+            msg = _("Password already exists: {pass_name}: use add_node, add_host, add_device or add_client")
+            msg = msg.format(pass_name=self.name)
+            return callback.error(msg, exception=AlreadyExists)
         if not with_entry:
             msg = _("Password already exists: {pass_name}")
             msg = msg.format(pass_name=self.name)
@@ -1909,6 +1941,8 @@ class OTPmePassword(OTPmeObject):
     @object_changelog("update keys")
     def update_keys(
         self,
+        all_passwords: bool=False,
+        unit: Union[str,None]=None,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -1919,7 +1953,14 @@ class OTPmePassword(OTPmeObject):
         Somebody who left may still hold the key from an earlier read,
         so then the client makes a new one and encrypts the entries with
         it. What they read before stays read: change those passwords.
+
+        <all_passwords> and <unit> come from "update_keys --all" with a
+        password named. They are refused: before, they never got here,
+        and only this password was done without a word.
         """
+        if all_passwords or unit:
+            msg = _("Give a password, or --all for all you may give keys of, not both.")
+            return callback.error(msg)
         if run_policies:
             if not self._run_entry_policies("update_keys",
                                             callback=callback,

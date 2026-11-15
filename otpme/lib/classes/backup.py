@@ -202,6 +202,8 @@ Snapshot deletion & garbage collection
 CHUNK_SIZE     = 4 * 1024 * 1024   # 4 MiB
 SALT_SIZE      = 32
 KEY_SIZE       = 32                 # AES-256
+# The modes a repository can have, see init_repository().
+BACKUP_MODES   = ("pack", "tree")
 NONCE_SIZE     = 12                 # AES-GCM
 KDF_ITERATIONS = 600_000
 COMPRESS_LEVEL = 6                  # zlib 1-9 (6 = good balance)
@@ -327,6 +329,21 @@ def decrypt_path(siv: AESSIV, enc_path: str) -> str:
 # ---------------------------------------------------------------------------
 # ACL helpers (module-level, used by BackupClient)
 # ---------------------------------------------------------------------------
+
+def normalize_filter_path(path: Optional[str]) -> Optional[str]:
+    """ A path in a snapshot the way it is stored: relative to what was
+    backed up, without a "/" in front or behind ("etc/otpme"). None for
+    the whole snapshot.
+
+    It is looked up by its encrypted form, and "/etc/otpme" encrypts to
+    another one than "etc/otpme": a restore or a listing of a path
+    written the way paths are written found nothing. """
+    if path is None:
+        return None
+    path = path.strip("/")
+    if not path or path == ".":
+        return None
+    return path
 
 def _format_size(nbytes: int) -> str:
     """Format byte count as human-readable string (e.g. '1.2 GiB')."""
@@ -678,7 +695,7 @@ class BackupServer:
         self._lock_count = 0
 
     def _load_mode(self):
-        """Read repository mode from mode file, default to 'tree'."""
+        """Read repository mode from mode file, default to 'pack'."""
         if self.mode_file.exists():
             self.mode = self.mode_file.read_text().strip()
         else:
@@ -3403,11 +3420,14 @@ class BackupClient:
         excluded_dirs = []  # relative prefixes of excluded directories
         included_dirs = []  # relative prefixes of included directories
         walk_skip_dirs = []  # absolute prefixes for _walk to skip scanning
-        # Normalize patterns: strip trailing slashes
+        # Normalize patterns: strip trailing slashes, and leading ones as
+        # well. They are matched against the path relative to <source>
+        # ("var/cache"), so "/var/cache" never matched and the directory
+        # went into the backup without a word.
         if excludes:
-            excludes = [pat.rstrip("/") for pat in excludes]
+            excludes = [pat.strip("/") for pat in excludes]
         if includes:
-            includes = [pat.rstrip("/") for pat in includes]
+            includes = [pat.strip("/") for pat in includes]
 
         t_start = time.monotonic()
 
@@ -3816,6 +3836,7 @@ class BackupClient:
             self.server.unlock_repo()
 
     def _restore_locked(self, snap_name, dest, filter_path, dry_run):
+        filter_path = normalize_filter_path(filter_path)
         if filter_path is not None:
             self.logger.info("Restoring '%s:%s' → %s", snap_name, filter_path, dest)
         else:
@@ -4055,6 +4076,7 @@ class BackupClient:
                        full_path: bool = False,
                        recursive: bool = False) -> None:
         """Print snapshot contents chunk-wise (no RAM accumulation)."""
+        filter_path = normalize_filter_path(filter_path)
         enc_filter = self.encrypt_rel_path(filter_path) if filter_path else None
         self.server.open_entry_cursor(snap_name, enc_filter)
         try:

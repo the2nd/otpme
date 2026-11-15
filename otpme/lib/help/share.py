@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-share {command} [share]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-share show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [share]'),
+                    '_cmd_usage_help' : _('Usage: otpme-share show [--policy-limit <limit>] [--node-limit <limit>] [--host-limit <limit>] [--group-limit <limit>] [--pool-limit <limit>] [--token-limit <limit>] [--role-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [share]'),
                     'cmd'   :   '--fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": --node-limit :max_nodes: --host-limit :max_hosts: --group-limit :max_groups: --pool-limit :max_pools: --token-limit :max_tokens: --role-limit :max_roles: --policy-limit :max_policies: --limit :limit: [|object|]',
                     '_help' :   {
                                     'cmd'                           : _('Show share(s)'),
@@ -45,12 +45,12 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-share list [--attribute attribute] [-a] [regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-share list [--attribute attribute] [-a] [pattern]'),
                     'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List shares.'),
                                     '-a'                        : _('List all shares.'),
-                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
+                                    '--attribute <attribute>'   : _('Match the pattern against this attribute instead of the name.')
                                 },
                 },
 
@@ -386,7 +386,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-share info {share} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-share info [--language <language>] {share} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set share info'),
@@ -395,7 +395,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-share dump_info {share}'),
+                    '_cmd_usage_help' : _('Usage: otpme-share dump_info [--language <language>] {share}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump share info'),
@@ -404,7 +404,7 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-share config -d -a {share} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-share config [-d] [-a] {share} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to share.'),
@@ -421,24 +421,12 @@ cmd_help = {
                                 },
                 },
 
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
     '_show_config'    : {
                     'cmd'   :   '<|object|>',
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-share export --password <password> {share}'),
+                    '_cmd_usage_help' : _('Usage: otpme-share export [--password <password>] {share}'),
                     'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export share config to stdout.'),
@@ -698,6 +686,9 @@ cmd_help = {
     'list_nodes'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share list_nodes [--return-type <return_type>] {share}'),
                     'cmd'   :   '--return-type :"return_type": [|object|]',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
                     '_help' :   {
                                     'cmd'                       : _('List assigned nodes.'),
                                     '--return-type'             : _('Attribute to return.'),
@@ -712,7 +703,7 @@ cmd_help = {
                                 },
                 },
     'list_users'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-share list_users {share}'),
+                    '_cmd_usage_help' : _('Usage: otpme-share list_users [--return-type <type>] {share}'),
                     'cmd'   :   '--return-type :"return_type": [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List users.'),
@@ -720,7 +711,7 @@ cmd_help = {
                                 },
                 },
     'list_tokens'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-share list_tokens {share}'),
+                    '_cmd_usage_help' : _('Usage: otpme-share list_tokens [--return-type <type>] [--token-types <hotp,totp>] {share}'),
                     'cmd'   :   '--return-type :"return_type": --token-types :[token_types]: [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List assigned tokens.'),

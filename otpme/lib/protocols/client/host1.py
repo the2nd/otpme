@@ -49,6 +49,22 @@ class OTPmeHostP1(OTPmeClient1):
             object_id = response
         return object_id
 
+    def get_radius_client(self, nasid=None, client_ip=None):
+        """ The client of a RADIUS request: its name and auth cache, or
+        None for an unknown one. """
+        command = "get_radius_client"
+        command_args = {
+                        'nasid'         : nasid,
+                        'client_ip'     : client_ip,
+                        }
+        status, \
+        status_code, \
+        response, \
+        binary_data = self.connection.send(command, command_args)
+        if not status:
+            raise OTPmeException(response)
+        return response
+
     def get_uuid(self, object_id):
         """ Resolve OID to UUID. """
         object_uuid = None

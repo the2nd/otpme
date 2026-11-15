@@ -2301,8 +2301,14 @@ class OTPmeServer1(object):
                 msg, log_msg = _("Client sent smartcard data for unknown token.", log=True)
                 self.logger.warning(log_msg)
                 raise OTPmeException(msg) from None
+            # A handler that binds its challenge to the session key and
+            # keeps it in its own state (fido2) binds it there.
+            prepare_args = {}
+            if getattr(smartcard_server_handler, "binds_challenge", False):
+                prepare_args['session_key'] = self.session_key
             try:
-                smartcard_data = smartcard_server_handler.prepare_authentication(smartcard_data)
+                smartcard_data = smartcard_server_handler.prepare_authentication(smartcard_data,
+                                                                                **prepare_args)
             except Exception as e:
                 log_msg = _("Smartcard handler exception: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)

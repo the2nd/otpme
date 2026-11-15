@@ -12,7 +12,7 @@ except Exception:
     pass
 
 from otpme.lib import stuff
-from otpme.lib import backend
+from otpme.lib import connections
 
 from otpme.lib.exceptions import *
 
@@ -54,7 +54,10 @@ def verify(client, username, password, cache_timeout):
     except KeyError:
         session_uuid = None
     if session_uuid:
-        session_oid = backend.get_oid(session_uuid)
+        # The FreeRADIUS module runs as FREERADIUS_USER and has no
+        # backend: hostd tells whether the session is still there.
+        hostd_conn = connections.get("hostd")
+        session_oid = hostd_conn.get_oid(session_uuid)
         if not session_oid:
             raise AuthFailed()
     try:

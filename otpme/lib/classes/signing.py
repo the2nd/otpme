@@ -74,22 +74,58 @@ def resolve_tags(tags, from_uuid=True):
                 x_list.append(object_id.full_oid)
         else:
             if not object_id:
+                # <type>:<site>/<name> for an object of another site.
+                # Without it only an OID could name one.
+                search_site = config.site
+                object_name = object_xxx
+                site_given = False
+                if "/" in object_xxx:
+                    search_site, object_name = object_xxx.split("/", 1)
+                    site_given = True
                 result = stuff.search(object_type=object_type,
                                         attribute="name",
-                                        value=object_xxx,
+                                        value=object_name,
                                         realm=config.realm,
-                                        site=config.site,
+                                        site=search_site,
                                         return_type="full_oid")
+                # Not in this site: in the whole realm. A group, user or
+                # host name is unique there, and needs no site. A role
+                # name is not (REALM_USER is in every site), so more than
+                # one is refused; this site was asked first, so that
+                # role:REALM_USER means the one of this site, as before.
+                if not result and not site_given:
+                    result = stuff.search(object_type=object_type,
+                                            attribute="name",
+                                            value=object_name,
+                                            realm=config.realm,
+                                            return_type="full_oid")
+                    search_site = None
+                if len(result) > 1:
+                    sites = sorted(set(oid.get(x).site for x in result))
+                    msg = _("Object in tag is in more than one site ({sites}), use <type>:<site>/<name>: {tag}")
+                    msg = msg.format(sites=", ".join(sites), tag=tag)
+                    raise InvalidTag(msg)
                 if not result:
                     # Kept as it was written, it would be a tag no
                     # signature carries: a typo, or an object of another
                     # site, and nothing would check out anymore.
-                    msg = _("Unknown object in tag (searched in site {site}): {tag}")
-                    msg = msg.format(site=config.site, tag=tag)
+                    if search_site:
+                        msg = _("Unknown object in tag (searched in site {site}): {tag}")
+                        msg = msg.format(site=search_site, tag=tag)
+                    else:
+                        msg = _("Unknown object in tag: {tag}")
+                        msg = msg.format(tag=tag)
                     raise InvalidTag(msg)
                 object_id = result[0]
                 object_id = oid.get(object_id)
-            object_uuid = stuff.resolve_oid(object_id)
+            # An OID of an object that is not there: said as the name
+            # above is, not as an UnknownOID the callers do not expect.
+            try:
+                object_uuid = stuff.resolve_oid(object_id)
+            except UnknownOID:
+                msg = _("Unknown object in tag: {tag}")
+                msg = msg.format(tag=tag)
+                raise InvalidTag(msg) from None
             tag_str = f"{object_type}:{object_uuid}"
             x_list.append(tag_str)
         # abc
@@ -249,7 +285,13 @@ def verify_signatures(signer_type, signers, signatures, sign_data,
                                             tags=tags,
                                             login_interface=login_interface,
                                             quiet=quiet)
-                except VerificationFailed as e:
+                except (VerificationFailed,
+                        SignatureRevoked,
+                        FaultySignature,
+                        InvalidPublicKey) as e:
+                    # A signature that does not hold, for what it says
+                    # or for what was done with it since: an answer, not
+                    # a bug, so no raise_exception() as below.
                     # Resolved in the error paths only: it costs a lookup
                     # per signature and only a failure needs the details.
                     sign_info = get_signature_info(sig)
@@ -1005,7 +1047,7 @@ class OTPmeSignature(object):
         if not stuff.object_exists(sign_oid):
             return
         msg = _("Signature revoked.")
-        raise OTPmeException(msg)
+        raise SignatureRevoked(msg)
 
     def check_tags(self, tags, login_interface=None):
         """ Check if given tags match signature tags. """

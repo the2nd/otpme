@@ -37,8 +37,8 @@ APT_STAMP_DIRS = ["/var/lib/apt/lists", "/etc/apt/preferences.d"]
 APT_STAMP_FILES = ["/etc/apt/preferences"]
 # The file a package writes when it needs the host to be rebooted: the
 # kernel, but libc and systemd as well. Written by
-# update-notifier-common or by needrestart, and a host that has neither
-# never gets it, see get_reboot_required().
+# update-notifier-common, which Ubuntu has and Debian does not, so a
+# Debian host never gets it, see get_reboot_required().
 REBOOT_REQUIRED_FILE = "/var/run/reboot-required"
 # What writes that file. Here to tell "nothing asked for a reboot" from
 # "nothing on this host would have asked".
@@ -227,8 +227,8 @@ class DebianHandler(ConfJobHandler):
         /var/run/reboot-required is what a package writes when it needs
         a reboot, and that is not only the kernel: libc and systemd ask
         for one as well. But the file is written by
-        update-notifier-common or by needrestart, and a host that has
-        neither never gets it, however much it needs a reboot.
+        update-notifier-common, which Ubuntu has and Debian does not, and
+        a host without it never gets it, however much it needs a reboot.
 
         So the kernel is compared as well, which needs nothing
         installed and is the reason for a reboot in nearly every case.

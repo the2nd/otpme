@@ -1,13 +1,36 @@
-.TH OTPME-GROUP 1 "2026-10-18" "OTPme 0.3.0a283" "OTPme Manual"
+.TH OTPME-GROUP 1 "2026-10-31" "OTPme 0.3.0a288" "OTPme Manual"
 .SH NAME
-otpme-group \- manage OTPme groups
+otpme-group \- manage groups: the POSIX groups of the users, in LDAP and on the hosts
 .SH SYNOPSIS
 .B otpme-group
 .I command
 [\fIoptions\fR] [\fIgroup\fR]
 .SH DESCRIPTION
+.na
+.nh
 .B otpme-group
-manages POSIX/LDAP groups in the OTPme system. Groups have a GID number and can contain users, tokens, and roles. Each user has a default group, and groups are exposed via LDAP with standard attributes.
+adds, changes and deletes groups.
+A group is a POSIX group: it has a name and a \fBgidNumber\fR, and in LDAP and on the hosts it lists its members.
+.PP
+The members are the owners of the tokens put into the group, also of those in its roles, and the users whose default group it is, see \fBToken and Role Assignment\fR.
+A user is never put in directly.
+Every user has a default group, its primary group on the hosts.
+A new user gets the one of \fB\-\-group\fR, else the one of its template, else the one a \fBdefaultgroups\fR policy names, else the group named like the site.
+\fBotpme\-user group\fR changes it, see
+.BR otpme\-user (1).
+.PP
+A group has two more uses:
+.RS
+.IP \(bu 2
+Its hosts are hosts of the shares that are limited to hosts and have the group, see \fBHost Management\fR.
+.IP \(bu 2
+Its sync users are copied to the hosts that name it as sync group, see \fBSync User Management\fR.
+.RE
+.PP
+A new group goes into the unit \fBgroups\fR, unless a \fBdefaultunits\fR policy names another.
+The groups the realm and the sites come with (\fBroot\fR, \fBrealmusers\fR and the group named like each site) cannot be deleted, moved or renamed.
+.hy
+.ad
 .SH COMMANDS
 .SS Group Management
 .na
@@ -67,7 +90,11 @@ Which column to sort by, and the other way round.
 .IP
 A column you may not see says \fB\-\fR.
 With a group named, this prints the object itself instead of a table row, one value per line.
-A name that is no group is taken as a regex.
+\fBshow\fR \fIgroup\fB$\fR prints that one group as a table row.
+A name that is no group is a pattern with \fB*\fR, not a regex, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
 .TP
 .B show_oid \fR[\fB\-\-full\fR] \fIgroup\fR
 Show the OID of the group: \fB\%group|<realm>/<name>\fR.
@@ -80,10 +107,13 @@ Show the UUID of the group.
 .br
 Needs the ACL \fBview_public:object\fR.
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
-List the group names, and with a regex only those that match it.
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+List the group names, and with a pattern only those that match it, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
 You get the groups you may change; \fB\-a\fR adds those you may only look at.
-\fB\-\-attribute\fR matches the regex against that attribute instead of the name.
+\fB\-\-attribute\fR matches the pattern against that attribute instead of the name.
 .TP
 .B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIgroup\fR
 .TQ
@@ -307,16 +337,18 @@ What was done and by whom stays as it is.
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIgroup\fR
-Show the changelog of the group.
+Show the changelog of the group, one entry per line: its \fIentry_id\fR, the time, who made the change and what was done, then a detail in round brackets and the comment in square brackets where there are any.
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fIgroup\fR \fIentry_id\fR \fIcomment\fR
 Set the comment of that entry, or replace the one it has.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B del_changelog \fIgroup\fR \fIentry_id\fR
 Remove the comment of that entry.
 The entry itself stays, and an entry without a comment is refused.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIgroup\fR
@@ -368,8 +400,7 @@ The somebody is a role or a token, never a user.
 .PP
 What the three forms \fBacl\fR, \fB+acl\fR and \fB++acl\fR mean is under \fBACLs\fR in
 .BR otpme (7).
-Which ACLs a group knows is in
-.BR otpme\-acls (7).
+Tab completion after \fBadd_acl\fR offers the ACLs a group knows.
 A group has no default ACLs, \fB+acl\fR and \fB++acl\fR: nothing lies in a group that could get them.
 .PP
 Adding and removing ask first; the global option \fB\-f\fR skips the question.
@@ -378,7 +409,7 @@ Adding and removing ask first; the global option \fB\-f\fR skips the question.
 Give a role or a token one or more ACLs on this group.
 .br
 \fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
-\fIowner\fR is the path of that role or token.
+\fIowner\fR names it the way \fBlist_acls\fR prints it: a role as \fIsite/name\fR, or by its name alone on its own site; a token as \fI\%user/token\fR.
 An ACL can carry a value, for example \fBview:tokens\fR.
 To give several ACLs at once, separate them with commas: \fB\%view:tokens,add:token\fR.
 .br
@@ -418,154 +449,215 @@ Needs the ACL \fBenable:acl_inheritance\fR.
 A move leaves the ACLs of the group as they are again.
 .br
 Needs the ACL \fBdisable:acl_inheritance\fR.
-.SS Configuration and Attributes
+.SS Group Configuration
+.na
+.nh
+A group has three config parameters: \fBchangelog\fR, \fBallow_changelog_clearing\fR and \fBauto_sign\fR, see \fBCONFIG PARAMETERS\fR.
+A parameter is looked up at the group, then at each unit above it, then at the site.
 .TP
 .B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIgroup\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
+Set a parameter on the group.
+.RS
 .TP
-.B show_config \fIgroup\fR [\fIparameter\fR]
-Show all configuration parameters.
+.B \-d
+Remove the parameter from the group, or with a value only that one value from a list.
+It is not set back to a default: what applies afterwards is what a unit above or the site says.
+.TP
+.B \-a
+Append the value to a parameter that holds a list, instead of replacing what is there.
+.RE
+.IP
+The ACL is per parameter, \fBset:config:<parameter>\fR.
+.TP
+.B show_config \fIgroup\fR \fR[\fIparameter\fR]
+The parameters set on the group itself, or only the one named.
+Nothing is shown for a parameter that the group gets from a unit or from the site.
 .TP
 .B get_config \fIgroup\fR \fIparameter\fR
-Show the value of a single configuration parameter.
+What the parameter comes to for the group, once the group, the units above and the site have been looked at.
+So this answers what applies, where \fBshow_config\fR answers what was set here.
 .TP
 .B description \fIgroup\fR \fR[\fIdescription\fR]
-Set group description.
+Set the description.
+Without one OTPme asks and offers the current text for editing.
+Needs \fBedit:description\fR.
 .TP
 .B info \fR[\fB\-\-language\fR \fILANG\fR] \fIgroup\fR \fR[\fIinfo\fR]
-Set free-form info text. If \fIinfo\fR is omitted, the current info text is
-opened in the editor specified by the \fBEDITOR\fR environment variable.
+Set free-form info text.
+If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
+Needs \fBedit:info\fR.
+.br
+Without \fB\-\-language\fR the text is the administrator's own note.
+Nothing shows the info of a group to a user, so a text for a language stays a note as well.
 .TP
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIgroup\fR
-Dump the info text to stdout.
+Write one of those texts to stdout.
+\fB\-\-language\fR picks which one; without it you get the note of the administrator.
+Needs \fBview:info\fR.
+.hy
+.ad
+.SS Extensions and LDAP Attributes
+A group is also an LDAP entry, \fBcn=\fIgroup\fR under its unit, for example \fBcn=developers,ou=groups,ou=berlin,dc=example,dc=org\fR.
+An extension is what gives it one: the object classes it is of, and the attributes those classes allow.
+What \fBldapd\fR serves and what \fBshow_ldif\fR prints comes from them.
+On a host, the members of a group are in the NSS files as well.
+.PP
+A group has the extensions \fBbase\fR and \fBposix\fR.
+\fBposix\fR makes it a \fBposixGroup\fR with \fBcn\fR, \fBgidNumber\fR and \fBmemberUid\fR, and it needs \fBbase\fR.
+Neither can be removed: \fBposix\fR brings \fBcn\fR, which names the entry, and \fBposix\fR needs \fBbase\fR.
+No other extension is for groups.
+.PP
+OTPme fills in two attributes itself:
+.RS
+.TP
+.B gidNumber
+Taken from the ID range policy of the unit or the site when the group is added, see
+.BR otpme\-policy (1).
+A number you set yourself must be in that range and must not be used by another group.
+When it changes, the users with this group as their primary group get the new number as well.
+.TP
+.B memberUid
+The users of the group: the owners of its tokens, also of the tokens in its roles, and the users with this group as their primary group.
+OTPme writes it when the members change, so it is read-only.
+\fBshow_ldif \-a memberUid\fR lists the members.
+.RE
+.PP
+The commands that change something ask first; the global option \fB\-f\fR skips the question.
 .TP
 .B add_extension \fIgroup\fR \fIextension\fR
 Add an extension to the group.
+One that is not for groups is refused, and so is one the group already has; for a group, that is every extension today.
+.br
+Needs the ACL \fBadd:extension\fR.
 .TP
 .B remove_extension \fIgroup\fR \fIextension\fR
-Remove an extension.
+Take it away again, with the classes and attributes it brought.
+For a group, both extensions stay, see above.
+.br
+Needs the ACL \fBremove:extension\fR.
 .TP
-.B add_attribute \fIgroup\fR \fIattribute\fR=\fIvalue\fR
-Add an LDAP attribute.
+.B add_attribute \fIgroup\fR \fIattribute\fR\fB=\fR[\fIvalue\fR]
+Set an LDAP attribute of the group.
+.RS
+.PP
+Only an attribute \fBposixGroup\fR allows.
+\fBcn\fR is read-only: it is the name of the group.
+\fBmemberUid\fR is read-only as well, see above.
+\fBuserPassword\fR is refused: a group is no account to log in with.
+An attribute can hold more than one value, so this adds one and leaves the others.
+.PP
+Everything after the first \fB=\fR is the value.
+Without a value OTPme fills in its own where it has one: for \fBdescription\fR, the description of the group.
+.PP
+The ACL is per attribute, \fBadd:attribute:\fIattribute\fR, and a plain \fBadd:attribute\fR covers all of them.
+.RE
 .TP
-.B del_attribute \fIgroup\fR \fIattribute\fR=\fIvalue\fR
-Remove an LDAP attribute.
+.B modify_attribute \fIgroup\fR \fIattribute\fR \fIold_value\fR \fInew_value\fR
+Put \fInew_value\fR in the place of \fIold_value\fR, and leave the other values of the attribute alone.
+An \fIold_value\fR the group does not have is an error.
+This is the way to give a group another \fBgidNumber\fR.
+.br
+The ACL is \fBedit:attribute:\fIattribute\fR.
+.TP
+.B del_attribute \fIgroup\fR \fIattribute\fR\fB=\fR[\fIvalue\fR]
+Remove that value, or the whole attribute where no value is given.
+\fBcn\fR and \fBmemberUid\fR cannot be removed.
+.br
+The ACL is \fBdelete:attribute:\fIattribute\fR.
 .TP
 .B add_object_class \fIgroup\fR \fIclass\fR
 Add an LDAP object class.
+Only a class an extension of the group knows is taken, and for a group that is \fBposixGroup\fR, which it has already.
+.br
+Needs the ACL \fBadd:object_class\fR.
 .TP
 .B del_object_class \fIgroup\fR \fIclass\fR
-Remove an LDAP object class.
+Remove an object class again, with the attributes only it allows.
+The class that allows the attribute naming the entry stays, and for a group that is \fBposixGroup\fR, its only class.
+.br
+Needs the ACL \fBdelete:object_class\fR.
 .TP
 .B show_ldif \fIgroup\fR \fR[\fB\-a\fR \fIattribute1,attribute2\fR]
-Show LDIF representation of the group. Use \fB\-a\fR to show only given attributes.
-.SS Import/Export
+The group as LDAP sees it.
+.B \-a
+prints only those attributes.
+.SS Export and Cleanup
 .TP
-.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIgroup\fR
-Export group configuration.
+.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIgroup\fR
+Write the whole object of the group to stdout, as JSON: its tokens, roles, ACLs, policies, config parameters, LDAP attributes and the rest.
+\fBotpme\-tool import\fR reads it back.
+.br
+A group holds no key and no secret, so \fB\-\-password\fR has nothing to encrypt: the output is in clear either way.
+.br
+Needs the ACL \fBexport\fR.
 .TP
 .B remove_orphans \fIgroup\fR
-Remove orphaned object references.
+Remove references to objects that are gone: tokens and roles of the group that were deleted, orphan ACLs and policies.
+.br
+It asks once for what it found; the global option \fB\-f\fR skips the question.
+.br
+Needs the ACL \fBremove:orphans\fR.
 .SH OPTIONS
-.SS Display Options
-.TP
-.B \-a
-Show all groups (across all units).
-.TP
-.B \-z \fISIZE\fR
-Limit output size.
-.TP
-.B \-\-fields \fIFIELD1,FIELD2\fR
-Display only specified fields.
-.TP
-.B \-\-role\-limit \fIN\fR
-Limit number of roles shown.
-.TP
-.B \-\-token\-limit \fIN\fR
-Limit number of tokens shown.
-.TP
-.B \-\-host\-limit \fIN\fR
-Limit number of hosts shown.
-.TP
-.B \-\-policy\-limit \fIN\fR
-Limit number of policies shown.
-.TP
-.B \-\-limit \fIN\fR
-Limit number of items shown per object.
-.TP
-.B \-\-sort\-by \fIFIELD\fR
-Sort output by field.
-.TP
-.B \-\-reverse
-Reverse sort order.
-.TP
-.B \-\-raw
-Output without headers/borders.
-.TP
-.B \-\-csv
-Output as CSV.
-.TP
-.B \-\-csv\-sep \fISEP\fR
-CSV separator character.
-.TP
-.B \-\-attribute \fIATTR\fR
-Of \fBlist\fR: match the regex against this attribute instead of the name.
-.SS Token Options
-.TP
-.B \-\-sign
-Sign the object with default tags.
-.TP
-.B \-\-tags \fItag1,tag2\fR
-Add tags to signature.
-.TP
-.B \-\-no\-auto\-sign
-Do not automatically sign when adding a token.
-.TP
-.B \-\-keep\-sign
-Do not remove any signature when removing a token.
-.SS General Options
-.TP
-.B \-\-keep\-acls
-Preserve ACLs when moving group.
-.TP
-.B \-\-password \fIPASS\fR
-Password for encrypting exports.
+Every option belongs to one command and is described with that command above.
 .PP
-Global options are available for all commands. See
-.BR otpme (1)
-for details.
+Global options work with every command, see
+.BR otpme (1).
 .SH CONFIG PARAMETERS
-Configuration parameters can be set with the \fBconfig\fR command and displayed with \fBshow_config\fR.
-For a complete description of all available parameters and their applicable object types, see
+A group takes these.
+What each of them does, and how a parameter is resolved, is in
 .BR otpme (7).
+.TP
+.B auto_sign \fR(bool, default: false)
+Whether \fBadd_token\fR signs the token it puts into the group, as \fB\-\-sign\fR does, see above.
+One set on your login token itself comes first and counts for everything you change.
+\fBenable_autosign\fR of your user signs as well, see
+.BR otpme\-user (1).
+\fB\-\-no\-auto\-sign\fR skips it for one call.
+.TP
+.B changelog \fR(bool, default: true)
+Whether the commands on this group are written to its changelog.
+.TP
+.B allow_changelog_clearing \fR(bool, default: true)
+Whether that changelog may be cleared.
 .SH EXAMPLES
-.SS Managing Groups
+.SS A group for the developers
 .TP
 .B otpme-group add developers
-Create a new group
+The group goes into the unit \fBgroups\fR and gets the next free \fBgidNumber\fR.
 .TP
-.B otpme-group add \-\-attributes gidNumber=1001 developers
-Create group with specific GID
+.B otpme-group add_token developers alice/login
+\fBalice\fR is a member: the name is in \fBmemberUid\fR, on the hosts as well.
+.TP
+.B otpme-group add_role developers devops
+Everybody with a token in the role \fBdevops\fR is a member too.
 .TP
 .B otpme-group list_users developers
-List users in the group
+The users whose tokens are in the group; not those that come through a role.
 .TP
 .B otpme-group list_default_group_users developers
-List users with this as default group
-.SS Assigning Tokens and Roles
+Who has it as primary group.
+.SS A group with a fixed GID
 .TP
-.B otpme-group add_token developers alice/totp
-Add a token to the group
+.B otpme-group add \-\-attributes gidNumber=5000 staff
+The number must be in the ID range of the unit or the site.
 .TP
-.B otpme-group add_role developers DEV_ROLE
-Add a role to the group
-.SS LDAP
+.B otpme-group modify_attribute staff gidNumber 5000 5001
+A new number; the users with \fBstaff\fR as primary group get it as well.
+.SS SSH only for signed members
 .TP
-.B otpme-group show_ldif developers
-Show LDIF representation
+.B otpme-group add_token \-\-sign developers alice/ssh
+The token of \fBalice\fR is signed for the group.
 .TP
-.B otpme-group show_ldif developers \-a cn,gidNumber
-Show only specific LDAP attributes
+.B otpme-tool add_signer \-\-signer\-type token \-\-tag group:developers 'role|example.org/berlin/admins'
+On a host: an SSH key is let in only with a signature of an admin that carries the tag of the group, see
+.BR otpme\-tool (1).
+.SS On a host
+.TP
+.B otpme-group show_ldif developers \-a memberUid
+The members as LDAP sees them.
+.TP
+.B getent group developers
+The same through NSS on a host.
 .\" BEGIN AUTH ON ACTION HOOKS
 .\" Generated by update_hooks_man.py. Do not edit, the next run
 .\" overwrites it.
@@ -575,28 +667,44 @@ See
 .B Auth On Action Policy
 in
 .BR otpme\-policy (1).
-A group has the hooks every object type has, and these:
+A group has the hooks every object type has, and these; a command of another name is in brackets:
 .RS
 .PP
 .na
 .nh
-add_host, add_role, add_token, move, remove_host, remove_role, remove_token, set_config_parameter.
+add_host, add_role, add_token, move, remove_host, remove_role, remove_token, set_config_parameter\ (config).
 .hy
 .ad
 .RE
 .\" END AUTH ON ACTION HOOKS
 .SH FILES
+.na
+.nh
 .TP
-.I /var/lib/otpme/
-OTPme data directory
+\fI/var/lib/otpme/tree/\fR
+The objects of the realm, on the nodes and, by sync, on the hosts.
+A group is the directory \fI<group>.group\fR in the directory of its unit, e.g. \fI<realm>.realm/<site>.site/groups.unit/developers.group/\fR, with its settings in \fIobject.json\fR.
+Change them with the commands above, not in the file.
+.TP
+\fI/var/cache/otpme/nsscache/group.cache\fR
+The groups with their \fBgidNumber\fR and \fBmemberUid\fR, as NSS reads them on a host or node.
+\fI/etc/group.cache\fR points to it.
+.hy
+.ad
 .SH SEE ALSO
+.na
+.nh
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
-.BR otpme-user (1),
-.BR otpme-role (1),
-.BR otpme-token (1),
-.BR otpme-policy (1)
+.BR otpme\-unit (1),
+.BR otpme\-user (1),
+.BR otpme\-token (1),
+.BR otpme\-role (1),
+.BR otpme\-policy (1),
+.BR otpme\-trash (1),
+.BR otpme\-tool (1)
+.hy
+.ad
 
 .SH AUTHOR
 the2nd <the2nd@otpme.org>

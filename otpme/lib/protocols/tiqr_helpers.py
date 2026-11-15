@@ -208,12 +208,17 @@ def build_enroll_key(site_secret, scope, expiry, user_uuid, token_name,
                     algorithm=ENROLL_ALGORITHM)
 
 
-def parse_enroll_key(site_secret, enroll_key, scope):
+def parse_enroll_key(site_secret, enroll_key, scope, deploy_name=None):
     """ Check a grant and return its claims.
 
     Signature and expiry are checked by the JWT layer. The scope is
     checked here: the key from the QR code must not be accepted where
-    the one from the metadata is expected. Raises ValueError. """
+    the one from the metadata is expected. Raises ValueError.
+
+    A grant names a login token, with one exception: the account
+    recovery of a user who has no SSO token yet. Its token is a deploy
+    token, named <deploy_name>-..., and gets its reach from the roles
+    and access groups the recovery adds it to. """
     try:
         claims = jwt.decode(jwt=enroll_key,
                             secret=site_secret,
@@ -222,9 +227,13 @@ def parse_enroll_key(site_secret, enroll_key, scope):
         raise ValueError(f"invalid enrollment key: {e}") from e
     if claims.get('scope') != scope:
         raise ValueError("enrollment key has the wrong scope")
-    for claim in ('user_uuid', 'token_name', 'login_token_uuid'):
+    for claim in ('user_uuid', 'token_name'):
         if not claims.get(claim):
             raise ValueError(f"enrollment key misses {claim}")
+    if not claims.get('login_token_uuid'):
+        token_name = str(claims['token_name'])
+        if not deploy_name or not token_name.startswith(f"{deploy_name}-"):
+            raise ValueError("enrollment key misses login_token_uuid")
     return claims
 
 

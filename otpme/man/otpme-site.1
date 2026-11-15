@@ -124,11 +124,14 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
-List the site names, and with a regex only those that match it.
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+List the site names, and with a pattern only those that match it, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
 You get the sites you may change; \fB\-a\fR adds those you may only look at.
 .br
-\fB\-\-attribute\fR matches the regex against that attribute instead of the name.
+\fB\-\-attribute\fR matches the pattern against that attribute instead of the name.
 .TP
 .B enable \fIsite\fR
 Enable a disabled site.
@@ -242,13 +245,52 @@ A parameter that is already set is not changed.
 It adds the base ACL groups the site is missing, and gives the ones it has the ACLs this OTPme version says, see
 .BR otpme\-aclgroup (1).
 .PP
-On a site from before the ACL group \fBrealm_user\fR it takes away the ACLs the role \fBREALM_USER\fR had one by one on every object, and gives it \fBrealm_user\fR instead.
-This walks the whole site twice, once to take the old ACLs away and once to give the group, and can take a while.
-It is done once: a second run finds nothing to do.
-.PP
-It takes away two ACLs older versions gave that grant nothing: \fBview_public\fR of the role \fBSITE_ADMIN\fR on the site and on the units that got a copy of it, and on the realm an ACL for the group \fBrealmusers\fR.
+It runs the upgrades the site has not had yet.
+An upgrade is a change that has to happen once to a site an older OTPme version set up.
+Each has a number and the OTPme version that brought it.
+The site keeps the number of the last upgrade that ran, and \fBshow\fR \fIsite\fR shows it as \fBUPGRADE_LEVEL\fR, e.g. \fB2 (0.3.0a287)\fR.
+The command runs them in order and keeps the number after each one.
+If one fails, the next run starts with it again.
+One that ran never runs again.
+A new site starts at the last upgrade, it needs none of them.
+Until the site has had all of them it is in maintenance, and \fBmaintenance\fR \fIsite\fR says which are pending.
+The upgrades so far:
+.RS
+.TP
+.B 1 (0.3.0a287)
+Takes away the ACLs the role \fBREALM_USER\fR had one by one on every object, and gives it the ACL group \fBREALM_USERS\fR instead.
+This walks the whole site twice, and can take a while.
+.TP
+.B 2 (0.3.0a287)
+Takes away ACLs older versions gave that grant nothing: \fBview_public\fR of the role \fBSITE_ADMIN\fR on the site and on the units that got a copy of it, and on the realm an ACL for the group \fBrealmusers\fR.
 A token of \fBSITE_ADMIN\fR is an admin and needs no ACL on its site, and a group cannot hold an ACL.
 \fBSITE_ADMIN\fR keeps \fBview_public\fR on the realm.
+.TP
+.B 3 (0.3.0a288)
+Device names are unique in the realm now, as host names are, and the OID of a device no longer names its site.
+This writes the index entries of the devices of the site again.
+A device name that a device of another site has too is named in the output, and the upgrade goes on.
+Until one of them is renamed with \fBotpme\-device rename\fR, the name gives either of them.
+.TP
+.B 4 (0.3.0a288)
+Puts into the index whether authentication and synchronization with the realm are on.
+\fBotpme\-realm show\fR reads them from there, and said both were off for a realm made before.
+This runs on the master site of the realm alone.
+.TP
+.B 5 (0.3.0a288)
+Gives the site admin role and the realm user role of every site \fBview_public\fR on the realm, which \fBotpme\-realm show\fR wants.
+Only the roles of the first site had it; \fBadd\fR gives it to a new site now.
+This runs on the master site of the realm alone.
+.TP
+.B 6 (0.3.0a288)
+Adds the base ACL group \fBPASSUSER\fR, see
+.BR otpme\-aclgroup (1).
+.TP
+.B 7 (0.3.0a288)
+The base ACL groups have their names in upper case now: \fBrealm_user\fR is \fBREALM_USERS\fR, \fBusermanager\fR is \fBUSERMANAGER\fR, and so on.
+This renames them.
+They keep their UUID, so every ACL they are given in stays as it is.
+.RE
 .PP
 It stores the objects of the site in the format of the new version.
 A new version may store an object in another way.
@@ -307,7 +349,7 @@ If \fIinfo\fR is omitted, the current text is opened in the editor named by the 
 Without
 .B \-\-language
 the text is the administrator's own note about the object, which no user is ever shown.
-With a language it is text for the users in that language.
+A text can be written for a language as well, for the places that show such a text to a user; nothing shows the info of a site, so for a site it stays a note either way.
 .br
 Needs the ACL \fBedit:info\fR.
 .TP
@@ -328,7 +370,11 @@ when it was switched on with
 .BR "maintenance on" ,
 or by
 .B upgrade
-while that runs or after it failed.
+while that runs or after it failed,
+.IP \(bu 2
+when the site has not had every upgrade of the code, see
+.BR upgrade .
+That can come with any update, also one within the same version.
 .PP
 So an update of OTPme puts the site into maintenance by itself, and
 .B upgrade
@@ -554,13 +600,13 @@ Needs the ACL \fBedit:radius_ca_cert\fR.
 \fIsite\fR prints the three as \fBRADIUS_CERT\fR, \fBRADIUS_KEY\fR and \fBRADIUS_CA_CERT\fR, each to whoever holds its \fBview:\fR ACL.
 .SS SSO Configuration
 The SSO portal is the web page users sign in on, and the OIDC provider behind it.
-It runs on every node and host of the site that has
+It runs on every node of the site, and on each host that has
 .B SSO_SERVER="True"
 in
 .IR /etc/otpme/otpme.conf ,
 see
 .BR otpme.conf (5);
-a host has to be made an SSO host first, see
+such a host has to be made an SSO host first, see
 .B add_sso_host
 below.
 .PP
@@ -879,20 +925,23 @@ What was done and by whom stays as it is.
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIsite\fR
-Show the changelog of the site.
+Show the changelog of the site, one entry per line: its \fIentry_id\fR, the time, who made the change and what was done, then a detail in round brackets and the comment in square brackets where there are any.
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fIsite\fR \fIentry_id\fR \fIcomment\fR
 Set the comment of that entry, or replace the one it has.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B del_changelog \fIsite\fR \fIentry_id\fR
 Remove the comment of that entry.
 The entry itself stays, and an entry without a comment is refused.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIsite\fR
 Remove every entry of the changelog.
+Afterwards it holds one entry: that it was cleared.
 .br
 This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
@@ -935,10 +984,9 @@ The somebody is a role or a token, never a user.
 A site is also the top of everything in it, so it is where an ACL for all of it is set.
 A normal ACL is for the site object alone.
 A default ACL, \fB+acl\fR or \fB++acl\fR, is not for the site: it is handed down to the units of the site and from there to the objects it names.
-What the three forms mean, and which ACLs exist, is under \fBACLs\fR in
-.BR otpme (7)
-and in
-.BR otpme\-acls (7).
+What the three forms mean is under \fBACLs\fR in
+.BR otpme (7).
+Tab completion after \fBadd_acl\fR offers the ACLs a site knows.
 .PP
 Adding and removing ask first, once for the whole command; the global option \fB\-f\fR skips the question.
 .TP
@@ -946,7 +994,7 @@ Adding and removing ask first, once for the whole command; the global option \fB
 Give a role or a token one or more ACLs on this site.
 .br
 \fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
-\fIowner\fR is the path of that role or token.
+\fIowner\fR names it the way \fBlist_acls\fR prints it: a role as \fIsite/name\fR, or by its name alone on its own site; a token as \fI\%user/token\fR.
 An ACL can carry a value, for example \fBview:trusts\fR.
 To give several ACLs at once, separate them with commas: \fB\%view:trusts,view:status\fR.
 .br
@@ -1079,7 +1127,10 @@ With one, a key is derived from that password and the object is encrypted with i
 Needs the ACL \fBexport\fR.
 .TP
 .B remove_orphans \fR[\fB\-r\fR] \fIsite\fR
-Remove references to objects that are gone: orphan ACLs, policies and signatures of the site, a trusted site that was deleted, and an SSO host that was deleted.
+Remove references to objects that are gone: orphan ACLs and policies of the site, a trusted site that was deleted, and an SSO host that was deleted.
+Config parameters set on the site that keep other objects lose the ones that are gone, e.g. a deleted VLAN in \fBvlans\fR, the way \fBconfig \-d\fR does.
+\fBpassword_store_members\fR is only named, not changed: its signatures would no longer fit, so change it with \fBconfig \-d\fR and sign the members again, see
+.BR otpme\-pass (1).
 .br
 .B \-r
 goes on through every unit of the site and the objects in them, and cleans those up as well.
@@ -1134,9 +1185,6 @@ A name that is not one of them is refused.
 Without this option the site gets none.
 More can be added later, see
 .BR otpme\-dictionary (1).
-.TP
-.B \-\-no\-dicts
-Add no dictionary, whatever \fB\-\-dicts\fR says.
 .TP
 .B \-\-id\-ranges \fIrange1,range2\fR
 The ranges the site takes the numbers of new users and groups from, each written as \fIattribute\fB:\fItype\fB:\fIfirst\fB\-\fIlast\fR.
@@ -1229,12 +1277,12 @@ See
 .B Auth On Action Policy
 in
 .BR otpme\-policy (1).
-A site has the hooks every object type has, and these:
+A site has the hooks every object type has, and these; a command of another name is in brackets:
 .RS
 .PP
 .na
 .nh
-add_sso_host, add_sso_logo, add_trust, add_unit, change_address, change_auth_fqdn, change_cluster_key, change_mgmt_fqdn, change_radius_cert, change_radius_key, change_site_cert, change_sso_cert, change_sso_csrf_secret, change_sso_fqdn, change_sso_key, change_sso_secret, del_sso_logo, del_trust, disable_auth, disable_oidc, disable_sync, dump_sso_logo, enable_auth, enable_oidc, enable_sync, remove_sso_host, renew_cert, set_config_parameter, show_config_parameters.
+add_sso_host, add_sso_logo\ (sso_logo), add_trust, add_unit, change_address\ (address), change_auth_fqdn\ (auth_fqdn), change_cluster_key\ (cluster_key), change_mgmt_fqdn\ (mgmt_fqdn), change_radius_cert\ (radius_cert), change_radius_key\ (radius_key), change_site_cert\ (site_cert), change_sso_cert\ (sso_cert), change_sso_csrf_secret\ (sso_csrf_secret), change_sso_fqdn\ (sso_fqdn), change_sso_key\ (sso_key), change_sso_secret\ (sso_secret), del_sso_logo, del_trust, disable_auth, disable_oidc, disable_sync, dump_sso_logo, enable_auth, enable_oidc, enable_sync, remove_sso_host, renew_cert, set_config_parameter\ (config).
 .hy
 .ad
 .RE
@@ -1247,7 +1295,6 @@ The certificate of a site, as each node and host keeps it. It is not replaced by
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
 .BR otpme.conf (5),
 .BR otpme\-realm (1),
 .BR otpme\-node (1),

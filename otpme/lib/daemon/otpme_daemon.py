@@ -54,8 +54,6 @@ class OTPmeDaemon(object):
         self.key = None
         # Will hold CA cert chain and CRLs.
         self.ca_data = None
-        # Inter-daemon communication timeout.
-        self.daemon_msg_timeout = config.inter_daemon_comm_timeout
         # Our PID.
         self.pid = None
         # Our status file.

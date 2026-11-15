@@ -24,6 +24,24 @@ except Exception:
 
 from otpme.lib.exceptions import *
 
+# The algorithms a certificate, a request or a CRL can be signed with,
+# as cert_sign_algo and crl_sign_algo of a CA name them
+# (classes/ca.py VALID_SIGN_ALGOS).
+SIGN_ALGOS = {
+            'sha256'    : hashes.SHA256,
+            'sha384'    : hashes.SHA384,
+            'sha512'    : hashes.SHA512,
+            }
+
+def get_sign_algo(sign_algo):
+    """ The hash of <sign_algo>. """
+    try:
+        return SIGN_ALGOS[sign_algo]()
+    except KeyError:
+        msg = _("Unknown sign algorithm: {algorithm}")
+        msg = msg.format(algorithm=sign_algo)
+        raise OTPmeException(msg) from None
+
 cn_attribute_order = [
                     'country',
                     'state',
@@ -291,6 +309,23 @@ def get_issuer(cert):
     issuer = issuer[0].value
     return issuer
 
+def is_issued_by(cert, ca_cert):
+    """ Whether <ca_cert> signed <cert>. The issuer name alone says
+    nothing: anybody can write it into a certificate of their own. """
+    if isinstance(cert, str):
+        cert = cert.encode()
+    if isinstance(ca_cert, str):
+        ca_cert = ca_cert.encode()
+    _cert = x509.load_pem_x509_certificate(data=cert, backend=default_backend())
+    _ca_cert = x509.load_pem_x509_certificate(data=ca_cert, backend=default_backend())
+    if _cert.issuer != _ca_cert.subject:
+        return False
+    try:
+        _cert.verify_directly_issued_by(_ca_cert)
+    except Exception:
+        return False
+    return True
+
 def get_cn(cert):
     """ Return certificates common name. """
     if isinstance(cert, str):
@@ -341,12 +376,7 @@ def verify_cn(cn, cert=None, csr=None):
 def create_csr(cn, key_len=2048, sign_algo="sha256",
     key=None, ca_cert=False, ca_path_len=None, **kwargs):
     """ Create CSR. """
-    if sign_algo == "sha256":
-        _sign_algo = hashes.SHA256()
-    else:
-        msg = _("Unknown sign algorithm: {algorithm}")
-        msg = msg.format(algorithm=sign_algo)
-        raise OTPmeException(msg)
+    _sign_algo = get_sign_algo(sign_algo)
 
     # Make sure we convert strings to int()
     try:
@@ -433,12 +463,7 @@ def create_certificate(cn, sn, cert_req=None, self_signed=False,
     if isinstance(key, str):
         key = key.encode()
 
-    if sign_algo == "sha256":
-        _sign_algo = hashes.SHA256()
-    else:
-        msg = _("Unknown sign algorithm: {algorithm}")
-        msg = msg.format(algorithm=sign_algo)
-        raise OTPmeException(msg)
+    _sign_algo = get_sign_algo(sign_algo)
 
     # Make sure we convert strings to int()
     try:
@@ -693,12 +718,7 @@ def revoke_certificate(ca_cert, ca_key, cert=None, sn=None,
                                cessationOfOperation, certificateHold,
                                removeFromCRL
     """
-    if sign_algo == "sha256":
-        _sign_algo = hashes.SHA256()
-    else:
-        msg = _("Unknown sign algorithm: {algorithm}")
-        msg = msg.format(algorithm=sign_algo)
-        raise OTPmeException(msg)
+    _sign_algo = get_sign_algo(sign_algo)
 
     # Make sure we convert strings to int().
     try:
@@ -833,6 +853,56 @@ def revoke_certificate(ca_cert, ca_key, cert=None, sn=None,
 
     serial_number = str(revoked_cert.serial_number)
     return serial_number, revoke_until, crl_data
+
+def rebuild_crl(ca_cert, ca_key, ca_crl=None, drop_serials=None,
+    next_update=365, sign_algo="sha256", timezone="UTC"):
+    """ Sign the CRL anew, with a new next update, and without the
+    serials in <drop_serials>. The other entries are taken over as they
+    are, with the date they were revoked. Serial 1 stands in a CRL that
+    would be empty, as revoke_certificate() keeps it. """
+    _sign_algo = get_sign_algo(sign_algo)
+    if drop_serials is None:
+        drop_serials = set()
+    drop_serials = {int(x) for x in drop_serials}
+    next_update = int(next_update)
+    if isinstance(ca_key, str):
+        ca_key = ca_key.encode()
+    if isinstance(ca_cert, str):
+        ca_cert = ca_cert.encode()
+    if isinstance(ca_crl, str):
+        ca_crl = ca_crl.encode()
+    CA_cert = x509.load_pem_x509_certificate(data=ca_cert,
+                                        backend=default_backend())
+    # Workaround for https://github.com/pyca/cryptography/issues/7236
+    CA_key = serialization.load_pem_private_key(data=ca_key,
+                                        password=None,
+                                        backend=default_backend(),
+                                        unsafe_skip_rsa_key_validation=True)
+    now = datetime.datetime.now(tz=pytz.timezone(timezone))
+    builder = x509.CertificateRevocationListBuilder()
+    builder = builder.issuer_name(x509.Name(CA_cert.subject))
+    builder = builder.last_update(now)
+    builder = builder.next_update(now + datetime.timedelta(next_update))
+    serials = set()
+    if ca_crl:
+        old_crl = x509.load_pem_x509_crl(ca_crl, default_backend())
+        for x in old_crl:
+            if x.serial_number in drop_serials:
+                continue
+            if x.serial_number in serials:
+                continue
+            serials.add(x.serial_number)
+            builder = builder.add_revoked_certificate(x)
+    if 1 not in serials:
+        reason = CRLReason(ReasonFlags.unspecified)
+        dummy = x509.RevokedCertificateBuilder().serial_number(1) \
+                .revocation_date(now).add_extension(reason, critical=False) \
+                .build(default_backend())
+        builder = builder.add_revoked_certificate(dummy)
+    crl = builder.sign(private_key=CA_key,
+                    algorithm=_sign_algo,
+                    backend=default_backend())
+    return crl.public_bytes(encoding=serialization.Encoding.PEM).decode()
 
 def check_ssl_cert_key(cert, key):
     from otpme.lib.pki.cert import SSLCert

@@ -181,12 +181,14 @@ def otpme_commands(no_debug=False):
     if command == "auth":
         if subcommand == "verify":
             if exit_code == 0:
-                if cache_seconds > 0:
+                if use_auth_cache and cache_key:
+                    # Set by the server only where the request may be
+                    # cached and the client has its auth cache enabled.
                     try:
-                        request_cacheable = result['request_cacheable']
-                    except KeyError:
-                        request_cacheable = False
-                    if request_cacheable:
+                        cache_seconds = int(result['auth_cache_timeout'] or 0)
+                    except (KeyError, TypeError, ValueError):
+                        cache_seconds = 0
+                    if cache_seconds > 0:
                         if cache == "redis":
                             redis_db.set(cache_key, cache_value, ex=cache_seconds)
                         if cache == "memcached":
@@ -342,7 +344,8 @@ if not help_needed:
             fd = open(config_file, "r")
             file_content = fd.read()
             fd.close()
-            main_config = stuff.conf_to_dict(file_content)
+            main_config = stuff.conf_to_dict(file_content,
+                                            file_name=config_file)
             cache = main_config['CACHE']
             if cache == "redis":
                 import redis
@@ -374,12 +377,14 @@ if not help_needed:
                                         command_line=command_line,
                                         command_args={})
 
-            # Handle caching.
-            try:
-                cache_seconds = command_args['cache_seconds']
-            except Exception:
-                cache_seconds = 0
-            if cache_seconds > 0:
+            # Handle caching. How long an answer may be kept is up to
+            # the client (enable_auth_cache, auth_cache_timeout), and
+            # the server says it with the answer, see below. --cache
+            # once took the time itself, and with it every client was
+            # cached, whether its auth cache was on or not.
+            use_auth_cache = command_args.get('use_auth_cache', False)
+            cache_key = None
+            if use_auth_cache:
                 client = command_args['client']
                 try:
                     client_ip = command_args['client_ip']

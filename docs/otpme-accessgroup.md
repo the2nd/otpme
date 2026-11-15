@@ -122,13 +122,14 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
-List the group names, and with a regex only those that match it. You get
-the groups you may change; **-a** adds those you may only look at.  
-**--attribute** matches the regex against that attribute instead of the
-name: **list --attribute max_fail 3** lists the groups that allow three
-failed logins. A value that is not text has to be spelled out — **\***
-matches none of it.
+**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+List the group names, and with a pattern only those that match it, see
+**SELECTING OBJECTS** in **otpme**(1). You get the groups you may
+change; **-a** adds those you may only look at.  
+**--attribute** matches the pattern against that attribute instead of
+the name: **list --attribute max_fail 3** lists the groups that allow
+three failed logins. A value that is not text has to be spelled out —
+**\*** matches none of it.
 
 **enable *accessgroup***  
 Enable a disabled access group.
@@ -403,19 +404,23 @@ A command that changes something asks first; the global option **-f**
 skips the question.
 
 **changelog *accessgroup***  
-Show the changelog of the access group. Needs the ACL
-**view:changelog**.
+Show the changelog of the access group, one entry per line: its
+*entry_id*, the time, who made the change and what was done, then a
+detail in round brackets and the comment in square brackets where there
+are any. Needs the ACL **view:changelog**.
 
 **edit_changelog *accessgroup* *entry_id* *comment***  
-Set the comment of that entry, or replace the one it has. Needs the ACL
-**edit:changelog**.
+Set the comment of that entry, or replace the one it has. That writes an
+entry of its own. Needs the ACL **edit:changelog**.
 
 **del_changelog *accessgroup* *entry_id***  
 Remove the comment of that entry. The entry itself stays, and an entry
-without a comment is refused. Needs the ACL **edit:changelog**.
+without a comment is refused. That writes an entry of its own. Needs the
+ACL **edit:changelog**.
 
 **clear_changelog *accessgroup***  
-Remove every entry of the changelog.  
+Remove every entry of the changelog. Afterwards it holds one entry: that
+it was cleared.  
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
@@ -465,10 +470,11 @@ skips the question.
 
 **add_acl *accessgroup* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this group.  
-*owner_type* is **role** or **token**. *owner* is the path of that role
-or token. An ACL can carry a value, for example **view:tokens**. To give
-several ACLs at once, separate them with commas:
-**view:tokens,view:status**.  
+*owner_type* is **role** or **token**. *owner* names it the way
+**list_acls** prints it: a role as *site/name*, or by its name alone on
+its own site; a token as *user/token*. An ACL can carry a value, for
+example **view:tokens**. To give several ACLs at once, separate them
+with commas: **view:tokens,view:status**.  
 Needs the ACL **add:acl**.
 
 **del_acl *accessgroup* *acl*\[,*acl*\]**  
@@ -917,24 +923,27 @@ nothing else about the group.
 
 An auth on action policy can ask for a login again before these actions.
 See **Auth On Action Policy** in **otpme-policy**(1). An accessgroup has
-the hooks every object type has, and these:
+the hooks every object type has, and these; a command of another name is
+in brackets:
 
-> add_child_group, add_child_session, add_token, change_max_fail,
-> change_max_fail_reset, change_max_sessions, change_relogin_timeout,
-> change_session_timeout, change_unused_session_timeout,
+> add_child_group, add_child_session, add_token, change_max_fail
+> (max_fail), change_max_fail_reset (max_fail_reset),
+> change_max_sessions (max_sessions), change_relogin_timeout
+> (relogin_timeout), change_session_timeout (timeout),
+> change_unused_session_timeout (unused_timeout),
 > disable_force_sotp_signing, disable_sessions, disable_sotp_signing,
 > disable_timeout_pass_on, enable_force_sotp_signing, enable_sessions,
 > enable_sotp_signing, enable_timeout_pass_on, remove_child_group,
-> remove_child_session, remove_token, set_config_parameter,
+> remove_child_session, remove_token, set_config_parameter (config),
 > update_sign_public_keys.
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-client**(1),
-**otpme-scope**(1), **otpme-role**(1), **otpme-token**(1),
-**otpme-user**(1), **otpme-host**(1), **otpme-device**(1),
-**otpme-vlan**(1), **otpme-share**(1), **otpme-policy**(1),
-**otpme-tool**(1), **otpme-trash**(1)
+**otpme**(1), **otpme**(7), **otpme-client**(1), **otpme-scope**(1),
+**otpme-role**(1), **otpme-token**(1), **otpme-user**(1),
+**otpme-host**(1), **otpme-device**(1), **otpme-vlan**(1),
+**otpme-share**(1), **otpme-policy**(1), **otpme-tool**(1),
+**otpme-trash**(1)
 
 # AUTHOR
 

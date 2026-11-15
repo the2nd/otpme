@@ -41,6 +41,38 @@ PROTOCOL_VERSION = "OTPme-agent-1.0"
 
 SESSION_LOCK_TYPE = "agent.session"
 
+# The PIV commands that use the private key, with the arguments they
+# pass on to the agent and their defaults.
+PIV_KEY_COMMAND_ARGS = {
+            'piv_sign'              : {
+                                    'data'      : None,
+                                    'slot'      : 'AUTHENTICATION',
+                                    'padding'   : 'pss',
+                                    },
+            'piv_decrypt'           : {
+                                    'data'      : None,
+                                    'slot'      : 'KEY_MANAGEMENT',
+                                    'padding'   : 'oaep',
+                                    },
+            'piv_hpke_decrypt'      : {
+                                    'data'      : None,
+                                    'slot'      : 'KEY_MANAGEMENT',
+                                    'info'      : None,
+                                    },
+            'piv_derive_password'   : {
+                                    'challenge' : None,
+                                    'slot'      : 'AUTHENTICATION',
+                                    'length'    : 32,
+                                    },
+            'piv_csr'               : {
+                                    'subject'       : None,
+                                    'slot'          : 'AUTHENTICATION',
+                                    'san_email'     : None,
+                                    'key_usage'     : None,
+                                    'ext_key_usage' : None,
+                                    },
+            }
+
 def register():
     locking.register_lock_type(SESSION_LOCK_TYPE, module=__file__)
     config.register_otpme_protocol("agent", PROTOCOL_VERSION, server=True)
@@ -303,6 +335,7 @@ class OTPmeAgentP1(object):
                             "piv_hpke_decrypt",
                             "piv_derive_password",
                             "piv_get_public_key",
+                            "piv_csr",
                             "set_login_token",
                             "proxy_command",
                             "mount_shares",
@@ -344,6 +377,7 @@ class OTPmeAgentP1(object):
                         "piv_hpke_decrypt",
                         "piv_derive_password",
                         "piv_get_public_key",
+                        "piv_csr",
                         "set_login_token",
                         "proxy_command",
                         "mount_shares",
@@ -359,12 +393,6 @@ class OTPmeAgentP1(object):
                         ]
 
         command, command_args, binary_data = self.decode_request(data)
-
-        # Get DNS option.
-        try:
-            use_dns = command_args['use_dns']
-        except Exception:
-            use_dns = config.use_dns
 
         # Check if we got a valid command.
         if command not in valid_commands:
@@ -1431,7 +1459,6 @@ class OTPmeAgentP1(object):
                             'login_pid'         : self.login_pid,
                             'realm'             : realm,
                             'site'              : site,
-                            'use_dns'           : use_dns,
                             'daemon'            : daemon,
                             'proxy_request'     : proxy_request,
                             }
@@ -1559,7 +1586,6 @@ class OTPmeAgentP1(object):
                         'login_pid' : self.login_pid,
                         'realm'     : realm,
                         'site'      : site,
-                        'use_dns'   : use_dns,
                         'daemon'    : 'agent',
                         #'command'   : 'reneg',
                         }
@@ -1603,61 +1629,19 @@ class OTPmeAgentP1(object):
                 message = str(e)
                 status = False
 
-        elif command == "piv_sign":
+        elif command in PIV_KEY_COMMAND_ARGS:
+            # The ones that use the private key, and are confirmed.
+            # <reason> is what the caller says it is for, shown with
+            # the question.
             piv_request = {
-                        'data'      : command_args.get('data'),
-                        'slot'      : command_args.get('slot', 'AUTHENTICATION'),
-                        'padding'   : command_args.get('padding', 'pss'),
                         'daemon'    : 'agent',
                         'login_pid' : self.login_pid,
+                        'reason'    : command_args.get('reason'),
                         }
+            for x_arg, x_default in PIV_KEY_COMMAND_ARGS[command].items():
+                piv_request[x_arg] = command_args.get(x_arg, x_default)
             try:
-                status, message = self.send_command(command="piv_sign",
-                                                request=piv_request)
-            except Exception as e:
-                message = str(e)
-                status = False
-
-        elif command == "piv_decrypt":
-            piv_request = {
-                        'data'      : command_args.get('data'),
-                        'slot'      : command_args.get('slot', 'KEY_MANAGEMENT'),
-                        'padding'   : command_args.get('padding', 'oaep'),
-                        'daemon'    : 'agent',
-                        'login_pid' : self.login_pid,
-                        }
-            try:
-                status, message = self.send_command(command="piv_decrypt",
-                                                request=piv_request)
-            except Exception as e:
-                message = str(e)
-                status = False
-
-        elif command == "piv_hpke_decrypt":
-            piv_request = {
-                        'data'      : command_args.get('data'),
-                        'slot'      : command_args.get('slot', 'KEY_MANAGEMENT'),
-                        'info'      : command_args.get('info'),
-                        'daemon'    : 'agent',
-                        'login_pid' : self.login_pid,
-                        }
-            try:
-                status, message = self.send_command(command="piv_hpke_decrypt",
-                                                request=piv_request)
-            except Exception as e:
-                message = str(e)
-                status = False
-
-        elif command == "piv_derive_password":
-            piv_request = {
-                        'challenge' : command_args.get('challenge'),
-                        'slot'      : command_args.get('slot', 'AUTHENTICATION'),
-                        'length'    : command_args.get('length', 32),
-                        'daemon'    : 'agent',
-                        'login_pid' : self.login_pid,
-                        }
-            try:
-                status, message = self.send_command(command="piv_derive_password",
+                status, message = self.send_command(command=command,
                                                 request=piv_request)
             except Exception as e:
                 message = str(e)

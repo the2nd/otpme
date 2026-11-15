@@ -728,14 +728,17 @@ body.is-loading { overflow: hidden; }
   gap: 16px;
   flex-wrap: wrap;
 }
+/* Height from the photo itself: photos are user_photo_dimensions,
+   300x450 by default, and a square box cut off their top and bottom. */
 .profile-photo {
   width: 120px;
-  height: 120px;
+  height: auto;
   border-radius: 12px;
-  object-fit: cover;
   border: 1px solid #dfe3ea;
 }
+/* The shape of a photo of the default dimensions. */
 .profile-photo-none {
+  aspect-ratio: 2 / 3;
   display: flex;
   align-items: center;
   justify-content: center;

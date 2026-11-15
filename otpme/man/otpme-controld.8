@@ -1,0 +1,228 @@
+.TH OTPME-CONTROLD 8 "2026-11-15" "OTPme 0.3.0a289" "OTPme Manual"
+.SH NAME
+otpme-controld \- start, stop and watch the OTPme daemons
+.SH SYNOPSIS
+.B otpme-controld
+[\fIoptions\fR]
+.B start
+.br
+.B otpme-controld
+[\fIoptions\fR]
+.B stop
+[\fB\-\-timeout\fR \fIseconds\fR] [\fB\-k\fR]
+.br
+.B otpme-controld
+[\fIoptions\fR]
+.BR restart " | " reload
+[\fIdaemon\fR]
+.br
+.B otpme-controld
+.B status
+.SH DESCRIPTION
+.na
+.nh
+.B otpme\-controld
+runs the OTPme daemons of this node or host.
+It runs as root.
+It starts the other daemons as the OTPme user, except
+.BR confd ,
+which keeps root.
+See \fBARCHITECTURE OVERVIEW\fR in
+.BR otpme (7)
+for what each daemon does.
+.PP
+On a node it starts, in this order:
+.BR hostd ", " mgmtd ", " joind ", " scriptd ", " syncd ", " authd ", " ssod ", " clusterd ", " httpd ", " fsd ", " backupd " and " confd .
+.B clusterd
+starts
+.BR ldapd ", " idled " and " racd
+when the cluster is ready, and controld watches them from then on.
+On a host it starts
+.B hostd
+and
+.BR confd ,
+plus
+.B httpd
+with \fBSSO_SERVER\fR and
+.B backupd
+with \fBBACKUP_SERVER\fR, see
+.BR otpme.conf (5).
+.PP
+Before the daemons it starts the index database and the cache server, see \fBAUTOSTART_INDEX\fR and \fBAUTOSTART_CACHE\fR in
+.BR otpme.conf (5).
+On the master node it also holds the floating IP of the site, and starts FreeRADIUS and haproxy where they are enabled.
+.PP
+controld checks its daemons every \fBCONTROLD_HEARTBEAT_INTERVAL\fR seconds.
+It starts a daemon that is not running, and restarts one that does not answer, see \fBDAEMON\fR in
+.BR otpme.conf (5).
+.PP
+Only root can use it.
+The host has to be a member of a realm, see
+.BR otpme\-tool (1).
+.hy
+.ad
+.SH COMMANDS
+.na
+.nh
+.TP
+.B start
+Start controld and its daemons, in the background.
+It says \(dqAlready running.\(dq if controld runs already.
+The command returns before the daemons are up; the log shows when they are.
+.br
+With \fB\-dD\fR controld stays in the foreground, see \fBOPTIONS\fR.
+.TP
+\fBstop\fR [\fB\-\-timeout\fR \fIseconds\fR] [\fB\-k\fR]
+Stop controld.
+It stops its daemons in the reverse order, removes the floating IP, and stops the cache and the index database it started.
+.br
+A daemon gets 30 seconds to quit, then it is killed.
+The command waits \fB\-\-timeout\fR seconds for all of this (default: \fB60\fR) and fails if controld still runs then.
+controld goes on stopping.
+.br
+With \fB\-k\fR the command waits half the timeout and then kills controld and all its daemons.
+.TP
+.B restart \fR[\fIdaemon\fR]
+Without a daemon: stop and start controld and all daemons.
+If controld still runs after 70 seconds, it is killed.
+.br
+With a daemon: controld stops that daemon and starts it again.
+A daemon reads most settings when it starts, for example \fBauthd_workers\fR, see \fBDaemon Tuning\fR in
+.BR otpme (7).
+.B clusterd
+is not restarted on the master node; the log says so.
+.TP
+.B reload \fR[\fIdaemon\fR]
+Without a daemon: controld reads
+.BR otpme.conf (5)
+again and tells every daemon to do the same.
+This is the same as sending SIGHUP to controld.
+A daemon that is new on the list, for example httpd after \fBSSO_SERVER\fR was set on a host, is started at the next heartbeat.
+One that is no longer on the list is stopped.
+.br
+With a daemon: only that daemon reloads.
+.br
+A daemon that cannot reload is restarted.
+So is one that does not answer within 15 seconds.
+.PP
+With a daemon, \fBrestart\fR and \fBreload\fR fail if controld does not run or if there is no daemon of that name.
+.TP
+.B status
+Print \(dqRunning.\(dq or \(dqStopped.\(dq.
+It says nothing about the single daemons.
+The exit code is 0 while controld runs and 1 when it is stopped, so a script can ask.
+.hy
+.ad
+.SH OPTIONS
+.na
+.nh
+The options go before the command.
+.TP
+\fB\-\-timeout\fR \fIseconds\fR
+For \fBstop\fR: how long to wait (default: \fB60\fR).
+.TP
+.B \-k
+For \fBstop\fR: kill what has not quit after half the timeout.
+.TP
+\fB\-l\fR \fIfile\fR
+Write the log of controld and of all daemons to this file.
+Without it every daemon writes its own file in \fBLOG_DIR\fR, or the log goes to a syslog server, see \fBSYSLOG\fR in
+.BR otpme.conf (5).
+.TP
+.B \-\-no\-index\-start
+Do not start and stop the index database.
+It has to run already, or controld does not start.
+.TP
+.B \-\-no\-cache\-start
+Do not start and stop the cache server.
+It has to run already, or controld does not start.
+.TP
+.B \-\-cache\-flush
+Empty the cache when controld starts.
+This is the default, see \fBFLUSH_CACHE_ON_START\fR in
+.BR otpme.conf (5).
+.TP
+.B \-\-ignore\-changed\-objects
+hostd syncs objects even if they change while it syncs.
+.TP
+.B \-\-keep\-floating\-ip
+On the master node: do not remove the floating IP when controld stops.
+.TP
+.B \-dD
+Stay in the foreground.
+Add \fB\-dd\fR to see the log on the terminal, and more \fB\-d\fR options to see more.
+Ctrl+C stops controld and its daemons.
+See
+.BR otpme (1)
+for all debug options, and for \fB\-\-color\-logs\fR, \fB\-\-log\-filter\fR and \fB\-\-debug\-daemons\fR.
+.hy
+.ad
+.SH SIGNALS
+.na
+.nh
+.TP
+.B SIGTERM
+Stop, as \fBstop\fR does.
+.TP
+.B SIGINT
+The same.
+This is Ctrl+C in the foreground.
+.TP
+.B SIGHUP
+Reload, as \fBreload\fR without a daemon does.
+.PP
+controld ignores all three while it starts its daemons.
+.hy
+.ad
+.SH EXAMPLES
+.na
+.nh
+.TP
+.B otpme\-controld start
+Start everything in the background.
+.TP
+.B otpme\-controld \-dD \-dd start
+Start in the foreground and show the log.
+.TP
+.B otpme\-controld \-dD \-dd \-\-log\-filter authd,mgmtd start
+The same, but show only the log of authd and mgmtd.
+.TP
+.B otpme\-controld reload httpd
+Let httpd read its configuration again, for example after the SSO certificate changed.
+.TP
+.B otpme\-controld restart authd
+Restart authd, for example after \fBauthd_workers\fR was changed.
+.TP
+.B otpme\-controld stop \-\-timeout 120 \-k
+Stop, and kill what still runs after 60 seconds.
+.hy
+.ad
+.SH FILES
+.na
+.nh
+.TP
+\fI/var/run/otpme/pidfiles/otpme\-controld.pid\fR
+The PID of controld.
+The directory is \fBRUN_DIR\fR, see
+.BR otpme.conf (5).
+.TP
+\fI/var/log/otpme/otpme\-daemon.log\fR
+The log of each daemon, without \fB\-l\fR and without \fB\-dD\fR.
+The directory is \fBLOG_DIR\fR.
+.TP
+\fIdeploy/systemd/otpme.service\fR
+A systemd unit that runs \fBotpme\-controld start\fR, \fBstop\fR and \fBreload\fR.
+.hy
+.ad
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme (7),
+.BR otpme.conf (5),
+.BR otpme\-cluster (1),
+.BR otpme\-tool (1)
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

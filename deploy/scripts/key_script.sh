@@ -73,19 +73,22 @@ if [ "$CIPHER" = "" ] ; then
 	echo "File header is missing cipher." > /dev/stderr
 	exit 1
 fi
-AES_KEY_ENCRYPTED="$(tail -n +$SELF_LINES "$0" | gzip -d | head -n1 | base64 -d)"
+# The header and this script are SELF_LINES lines, the data follows.
+DATA_LINE="$[$SELF_LINES+1]"
+AES_KEY_ENCRYPTED="$(tail -n +$DATA_LINE "$0" | gzip -d | head -n1 | base64 -d)"
 read -t 1 AES_PASS
 if [ "$AES_PASS" = "" ] ; then
 	echo -n "Password: " > /dev/tty
 	read -s AES_PASS < /dev/tty
 	echo > /dev/tty
 fi
-AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | openssl $CIPHER -pbkdf2 -a -A -d -pass file:<(echo -n "$AES_PASS"))"
+# With the iterations aes_encrypt() used.
+AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | openssl $CIPHER -pbkdf2 -iter '$ITERATIONS' -a -A -d -pass file:<(echo -n "$AES_PASS"))"
 if [ "$?" != "0" ] ; then
 	echo "Error while decypting AES key." 1>&2
 	exit 1
 fi
-tail -n +$SELF_LINES "$0" | gzip -d | tail -n+2 | openssl $CIPHER -pbkdf2 -a -A -d -pass file:<(echo -n "$AES_KEY")
+tail -n +$DATA_LINE "$0" | gzip -d | tail -n+2 | openssl $CIPHER -pbkdf2 -a -A -d -pass file:<(echo -n "$AES_KEY")
 exit
 #OTPME_DECRYPT_SCRIPT_END#
 '
@@ -104,7 +107,11 @@ exit
 # Get command line options
 get_opts () {
         # Get options
-        if ! ARGS=`getopt -n $BASENAME -l help -l api -l auth-token -l rsa -l no-rsa -l algo: -l salt-file -l key-enc -l use-gpg -l yubikey-hmac -l yubikey-piv -l use-agent-piv -l server-key -l force-pass -l no-self-decrypt -l reason u:b:h $*` ; then
+        # "$@", not $*: an argument with spaces fell apart into words,
+        # and a word of it that starts with "-" (the reason of
+        # "otpme-pass show_password --offline") was an unknown option.
+        # reason: takes a value, which may start with "-" itself.
+        if ! ARGS=`getopt -n $BASENAME -l help -l api -l auth-token -l rsa -l no-rsa -l algo: -l salt-file -l key-enc -l use-gpg -l yubikey-hmac -l yubikey-piv -l use-agent-piv -l server-key -l force-pass -l no-self-decrypt -l reason: u:b:h "$@"` ; then
                 show_help
                 return 1
         fi
@@ -125,24 +132,41 @@ get_opts () {
 
 
                         --use-agent-piv)
+							# The card is always used through
+							# otpme-agent now, which asks for the
+							# PIN and for each use of it. Taken so
+							# existing key script options still work.
 							shift
-							USE_AGENT_PIV="true"
                         ;;
 
                         --yubikey-piv)
 							shift
 							YUBIKEY_PIV="true"
-							YUBIKEY_SLOT="$1"
-							shift
+							USE_AGENT_OPT="--use-agent"
+							# The slot is optional. Without it the
+							# next argument is the file of the
+							# command (sign <file> <outfile>), and
+							# taking that as the slot left "sign"
+							# reading /dev/stdout for its data.
+							case "$1" in
+								AUTHENTICATION|SIGNATURE|KEY_MANAGEMENT|CARD_AUTH)
+									YUBIKEY_SLOT="$1"
+									shift
+								;;
+							esac
                         ;;
 
 
                         --yubikey-hmac)
 							shift
-							YUBIKEY_SLOT="$1"
-							AES_KEY_ENC="yubikey-hmac"
+							# The passphrase of the private key goes
+							# through the HMAC of the YubiKey. Files stay
+							# as they are, --key-enc yubikey-hmac is for
+							# those.
+							HMAC_SLOT="$1"
+							KEY_PASS_HMAC="true"
 							# Make sure we get an yubikey slot as integer.
-							if ! echo "$YUBIKEY_SLOT" | grep '^[0-9]*$' > /dev/null 2>&1 ; then
+							if ! echo "$HMAC_SLOT" | grep '^[0-9][0-9]*$' > /dev/null 2>&1 ; then
 								show_help
 								return 1
 							fi
@@ -167,6 +191,10 @@ get_opts () {
                         --reason)
 							shift
 							REASON="$1"
+							# otpme-agent shows it when it asks
+							# about a use of the PIV card that no
+							# node signed.
+							export OTPME_AGENT_REASON="$REASON"
 							shift
                         ;;
 
@@ -202,6 +230,12 @@ get_opts () {
                         --salt-file)
 							shift
 							SALT_FILE="$1"
+							# Without the file there is no salt, and the
+							# passphrase would be used without it.
+							if [ ! -r "$SALT_FILE" ] ; then
+								echo "Cannot read salt file: $SALT_FILE" 1>&2
+								return 1
+							fi
 							if [ "$SALT_FILE" != "" ] ; then
 								# FIXME: Is there a better way than using the SHA1 hash of the salt file as AES salt!?!
 								PASSWORD_SALT="$(sha1sum "$SALT_FILE" | awk '{ print $1 }')"
@@ -281,6 +315,12 @@ get_opts () {
 		AES_KEY_ENC="$KEY_ENC"
 	fi
 
+	# The YubiKey slot comes with --yubikey-hmac.
+	if [ "$AES_KEY_ENC" = "yubikey-hmac" ] && [ "$HMAC_SLOT" = "" ] ; then
+		echo "--key-enc yubikey-hmac needs --yubikey-hmac <slot>" 1>&2
+		return 1
+	fi
+
 	# Make sure we use AES encryption with passphrase when --force-pass is given.
 	if [ "$FORCE_PASS" != "" ] ; then
 		AES_KEY_ENC="aes"
@@ -325,10 +365,11 @@ show_help () {
 	echo "	--rsa						Encrypt file with RSA public directly (file size limited to size of key)"
 	echo "	--no-rsa					Disable use of RSA public keys for encryption of AES keys."
 	echo "	--salt-file <file>			Use <file> as salt for AES encryption"
-	echo "	--key-enc <rsa|aes|gpg>		Force encryption of AES keys with the given encrytion type (e.g. gpg)"
+	echo "	--key-enc <rsa|aes|gpg|yubikey-hmac>	Force encryption of AES keys with the given encrytion type (e.g. gpg)"
 	echo "	--use-gpg <id>				Use given GPG key (e.g. to en/decrypt RSA private key)"
-	echo "	--yubikey-piv <slot>		Use yubikey PIV mode for private key operations."
-	echo "	--yubikey-hmac <slot>		Use yubikey in HMAC challenge/response mode to derive AES passphrase."
+	echo "	--yubikey-piv [slot]		Use yubikey PIV mode for private key operations, through otpme-agent."
+	echo "	--use-agent-piv				Accepted and ignored: --yubikey-piv always goes through otpme-agent."
+	echo "	--yubikey-hmac <slot>		Pass the private key passphrase through yubikey HMAC challenge/response."
 	echo "	--no-self-decrypt			Do not add self decryption script to encrypted file."
 }
 
@@ -523,7 +564,7 @@ get_private_key () {
 yk_derive_aes_key () {
 	local AES_PASS="$1"
 	# Get AES passphrase via HMAC response from yubikey.
-	if ! HMAC_AES_PASS="$(ykchalresp -$YUBIKEY_SLOT "$AES_PASS")" ; then
+	if ! HMAC_AES_PASS="$(ykchalresp -$HMAC_SLOT "$AES_PASS")" ; then
 		return 1
 	fi
 	echo "$HMAC_AES_PASS"
@@ -590,14 +631,17 @@ aes_encrypt () {
 		done
 	fi
 
-	# Get AES passphrase via HMAC response from yubikey if requested.
-	if [ "$AES_KEY_ENC" = "yubikey-hmac" ] ; then
+	# Get AES passphrase via HMAC response from yubikey if requested
+	# (PASS_HMAC: the private key with --yubikey-hmac, a file with
+	# --key-enc yubikey-hmac).
+	if [ "$PASS_HMAC" = "true" ] ; then
 		if ! AES_PASS="$(yk_derive_aes_key "$AES_PASS")" ; then
 			return 1
 		fi
 	fi
 
-	cat | openssl $CIPHER -pbkdf2 -salt -iter $ITERATIONS -a -A -pass file:<(echo -n "$AES_PASS") | base64 -w 0
+	# With the salt of --salt-file, as aes_decrypt() reads it.
+	cat | openssl $CIPHER -pbkdf2 -salt -iter $ITERATIONS -a -A -pass file:<(echo -n "$PASSWORD_SALT$AES_PASS") | base64 -w 0
 	if [ "${PIPESTATUS[1]}" != "0" ] ; then
 		echo "Error while doing AES encryption." 1>&2
 		return 1
@@ -609,8 +653,10 @@ aes_decrypt () {
 		AES_PASS="$(read_pass_from_tty "Password: ")"
 	fi
 
-	# Get AES passphrase via HMAC response from yubikey if requested.
-	if [ "$AES_KEY_ENC" = "yubikey-hmac" ] ; then
+	# Get AES passphrase via HMAC response from yubikey if requested
+	# (PASS_HMAC: the private key with --yubikey-hmac, a file with
+	# --key-enc yubikey-hmac).
+	if [ "$PASS_HMAC" = "true" ] ; then
 		if ! AES_PASS="$(yk_derive_aes_key "$AES_PASS")" ; then
 			return 1
 		fi
@@ -630,9 +676,10 @@ encrypt_key () {
 		return "${PIPESTATUS[0]}"
 	else
 		AES_PASS="$_OTPME_KEYSCRIPT_KEY_PASS"
+		PASS_HMAC="$KEY_PASS_HMAC"
 		aes_encrypt
 		RETURN="$?"
-		unset AES_PASS
+		unset AES_PASS PASS_HMAC
 		return "$RETURN"
 	fi
 }
@@ -643,9 +690,10 @@ decrypt_key () {
 		gpg_decrypt
 	else
 		AES_PASS="$_OTPME_KEYSCRIPT_KEY_PASS"
+		PASS_HMAC="$KEY_PASS_HMAC"
 		aes_decrypt
 		RETURN="$?"
-		unset AES_PASS
+		unset AES_PASS PASS_HMAC
 		return "$RETURN"
 	fi
 }
@@ -685,7 +733,10 @@ create_file_header () {
 		echo "#OTPME_SCRIPT_LINES:0"
 		return
 	fi
-	if [ "$ENC_TYPE" = "AES" ] && [ "$AES_KEY_ENC" = "aes" ] ; then
+	# The passphrase script knows the passphrase only, not the salt of
+	# --salt-file: such a file goes through otpme-tool decrypt.
+	if [ "$ENC_TYPE" = "AES" ] && [ "$AES_KEY_ENC" = "aes" ] \
+	&& [ "$PASSWORD_SALT" = "" ] ; then
 		local DECRYPT_SCRIPT="$PASS_DECRYPT_SCRIPT"
 	else
 		local DECRYPT_SCRIPT="$OTPME_DECRYPT_SCRIPT"
@@ -769,31 +820,27 @@ decrypt_file () {
 		if [ "$KEY_ENC_TYPE" = "gpg" ] ; then
 			AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | base64 -d | gpg_decrypt)"
 		fi
-		# Handle passphrase encrypted AES key.
-		if [ "$KEY_ENC_TYPE" = "aes" ] ; then
+		# Handle passphrase encrypted AES key. With yubikey-hmac the
+		# passphrase went through the HMAC of the YubiKey. The file says
+		# which, not our options: a file encrypted with --force-pass is
+		# plain aes also for a user with --yubikey-hmac.
+		if [ "$KEY_ENC_TYPE" = "aes" ] || [ "$KEY_ENC_TYPE" = "yubikey-hmac" ] ; then
+			PASS_HMAC=""
+			if [ "$KEY_ENC_TYPE" = "yubikey-hmac" ] ; then
+				if [ "$HMAC_SLOT" = "" ] ; then
+					echo "decrypt_file: file needs --yubikey-hmac <slot>" 1>&2
+					return 1
+				fi
+				PASS_HMAC="true"
+			fi
 			AES_PASS="$_OTPME_KEYSCRIPT_AES_PASS"
 			AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | base64 -d | aes_decrypt)"
-			unset AES_PASS
+			unset AES_PASS PASS_HMAC
 		fi
 		# Handle RSA encrypted AES key.
 		if [ "$KEY_ENC_TYPE" = "rsa" ] ; then
 			if [ "$YUBIKEY_PIV" = "true" ] ; then
-				if [ "$USE_AGENT_PIV" = "true" ] ; then
-					USE_AGENT_OPT="--use-agent"
-					if ! otpme-yk-piv --piv-check > /dev/null 2>&1 ; then
-						export PIN="$(read_pass_from_tty "Token PIN: ")"
-						if [ "$PIN" = "" ] ; then
-							exit 1
-						fi
-						otpme-yk-piv --piv-login --pin "env:PIN" > /dev/null 2>&1
-					fi
-				else
-					export PIN="$(read_pass_from_tty "Token PIN: ")"
-					if [ "$PIN" = "" ] ; then
-						exit 1
-					fi
-					PIN_OPT="--pin env:PIN"
-				fi
+				# The PIN and the confirmation are otpme-agent's.
 				# The user's encrypt key algo, so we route to the
 				# right yk-piv subcommand: RSA-OAEP via --decrypt,
 				# X25519/HPKE via --hpke-decrypt.
@@ -806,10 +853,10 @@ decrypt_file () {
 				fi
 				case "$YKPIV_ENC_ALGO" in
 					rsa)
-						AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | base64 -d | otpme-yk-piv $USE_AGENT_OPT --decrypt $PIN_OPT)"
+						AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | base64 -d | otpme-yk-piv $USE_AGENT_OPT --decrypt)"
 					;;
 					x25519)
-						AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | base64 -d | otpme-yk-piv $USE_AGENT_OPT --hpke-decrypt $PIN_OPT)"
+						AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | base64 -d | otpme-yk-piv $USE_AGENT_OPT --hpke-decrypt)"
 					;;
 					*)
 						echo "decrypt_file: unsupported yubikey-piv encrypt algo: $YKPIV_ENC_ALGO" 1>&2
@@ -857,22 +904,7 @@ decrypt_file () {
 decrypt_key_data () {
 	{
 		if [ "$YUBIKEY_PIV" = "true" ] ; then
-			if [ "$USE_AGENT_PIV" = "true" ] ; then
-				USE_AGENT_OPT="--use-agent"
-				if ! otpme-yk-piv --piv-check > /dev/null 2>&1 ; then
-					export PIN="$(read_pass_from_tty "Token PIN: ")"
-					if [ "$PIN" = "" ] ; then
-						exit 1
-					fi
-					otpme-yk-piv --piv-login --pin "env:PIN" > /dev/null 2>&1
-				fi
-			else
-				export PIN="$(read_pass_from_tty "Token PIN: ")"
-				if [ "$PIN" = "" ] ; then
-					exit 1
-				fi
-				PIN_OPT="--pin env:PIN"
-			fi
+			# The PIN and the confirmation are otpme-agent's.
 			# The data was never read here: $RSA_DATA was empty.
 			if ! YKPIV_ENC_ALGO="$(get_piv_enc_algo)" ; then
 				echo "decrypt_file: failed to fetch encrypt key algo" 1>&2
@@ -880,11 +912,9 @@ decrypt_key_data () {
 			fi
 			case "${YKPIV_ENC_ALGO:-rsa}" in
 				rsa)
-					base64 -d | otpme-yk-piv $USE_AGENT_OPT --decrypt $PIN_OPT
-				;;
+					base64 -d | otpme-yk-piv $USE_AGENT_OPT --decrypt				;;
 				x25519)
-					base64 -d | otpme-yk-piv $USE_AGENT_OPT --hpke-decrypt $PIN_OPT
-				;;
+					base64 -d | otpme-yk-piv $USE_AGENT_OPT --hpke-decrypt				;;
 				*)
 					echo "decrypt_file: unsupported yubikey-piv encrypt algo: $YKPIV_ENC_ALGO" 1>&2
 					return 1
@@ -1035,11 +1065,8 @@ case "$COMMAND" in
 		fi
 		if [ "$YUBIKEY_PIV" = "true" ] ; then
 			# The private key is on the card and does not come off it,
-			# so the card signs the request.
-			export PIN="$(read_pass_from_tty "Token PIN: ")"
-			if [ "$PIN" = "" ] ; then
-				exit 1
-			fi
+			# so the card signs the request, through otpme-agent,
+			# which asks for the PIN.
 			if [ "$CSR_SLOT" = "" ] ; then
 				CSR_SLOT="$YUBIKEY_SLOT"
 			fi
@@ -1061,7 +1088,7 @@ case "$COMMAND" in
 			if [ "$CSR_EXT_KEY_USAGE" != "" ] ; then
 				CSR_OPTS+=(--ext-key-usage "$CSR_EXT_KEY_USAGE")
 			fi
-			if ! CSR="$(otpme-yk-piv --csr --subject "$CSR_SUBJECT_RFC4514" "${CSR_OPTS[@]}" --pin "env:PIN")" ; then
+			if ! CSR="$(otpme-yk-piv --use-agent --csr --subject "$CSR_SUBJECT_RFC4514" "${CSR_OPTS[@]}")" ; then
 				exit 1
 			fi
 		else
@@ -1133,22 +1160,7 @@ case "$COMMAND" in
 
 	pkey_decrypt)
 		if [ "$YUBIKEY_PIV" = "true" ] ; then
-			if [ "$USE_AGENT_PIV" = "true" ] ; then
-				USE_AGENT_OPT="--use-agent"
-				if ! otpme-yk-piv --piv-check > /dev/null 2>&1 ; then
-					export PIN="$(read_pass_from_tty "Token PIN: ")"
-					if [ "$PIN" = "" ] ; then
-						exit 1
-					fi
-					otpme-yk-piv --piv-login --pin "env:PIN" > /dev/null 2>&1
-				fi
-			else
-				export PIN="$(read_pass_from_tty "Token PIN: ")"
-				if [ "$PIN" = "" ] ; then
-					exit 1
-				fi
-				PIN_OPT="--pin env:PIN"
-			fi
+			# The PIN and the confirmation are otpme-agent's.
 			# The user's encrypt key algo, so we route to the
 			# right yk-piv subcommand: RSA-OAEP via --decrypt,
 			# X25519/HPKE via --hpke-decrypt.
@@ -1161,11 +1173,9 @@ case "$COMMAND" in
 			fi
 			case "$YKPIV_ENC_ALGO" in
 				rsa)
-					cat - | base64 -d | otpme-yk-piv $USE_AGENT_OPT --decrypt $PIN_OPT
-				;;
+					cat - | base64 -d | otpme-yk-piv $USE_AGENT_OPT --decrypt				;;
 				x25519)
-					cat - | base64 -d | otpme-yk-piv $USE_AGENT_OPT --hpke-decrypt $PIN_OPT
-				;;
+					cat - | base64 -d | otpme-yk-piv $USE_AGENT_OPT --hpke-decrypt				;;
 				*)
 					echo "pkey_decrypt: unsupported yubikey-piv encrypt algo: $YKPIV_ENC_ALGO" 1>&2
 					exit 1
@@ -1204,23 +1214,8 @@ case "$COMMAND" in
 		# "sign" command, which works on files and writes a signature
 		# file (USERNAME=/SIGNATURE=).
 		if [ "$YUBIKEY_PIV" = "true" ] ; then
-			if [ "$USE_AGENT_PIV" = "true" ] ; then
-				USE_AGENT_OPT="--use-agent"
-				if ! otpme-yk-piv --piv-check > /dev/null 2>&1 ; then
-					export PIN="$(read_pass_from_tty "Token PIN: ")"
-					if [ "$PIN" = "" ] ; then
-						exit 1
-					fi
-					otpme-yk-piv --piv-login --pin "env:PIN" > /dev/null 2>&1
-				fi
-			else
-				export PIN="$(read_pass_from_tty "Token PIN: ")"
-				if [ "$PIN" = "" ] ; then
-					exit 1
-				fi
-				PIN_OPT="--pin env:PIN"
-			fi
-			if ! SIGNATURE="$(cat - | otpme-yk-piv $USE_AGENT_OPT --sign $PIN_OPT | base64 -w 0)" ; then
+			# The PIN and the confirmation are otpme-agent's.
+			if ! SIGNATURE="$(cat - | otpme-yk-piv $USE_AGENT_OPT --sign | base64 -w 0)" ; then
 				exit 1
 			fi
 		elif [ "$KEY_MODE" = "server" ] ; then
@@ -1305,23 +1300,8 @@ case "$COMMAND" in
 			exit 1
 		fi
 		if [ "$YUBIKEY_PIV" = "true" ] ; then
-			if [ "$USE_AGENT_PIV" = "true" ] ; then
-				USE_AGENT_OPT="--use-agent"
-				if ! otpme-yk-piv --piv-check > /dev/null 2>&1 ; then
-					export PIN="$(read_pass_from_tty "Token PIN: ")"
-					if [ "$PIN" = "" ] ; then
-						exit 1
-					fi
-					otpme-yk-piv --piv-login --pin "env:PIN" > /dev/null 2>&1
-				fi
-			else
-				export PIN="$(read_pass_from_tty "Token PIN: ")"
-				if [ "$PIN" = "" ] ; then
-					exit 1
-				fi
-				PIN_OPT="--pin env:PIN"
-			fi
-			if ! SIGNATURE="$(cat "$FILE" | otpme-yk-piv --use-agent --sign $PIN_OPT | base64 -w 0)" ; then
+			# The PIN and the confirmation are otpme-agent's.
+			if ! SIGNATURE="$(cat "$FILE" | otpme-yk-piv $USE_AGENT_OPT --sign | base64 -w 0)" ; then
 				exit 1
 			fi
 		elif [ "$KEY_MODE" = "server" ] ; then
@@ -1458,6 +1438,20 @@ case "$COMMAND" in
 			exit 1
 		fi
 
+		# -u and --rsa need the public key. With the AES key protected
+		# otherwise they were left out without a word, and a file meant
+		# for another user was encrypted with our passphrase.
+		if [ "$AES_KEY_ENC" != "rsa" ] ; then
+			if [ "$ENC_USERNAME" != "" ] ; then
+				error_message "$BASENAME: -u needs the public key, not the key encryption $AES_KEY_ENC"
+				exit 1
+			fi
+			if [ "$USE_RSA" != "" ] ; then
+				error_message "$BASENAME: --rsa needs the public key, not the key encryption $AES_KEY_ENC"
+				exit 1
+			fi
+		fi
+
 		if [ "$AES_KEY_ENC" = "rsa" ] ; then
 			if [ "$ENC_USERNAME" = "" ] ; then
 				PUBLIC_KEY="$(get_public_key)"
@@ -1500,8 +1494,13 @@ case "$COMMAND" in
 			else
 				# Preset possible AES passphrase from $_OTPME_KEYSCRIPT_AES_PASS
 				AES_PASS="$_OTPME_KEYSCRIPT_AES_PASS"
+				# Through the YubiKey only with --key-enc yubikey-hmac.
+				PASS_HMAC=""
+				if [ "$AES_KEY_ENC" = "yubikey-hmac" ] ; then
+					PASS_HMAC="true"
+				fi
 				AES_KEY_ENCRYPTED="$(echo -n "$AES_KEY" | aes_encrypt)"
-				unset AES_PASS
+				unset AES_PASS PASS_HMAC
 			fi
 		fi
 

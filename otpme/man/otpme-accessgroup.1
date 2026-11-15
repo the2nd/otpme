@@ -114,11 +114,14 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
-List the group names, and with a regex only those that match it.
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+List the group names, and with a pattern only those that match it, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
 You get the groups you may change; \fB\-a\fR adds those you may only look at.
 .br
-\fB\-\-attribute\fR matches the regex against that attribute instead of the name: \fBlist \-\-attribute max_fail 3\fR lists the groups that allow three failed logins.
+\fB\-\-attribute\fR matches the pattern against that attribute instead of the name: \fBlist \-\-attribute max_fail 3\fR lists the groups that allow three failed logins.
 A value that is not text has to be spelled out \(em \fB*\fR matches none of it.
 .TP
 .B enable \fIaccessgroup\fR
@@ -411,20 +414,23 @@ What was done and by whom stays as it is.
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIaccessgroup\fR
-Show the changelog of the access group.
+Show the changelog of the access group, one entry per line: its \fIentry_id\fR, the time, who made the change and what was done, then a detail in round brackets and the comment in square brackets where there are any.
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fIaccessgroup\fR \fIentry_id\fR \fIcomment\fR
 Set the comment of that entry, or replace the one it has.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B del_changelog \fIaccessgroup\fR \fIentry_id\fR
 Remove the comment of that entry.
 The entry itself stays, and an entry without a comment is refused.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIaccessgroup\fR
 Remove every entry of the changelog.
+Afterwards it holds one entry: that it was cleared.
 .br
 This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
@@ -473,7 +479,7 @@ A command that changes something asks first; the global option \fB\-f\fR skips t
 Give a role or a token one or more ACLs on this group.
 .br
 \fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
-\fIowner\fR is the path of that role or token.
+\fIowner\fR names it the way \fBlist_acls\fR prints it: a role as \fIsite/name\fR, or by its name alone on its own site; a token as \fI\%user/token\fR.
 An ACL can carry a value, for example \fBview:tokens\fR.
 To give several ACLs at once, separate them with commas: \fB\%view:tokens,view:status\fR.
 .br
@@ -909,12 +915,12 @@ See
 .B Auth On Action Policy
 in
 .BR otpme\-policy (1).
-An accessgroup has the hooks every object type has, and these:
+An accessgroup has the hooks every object type has, and these; a command of another name is in brackets:
 .RS
 .PP
 .na
 .nh
-add_child_group, add_child_session, add_token, change_max_fail, change_max_fail_reset, change_max_sessions, change_relogin_timeout, change_session_timeout, change_unused_session_timeout, disable_force_sotp_signing, disable_sessions, disable_sotp_signing, disable_timeout_pass_on, enable_force_sotp_signing, enable_sessions, enable_sotp_signing, enable_timeout_pass_on, remove_child_group, remove_child_session, remove_token, set_config_parameter, update_sign_public_keys.
+add_child_group, add_child_session, add_token, change_max_fail\ (max_fail), change_max_fail_reset\ (max_fail_reset), change_max_sessions\ (max_sessions), change_relogin_timeout\ (relogin_timeout), change_session_timeout\ (timeout), change_unused_session_timeout\ (unused_timeout), disable_force_sotp_signing, disable_sessions, disable_sotp_signing, disable_timeout_pass_on, enable_force_sotp_signing, enable_sessions, enable_sotp_signing, enable_timeout_pass_on, remove_child_group, remove_child_session, remove_token, set_config_parameter\ (config), update_sign_public_keys.
 .hy
 .ad
 .RE
@@ -922,7 +928,6 @@ add_child_group, add_child_session, add_token, change_max_fail, change_max_fail_
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
 .BR otpme\-client (1),
 .BR otpme\-scope (1),
 .BR otpme\-role (1),

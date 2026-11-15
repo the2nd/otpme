@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-token [--type <token_type>] {command} [token]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-token show [--policy-limit <limit>] [--role-limit <limit>] {--scope-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [token]'),
+                    '_cmd_usage_help' : _('Usage: otpme-token show [--policy-limit <limit>] [--role-limit <limit>] [--scope-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [token]'),
                     'cmd'   :   '--policy-limit :max_policies: --role-limit :max_roles: --scope-limit :max_scopes: --limit :limit: --fields :"output_fields": -z :max_len: -a :show_all=True: [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show token(s).'),
@@ -36,7 +36,7 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token list [-a] [regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-token list [-a] [pattern]'),
                     'cmd'   :   '-a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                   : _('List tokens.'),
@@ -210,7 +210,7 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token config -d -a {token} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-token config [-d] [-a] {token} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to token.'),
@@ -358,7 +358,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token info {token} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-token info [--language <language>] {token} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set token info'),
@@ -367,7 +367,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token dump_info {token}'),
+                    '_cmd_usage_help' : _('Usage: otpme-token dump_info [--language <language>] {token}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump token info'),
@@ -387,24 +387,12 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                 },
 
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
     '_show_config'    : {
                     'cmd'   :   '<|object|>',
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token export --password <password> {token}'),
+                    '_cmd_usage_help' : _('Usage: otpme-token export [--password <password>] {token}'),
                     'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export token config to stdout.'),

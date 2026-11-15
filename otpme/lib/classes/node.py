@@ -44,6 +44,9 @@ default_callback = config.get_callback()
 
 logger = config.logger
 
+# The vote script a site comes with, from /etc/otpme/scripts/.
+VOTE_SCRIPT_NAME = "node_vote_script.sh"
+
 read_acls = []
 
 write_acls =  [
@@ -787,32 +790,6 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     'config'   : {
             'default'    : {
                 'exists'    : {
@@ -939,6 +916,8 @@ def register():
     register_backend()
     register_object_unit()
     register_sync_settings()
+    # A base script: it cannot be deleted, renamed or moved.
+    config.register_base_object("script", VOTE_SCRIPT_NAME)
     register_commands("node", commands)
     # Read by the sync, which writes down the key a node is held to
     # (host_key_pins.py), for all nodes in one search. Public, so every
@@ -1005,6 +984,12 @@ def register_hooks():
     config.register_auth_on_action_hook("node", "limit_logins")
     config.register_auth_on_action_hook("node", "unlimit_logins")
     config.register_auth_on_action_hook("node", "change_public_key")
+    # Run by OTPmeHost.enable_jotp() etc. and refused by add_hook() as
+    # unknown before they were registered.
+    config.register_auth_on_action_hook("node", "enable_jotp")
+    config.register_auth_on_action_hook("node", "disable_jotp")
+    config.register_auth_on_action_hook("node", "enable_lotp")
+    config.register_auth_on_action_hook("node", "disable_lotp")
     config.register_auth_on_action_hook("node", "enable_jotp_rejoin")
     config.register_auth_on_action_hook("node", "disable_jotp_rejoin")
     config.register_auth_on_action_hook("node", "add_dynamic_group")
@@ -1457,6 +1442,8 @@ class Node(OTPmeHost):
         return status
 
     @backend.transaction
+    @audit_log()
+    @object_changelog("add")
     def add(
         self,
         _caller: str="API",

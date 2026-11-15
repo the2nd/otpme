@@ -26,7 +26,6 @@ search_attribute="rel_path"
 table_headers = [
                 "script",
                 #"unit",
-                "status",
                 "signatures",
                 "policies",
                 "inherit",
@@ -40,7 +39,6 @@ def register():
     return_attributes = [
                         'name',
                         'rel_path',
-                        'enabled',
                         'unit',
                         'description',
                         'sync_deletions',
@@ -86,10 +84,6 @@ def row_getter(realm, site, script_order, script_data, acls,
         script_rel_path = script_data[script_uuid]['rel_path']
         unit_uuid = script_data[script_uuid]['unit'][0]
         try:
-            enabled = script_data[script_uuid]['enabled'][0]
-        except Exception:
-            enabled = False
-        try:
             description = script_data[script_uuid]['description'][0]
         except Exception:
             description = None
@@ -114,18 +108,6 @@ def row_getter(realm, site, script_order, script_data, acls,
         if "unit" in output_fields:
             unit_string = get_unit_string(unit_uuid)
             row.append(unit_string)
-        # Status.
-        if "status" in output_fields:
-            if check_acl("view:status") \
-            or check_acl("enable:object") \
-            or check_acl("disable:object"):
-                if enabled:
-                    enabled_string = _("Enabled")
-                else:
-                    enabled_string = _("Disabled")
-                row.append(enabled_string)
-            else:
-                row.append("-")
         # Signatures.
         if "signatures" in output_fields:
             if check_acl("view:signatures") \

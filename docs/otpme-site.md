@@ -131,11 +131,12 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
-List the site names, and with a regex only those that match it. You get
-the sites you may change; **-a** adds those you may only look at.  
-**--attribute** matches the regex against that attribute instead of the
-name.
+**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+List the site names, and with a pattern only those that match it, see
+**SELECTING OBJECTS** in **otpme**(1). You get the sites you may change;
+**-a** adds those you may only look at.  
+**--attribute** matches the pattern against that attribute instead of
+the name.
 
 **enable *site***  
 Enable a disabled site.  
@@ -233,18 +234,58 @@ parameter that is already set is not changed.
 It adds the base ACL groups the site is missing, and gives the ones it
 has the ACLs this OTPme version says, see **otpme-aclgroup**(1).
 
-On a site from before the ACL group **realm_user** it takes away the
-ACLs the role **REALM_USER** had one by one on every object, and gives
-it **realm_user** instead. This walks the whole site twice, once to take
-the old ACLs away and once to give the group, and can take a while. It
-is done once: a second run finds nothing to do.
+It runs the upgrades the site has not had yet. An upgrade is a change
+that has to happen once to a site an older OTPme version set up. Each
+has a number and the OTPme version that brought it. The site keeps the
+number of the last upgrade that ran, and **show** *site* shows it as
+**UPGRADE_LEVEL**, e.g. **2 (0.3.0a287)**. The command runs them in
+order and keeps the number after each one. If one fails, the next run
+starts with it again. One that ran never runs again. A new site starts
+at the last upgrade, it needs none of them. Until the site has had all
+of them it is in maintenance, and **maintenance** *site* says which are
+pending. The upgrades so far:
 
-It takes away two ACLs older versions gave that grant nothing:
-**view_public** of the role **SITE_ADMIN** on the site and on the units
-that got a copy of it, and on the realm an ACL for the group
-**realmusers**. A token of **SITE_ADMIN** is an admin and needs no ACL
-on its site, and a group cannot hold an ACL. **SITE_ADMIN** keeps
-**view_public** on the realm.
+> **1 (0.3.0a287)**  
+> Takes away the ACLs the role **REALM_USER** had one by one on every
+> object, and gives it the ACL group **REALM_USERS** instead. This walks
+> the whole site twice, and can take a while.
+>
+> **2 (0.3.0a287)**  
+> Takes away ACLs older versions gave that grant nothing:
+> **view_public** of the role **SITE_ADMIN** on the site and on the
+> units that got a copy of it, and on the realm an ACL for the group
+> **realmusers**. A token of **SITE_ADMIN** is an admin and needs no ACL
+> on its site, and a group cannot hold an ACL. **SITE_ADMIN** keeps
+> **view_public** on the realm.
+>
+> **3 (0.3.0a288)**  
+> Device names are unique in the realm now, as host names are, and the
+> OID of a device no longer names its site. This writes the index
+> entries of the devices of the site again. A device name that a device
+> of another site has too is named in the output, and the upgrade goes
+> on. Until one of them is renamed with **otpme-device rename**, the
+> name gives either of them.
+>
+> **4 (0.3.0a288)**  
+> Puts into the index whether authentication and synchronization with
+> the realm are on. **otpme-realm show** reads them from there, and said
+> both were off for a realm made before. This runs on the master site of
+> the realm alone.
+>
+> **5 (0.3.0a288)**  
+> Gives the site admin role and the realm user role of every site
+> **view_public** on the realm, which **otpme-realm show** wants. Only
+> the roles of the first site had it; **add** gives it to a new site
+> now. This runs on the master site of the realm alone.
+>
+> **6 (0.3.0a288)**  
+> Adds the base ACL group **PASSUSER**, see **otpme-aclgroup**(1).
+>
+> **7 (0.3.0a288)**  
+> The base ACL groups have their names in upper case now: **realm_user**
+> is **REALM_USERS**, **usermanager** is **USERMANAGER**, and so on.
+> This renames them. They keep their UUID, so every ACL they are given
+> in stays as it is.
 
 It stores the objects of the site in the format of the new version. A
 new version may store an object in another way. The command writes every
@@ -296,8 +337,10 @@ Needs the ACL **edit:description**.
 Set free-form info text. If *info* is omitted, the current text is
 opened in the editor named by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note about
-the object, which no user is ever shown. With a language it is text for
-the users in that language.  
+the object, which no user is ever shown. A text can be written for a
+language as well, for the places that show such a text to a user;
+nothing shows the info of a site, so for a site it stays a note either
+way.  
 Needs the ACL **edit:info**.
 
 **dump_info \[**--language** *LANG*\] *site***  
@@ -316,7 +359,11 @@ case
 -   when its nodes store objects in another format than the site does,
 
 -   when it was switched on with **maintenance on**, or by **upgrade**
-    while that runs or after it failed.
+    while that runs or after it failed,
+
+-   when the site has not had every upgrade of the code, see
+    **upgrade**. That can come with any update, also one within the same
+    version.
 
 So an update of OTPme puts the site into maintenance by itself, and
 **upgrade** ends it. Nothing is written to start it: each node compares
@@ -541,9 +588,10 @@ Needs the ACL **edit:radius_ca_cert**.
 ## SSO Configuration
 
 The SSO portal is the web page users sign in on, and the OIDC provider
-behind it. It runs on every node and host of the site that has
+behind it. It runs on every node of the site, and on each host that has
 **SSO_SERVER="True"** in */etc/otpme/otpme.conf*, see **otpme.conf**(5);
-a host has to be made an SSO host first, see **add_sso_host** below.
+such a host has to be made an SSO host first, see **add_sso_host**
+below.
 
 What the portal needs from the site is its name, a certificate and a key
 for that name, and two secrets. A site has all of them from the start:
@@ -849,18 +897,23 @@ A command that changes something asks first; the global option **-f**
 skips the question.
 
 **changelog *site***  
-Show the changelog of the site. Needs the ACL **view:changelog**.
+Show the changelog of the site, one entry per line: its *entry_id*, the
+time, who made the change and what was done, then a detail in round
+brackets and the comment in square brackets where there are any. Needs
+the ACL **view:changelog**.
 
 **edit_changelog *site* *entry_id* *comment***  
-Set the comment of that entry, or replace the one it has. Needs the ACL
-**edit:changelog**.
+Set the comment of that entry, or replace the one it has. That writes an
+entry of its own. Needs the ACL **edit:changelog**.
 
 **del_changelog *site* *entry_id***  
 Remove the comment of that entry. The entry itself stays, and an entry
-without a comment is refused. Needs the ACL **edit:changelog**.
+without a comment is refused. That writes an entry of its own. Needs the
+ACL **edit:changelog**.
 
 **clear_changelog *site***  
-Remove every entry of the changelog.  
+Remove every entry of the changelog. Afterwards it holds one entry: that
+it was cleared.  
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
@@ -906,18 +959,19 @@ A site is also the top of everything in it, so it is where an ACL for
 all of it is set. A normal ACL is for the site object alone. A default
 ACL, **+acl** or **++acl**, is not for the site: it is handed down to
 the units of the site and from there to the objects it names. What the
-three forms mean, and which ACLs exist, is under **ACLs** in
-**otpme**(7) and in **otpme-acls**(7).
+three forms mean is under **ACLs** in **otpme**(7). Tab completion after
+**add_acl** offers the ACLs a site knows.
 
 Adding and removing ask first, once for the whole command; the global
 option **-f** skips the question.
 
 **add_acl \[**-r**\] \[**-a**\] \[**--objects** *types*\] \[**--procs** *num*\] *site* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this site.  
-*owner_type* is **role** or **token**. *owner* is the path of that role
-or token. An ACL can carry a value, for example **view:trusts**. To give
-several ACLs at once, separate them with commas:
-**view:trusts,view:status**.  
+*owner_type* is **role** or **token**. *owner* names it the way
+**list_acls** prints it: a role as *site/name*, or by its name alone on
+its own site; a token as *user/token*. An ACL can carry a value, for
+example **view:trusts**. To give several ACLs at once, separate them
+with commas: **view:trusts,view:status**.  
 Without an option only the site is changed. A default ACL then reaches
 what is created from now on, and nothing that is already there.
 
@@ -1052,9 +1106,13 @@ output, so the password is all you need to read it back.
 Needs the ACL **export**.
 
 **remove_orphans \[**-r**\] *site***  
-Remove references to objects that are gone: orphan ACLs, policies and
-signatures of the site, a trusted site that was deleted, and an SSO host
-that was deleted.  
+Remove references to objects that are gone: orphan ACLs and policies of
+the site, a trusted site that was deleted, and an SSO host that was
+deleted. Config parameters set on the site that keep other objects lose
+the ones that are gone, e.g. a deleted VLAN in **vlans**, the way
+**config -d** does. **password_store_members** is only named, not
+changed: its signatures would no longer fit, so change it with **config
+-d** and sign the members again, see **otpme-pass**(1).  
 **-r** goes on through every unit of the site and the objects in them,
 and cleans those up as well. An object with nothing to clean up says
 nothing; one without the ACL is skipped with “Permission denied”.  
@@ -1114,9 +1172,6 @@ Only the dictionaries OTPme comes with can be named: **english**,
 is refused.  
 Without this option the site gets none. More can be added later, see
 **otpme-dictionary**(1).
-
-**--no-dicts**  
-Add no dictionary, whatever **--dicts** says.
 
 **--id-ranges *range1,range2***  
 The ranges the site takes the numbers of new users and groups from, each
@@ -1225,16 +1280,19 @@ The role may look at the site object itself, and at nothing below it.
 
 An auth on action policy can ask for a login again before these actions.
 See **Auth On Action Policy** in **otpme-policy**(1). A site has the
-hooks every object type has, and these:
+hooks every object type has, and these; a command of another name is in
+brackets:
 
-> add_sso_host, add_sso_logo, add_trust, add_unit, change_address,
-> change_auth_fqdn, change_cluster_key, change_mgmt_fqdn,
-> change_radius_cert, change_radius_key, change_site_cert,
-> change_sso_cert, change_sso_csrf_secret, change_sso_fqdn,
-> change_sso_key, change_sso_secret, del_sso_logo, del_trust,
-> disable_auth, disable_oidc, disable_sync, dump_sso_logo, enable_auth,
-> enable_oidc, enable_sync, remove_sso_host, renew_cert,
-> set_config_parameter, show_config_parameters.
+> add_sso_host, add_sso_logo (sso_logo), add_trust, add_unit,
+> change_address (address), change_auth_fqdn (auth_fqdn),
+> change_cluster_key (cluster_key), change_mgmt_fqdn (mgmt_fqdn),
+> change_radius_cert (radius_cert), change_radius_key (radius_key),
+> change_site_cert (site_cert), change_sso_cert (sso_cert),
+> change_sso_csrf_secret (sso_csrf_secret), change_sso_fqdn (sso_fqdn),
+> change_sso_key (sso_key), change_sso_secret (sso_secret),
+> del_sso_logo, del_trust, disable_auth, disable_oidc, disable_sync,
+> dump_sso_logo, enable_auth, enable_oidc, enable_sync, remove_sso_host,
+> renew_cert, set_config_parameter (config).
 
 # FILES
 
@@ -1244,11 +1302,11 @@ replaced by the sync, see **renew_cert**.
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme.conf**(5),
-**otpme-realm**(1), **otpme-node**(1), **otpme-host**(1),
-**otpme-ca**(1), **otpme-tool**(1), **otpme-client**(1),
-**otpme-scope**(1), **otpme-policy**(1), **otpme-dictionary**(1),
-**otpme-unit**(1), **otpme-pass**(1), **otpme-trash**(1)
+**otpme**(1), **otpme**(7), **otpme.conf**(5), **otpme-realm**(1),
+**otpme-node**(1), **otpme-host**(1), **otpme-ca**(1),
+**otpme-tool**(1), **otpme-client**(1), **otpme-scope**(1),
+**otpme-policy**(1), **otpme-dictionary**(1), **otpme-unit**(1),
+**otpme-pass**(1), **otpme-trash**(1)
 
 # AUTHOR
 

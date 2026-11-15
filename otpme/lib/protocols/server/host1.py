@@ -161,6 +161,7 @@ class OTPmeHostP1(OTPmeServer1):
                             "get_host_public_key",
                             "get_host_status",
                             "get_pass_strength",
+                            "get_radius_client",
                             "authorize_token",
                             "dump_acl_cache",
                             "dump_sync_map",
@@ -509,6 +510,42 @@ class OTPmeHostP1(OTPmeServer1):
                 else:
                     message = _("Unknown user.")
                     status = False
+
+        elif command == "get_radius_client":
+            # For the FreeRADIUS module, which runs as FREERADIUS_USER and
+            # has no backend: the client a request comes from, by its
+            # NAS-Identifier or else its address, and its auth cache.
+            radius_users = ("root", config.user, config.freeradius_user)
+            nasid = command_args.get('nasid')
+            client_ip = command_args.get('client_ip')
+            if self.client_user not in radius_users:
+                message = _("Permission denied.")
+                status = False
+            elif not nasid and not client_ip:
+                message = "INCOMPLETE_COMMAND"
+                status = False
+            else:
+                if nasid:
+                    search_attr = "name"
+                    search_val = nasid
+                else:
+                    search_attr = "address"
+                    search_val = client_ip
+                result = backend.search(object_type="client",
+                                        attribute=search_attr,
+                                        value=search_val,
+                                        realm=config.realm,
+                                        site=config.site,
+                                        return_type="instance")
+                status = True
+                message = None
+                if result:
+                    radius_client = result[0]
+                    message = {
+                            'name'                  : radius_client.name,
+                            'auth_cache_enabled'    : radius_client.auth_cache_enabled,
+                            'auth_cache_timeout'    : radius_client.auth_cache_timeout,
+                            }
 
         elif command == "object_exists":
             try:

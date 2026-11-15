@@ -58,8 +58,9 @@ class OTPmeExtension(OTPmeLDIFHandler):
 
         self.valid_hooks = {
                             'all' : {
-                                        'rename'        : 'rename',
-                                        'add_attribute' : 'handle_attribute_add',
+                                        'rename'            : 'rename',
+                                        'add_attribute'     : 'handle_attribute_add',
+                                        'modify_attribute'  : 'handle_attribute_modify',
                                     },
                             'user' : {
                                         'change_group'    : 'change_group',
@@ -110,9 +111,12 @@ class OTPmeExtension(OTPmeLDIFHandler):
                                 'role' : {},
                             }
 
+        # memberUid of a group is written by update_members() from its
+        # tokens, roles and primary group users; by hand it would be
+        # overwritten at the next change of the members.
         self.read_only_attributes = {
                             'user'  : [],
-                            'group'  : [ 'cn' ],
+                            'group'  : [ 'cn', 'memberUid' ],
                         }
 
         self.rename_no_update = [ 'uidNumber', 'gidNumber', 'memberUid' ]
@@ -218,6 +222,12 @@ class OTPmeExtension(OTPmeLDIFHandler):
                 self.check_free_id(o.type, a, v, callback=callback)
 
         if o.type == "group":
+            # posixGroup allows it, and ldapd would hand it out. A group
+            # is no account to log in with.
+            if a == "userPassword":
+                msg = _("Groups cannot have attribute: {attribute}")
+                msg = msg.format(attribute=a)
+                raise OTPmeException(msg)
             if a == "gidNumber":
                 # Admin group may have duplicate gidNumber.
                 if o.name == config.admin_group:
@@ -413,3 +423,12 @@ class OTPmeExtension(OTPmeLDIFHandler):
                 # Update user LDIF.
                 user.load_extensions(verbose_level=verbose_level,
                                     callback=callback)
+
+    def handle_attribute_modify(self, o, attribute, old_value, new_value,
+        verbose_level=0, callback=default_callback, **kwargs):
+        """ Handle "modify attribute" hook: as an add of the new value. A
+        new gidNumber of a group goes to the users it is the primary
+        group of, as with add_attribute. """
+        return self.handle_attribute_add(o, attribute, new_value,
+                                        verbose_level=verbose_level,
+                                        callback=callback, **kwargs)

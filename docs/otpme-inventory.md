@@ -25,49 +25,60 @@ offers and which hosts have a package that can be updated, see
 **REFERENCE HOSTS**.
 
 The **confd** daemon on each host (and node) reports this data to the
-nodes of its site. It checks the host every 60 seconds and only sends
-what changed. It does not take stock while a job is running on the host.
-A package manager at work is no good moment for it, the next round does
+nodes of its site, or of its **inventory_site**, see **A CENTRAL
+INVENTORY**. It checks the host every 60 seconds and only sends what
+changed. It does not take stock while a job is running on the host. A
+package manager at work is no good moment for it, the next round does
 it.
 
 The OS, the OS version, the kernel, the reboot, the OTPme version, the
 packages and the hardware are stored in a separate inventory object for
 each host, not on the host object. All of it is what the host reported
-about itself, and an inventory has to stand on its own. Host objects are
-synced to all hosts, and the package lists of all hosts should not be,
-so the inventory stays on the nodes of the host's site.
+about itself, and an inventory has to stand on its own. It is not synced
+to any host: it stays on the nodes of the site that keeps it.
 
 Changing the inventory does not change the last modified time of the
 host.
 
 To see the inventory of a host your token has to be named in the
-**allow_inventory** config parameter of that host. Hosts you may not see
-are left out of search results. See **PERMISSIONS** below.
+**allow_inventory** config parameter of that host, or be in a role that
+is named there. Hosts you may not see are left out of search results.
+See **PERMISSIONS** below.
 
 Shown are the hosts whose inventory this site keeps: its own, and those
 of other sites that report here, see **A CENTRAL INVENTORY**.
 
-The hardware is read on any Linux host, and the system, the kernel and
-the OTPme version on any host at all. Package lists need a package
-manager the host knows, which today means Debian and Ubuntu, and so does
-the answer whether the host has to be rebooted. A host without one still
-reports its system, its kernel, its OTPme version and its hardware.
+Package lists need a package manager the host knows, which today means
+Debian and Ubuntu, and so does the answer whether the host has to be
+rebooted. Any other host still reports its system, its kernel, its OTPme
+version and its hardware.
 
 # COMMANDS
+
+Nobody needs an ACL here: who may read the inventory of a host says its
+**allow_inventory**, see **PERMISSIONS**.
 
 **show *host***  
 Show the OS, the OS version, the architecture, the running kernel,
 whether the host has to be rebooted, the OTPme version, the number of
 packages, the vendor, the model, the serial number and the time of the
-last update.
+last update. A value the host has not reported shows **-**; vendor,
+model and serial are left out then.  
+Needs **allow_inventory** for the host.
 
 **packages \[**--filter** *pattern*\] *host***  
 List the packages of a host, one per line with name and version.
+**--filter** lists only the packages whose name matches, with wildcards,
+for example **'python3-\*'**.  
+Needs **allow_inventory** for the host.
 
 **hardware *host***  
-Show what a host is made of: CPU, memory, disks, serial number and so
-on. Sizes are shown in human form, for example **9.7G**. Says so if the
-host has not reported its hardware yet.
+Show what a host is made of: CPU, memory, serial number and so on, then
+one line per controller, network card and disk. Controllers and network
+cards come with their PCI IDs and driver, disks with their size, vendor,
+model, serial and controller. Sizes are shown in human form, for example
+**9.7G**. Says so if the host has not reported its hardware yet.  
+Needs **allow_inventory** for the host.
 
 **search \[**--host** *host*\] \[**--os-version** *version*\] \[**--kernel** *kernel*\] \[**--otpme-version** *version*\] \[**--reboot-required**\] \[**--hardware** *expression*\] \[**--upgradable**\] \[*package*\]**  
 Find hosts by package, by OS version, by kernel, by OTPme version, by a
@@ -88,7 +99,9 @@ says which disk it is, the vendor, the model and the serial, where the
 host knows them: **sdb=150.0G(SEAGATE ST1000NM0055 ZA12345)**. With
 **--upgradable** it is the package, the version installed and the
 version the system offers: **openssl=3.0.15-1\~deb12u1 -\>
-3.0.17-1\~deb12u1**.
+3.0.17-1\~deb12u1**.  
+Only hosts whose **allow_inventory** lets you read them are listed; the
+others are left out without a word.
 
 **systems**  
 List the systems the hosts run, one line per OS version and
@@ -104,7 +117,8 @@ runs it. *package* works as with **search**, a name or
 *name***=***version*, with wildcards. The version is the one apt would
 install.
 
-With **--host** it is the system of that host. Each line is a package,
+With **--host** it is the system of that host. **--os-version** and
+**--arch** are refused then: the host says both. Each line is a package,
 and behind it the version installed on the host, if it is:
 **openssl=3.0.17-1\~deb12u1 installed=3.0.15-1\~deb12u1**.
 
@@ -117,9 +131,8 @@ It needs a reference host for the system, see **REFERENCE HOSTS**.
 
 # OPTIONS
 
-**--filter *pattern***  
-Only list packages whose name matches the pattern, for example
-**'python3-\*'**.
+These are the options of **search** and **available**; **--filter** is
+described with **packages**.
 
 **--host *host***  
 For **search**: only this host. Use it to search the packages of one
@@ -130,16 +143,6 @@ this host, see there.
 Only hosts with this OS version, for example **debian-12**, or for
 **available** only this system. Wildcards are allowed, for example
 **'debian-\*'**.
-
-**--arch *arch***  
-For **available**: only this architecture, for example **amd64**.
-Wildcards are allowed.
-
-**--upgradable**  
-For **search**: only installed packages of which the system of the host
-offers a newer version. Takes no value. With a *package* only that
-package. A host whose system no reference host reports is left out, and
-so is a package its system does not offer. See **REFERENCE HOSTS**.
 
 **--kernel *kernel***  
 Only hosts running this kernel, for example **6.1.0-37-amd64**.
@@ -157,31 +160,47 @@ left out. See **WHEN A HOST HAS TO BE REBOOTED**.
 
 **--hardware *expression***  
 Only hosts whose hardware matches. The expression is a field, an
-operator and a value.
+operator and a value; the fields are in **HARDWARE FIELDS**.
 
 -   *field***=***value* matches the value. Wildcards are allowed, for
-    example **'model=PowerEdge\*'**.
+    example **'model=PowerEdge\*'**. **virtual** takes **yes** or
+    **no**.
 
 -   *field***\>***value*, *field***\<***value*, *field***\>=***value*
-    and *field***\<=***value* compare. Only fields that are a number can
-    be compared.
+    and *field***\<=***value* compare. Only **cpu_count**, **memory**
+    and **disk_size** can be compared. A size is written the way it is
+    shown, for example **'memory\<8G'**.
 
 Put the expression in quotes. **\>** and **\<** are redirections in the
 shell, and **\*** is a file name pattern.
 
-Global options are available for all commands. See **otpme**(1) for
-details.
+**--upgradable**  
+For **search**: only installed packages of which the system of the host
+offers a newer version. Takes no value. With a *package* only that
+package. A host whose system no reference host reports is left out, and
+so is a package its system does not offer. See **REFERENCE HOSTS**.
+
+**--arch *arch***  
+For **available**: only this architecture, for example **amd64**.
+Wildcards are allowed.
+
+Global options work with every command, see **otpme**(1).
 
 # PERMISSIONS
 
 Who may read the inventory of a host is set with the **allow_inventory**
-config parameter. It holds tokens and roles. A token may read the
-inventory when it is named, or when it is in a role that is named. Roles
-inside roles count too.
+config parameter. It holds tokens and roles, named by their OID,
+**token\|\<realm\>/\<user\>/\<name\>** and
+**role\|\<realm\>/\<site\>/\<name\>**, and stored by UUID: a rename
+keeps the permission, and a new object of the same name does not inherit
+it. A token may read the inventory when it is named, or when it is in a
+role that is named. Roles inside roles count too.
 
-You can set it on a host, on a unit, on a site. The most specific one
-wins, like every config parameter. So you can allow a role on one unit
-and nowhere else.
+You can set it on a host, a node, a unit or a site. The most specific
+one wins, like every config parameter. So you can allow a role on one
+unit and nowhere else. Setting it needs the ACL
+**set:config:allow_inventory** on that object, so give that one out with
+care: whoever has it can let anybody read the inventory.
 
 If it is not set, nobody may read the inventory. The admin token and
 tokens in the admin role are the exception, they always may. For a node
@@ -215,6 +234,8 @@ Unset means the host decides, with its own **allow_inventory** at the
 host, its unit and its site of origin.  
 It does not touch the hosts of this site, those always go by
 **allow_inventory**.  
+Setting it needs the ACL **set:config:allow_foreign_inventory** on the
+site.  
 Object types: site
 
 # A CENTRAL INVENTORY
@@ -227,14 +248,19 @@ Two parameters, one at each end, because a host saying where it wants to
 report is not the same as a site agreeing to keep it.
 
 **inventory_site (str)**  
-Where a host reports its inventory. Set it on a host, a unit or a site;
-the most specific one wins, like every config parameter. Unset means the
-site the host belongs to.  
+Where a host reports its inventory. Set it on a host, a node, a unit or
+a site; the most specific one wins, like every config parameter. Unset
+means the site the host belongs to, and so does a site that is gone; the
+host logs a warning then.  
+Setting it needs the ACL **set:config:inventory_site** on that object.  
 Object types: site, unit, host, node
 
 **inventory_trusts (list)**  
 The sites whose hosts this site keeps inventories for. Unset means none,
-and then a host of another site is refused.  
+and then a host of another site is refused: its inventory is not updated
+anywhere, and the host logs the refusal and tries again the next time it
+checks.  
+Setting it needs the ACL **set:config:inventory_trusts** on the site.  
 Object types: site
 
 Example, with every host of *berlin* reporting to *munich*:
@@ -256,14 +282,16 @@ It is not moved and not deleted, and it stops being updated.
 
 # OS, OS VERSION AND KERNEL
 
-**os** is **Linux**, **Windows** or **MacOS**. **os_version** is the ID
-and the version from */etc/os-release*, for example **debian-13** or
-**ubuntu-24.04**. A system without a version number uses its code name,
-for example **debian-trixie**.
+**os** is the operating system, **Linux** on every host OTPme runs on.
+**os_version** is the ID and the version from */etc/os-release*, for
+example **debian-13** or **ubuntu-24.04**. A system without a version
+number uses its code name, for example **debian-trixie**, and one
+without either its ID alone.
 
 **arch** is the architecture the way the packages name it, for example
-**amd64** or **arm64**, from **dpkg --print-architecture**. A host
-without dpkg does not report one.
+**amd64** or **arm64**, from **dpkg --print-architecture**. Only Debian,
+Ubuntu and the systems that say in */etc/os-release* that they are like
+them (**ID_LIKE**) report one, the same ones that report their packages.
 
 **kernel** is the kernel the host is running, the way **uname -r** says
 it, for example **6.1.0-37-amd64**.
@@ -300,12 +328,11 @@ host cannot say.
 The host works this out itself, because what says it differs from system
 to system. On Debian and Ubuntu two things are asked:
 
-> -   */var/run/reboot-required*, the file a package writes when it
+> -   */var/run/reboot-required*, the file a package asks for when it
 >     needs a reboot. Not only the kernel does that, libc and systemd
->     ask for one too. The file is written by **update-notifier-common**
->     or by **needrestart**. Ubuntu has one of them, Debian usually has
->     neither, and then the file never shows up however much the host
->     needs a reboot.
+>     ask for one too. The file is written by
+>     **update-notifier-common**, which Ubuntu has and Debian does not:
+>     on Debian it never shows up, however much the host needs a reboot.
 >
 > -   The kernel, compared. The newest kernel that is installed against
 >     the one that is running, and for a kernel that was updated in
@@ -314,9 +341,8 @@ to system. On Debian and Ubuntu two things are asked:
 >     This needs nothing installed, and the kernel is the reason for a
 >     reboot in nearly every case.
 
-So a plain Debian host says **yes** for a kernel and **no** for
-everything else. Install **needrestart** there if a reboot that libc or
-systemd asks for should show up as well.
+So a Debian host says **yes** for a kernel and **no** for everything
+else: a reboot that libc or systemd asks for does not show up there.
 
 **-** means the host said nothing. Either there is no handler for its
 system, and then it reports its kernel and its hardware but no packages
@@ -354,8 +380,9 @@ INVENTORY**. The site that keeps the data decides, like with
 **inventory_trusts**:
 
 **reference_hosts (list)**  
-The hosts that report to this site the packages their system offers. One
-per OS version and architecture is enough.  
+The hosts or nodes that report to this site the packages their system
+offers. One per OS version and architecture is enough.  
+Setting it needs the ACL **set:config:reference_hosts** on the site.  
 Object types: site
 
 The host does not read the parameter. The site tells it with every
@@ -398,9 +425,14 @@ Package names are the names dpkg uses. A multi-arch package has its
 architecture in the name, for example **libc6:amd64**. Only fully
 installed packages are listed.
 
+**search** finds it by either name: **libc6** and **libc6:amd64** both
+find **libc6:amd64**.
+
 The packages a system offers are named without the architecture.
 **search --upgradable** and **available --host** compare **libc6:amd64**
-on a host with **libc6** of its system.
+on a host with **libc6** of its system. A package of another
+architecture, for example **libc6:i386** on an amd64 host, is left out
+there.
 
 # HARDWARE FIELDS
 
@@ -431,7 +463,11 @@ The CPU and how many logical CPUs there are, from */proc/cpuinfo*.
 
 **memory**  
 How much memory the host has, from */proc/meminfo*. Can be compared.
-Write it as a size, for example **8G**.
+Write it as a size, for example **8G**.  
+It is **MemTotal**, what the kernel has left after taking its own share,
+so a little under what is built in: a host with 32 GB shows about
+**31.2G**. So **'memory\<8G'** finds the hosts with 8 GB as well; ask
+for **'memory\<7G'** to leave them out.
 
 **disk, **disk_size**, **disk_serial**, **disk_vendor**, **disk_model****  
 One entry per disk, from */sys/block*. **disk** is the name, for example
@@ -475,7 +511,10 @@ searched.
 **virtual, **virt_type****  
 Whether the host is a virtual machine, and on what. **virtual** is
 **yes** or **no**. **virt_type** is **kvm**, **vmware**, **virtualbox**,
-**xen**, **hyperv** and so on.
+**xen**, **hyperv** and so on.  
+It comes from */sys/hypervisor/type*, and else from the name a
+hypervisor writes into the DMI vendor or model. A hypervisor that is not
+known by its name there counts as **no**.
 
 **bios_vendor, **bios_version**, **bios_date****  
 The BIOS. **bios_date** is written the way the board writes it, usually
@@ -492,14 +531,14 @@ What kind of case this is (**rack-mount-chassis**, **laptop**,
 Show the system of a host, how many packages it has and which machine it
 is:
 
->     $ otpme-inventory show client1
->     host: client1
+>     $ otpme-inventory show server1
+>     host: server1
 >     os: Linux
->     os_version: debian-13
+>     os_version: debian-12
 >     arch: amd64
->     kernel: 6.12.43-amd64
->     reboot_required: no
->     otpme_version: 0.3.0a283
+>     kernel: 6.1.0-37-amd64
+>     reboot_required: yes
+>     otpme_version: 0.3.0a281
 >     packages: 686
 >     vendor: Dell Inc.
 >     model: PowerEdge R640
@@ -508,7 +547,7 @@ is:
 
 Show what it is made of:
 
->     $ otpme-inventory hardware client1
+>     $ otpme-inventory hardware server1
 >     bios_version: 2.19.1
 >     chassis_type: rack-mount-chassis
 >     cpu_count: 16
@@ -518,10 +557,10 @@ Show what it is made of:
 >     serial: ABC1234
 >     vendor: Dell Inc.
 >     virtual: no
->     disk: sda 223.6G DELL PERC H730P serial=6F4EE0803A2E4900 controller=0000:18:00.0
->     disk: sdb 1.8T DELL PERC H730P serial=6F4EE0803A2E4901 controller=0000:18:00.0
 >     controller: 0000:18:00.0 Broadcom / LSI PERC H730P Mini MegaRAID SAS-3 3108 vendor_id=1000 device_id=005d subsystem_id=1028:1f47 driver=megaraid_sas
 >     nic: eno1 ec:f4:bb:11:22:33 Intel Corporation I350 Gigabit Network Connection vendor_id=8086 device_id=1521 driver=igb
+>     disk: sda 223.6G DELL PERC H730P serial=6F4EE0803A2E4900 controller=0000:18:00.0
+>     disk: sdb 1.8T DELL PERC H730P serial=6F4EE0803A2E4901 controller=0000:18:00.0
 
 List its packages, all of them or only some:
 
@@ -627,8 +666,9 @@ Show all Dell PowerEdge servers.
 **otpme-inventory search --hardware virtual=no**  
 Show all hosts that are not virtual machines.
 
-**otpme-inventory search --hardware 'memory\<8G'**  
-Show all hosts with less than 8 GB of memory.
+**otpme-inventory search --hardware 'memory\<7G'**  
+Show all hosts with less than 8 GB built in. A host with 8 GB shows
+about **7.8G**, see **HARDWARE FIELDS**.
 
 **otpme-inventory search --hardware 'cpu_count\>=8'**  
 Show all hosts with 8 CPUs or more.
@@ -642,29 +682,28 @@ The line says what matched, so a search for memory shows the memory:
 
 A host has several disks, so only the disks that match are shown:
 
->     $ otpme-inventory search --hardware 'disk_size>=100G'
->     client1 sda=223.6G(DELL PERC H730P 6F4EE0803A2E4900)
->     dev1 sdc=100.0G(QEMU QEMU HARDDISK)
->     server1 sdb=150.0G(SEAGATE ST1000NM0055 ZA12345)
+>     $ otpme-inventory search --hardware 'disk_size>=500G'
+>     server1 sdb=1.8T(DELL PERC H730P 6F4EE0803A2E4901)
+>     server2 sdb=931.5G(SEAGATE ST1000NM0055 ZA67890)
 
 The other way round, to find the host a disk sits in when all you have
 is the disk:
 
->     $ otpme-inventory search --hardware disk_serial=ZA12345
->     server1 sdb=150.0G(SEAGATE ST1000NM0055 ZA12345)
+>     $ otpme-inventory search --hardware disk_serial=ZA67890
+>     server2 sdb=931.5G(SEAGATE ST1000NM0055 ZA67890)
 
 Or every host that has a disk of a model, when a series turns out to be
 faulty:
 
 >     $ otpme-inventory search --hardware 'disk_model=ST1000NM*'
->     server1 sdb=150.0G(SEAGATE ST1000NM0055 ZA12345)
->     server2 sdb=150.0G(SEAGATE ST1000NM0055 ZA67890)
+>     server2 sdb=931.5G(SEAGATE ST1000NM0055 ZA67890)
+>     server3 sdb=931.5G(SEAGATE ST1000NM0055 ZA12345)
 
 Ask for a controller, and the answer is the disks that hang on it:
 
 >     $ otpme-inventory search --hardware 'controller=PERC H730P*'
 >     server1 PERC H730P Mini(sda=223.6G,sdb=1.8T)
->     server2 PERC H730P Mini(sda=223.6G)
+>     server2 PERC H730P Mini(sda=223.6G,sdb=931.5G)
 
 Which host a MAC belongs to:
 
@@ -675,9 +714,10 @@ Search by disk name the same way. **disk=sda** shows the **sda** of
 every host with its size:
 
 >     $ otpme-inventory search --hardware disk=sda
->     client1 sda=223.6G(DELL PERC H730P 6F4EE0803A2E4900)
+>     client1 sda=476.9G(ATA Samsung SSD 860 S3Z9NB0K123456)
 >     dev1 sda=48.0G(QEMU QEMU HARDDISK)
->     server1 sda=32.0G(QEMU QEMU HARDDISK)
+>     server1 sda=223.6G(DELL PERC H730P 6F4EE0803A2E4900)
+>     server2 sda=223.6G(DELL PERC H730P 6F4EE0803A2E5100)
 
 ## Narrow it down
 
@@ -720,9 +760,22 @@ Every package of server1 that can be updated.
 **otpme-inventory search --upgradable --os-version debian-12 'linux-image-\*'**  
 The Debian 12 hosts with a kernel package that can be updated.
 
+# FILES
+
+*/var/lib/otpme/data/host_inventory/*  
+The inventories, one directory *\<realm\>/\<site\>/\<host uuid\>/* per
+host with *object.json* in it, on the nodes of the site that keeps them.
+
+*/var/lib/otpme/data/os_packages/*  
+What the systems offer, one directory *\<realm\>/\<site\>/\<os
+version\>/\<arch\>/* per system, see **REFERENCE HOSTS**.
+
+Read them with the commands above, not in the files.
+
 # SEE ALSO
 
-**otpme**(7), **otpme-deploy**(1), **otpme-host**(1)
+**otpme**(1), **otpme**(7), **otpme-host**(1), **otpme-node**(1),
+**otpme-unit**(1), **otpme-site**(1), **otpme-deploy**(1)
 
 # AUTHOR
 

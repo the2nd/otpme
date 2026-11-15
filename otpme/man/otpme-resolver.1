@@ -1,33 +1,82 @@
-.TH OTPME-RESOLVER 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.TH OTPME-RESOLVER 1 "2026-11-03" "OTPme 0.3.0a288" "OTPme Manual"
 .SH NAME
-otpme-resolver \- manage OTPme resolvers for importing objects from external directories
+otpme-resolver \- fetch users, groups and units from LDAP servers into OTPme
 .SH SYNOPSIS
 .B otpme-resolver
-[\fB\-\-type\fR \fIresolver_type\fR]
+[\fB\-\-type ldap\fR]
 .I command
 [\fIoptions\fR] [\fIresolver\fR]
 .SH DESCRIPTION
-.B otpme-resolver
-manages resolvers in the OTPme system. Resolvers synchronize objects (users, groups) from external directory services into OTPme. Currently the supported resolver type is LDAP, which connects to LDAP directories (e.g. Active Directory, OpenLDAP) and imports user and group objects.
-.PP
-Resolvers can run periodically at a configured sync interval, and can optionally delete OTPme objects that no longer exist in the external directory.
-.PP
-A resolver is a
-.B trusted
-source. The objects it imports are created without ACL checks, in the unit named by the remote DN, and with the IDs the remote directory hands out. Deciding that a directory may do that is an administrative decision, so creating, changing, running and deleting a resolver requires admin rights. Viewing a resolver can still be delegated via ACLs.
-.SH COMMANDS
-.SS Resolver Management
-.TP
-.B add \fR[\fB\-\-template\fR \fITEMPLATE\fR] \fIresolver\fR
-Create a new resolver. Requires \fB\-\-type\fR before the command. \fB\-\-template\fR (LDAP only) copies its settings from the named resolver template.
-.TP
-.B del \fIresolver\fR
-Delete a resolver.
-.TP
-.B show \fR[\fB\-a\fR] \fR[\fIresolver\fR]
-Display resolver information. Use \fB\-a\fR to show all resolvers.
 .na
 .nh
+.B otpme-resolver
+adds and sets up resolvers.
+A resolver fetches users and groups from LDAP servers, e.g. OpenLDAP, and with \fBenable_sync_units\fR also their units, and brings OTPme in line with them.
+LDAP is the only type.
+A new resolver starts disabled.
+Once enabled, the master node of the site runs it every \fBsync_interval\fR; \fBrun\fR runs it by hand.
+Only with \fBenable_deletions\fR does a run delete objects.
+.PP
+A resolver is trusted: it adds its objects without ACL checks, with the \fBuidNumber\fR and \fBgidNumber\fR the server hands out, and with \fBenable_sync_units\fR into the unit their DN names.
+So only an admin may add, change, run or delete a resolver.
+Looking at one can be given to others by ACLs.
+.hy
+.ad
+.SH COMMANDS
+.SS Resolver Management
+.na
+.nh
+Only an admin may add, change, run or delete a resolver, whatever ACLs somebody holds; see \fBDESCRIPTION\fR.
+On this page such a command says \fB(admin only)\fR after its ACL.
+The ACLs of the commands that only read can be given to others.
+.TP
+.B \-\-type ldap add \fR[\fB\-\-template\fR \fItemplate\fR] \fIresolver\fR
+Add a resolver of that type; \fBldap\fR is the only one.
+.br
+It starts disabled, so it does not run before it is set up, see \fBenable\fR.
+\fB\-\-template openldap\fR fills in the LDAP filters, key attributes and attribute mappings of an OpenLDAP server for users, groups and units; it is the only template.
+.br
+With a path, e.g. \fBldap/corp\fR, it goes into that unit; else into the unit a \fBdefaultunits\fR policy names, or into \fBresolvers\fR.
+.br
+Needs the ACL \fBadd:resolver\fR on the unit (admin only).
+.TP
+.B del \fR[\fB\-\-no\-trash\fR] \fIresolver\fR
+Delete the resolver.
+It goes to the trash, see
+.BR otpme\-trash (1);
+\fB\-\-no\-trash\fR deletes it right away.
+.br
+If the resolver has added objects, it says how many of each type and asks whether to delete them as well, then asks to type its name.
+With the global option \fB\-f\fR it asks nothing and deletes the resolver only, not its objects.
+A running resolver is refused.
+.br
+Needs the ACL \fBdelete:object\fR (admin only).
+.TP
+.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIresolver\fR]
+Without a resolver: a table of them, with their unit, type, status, whether they delete objects (\fBsync_deletions\fR), policies, ACL inheritance and description.
+.RS
+.TP
+.B \-a
+Also the resolvers you may only look at, not just the ones you may change.
+.TP
+.B \-z \fIN\fR
+How many resolvers to print.
+.TP
+.B \-\-fields \fIF1,F2\fR
+Print these columns and no others, in the order they are named.
+.TP
+.B \-\-limit \fIN\fR, \fB\-\-policy\-limit \fIN\fR
+How many policies to print per resolver.
+.TP
+.B \-\-sort\-by \fIfield\fR, \fB\-\-reverse\fR
+Which column to sort by, and the other way round.
+.TP
+.B \-\-raw\fR, \fB\-\-csv\fR, \fB\-\-csv\-sep\fR \fIsep\fR
+\fB\-\-raw\fR leaves the header and the borders out, \fB\-\-csv\fR prints one row per line with \fB;\fR between the columns, and \fB\-\-csv\-sep\fR uses another separator.
+.RE
+.IP
+A column you may not see says \fB\-\fR.
+With a resolver named, this prints the object itself instead of a table row, one value per line.
 .TP
 .B show_oid \fR[\fB\-\-full\fR] \fIresolver\fR
 Show the OID of the resolver: \fB\%resolver|<realm>/<site>/<name>\fR.
@@ -39,17 +88,31 @@ Needs the ACL \fBview_public:object\fR.
 Show the UUID of the resolver.
 .br
 Needs the ACL \fBview_public:object\fR.
-.hy
-.ad
 .TP
-.B list \fR[\fIregex\fR]
-List resolvers, optionally filtered by regex pattern.
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+The names of the resolvers, one per line; with \fIpattern\fR only those it matches, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
+\fB\-a\fR also lists the ones you may only look at.
+\fB\-\-attribute\fR matches the pattern against that attribute instead of the name.
 .TP
 .B enable \fIresolver\fR
-Enable a disabled resolver.
+Enable the resolver.
+The master node of the site then runs it by itself, every \fBsync_interval\fR, see \fBSync Configuration\fR.
+.br
+Needs the ACL \fBenable:object\fR (admin only).
 .TP
 .B disable \fIresolver\fR
-Disable a resolver without deleting it.
+Disable the resolver: it no longer runs by itself.
+\fBrun\fR still runs it by hand.
+.br
+Needs the ACL \fBdisable:object\fR (admin only).
+.TP
+.B touch \fIresolver\fR
+Write the resolver anew, as it is, e.g. after an upgrade of its object version.
+.br
+Needs the ACL \fBtouch\fR (admin only).
 .TP
 .B auto_disable \fR[\fB\-u\fR] \fIresolver\fR \fItime\fR
 Set auto\-disable time.
@@ -61,81 +124,229 @@ A relative time counts from when it is set, and again from when the resolver is 
 It is refused for an object the realm or a site comes with, e.g. the admin user; a time set on one before does nothing.
 Use \fB\-u\fR to disable the resolver once it was unused for the given time.
 That takes a relative time; a resolver that was never used counts from when this was set.
+A resolver is used when it runs.
+.br
+Needs the ACL \fBedit:auto_disable\fR (admin only).
 .TP
 .B rename \fIresolver\fR \fInew_name\fR
-Rename a resolver.
+Rename the resolver.
+A running resolver is refused.
+.br
+Needs the ACL \fBrename\fR (admin only).
 .TP
-.B unit \fIresolver\fR \fIunit\fR
-Move resolver to a different organizational unit.
+.B move \fR[\fB\-\-keep\-acls\fR] \fIresolver\fR \fIunit\fR
+Move the resolver to another unit.
+Whether its ACLs change with it, see \fBenable_acl_inheritance\fR; \fB\-\-keep\-acls\fR leaves them as they are.
+.br
+Needs the ACL \fBmove\fR (admin only).
+.hy
+.ad
 .SS Resolver Operations
+.na
+.nh
+An LDAP resolver handles the object types \fBunit\fR, \fBgroup\fR and \fBuser\fR.
+\fB\-\-object\-types\fR takes some of them, separated by commas, e.g. \fBuser,group\fR; another type is refused.
+Without it a command works on all three.
 .TP
 .B run \fR[\fB\-\-object\-types\fR \fItypes\fR] \fIresolver\fR
-Run the resolver to synchronize objects. Use \fB\-\-object\-types\fR to limit to specific types (e.g. user,group).
+Fetch the objects from the servers and bring OTPme in line with them: add the new ones, change the changed ones.
+Only with \fBenable_deletions\fR does it also delete the objects it added that the servers no longer have.
+They go to the trash, see \fBadd_resolver_objects_to_trash\fR under \fBCONFIG PARAMETERS\fR.
+It asks first; the global option \fB\-f\fR skips the question.
+.br
+This is what the master node does by itself for an enabled resolver.
+A run counts as a use of the resolver, see \fBauto_disable \-u\fR.
+A resolver that is already running is refused.
+.br
+Needs the ACL \fBrun\fR (admin only).
 .TP
 .B test \fR[\fB\-\-object\-types\fR \fItypes\fR] \fIresolver\fR
-Test the resolver without making changes.
+Change nothing, but show what a run would do.
+Before that it connects to every server and checks that they all return the same number of objects; this check takes all types.
+At the end it says whether there were errors.
+.br
+Needs the ACL \fBtest\fR or \fBrun\fR (admin only).
 .TP
 .B get_objects \fR[\fB\-\-object\-types\fR \fItypes\fR] \fIresolver\fR
-Get objects from the resolver source.
+The objects this resolver has added to OTPme, not those on the servers: their names per type, printed as a Python dict.
+.br
+Needs the ACL \fBget_objects\fR.
 .TP
 .B delete_objects \fR[\fB\-\-object\-types\fR \fItypes\fR] \fIresolver\fR
-Delete objects imported by the resolver.
+Delete the objects this resolver has added: users first, then groups, then units.
+They go to the trash, see \fBadd_resolver_objects_to_trash\fR under \fBCONFIG PARAMETERS\fR.
+No ACL is checked on the objects themselves.
+It says how many of each type there are and asks to type the name of the resolver; the global option \fB\-f\fR skips the question.
+With no objects it says so and asks nothing.
+.br
+An object that cannot be deleted does not stop the others; the command then says how many were left.
+A running resolver is refused.
+.br
+Needs the ACL \fBdelete:objects\fR (admin only).
+.hy
+.ad
 .SS Sync Configuration
+.na
+.nh
+How and when a resolver runs.
+Each command asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B sync_interval \fIresolver\fR \fIinterval\fR
-Set the automatic sync interval for the resolver.
+How long the master node waits after a run before it runs the enabled resolver again, e.g. \fB300\fR, \fB5m\fR or \fB1h\fR (see
+.BR otpme (7)
+for the units).
+The default is 300 seconds.
+.br
+The master node looks every 30 seconds, so a shorter interval does not run it more often.
+0 or less is refused.
+.br
+Needs the ACL \fBedit:sync_interval\fR (admin only).
+To see it, \fBshow\fR needs the ACL \fBview:sync_interval\fR.
 .TP
 .B key_attribute \fIresolver\fR \fIobject_type\fR \fIattribute\fR
-Set the key attribute used to match objects during sync (e.g. entryUUID).
+The attribute by which the resolver finds an object of that type again on the next run, e.g. \fBentryUUID\fR.
+It must not change on the server, so a name is a bad choice.
+\fIobject_type\fR is \fBunit\fR, \fBgroup\fR or \fBuser\fR; \fB\-\-template openldap\fR sets \fBentryUUID\fR for all three.
+.br
+A run refuses a type that has an LDAP filter but no key attribute, before it connects.
+A server entry without the attribute, or with more than one value of it, stops the whole run.
+That is on purpose: with \fBenable_deletions\fR, an entry left out would delete its object.
+.br
+Needs the ACL \fBedit:key_attribute\fR (admin only).
+To see it, \fBshow\fR needs the ACL \fBview:key_attribute\fR.
 .TP
 .B enable_sync_units \fIresolver\fR
-Enable synchronization of organizational units.
+Also fetch the organizational units, add them as units, and put each object into the unit its DN names.
+.br
+Needs the ACL \fBenable:sync_units\fR (admin only).
 .TP
 .B disable_sync_units \fIresolver\fR
-Disable synchronization of organizational units.
+Do not fetch units; users and groups go into the default unit of their type.
+This is the default.
+.br
+Needs the ACL \fBdisable:sync_units\fR (admin only).
 .TP
 .B enable_deletions \fIresolver\fR
-Enable deletion of OTPme objects that no longer exist in the external directory.
+Let a run also delete the objects this resolver has added and the servers no longer return.
+.br
+Needs the ACL \fBenable:deletions\fR (admin only).
+To see whether it is on, \fBshow\fR needs the ACL \fBview:deletions\fR; the table has it in the column \fBsync_deletions\fR.
 .TP
 .B disable_deletions \fIresolver\fR
-Disable deletion of missing objects.
+A run no longer deletes objects.
+This is the default.
+.br
+Needs the ACL \fBdisable:deletions\fR (admin only).
+.hy
+.ad
 .SS LDAP Configuration
-These commands are specific to LDAP resolvers:
+.na
+.nh
+Where an LDAP resolver connects, how it logs in, and what it fetches.
+These commands need \fB\-\-type ldap\fR; without it they are unknown and only the help is printed.
+Each command asks first; the global option \fB\-f\fR skips the question.
+.PP
+A run needs at least one server, and for each type with a filter a key attribute (see \fBkey_attribute\fR) and a mapping for \fBname\fR.
+Without them it stops before it connects and says what is missing.
+A type without a filter is not fetched.
 .TP
-.B ldap_base \fIresolver\fR \fIbase_dn\fR
-Set the LDAP search base DN (e.g. dc=example,dc=com).
+.B \-\-type ldap add_server \fIresolver\fR \fIserver_uri\fR
+Add a server, as \fBldaps://\fR\fIhost\fR[\fB:\fR\fIport\fR] or \fBldap://\fR\fIhost\fR[\fB:\fR\fIport\fR].
+\fBldaps://\fR speaks TLS from the start, by default on port 636.
+\fBldap://\fR always starts TLS first (StartTLS), by default on port 389; a server that cannot do that is refused when the resolver runs.
+The resolver never logs in without encryption.
+Anything else is refused.
+.br
+A run uses the first server it can reach.
+\fBtest\fR asks all of them and checks that they agree.
+.br
+Needs the ACL \fBadd:ldap_server\fR (admin only).
+To see them, \fBshow\fR needs the ACL \fBview:ldap_server\fR.
 .TP
-.B login_dn \fIresolver\fR \fIdn\fR
-Set the DN used to bind to the LDAP server.
+.B \-\-type ldap del_server \fIresolver\fR \fIserver_uri\fR
+Remove a server, written as it was added.
+.br
+Needs the ACL \fBdel:ldap_server\fR (admin only).
 .TP
-.B login_password \fIresolver\fR \fR[\fIpassword\fR]
-Set the password for LDAP bind. If omitted, prompts interactively.
+.B \-\-type ldap ca_data \fIresolver\fR \fR[\fIca_cert_file\fR]
+The CA certificates, as a PEM file, that the certificate of the server must be issued by.
+The file is read on your side and stored in the resolver, so every node that runs it has them.
+Without a file, or with an empty one, they are removed.
+.br
+Without them the certificate of the server is not checked at all, and every connection warns about it: somebody in between could read the login and hand the resolver objects of their own.
+.br
+Needs the ACL \fBedit:ca_data\fR (admin only).
 .TP
-.B add_server \fIresolver\fR \fIserver_uri\fR
-Add an LDAP server URI (e.g. ldaps://ldap.example.com, ldaps://ldap2.example.com:389).
+.B \-\-type ldap ldap_base \fIresolver\fR \fIbase_dn\fR
+Where the filters search, e.g. \fB\%dc=example,dc=org\fR.
+.br
+Needs the ACL \fBedit:ldap_base\fR (admin only).
+To see it, \fBshow\fR needs the ACL \fBview:ldap_base\fR.
 .TP
-.B del_server \fIresolver\fR \fIserver_uri\fR
-Remove an LDAP server URI.
+.B \-\-type ldap login_dn \fIresolver\fR \fIdn\fR
+The DN the resolver logs in as, e.g. \fB\%cn=otpme,ou=services,dc=example,dc=org\fR; \fB""\fR removes it.
+.br
+Needs the ACL \fBedit:login_dn\fR (admin only).
+To see it, \fBshow\fR needs the ACL \fBview:login_dn\fR.
 .TP
-.B add_ldap_filter \fIresolver\fR \fIobject_type\fR \fIfilter\fR
-Add an LDAP search filter for a given object type (e.g. user, group).
+.B \-\-type ldap login_password \fIresolver\fR \fR[\fIpassword\fR]
+The password for that DN.
+Without one, it asks for it without showing it; an empty one removes it.
+.br
+The resolver logs in only with both a DN and a password; with only one of them it searches anonymously.
+.br
+Needs the ACL \fBedit:login_password\fR (admin only).
+The password is a secret: to see it, \fBshow\fR needs the ACL \fBview:login_password\fR, given as such (or \fBview_all\fR); plain \fBview\fR is not enough.
 .TP
-.B del_ldap_filter \fIresolver\fR \fIobject_type\fR \fIfilter\fR
-Remove an LDAP search filter.
+.B \-\-type ldap add_ldap_filter \fIresolver\fR \fIobject_type\fR \fIfilter\fR
+Search for objects of that type (\fBunit\fR, \fBgroup\fR or \fBuser\fR) with an LDAP filter, e.g. \fB\%(objectclass=posixGroup)\fR.
+A type can have several filters; each one is searched, and the results are put together.
+Units are only fetched with \fBenable_sync_units\fR.
+.br
+Needs the ACL \fBadd:ldap_filter\fR (admin only).
+To see them, \fBshow\fR needs the ACL \fBview:ldap_filter\fR.
 .TP
-.B add_ldap_attribute \fIresolver\fR \fIobject_type\fR \fIsrc_attr\fR [\fIdst_attr\fR]
-Add an LDAP attribute mapping for an object type. Maps a source LDAP attribute to an OTPme attribute. If \fIdst_attr\fR is omitted, the same attribute name is used.
+.B \-\-type ldap del_ldap_filter \fIresolver\fR \fIobject_type\fR \fIfilter\fR
+Remove a filter, written as it was added.
+.br
+Needs the ACL \fBdel:ldap_filter\fR (admin only).
 .TP
-.B del_ldap_attribute \fIresolver\fR \fIobject_type\fR \fIattribute\fR
-Remove an LDAP attribute mapping.
+.B \-\-type ldap add_ldap_attribute \fIresolver\fR \fIobject_type\fR \fIsrc_attr\fR [\fIdst_attr\fR]
+Take the LDAP attribute \fIsrc_attr\fR of the server as \fIdst_attr\fR of the OTPme object; without \fIdst_attr\fR under the same name.
+A second mapping to the same \fIdst_attr\fR replaces the first.
+.RS
+.PP
+These \fIdst_attr\fR mean something of their own:
+\fBname\fR, the name of the object (needed);
+\fBuuid\fR, its UUID;
+\fBuidNumber\fR, \fBgidNumber\fR and \fBloginShell\fR, its POSIX values.
+Every other one becomes an LDAP attribute of the object, e.g. \fBmail\fR.
+.PP
+A new user gets the group with the same \fBgidNumber\fR as its primary group, if that group came with the same run; else it gets the default group.
+.PP
+Needs the ACL \fBadd:attribute_mapping\fR (admin only).
+To see them, \fBshow\fR needs the ACL \fBview:attribute_mapping\fR; it prints them as \fIdst_attr\fR\fB:\fR\fIsrc_attr\fR.
+.RE
 .TP
-.B ca_data \fIresolver\fR \fR[\fIca_cert_file\fR]
-Set the CA certificate(s) used to verify the LDAP server's TLS certificate. Pass a PEM file whose contents are stored on the resolver and shipped to every node that runs it. Call with an empty file argument to clear.
+.B \-\-type ldap del_ldap_attribute \fIresolver\fR \fIobject_type\fR \fIsrc_attr\fR
+Remove the mapping of that server attribute.
+An unknown one is refused before the question.
+.br
+Needs the ACL \fBdel:attribute_mapping\fR (admin only).
+.hy
+.ad
 .SS Policy Management
 A \fIpolicy\fR is the name of a policy, not a path.
 It is looked for in the site of the resolver.
 Which policies there are, and what each of them does, is in
 .BR otpme\-policy (1).
+.PP
+Two policy types fit a resolver:
+.IP \(bu 2
+\fBauthonaction\fR asks for a login again before the actions of the resolver, see \fBAUTH ON ACTION HOOKS\fR.
+.IP \(bu 2
+\fBautodisable\fR disables the resolver after a while; a disabled resolver no longer runs by itself.
+One set with \fBauto_disable \-u\fR (unused for) counts from its last run.
 .PP
 Attaching and detaching ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
@@ -143,58 +354,141 @@ Attaching and detaching ask before they change anything; the global option \fB\-
 Attach a policy to the resolver.
 .br
 A policy has a list of object types it is for; one that does not name \fBresolver\fR is refused.
-So is a second policy of a type that allows only one per object.
+So is a second policy of a type that allows only one per object, even when the first one is disabled, and a policy the resolver already has.
 .br
-Needs the ACL \fBassign:policy\fR.
+Needs the ACL \fBassign:policy\fR (admin only).
 .TP
 .B remove_policy \fIresolver\fR \fIpolicy\fR
 Remove a policy from the resolver.
 .br
-Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
-Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
+Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it (admin only).
 .TP
 .B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIresolver\fR
 List the policies attached to the resolver, the disabled ones too, marked \fB(disabled)\fR.
-Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR); without it the names.
+Only the names are marked.
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
 .br
 Needs the ACL \fBview:policies\fR.
 .SS ACL Management
+.na
+.nh
+An ACL says what somebody may do with this resolver.
+The somebody is a role or a token, never a user.
+On a resolver only the ACLs that read can be given to others: \fBview_public:object\fR, \fBview\fR and the \fBview:\fR ACLs, \fBget_objects\fR.
+The ACLs of everything that changes it are admin only, whatever ACLs somebody holds; see \fBDESCRIPTION\fR.
+.PP
+What the three forms \fBacl\fR, \fB+acl\fR and \fB++acl\fR mean is under \fBACLs\fR in
+.BR otpme (7).
+Tab completion after \fBadd_acl\fR offers the ACLs a resolver knows.
+A resolver has no default ACLs, \fB+acl\fR and \fB++acl\fR: nothing lies in a resolver that could get them.
+.PP
+Adding and removing ask first; the global option \fB\-f\fR skips the question.
 .TP
-.B add_acl \fIresolver\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
-Add an access control entry.
+.B add_acl \fIresolver\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
+Give a role or a token one or more ACLs on this resolver.
+.br
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
+\fIowner\fR names it the way \fBlist_acls\fR prints it: a role as \fIsite/name\fR, or by its name alone on its own site; a token as \fI\%user/token\fR.
+An ACL can carry a value, for example \fBview:sync_interval\fR.
+To give several ACLs at once, separate them with commas: \fB\%view:sync_interval,get_objects\fR.
+.br
+Needs the ACL \fBadd:acl\fR (admin only).
 .TP
-.B del_acl \fIresolver\fR \fIacl\fR
-Remove an access control entry.
+.B del_acl \fIresolver\fR \fIacl\fR[,\fIacl\fR]
+Take those ACLs away again.
+.br
+Here an \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fB\%role:berlin/helpdesk:get_objects\fR.
+.br
+Needs the ACL \fBdelete:acl\fR (admin only).
 .TP
 .B list_acls \fIresolver\fR
-Display all ACLs for the resolver.
+Show the ACLs that lie on this resolver, i.e. who may do what with it.
+.br
+Needs the ACL \fBview:acl\fR.
 .TP
 .B enable_acl_inheritance \fIresolver\fR
-.TQ
-.B disable_acl_inheritance \fIresolver\fR
-ACL inheritance says whether a move swaps the default ACLs of the old unit for those of the new one.
-A resolver cannot be moved, so for a resolver it changes nothing.
+Let a move of the resolver swap its default ACLs: what the old unit handed down is taken away, and what the new unit hands down is given.
+It does not by default; a move then leaves the ACLs of the resolver as they are.
+.RS
+.PP
+Only a move asks this.
 A new resolver gets the default ACLs of its unit, and \fBadd_acl \-a\fR or \fB\-r\fR on a unit reach it either way.
+A move with \fB\-\-keep\-acls\fR leaves its ACLs alone all the same.
+.PP
+Needs the ACL \fBenable:acl_inheritance\fR (admin only).
+.RE
+.TP
+.B disable_acl_inheritance \fIresolver\fR
+A move leaves the ACLs of the resolver as they are again.
 .br
-Needs the ACL \fBenable:acl_inheritance\fR or \fBdisable:acl_inheritance\fR.
+Needs the ACL \fBdisable:acl_inheritance\fR (admin only).
+.hy
+.ad
 .SS Configuration and Attributes
+.na
+.nh
+A resolver has three config parameters, see \fBCONFIG PARAMETERS\fR.
 .TP
 .B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIresolver\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
+Set a parameter on the resolver.
+.RS
+.TP
+.B \-d
+Remove the parameter from the resolver, or with a value only that one value from a list.
+It is not set back to a default: what applies afterwards is what the units or the site say.
+.TP
+.B \-a
+Append the value to a parameter that holds a list, instead of replacing what is there.
+.RE
+.IP
+Needs the ACL \fBset:config:<parameter>\fR (admin only).
+.TP
+.B show_config \fIresolver\fR \fR[\fIparameter\fR]
+The parameters set on the resolver itself, or only the one named.
+Nothing is shown for a parameter that the resolver gets from a unit or from the site.
+.br
+Needs the ACL \fBview:config:<parameter>\fR.
+.TP
+.B get_config \fIresolver\fR \fIparameter\fR
+What the parameter comes to for the resolver, once the resolver, its units and the site have been looked at.
+So this answers what applies, where \fBshow_config\fR answers what was set here.
+.br
+Needs the ACL \fBview:config:<parameter>\fR.
 .TP
 .B description \fIresolver\fR \fR[\fIdescription\fR]
-Set resolver description.
+Set the description.
+Without one OTPme asks and offers the current text for editing.
+.br
+Needs the ACL \fBedit:description\fR (admin only).
 .TP
 .B info \fR[\fB\-\-language\fR \fILANG\fR] \fIresolver\fR \fR[\fIinfo\fR]
-Set free-form info text. If \fIinfo\fR is omitted, the current info text is
-opened in the editor specified by the \fBEDITOR\fR environment variable.
+Set free-form info text.
+If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
+.br
+Without \fB\-\-language\fR the text is the administrator's own note.
+Nothing shows the info of a resolver to a user, so a text for a language stays a note as well.
+.br
+Needs the ACL \fBedit:info\fR (admin only).
 .TP
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIresolver\fR
-Dump the info text to stdout.
+Write one of those texts to stdout.
+\fB\-\-language\fR picks which one; without it you get the note of the administrator.
+.br
+Needs the ACL \fBview:info\fR.
+.hy
+.ad
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
+The first entry is the one of \fBadd\fR.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
+.PP
+\fBrun\fR and \fBdelete_objects\fR write an entry too when you run them by hand.
+The runs the master node makes by itself every \fBsync_interval\fR do not, or the changelog would grow by an entry every few minutes.
+.PP
+Nothing is written where the \fBchangelog\fR config parameter is off.
+It is read along the cascade (resolver, unit, site).
+Without any value anywhere it is on.
 .PP
 An \fIentry_id\fR is the number the listing shows in front of an entry, counted from 0.
 .PP
@@ -204,105 +498,132 @@ What was done and by whom stays as it is.
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIresolver\fR
-Show the changelog of the resolver.
+Show the changelog of the resolver, one entry per line: its \fIentry_id\fR, the time, who made the change and what was done, then a detail in round brackets and the comment in square brackets where there are any.
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fIresolver\fR \fIentry_id\fR \fIcomment\fR
 Set the comment of that entry, or replace the one it has.
-Needs the ACL \fBedit:changelog\fR.
+That writes an entry of its own.
+Needs the ACL \fBedit:changelog\fR (admin only).
 .TP
 .B del_changelog \fIresolver\fR \fIentry_id\fR
 Remove the comment of that entry.
 The entry itself stays, and an entry without a comment is refused.
-Needs the ACL \fBedit:changelog\fR.
+That writes an entry of its own.
+Needs the ACL \fBedit:changelog\fR (admin only).
 .TP
 .B clear_changelog \fIresolver\fR
 Remove every entry of the changelog.
+Afterwards it holds one entry: that it was cleared.
 .br
-This needs more than the ACL \fBclear:changelog\fR: the config parameter
+This needs more than the ACL \fBclear:changelog\fR (admin only): the config parameter
 .B allow_changelog_clearing
 has to allow it (see \fBotpme\fR(7)).
 It is true by default, but where no value is found at all, clearing is refused.
 A value set on the token you are signed in with counts first.
 Without one, the value of the object counts, read along its cascade.
-.SS Import/Export
+.SS Export and Cleanup
 .TP
-.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIresolver\fR
-Export resolver configuration to stdout, as JSON.
-Without \fB\-\-password\fR it is written in clear; with one it is encrypted with a key derived from that password.
-Reading it back in is
-.BR otpme\-tool " " import .
+.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIresolver\fR
+Write the whole object of the resolver to stdout, as JSON: its type, servers, mappings, ACLs, policies, config parameters and the rest.
+\fBotpme\-tool import\fR reads it back.
+.br
+The only secret of a resolver is the login password of an LDAP resolver.
+Without \fB\-\-password\fR it is in the output in a form anyone can read.
+With \fB\-\-password\fR it is encrypted with a key derived from that password, and import needs the same password.
+.br
+Needs the ACL \fBexport\fR (admin only).
+.TP
+.B remove_orphans \fIresolver\fR
+Remove references to objects that are gone: orphan ACLs and policies of the resolver.
+.br
+It asks once for what it found; the global option \fB\-f\fR skips the question.
+.br
+Needs the ACL \fBremove:orphans\fR (admin only).
 .SH OPTIONS
 .TP
-.B \-\-type \fITYPE\fR
-Specify the resolver type. Required for the \fBadd\fR command and for all type-specific commands. Must be placed before the command.
-.TP
-.B \-\-object\-types \fItype1,type2\fR
-Limit operations to specific object types (e.g. user,group).
-.SS Display Options
-.TP
-.B \-a
-Show all resolvers.
-.TP
-.B \-z \fISIZE\fR
-Limit output size.
-.TP
-.B \-\-fields \fIFIELD1,FIELD2\fR
-Display only specified fields.
-.TP
-.B \-\-policy\-limit \fIN\fR
-Limit number of policies shown.
-.TP
-.B \-\-limit \fIN\fR
-Limit number of items shown per object.
+.B \-\-type \fItype\fR
+The resolver type; \fBldap\fR is the only one.
+Needed for \fBadd\fR and for every command in \fBLDAP Configuration\fR: without it they are unknown, and only the help is printed.
+It may stand anywhere on the line; this page puts it in front.
 .PP
-Global options are available for all commands. See
-.BR otpme (1)
-for details.
+Every other option belongs to one command and is described with that command above.
+.PP
+Global options work with every command, see
+.BR otpme (1).
 .SH CONFIG PARAMETERS
-Configuration parameters can be set with the \fBconfig\fR command and displayed with \fBshow_config\fR.
-For a complete description of all available parameters and their applicable object types, see
+Set them with \fBconfig\fR, see \fBConfiguration and Attributes\fR.
+A value is looked up on the resolver, then on its unit and the units above it, then on the site; the first one found counts.
+A parameter the site names in \fBforce_site_config_parameters\fR is taken from the site, whatever the resolver or its units say.
+The full descriptions are in
 .BR otpme (7).
+.TP
+.B add_resolver_objects_to_trash \fR(bool, default: true)
+Whether the objects the resolver deletes go to the trash, where
+.BR otpme\-trash (1)
+can restore them; see \fBrun\fR and \fBdelete_objects\fR.
+False deletes them right away.
+.TP
+.B changelog \fR(bool, default: true)
+Whether the commands that change the resolver write an entry into its changelog, see \fBObject Changelog\fR.
+.TP
+.B allow_changelog_clearing \fR(bool, default: true)
+Whether \fBclear_changelog\fR is allowed on the resolver.
+A value on the token you are signed in with counts first, see \fBObject Changelog\fR.
+.PP
+Set on the site or a unit, not on the resolver:
+.TP
+.B max_resolver_name_len \fR(int, default: 64)
+The longest name a resolver may get, checked by \fBadd\fR and \fBrename\fR.
+.PP
+The objects a resolver adds are checked like any other: a user or a group with a name longer than \fBmax_user_name_len\fR or \fBmax_group_name_len\fR is not added, and the run reports it.
 .SH EXAMPLES
-.SS Setting Up an LDAP Resolver
+.SS Setting Up an OpenLDAP Resolver
 .TP
-.B otpme-resolver \-\-type ldap add ad_resolver
-Create an LDAP resolver
+.B otpme-resolver \-\-type ldap add \-\-template openldap ldap1
+Add the resolver with the filters, key attributes and mappings of an OpenLDAP server.
 .TP
-.B otpme-resolver add_server ad_resolver ldaps://ad.example.com
-Add LDAP server
+.B otpme-resolver \-\-type ldap add_server ldap1 ldaps://ldap.example.org
+Add the server.
 .TP
-.B otpme-resolver ldap_base ad_resolver dc=example,dc=com
-Set search base
+.B otpme-resolver \-\-type ldap ca_data ldap1 /etc/ssl/certs/example-ca.pem
+Check the certificate of the server against this CA.
 .TP
-.B otpme-resolver login_dn ad_resolver cn=readonly,dc=example,dc=com
-Set bind DN
+.B otpme-resolver \-\-type ldap ldap_base ldap1 dc=example,dc=org
+Search below this DN.
 .TP
-.B otpme-resolver login_password ad_resolver
-Set bind password (prompts interactively)
-.SS Configuring Sync
+.B otpme-resolver \-\-type ldap login_dn ldap1 cn=otpme,ou=services,dc=example,dc=org
+Log in as this DN.
 .TP
-.B otpme-resolver key_attribute ad_resolver user entryUUID
-Set key attribute for user matching
+.B otpme-resolver \-\-type ldap login_password ldap1
+Asks for the password of that DN.
+.SS Without a Template
 .TP
-.B otpme-resolver add_ldap_filter ad_resolver user (objectClass=inetOrgPerson)
-Add LDAP search filter for users
+.B otpme-resolver \-\-type ldap add_ldap_filter corp group '(objectclass=posixGroup)'
+Fetch groups with this filter.
+The quotes keep the shell off the brackets.
 .TP
-.B otpme-resolver add_ldap_attribute ad_resolver user cn
-Map LDAP attribute cn for users
+.B otpme-resolver key_attribute corp group entryUUID
+Find a group again by its entryUUID.
 .TP
-.B otpme-resolver sync_interval ad_resolver 3600
-Set sync interval to 1 hour
+.B otpme-resolver \-\-type ldap add_ldap_attribute corp group cn name
+Take cn as the name of the group; a run needs a mapping for name.
 .SS Running the Resolver
 .TP
-.B otpme-resolver test ad_resolver
-Test resolver configuration
+.B otpme-resolver test ldap1
+Show what a run would do, without changing anything.
 .TP
-.B otpme-resolver run ad_resolver
-Run the resolver to sync objects
+.B otpme-resolver run ldap1
+Add and change the objects.
 .TP
-.B otpme-resolver run \-\-object\-types user ad_resolver
-Sync only users
+.B otpme-resolver run \-\-object\-types user ldap1
+Only the users.
+.TP
+.B otpme-resolver sync_interval ldap1 1h
+Run it every hour once it is enabled.
+.TP
+.B otpme-resolver enable ldap1
+Let the master node run it by itself.
 .\" BEGIN AUTH ON ACTION HOOKS
 .\" Generated by update_hooks_man.py. Do not edit, the next run
 .\" overwrites it.
@@ -312,28 +633,65 @@ See
 .B Auth On Action Policy
 in
 .BR otpme\-policy (1).
-A resolver has the hooks every object type has, and these:
+A resolver has the hooks every object type has, and these; a command of another name is in brackets:
 .RS
 .PP
 .na
 .nh
-add_attribute_mapping, add_filter, add_server, change_ca_data, change_key_attribute, change_ldap_base, change_login_dn, change_login_password, del_attribute_mapping, del_filter, del_server, delete_objects, disable_deletions, disable_sync_units, enable_deletions, enable_sync_units, get_resolver_objects, run, set_config_parameter, show_config_parameters, test.
+add_attribute_mapping\ (add_ldap_attribute), add_filter\ (add_ldap_filter), add_server, change_ca_data\ (ca_data), change_key_attribute\ (key_attribute), change_ldap_base\ (ldap_base), change_login_dn\ (login_dn), change_login_password\ (login_password), del_attribute_mapping\ (del_ldap_attribute), del_filter\ (del_ldap_filter), del_server, delete_objects, disable_deletions, disable_sync_units, enable_deletions, enable_sync_units, get_resolver_objects\ (get_objects), run, set_config_parameter\ (config), set_sync_interval\ (sync_interval), test.
 .hy
 .ad
 .RE
 .\" END AUTH ON ACTION HOOKS
+.PP
+Most commands that change the resolver run
+.B modify
+first, then their own hook.
+.B del
+and
+.B config
+run only their own.
+So a policy on
+.B modify
+asks before most changes, but not before
+.BR del ,
+.BR config ,
+.BR run ,
+.B test
+or
+.BR get_objects .
+.PP
+The runs the master node does by itself never ask: they have no token
+to ask for.
+A policy on
+.B run
+only asks before
+.B otpme\-resolver run
+by hand.
 .SH FILES
+.na
+.nh
 .TP
-.I /var/lib/otpme/
-OTPme data directory
+\fI/var/lib/otpme/tree/\fR
+The objects of the realm.
+A resolver is the directory \fI<name>.resolver\fR in the directory of its unit, e.g. \fI<realm>.realm/<site>.site/resolvers.unit/ldap1.resolver/\fR, with its settings in \fIobject.json\fR, the login password encrypted.
+It is synced to the nodes only, not to the hosts.
+Change it with the commands above, not in the file.
+.hy
+.ad
 .SH SEE ALSO
+.na
+.nh
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
-.BR otpme-user (1),
-.BR otpme-group (1),
-.BR otpme-policy (1)
-
+.BR otpme\-unit (1),
+.BR otpme\-user (1),
+.BR otpme\-group (1),
+.BR otpme\-policy (1),
+.BR otpme\-trash (1),
+.BR otpme\-tool (1)
+.hy
+.ad
 .SH AUTHOR
 the2nd <the2nd@otpme.org>
 .SH NOTE

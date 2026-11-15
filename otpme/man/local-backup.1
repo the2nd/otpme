@@ -1,0 +1,128 @@
+.TH LOCAL-BACKUP 1 "2026-11-14" "OTPme 0.3.0a288" "OTPme Manual"
+.SH NAME
+local-backup \- work on a backup repository directly
+.SH SYNOPSIS
+.na
+.nh
+.B local-backup
+\fB\-d\fR \fIrepository\fR
+[\fB\-k\fR \fIkey\fR | \fB\-p\fR \fIpassword_file\fR]
+[\fB\-v\fR]
+[\fB\-\-no\-compress\fR]
+.I command
+[\fIarguments\fR]
+.hy
+.ad
+.SH DESCRIPTION
+.na
+.nh
+.B local-backup
+works on a repository in a directory of this machine, without a backup server and without a realm.
+It is the tool for the backup server itself: check a repository, free space, or apply the retention by hand.
+It can also back up into a directory and restore from it, on any machine.
+.PP
+\fIrepository\fR is the directory of the repository.
+On a backup server of OTPme that is \fI<BACKUP_DIR>/<site>/<type>/<name>\fR, for example \fI/var/backups/berlin/share/data\fR, see
+.BR otpme\-backup (1).
+Only \fBbackup\fR makes a repository; every other command on a directory without one says so and changes nothing.
+.PP
+A command that reads or writes the files needs the key: \fBbackup\fR, \fBrestore\fR, \fBls\fR and \fBverify\fR.
+\fB\-k\fR takes it as 64 hex characters; for a repository of OTPme that is the \fBbackup_key\fR of the object.
+\fB\-p\fR takes a file with a password instead, from which a key is made; without either of them it is asked for.
+A repository of OTPme is encrypted with the key, so a password does not open it.
+The other commands work on the repository alone and need neither.
+.PP
+The commands that change the repository, and \fBverify\fR, take the lock of the repository, the one a backup, a restore and a repack of the backup daemon take as well.
+.hy
+.ad
+.SH OPTIONS
+.TP
+.B \-d\fR, \fB\-\-backup\-dir \fIrepository
+The repository to work on.
+.TP
+.B \-k\fR, \fB\-\-key \fIkey
+The key, 64 hex characters.
+.TP
+.B \-p\fR, \fB\-\-password\-file \fIfile
+A file with the password a key is made from.
+.TP
+.B \-v\fR, \fB\-\-verbose
+Say more.
+.TP
+.B \-\-no\-compress
+For \fBbackup\fR: store the files without compressing them first.
+.SH COMMANDS
+.na
+.nh
+.TP
+.B backup \fR[\fB\-\-name\fR \fIname\fR] [\fB\-\-special\-files\fR] [\fB\-\-exclude\fR \fIpattern\fR] [\fB\-\-include\fR \fIpattern\fR] [\fB\-\-mode\fR \fBtree\fR|\fBpack\fR] [\fB\-\-dry\-run\fR] \fIsource\fR
+Back up the directory \fIsource\fR into a new snapshot, named after the time it started unless \fB\-\-name\fR says otherwise.
+The patterns work as with \fBotpme\-backup start\fR.
+Device files, FIFOs and sockets are left out unless \fB\-\-special\-files\fR is given.
+\fB\-\-mode\fR is taken by a new repository only (default: pack); an existing one keeps its mode.
+.TP
+.B restore \fR[\fB\-\-path\fR \fIpath\fR] [\fB\-\-dry\-run\fR] \fIsnapshot\fR \fIdestination\fR
+Restore a snapshot into \fIdestination\fR, or with \fB\-\-path\fR only that file or directory.
+.TP
+.B list
+List the snapshots, as \fBotpme\-backup list\fR does.
+.TP
+.B ls \fR[\fB\-\-full\-path\fR] [\fB\-R\fR] \fIsnapshot\fR [\fIpath\fR]
+List what a snapshot holds, as \fBotpme\-backup ls\fR does.
+.TP
+.B verify \fIsnapshot\fR
+Read every block of the snapshot and check that it is the block it should be.
+The exit code is 1 when one is not.
+.TP
+.B delete \fIsnapshot\fR
+Delete the snapshot, and the blocks no other snapshot uses.
+.TP
+.B retention \fR[\fB\-\-daily\fR \fIn\fR] [\fB\-\-weekly\fR \fIn\fR] [\fB\-\-monthly\fR \fIn\fR] [\fB\-\-dry\-run\fR]
+Apply the retention, see
+.BR otpme\-backup (1).
+A number given here counts instead of the one in \fI.daily\fR, \fI.weekly\fR or \fI.monthly\fR.
+\fB\-\-dry\-run\fR names the snapshots it would delete.
+.TP
+.B gc
+Remove the blocks no snapshot uses.
+A pack file left empty is deleted, the others keep the space until \fBrepack\fR.
+.TP
+.B repack
+Rewrite the pack files that hold blocks nobody uses, to get the space back.
+.TP
+.B compact
+Compact the databases of the repository, to get back the space deleted entries took.
+.TP
+.B repair
+Remove entries of the snapshot index that no snapshot has.
+.TP
+.B rebuild\-index
+Build the index of the pack files again from the pack files, for an index that is lost or broken.
+.hy
+.ad
+.SH EXAMPLES
+.na
+.nh
+.TP
+.B local-backup \-d /var/backups/berlin/share/data list
+The snapshots of the share \fBdata\fR, on its backup server.
+.TP
+.B local-backup \-d /var/backups/berlin/share/data \-k \fIkey\fB verify 2026\-03\-29T02\-00\-05
+Check that snapshot block by block.
+.TP
+.B local-backup \-d /var/backups/berlin/share/data retention \-\-daily 7 \-\-weekly 4 \-\-dry\-run
+Which snapshots a retention of 7 days and 4 weeks would delete.
+.TP
+.B local-backup \-d /var/backups/berlin/share/data repack
+Get back the space of deleted snapshots.
+.hy
+.ad
+.SH SEE ALSO
+.BR otpme\-backup (1),
+.BR otpme.conf (5)
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2026 the2nd. License: GPLv3

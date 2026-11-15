@@ -895,6 +895,12 @@ msgid "Re-deploying token '{token_name}' for user '{user_name}'."
 msgstr ""
 "Redéploiement du jeton '{token_name}' pour l'utilisateur '{user_name}'."
 
+#: templates/recover_complete.html:45
+#, python-brace-format
+msgid "Setting up token '{token_name}' for user '{user_name}'."
+msgstr ""
+"Configuration du jeton '{token_name}' pour l'utilisateur '{user_name}'."
+
 #: templates/recover_complete.html:74
 msgid "Set New Password"
 msgstr "Définir un nouveau mot de passe"

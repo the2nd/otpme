@@ -10,7 +10,6 @@ try:
 except Exception:
     pass
 
-from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.cli import register_cli
 from otpme.lib.cli import get_unit_string
@@ -141,18 +140,20 @@ def row_getter(realm, site, aclgroup_order, aclgroup_data, acls,
             else:
                 row.append("-")
         # Member groups. Read through the object index, the same join the
-        # VLAN table uses for its members.
+        # VLAN table uses for its members. They are of the site of the
+        # group (Aclgroup.add_aclgroup()), and the table shows groups of
+        # our site only, so no member needs its site named.
         if "aclgroups" in output_fields:
             if check_acl("view:aclgroups") \
             or check_acl("add:aclgroup") \
             or check_acl("remove:aclgroup"):
-                return_attrs = ['name', 'enabled', 'site']
+                return_attrs = ['name', 'enabled']
                 x_count, \
                 x_result = backend.search(object_type="aclgroup",
                                         join_object_type="aclgroup",
                                         join_search_attr="uuid",
                                         join_search_val=aclgroup_uuid,
-                                        join_attribute="aclgroup",
+                                        join_attribute="inherit",
                                         attribute="uuid",
                                         value="*",
                                         max_results=max_aclgroups,
@@ -161,13 +162,10 @@ def row_getter(realm, site, aclgroup_order, aclgroup_data, acls,
                 x_members = []
                 for x_uuid in x_result:
                     x_name = x_result[x_uuid]['name']
-                    x_site = x_result[x_uuid]['site']
                     x_enabled = x_result[x_uuid]['enabled'][0]
                     x_status = ""
                     if not x_enabled:
                         x_status = " (D)"
-                    if x_site != config.site:
-                        x_name = f"{x_name} ({x_site})"
                     x_members.append(f"{x_name}{x_status}")
                     if len(x_members) == max_aclgroups:
                         if x_count > max_aclgroups:

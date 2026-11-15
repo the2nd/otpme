@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-session {command} [options...] [username]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-session show [-a] [--fields <f1,f2,f3>] [-z <size_limit>] [--sort-by <field>] [--reverse-sort] [search_regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-session show [-a] [--fields <f1,f2,f3>] [-z <size_limit>] [--sort-by <field>] [--reverse-sort] [--raw] [--csv] [--csv-sep <separator>] [pattern]'),
                     'cmd'   :   '-a :show_all=True: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse-sort :reverse_sort=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": ["search_regex"]',
                     '_help' :   {
                                     'cmd'                   : _('Show sessions.'),
@@ -37,7 +37,7 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-session list [-a] [search_regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-session list [-a] [pattern]'),
                     'cmd'   :   '-a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                   : _('List sessions.'),

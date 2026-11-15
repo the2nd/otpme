@@ -93,7 +93,9 @@ def upgrade_restored_object(object_uuid, callback=default_callback):
         msg = _("Failed to load restored object: {object_uuid}")
         msg = msg.format(object_uuid=object_uuid)
         return callback.error(msg)
-    if not x_object.config_upgraded:
+    # A session has no versions to upgrade its config to: it is no
+    # OTPmeBaseObject and has neither config_upgraded nor _write().
+    if not getattr(x_object, "config_upgraded", False):
         return True
     x_object.acquire_lock(lock_caller="restore")
     try:

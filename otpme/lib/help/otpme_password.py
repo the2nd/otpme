@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-pass {command} [password]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-pass show [--offline] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [password]'),
+                    '_cmd_usage_help' : _('Usage: otpme-pass show [--offline] [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [password]'),
                     'cmd'   :   '--offline :offline=True: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": --policy-limit :max_policies: --limit :limit: [|object|]',
                     '_help' :   {
                                     'cmd'                           : _('Show password object(s)'),
@@ -40,13 +40,13 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-pass list [--offline] [--attribute attribute] [-a] [regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-pass list [--offline] [--attribute attribute] [-a] [pattern]'),
                     'cmd'   :   '--offline :offline=True: --attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List password objects.'),
                                     '--offline'                 : _('Use the passwords kept on this host, without asking a node.'),
                                     '-a'                        : _('List all password objects.'),
-                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
+                                    '--attribute <attribute>'   : _('Match the pattern against this attribute instead of the name.')
                                 },
                 },
 
@@ -187,7 +187,7 @@ cmd_help = {
                 },
 
     'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-pass config -d -a {password} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-pass config [-d] [-a] {password} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to password object.'),
@@ -266,14 +266,6 @@ cmd_help = {
                                 },
                 },
 
-    'auto_disable'          : {
-                    '_cmd_usage_help' : _('Usage: otpme-pass auto_disable {password} {time}'),
-                    'cmd'   :   '<|object|> <auto_disable>',
-                    '_help' :   {
-                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023", 0 removes it).'),
-                                },
-                },
-
     'rename'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pass rename {password} {new_name}'),
                     'cmd'   :   '<|object|> <"new_name">',
@@ -348,7 +340,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-pass info {password} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-pass info [--language <language>] {password} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set password object info'),
@@ -357,7 +349,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-pass dump_info {password}'),
+                    '_cmd_usage_help' : _('Usage: otpme-pass dump_info [--language <language>] {password}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump password object info'),
@@ -365,24 +357,12 @@ cmd_help = {
                                 },
                 },
 
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
     '_show_config'    : {
                     'cmd'   :   '<|object|>',
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-pass export --password <password> {password}'),
+                    '_cmd_usage_help' : _('Usage: otpme-pass export [--password <password>] {password}'),
                     'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export password object config to stdout.'),

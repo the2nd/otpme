@@ -517,32 +517,6 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     }
 
 def get_acls(**kwargs):
@@ -793,6 +767,15 @@ def register():
 def register_hooks():
     config.register_auth_on_action_hook("vlan", "change_vlan_id")
     config.register_auth_on_action_hook("vlan", "set_config_parameter")
+    # Run by the member methods of OTPmeObject.
+    config.register_auth_on_action_hook("vlan", "add_token")
+    config.register_auth_on_action_hook("vlan", "remove_token")
+    config.register_auth_on_action_hook("vlan", "add_role")
+    config.register_auth_on_action_hook("vlan", "remove_role")
+    config.register_auth_on_action_hook("vlan", "add_host")
+    config.register_auth_on_action_hook("vlan", "remove_host")
+    config.register_auth_on_action_hook("vlan", "add_device")
+    config.register_auth_on_action_hook("vlan", "remove_device")
 
 def register_object_unit():
     """ Register default unit for this object type. """
@@ -1031,6 +1014,10 @@ class Vlan(OTPmeObject):
             return callback.error(msg)
         return True
 
+    # The ACL is checked here and not only by the method of OTPmeObject
+    # called at the end: check_member_vlan() before it names the VLAN an
+    # object is in, which is not for whoever may not add it here.
+    @check_acls(['add:token'])
     def add_token(self, token_path: str,
         callback: JobCallback=default_callback, **kwargs):
         """ Add token to VLAN. """
@@ -1052,15 +1039,26 @@ class Vlan(OTPmeObject):
                                             callback=callback)
         if check_result is not True:
             return check_result
+        # Nothing checks a signature for a VLAN: auto-sign of the user
+        # would ask for the sign key and leave one that is of no use.
+        kwargs.pop("sign", None)
+        kwargs.pop("auto_sign", None)
         return super().add_token(token_path=token_path,
+                                auto_sign=False,
+                                sign=False,
                                 callback=callback, **kwargs)
 
+    @check_acls(['add:role'])
     def add_role(self, role_name: Union[str,None]=None,
         role_uuid: Union[str,None]=None,
         callback: JobCallback=default_callback, **kwargs):
         """ Add role to VLAN. """
         if role_name:
             role_uuid = self.get_role_uuid(role_name, callback=callback)
+            # get_role_uuid() said "Unknown role" and gave False, which
+            # ran into the exception below.
+            if not role_uuid:
+                return callback.error()
         if not role_uuid:
             msg = "Need <role_name> or <role_uuid>."
             raise OTPmeException(msg)
@@ -1072,6 +1070,7 @@ class Vlan(OTPmeObject):
                                 role_uuid=role_uuid,
                                 callback=callback, **kwargs)
 
+    @check_acls(['add:host'])
     def add_host(self, host_name: Union[str,None]=None,
         host_uuid: Union[str,None]=None,
         callback: JobCallback=default_callback, **kwargs):
@@ -1090,14 +1089,15 @@ class Vlan(OTPmeObject):
                                 host_uuid=host_uuid,
                                 callback=callback, **kwargs)
 
+    @check_acls(['add:device'])
     def add_device(self, device_name: Union[str,None]=None,
         device_uuid: Union[str,None]=None,
         callback: JobCallback=default_callback, **kwargs):
         """ Add device to VLAN. """
         if not device_uuid:
+            # Device names are unique in the realm, see device.py.
             device = backend.get_object(object_type="device",
                                     realm=config.realm,
-                                    site=self.site,
                                     name=device_name)
             if not device:
                 msg = _("Device does not exist: {device_name}")
@@ -1112,6 +1112,28 @@ class Vlan(OTPmeObject):
                                 device_uuid=device_uuid,
                                 callback=callback, **kwargs)
 
+    def check_vlan_id_free(self, vlan_id: str,
+        callback: JobCallback=default_callback):
+        """ Make sure no other VLAN of our site has the given VLAN ID.
+
+        Two VLANs with one ID are two names for one network: whoever is
+        put into the one is in the other as well, and a typo in an ID
+        puts people into a network nobody meant. Only our own site: a
+        VLAN ID is a tag of the network the site runs.
+        """
+        for x_vlan in backend.search(object_type="vlan",
+                                    attribute="vlan_id",
+                                    value=vlan_id,
+                                    realm=self.realm,
+                                    site=self.site,
+                                    return_type="instance"):
+            if x_vlan.uuid == self.uuid:
+                continue
+            msg = _("VLAN ID {vlan_id} is in use by VLAN: {vlan}")
+            msg = msg.format(vlan_id=vlan_id, vlan=x_vlan.rel_path)
+            return callback.error(msg)
+        return True
+
     @check_acls(['edit:vlan_id'])
     @object_lock()
     @audit_log()
@@ -1120,24 +1142,48 @@ class Vlan(OTPmeObject):
         self,
         vlan_id: Union[str,int,None]=None,
         force: bool=False,
+        run_policies: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
+        _caller: str="API",
         **kwargs,
         ):
         """ Change VLAN ID. """
-        msg = _("Change VLAN ID of VLAN '{vlan_name}' to '{vlan_id}'?: ")
-        msg = msg.format(vlan_name=self.name, vlan_id=vlan_id)
+        if vlan_id is None or vlan_id == "":
+            vlan_id = None
+            # The question said "to 'None'" here.
+            msg = _("Remove the VLAN ID of VLAN '{vlan_name}'?: ")
+            msg = msg.format(vlan_name=self.name)
+        else:
+            # Checked before the question: there is nothing to say yes
+            # to for an ID that is refused.
+            try:
+                vlan_id = check_vlan_id(vlan_id)
+            except OTPmeException as e:
+                return callback.error(str(e))
+            if not self.check_vlan_id_free(vlan_id, callback=callback):
+                return callback.error()
+            msg = _("Change VLAN ID of VLAN '{vlan_name}' to '{vlan_id}'?: ")
+            msg = msg.format(vlan_name=self.name, vlan_id=vlan_id)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
-
-        if vlan_id is None or vlan_id == "":
+        # The hook change_vlan_id was registered but never run: a policy
+        # could name it and the ID changed without a new login.
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_vlan_id",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+        if vlan_id is None:
             self.vlan_id = None
             self.del_index("vlan_id")
             return self._cache(callback=callback)
-        try:
-            vlan_id = check_vlan_id(vlan_id)
-        except OTPmeException as e:
-            return callback.error(str(e))
         # add_index() appends, so drop the old ID or the object stays
         # searchable (and shows up) under both.
         if self.vlan_id:
@@ -1145,6 +1191,35 @@ class Vlan(OTPmeObject):
         self.vlan_id = vlan_id
         self.add_index("vlan_id", vlan_id)
         return self._cache(callback=callback)
+
+    def remove_orphans(
+        self,
+        force=False,
+        run_policies=True,
+        verbose_level=0,
+        recursive=False,
+        callback=default_callback,
+        _caller="API",
+        **kwargs,
+        ):
+        """ Remove orphan UUIDs. """
+        # A member that was deleted stays on the VLAN by its UUID, and
+        # without these lists nothing but remove_<type> <uuid> took it
+        # out again.
+        extra_ref_lists = [
+                ('tokens', 'token', None),
+                ('roles', 'role', None),
+                ('hosts', 'host', None),
+                ('devices', 'device', None),
+                ]
+        return super().remove_orphans(force=force,
+                                    run_policies=run_policies,
+                                    verbose_level=verbose_level,
+                                    recursive=recursive,
+                                    extra_ref_lists=extra_ref_lists,
+                                    callback=callback,
+                                    _caller=_caller,
+                                    **kwargs)
 
     @object_lock(full_lock=True)
     @backend.transaction
@@ -1170,6 +1245,11 @@ class Vlan(OTPmeObject):
         result = self._prepare_add(callback=callback, **kwargs)
         if result is False:
             return callback.error()
+        # After the ACL: the message names the VLAN that has the ID.
+        if vlan_id is not None:
+            if not self.check_vlan_id_free(check_vlan_id(vlan_id),
+                                        callback=callback):
+                return callback.error()
         # Add object using parent class.
         add_result = super().add(verify_acls=verify_acls,
                                 verbose_level=verbose_level,
@@ -1178,8 +1258,10 @@ class Vlan(OTPmeObject):
             msg = _("Failed to add VLAN.")
             return callback.error(msg)
         if vlan_id is not None:
+            # The add hook has run already.
             self.change_vlan_id(vlan_id,
                                 force=True,
+                                run_policies=False,
                                 verify_acls=False,
                                 callback=callback)
         return callback.ok()

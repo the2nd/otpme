@@ -111,11 +111,14 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
-List the scope names, and with a regex only those that match it.
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+List the scope names, and with a pattern only those that match it, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
 You get the scopes you may change; \fB\-a\fR adds those you may only look at.
 .br
-\fB\-\-attribute\fR matches the regex against that attribute instead of the name: \fBlist \-\-attribute scope_id email\fR lists the scope an application asks for as \fBemail\fR.
+\fB\-\-attribute\fR matches the pattern against that attribute instead of the name: \fBlist \-\-attribute scope_id email\fR lists the scope an application asks for as \fBemail\fR.
 .TP
 .B enable \fIscope\fR
 Enable a disabled scope.
@@ -263,20 +266,23 @@ Only the comment of an entry can be changed or removed.
 What was done and by whom stays as it is.
 .TP
 .B changelog \fIscope\fR
-Show the changelog of the scope.
+Show the changelog of the scope, one entry per line: its \fIentry_id\fR, the time, who made the change and what was done, then a detail in round brackets and the comment in square brackets where there are any.
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fIscope\fR \fIentry_id\fR \fIcomment\fR
 Set the comment of that entry, or replace the one it has.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B del_changelog \fIscope\fR \fIentry_id\fR
 Remove the comment of that entry.
 The entry itself stays, and an entry without a comment is refused.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIscope\fR
 Remove every entry of the changelog.
+Afterwards it holds one entry: that it was cleared.
 .br
 This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
@@ -321,7 +327,7 @@ What the three forms \fBacl\fR, \fB+acl\fR and \fB++acl\fR mean, and which ACLs 
 Give a role or a token one or more ACLs on this scope.
 .br
 \fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
-\fIowner\fR is the path of that role or token.
+\fIowner\fR names it the way \fBlist_acls\fR prints it: a role as \fIsite/name\fR, or by its name alone on its own site; a token as \fI\%user/token\fR.
 An ACL can carry a value, for example \fBview:clients\fR.
 To give several ACLs at once, separate them with commas: \fB\%view:clients,view:status\fR.
 .br
@@ -409,7 +415,7 @@ If \fIinfo\fR is omitted, the current text is opened in the editor named by the 
 Without
 .B \-\-language
 the text is the administrator's own note about the object, which no user is ever shown.
-With a language it is text for the users in that language.
+A text can be written for a language as well, for the places that show such a text to a user; nothing shows the info of a scope, so for a scope it stays a note either way.
 .br
 Needs the ACL \fBedit:info\fR.
 .TP
@@ -434,7 +440,7 @@ Remove references to objects that are gone.
 .br
 A token, a role, a group or a client that is deleted leaves its UUID behind in every scope that held it.
 Nothing is handed out to it any more \(em the UUID resolves to nothing \(em but it stays in the object and \fBshow\fR prints it as a bare UUID.
-This clears those out, together with orphan ACLs, policies and signatures.
+This clears those out, together with orphan ACLs and policies.
 .br
 It asks once for everything it found; the global option \fB\-f\fR skips the question.
 .br
@@ -643,12 +649,12 @@ See
 .B Auth On Action Policy
 in
 .BR otpme\-policy (1).
-A scope has the hooks every object type has, and these:
+A scope has the hooks every object type has, and these; a command of another name is in brackets:
 .RS
 .PP
 .na
 .nh
-add_client, add_group, add_role, add_token, remove_client, remove_group, remove_role, remove_token, set_config_parameter.
+add_client, add_group, add_role, add_token, remove_client, remove_group, remove_role, remove_token, set_config_parameter\ (config).
 .hy
 .ad
 .RE
@@ -656,7 +662,6 @@ add_client, add_group, add_role, add_token, remove_client, remove_group, remove_
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
 .BR otpme\-client (1),
 .BR otpme\-accessgroup (1),
 .BR otpme\-group (1),

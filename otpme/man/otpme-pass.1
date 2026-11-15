@@ -6,6 +6,8 @@ otpme-pass \- manage passwords
 .I command
 [\fIoptions\fR] [\fIpassword\fR]
 .SH DESCRIPTION
+.na
+.nh
 .B otpme-pass
 keeps passwords in OTPme, for example the iDRAC and root passwords of a
 server.
@@ -18,8 +20,8 @@ The entries are encrypted on the client, the host you work on.
 The nodes only store what they cannot read.
 Entry names, usernames, URLs, notes and passwords never leave the client
 unencrypted.
-What the nodes see in clear text is the name of the object, its unit,
-and the objects it belongs to.
+What the nodes see in clear text is the name of the object, its unit, its description and info, the objects it belongs to, and which users hold a key, as well as its ACLs, policies, config parameters and changelog.
+None of these name an entry.
 .PP
 Every password object has a key of its own.
 That key is stored once for every user who may read the password,
@@ -28,15 +30,18 @@ To read a password, the key script of the user decrypts this key, with
 the private key of the user (see \fBkey_script\fR in
 .BR otpme\-user (1)).
 .PP
-.B otpme-pass
-works on hosts only.
-On a node it refuses: the passwords are opened where the user sits.
+What opens or writes the entries runs on hosts only: \fBadd\fR with an entry, \fBchange_entry\fR, \fBdel_entry\fR, \fBshow_password\fR, \fBlist_entries\fR, \fBupdate_keys\fR, \fB\-\-offline\fR, and \fBshow_password\fR of \fBotpme\-node\fR and the others.
+On a node they refuse: a node holds the tree, and the passwords would be in clear there.
+The other commands work on a node as well.
 .PP
-Password objects live in the unit \fBpasswords\fR and the units below it.
-A name alone puts a new password into \fBpasswords\fR.
-A path such as \fBpasswords/servers/server1\fR puts it into another unit.
-Password objects are synced to the nodes of their own site only, never to
-hosts and never to other sites.
+A name alone puts a new password into the unit a \fBdefaultunits\fR policy names, see
+.BR otpme\-policy (1),
+else into \fBpasswords\fR.
+A path such as \fBpasswords/servers/server1\fR puts it into that unit.
+Any unit will do; \fBpasswords\fR is only where they go by default.
+Password objects are synced to the nodes of their own site only, never to hosts and never to other sites.
+Nor is the unit \fBpasswords\fR with everything below it; another unit with passwords in it is synced, the passwords are not.
+What a host keeps, \fBotpme\-agent\fR fetches, see \fBOffline use\fR.
 .SS Who gets a key
 The config parameter
 .B password_store_members
@@ -57,7 +62,7 @@ moment.
 The client checks the signatures, not the nodes.
 It trusts only signers of type \fBpassword\fR that are set up on the host:
 .RS
-.B otpme\-tool add_signer \-\-signer\-type password \(aquser|example.org/berlin/alice\(aq
+.B otpme\-tool add_signer \-\-signer\-type password \(aquser|example.org/alice\(aq
 .RE
 .PP
 Without such a signer, or without a valid signature, nothing is
@@ -92,13 +97,13 @@ and
 allow changes to entries.
 .B edit:keys
 allows \fBupdate_keys\fR.
-All ACLs of a password object are listed in
-.BR otpme\-acls (7).
+Tab completion after \fBadd_acl\fR offers all ACLs of a password object.
 .PP
 The unit \fBpasswords\fR gets no ACLs from its site.
 Give them by hand.
 Recursive ACLs of the site do not reach password objects either.
 Who may see a password is said on its unit, and on nothing above it.
+The usual ACLs are in the base ACL group \fBPASSUSER\fR, see \fBACL Management\fR.
 .SS Passwords of other objects
 A password can belong to nodes, hosts, devices and clients, for example
 the iDRAC password of a node.
@@ -168,30 +173,76 @@ Nothing can be changed offline.
 .PP
 Offline, \fBshow\fR has fewer columns: Password, Unit, Nodes, Hosts,
 Devices, Clients and Description.
+.hy
+.ad
 .SH COMMANDS
 .SS Password Management
+.na
+.nh
 .TP
 .B add \fR[\fB\-\-node\fR \fInode\fR] [\fB\-\-host\fR \fIhost\fR] [\fB\-\-device\fR \fIdevice\fR] [\fB\-\-client\fR \fIclient\fR] [\fB\-\-username\fR \fIusername\fR] [\fB\-\-url\fR \fIurl\fR] [\fB\-\-notes\fR \fInotes\fR] \fIpassword\fR [\fIentry\fR]
 Add a password object.
-With \fIentry\fR its first entry is added as well, and the password is
-asked for twice.
+With a path, e.g. \fBpasswords/servers/server1\fR, it goes into that unit; else into the unit a \fBdefaultunits\fR policy names, see
+.BR otpme\-policy (1),
+or into \fBpasswords\fR.
+The name is unique in the site, whatever unit it is in, and is taken in lower case.
+It may be \fBmax_pass_name_len\fR long (64 by default).
 .br
-When the object is there already, \fBadd\fR adds the \fIentry\fR to it.
-Needs \fBadd:entry\fR then.
+With \fIentry\fR the first entry is added as well: the password is asked for twice, and \fB\-\-username\fR, \fB\-\-url\fR and \fB\-\-notes\fR fill the other fields, see \fBEntries\fR.
+\fB\-\-node\fR, \fB\-\-host\fR, \fB\-\-device\fR and \fB\-\-client\fR name an object the password belongs to, see \fBPasswords of other objects\fR above.
 .br
-\fB\-\-node\fR, \fB\-\-host\fR, \fB\-\-device\fR and \fB\-\-client\fR name an
-object the password belongs to.
+When the password object is there already, \fBadd\fR adds the \fIentry\fR to it, and needs \fBadd:entry\fR; without an \fIentry\fR it says "Password already exists".
+\fB\-\-node\fR and the others are refused then: use \fBadd_node\fR and the others, see \fBObjects\fR.
+.br
+Needs \fBadd:pass\fR on the unit.
 .TP
 .B del \fR[\fB\-\-no\-trash\fR] \fIpassword\fR
-Delete a password object.
-It goes to the trash unless \fB\-\-no\-trash\fR is given.
+Delete the password object.
+It goes to the trash, see
+.BR otpme\-trash (1);
+\fB\-\-no\-trash\fR deletes it right away.
+The hosts that keep it are told, and drop it.
+.br
+Needs \fBdelete:object\fR on the password or \fBdelete:pass\fR on the unit.
 .TP
-.B show \fR[\fB\-\-offline\fR] [\fIpassword\fR]
-Show password objects, without their entries.
-A name can hold \fB*\fR, and a unit path that ends with \fB/\fR shows the
-passwords of that unit.
-.na
-.nh
+.B show \fR[\fB\-\-offline\fR] [\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] [\fIpassword\fR]
+Without a password: a table of all of them, with their unit, the nodes, hosts, devices and clients they belong to, policies, ACL inheritance and description.
+The entries are not in it, see \fBshow_password\fR.
+.RS
+.TP
+.B \-\-offline
+The passwords kept on this host, without asking a node, see \fBOffline use\fR above.
+.TP
+.B \-a
+Also the passwords you may only look at, not just the ones you may change.
+.TP
+.B \-z \fIN\fR
+How many passwords to print.
+.TP
+.B \-\-fields \fIF1,F2\fR
+Print these columns and no others, in the order they are named.
+A name with a \fB+\fR in front is added to the columns that are shown anyway, and one with a \fB\-\fR is left out of them.
+.TP
+.B \-\-limit \fIN\fR
+How many of each kind to print per password: nodes, hosts, devices, clients, policies.
+.TP
+.B \-\-policy\-limit \fIN\fR
+The same for the policies only.
+.TP
+.B \-\-sort\-by \fIfield\fR, \fB\-\-reverse\fR
+Which column to sort by, and the other way round.
+.TP
+.B \-\-raw\fR, \fB\-\-csv\fR, \fB\-\-csv\-sep\fR \fIsep\fR
+\fB\-\-raw\fR leaves the header and the borders out, \fB\-\-csv\fR prints one row per line with \fB;\fR between the columns, and \fB\-\-csv\-sep\fR uses another separator.
+.RE
+.IP
+A column you may not see says \fB\-\fR.
+With a password named, this prints the object itself instead of a table row, one value per line, e.g. \fBNODES\fR; that needs \fBview_public:object\fR.
+\fBshow\fR \fIpassword\fB$\fR prints that one password as a table row.
+A name that is no password is a pattern with \fB*\fR, not a regex, and a unit path that ends with \fB/\fR shows the passwords of that unit, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
 .TP
 .B show_oid \fR[\fB\-\-full\fR] \fIpassword\fR
 Show the OID of the password: \fB\%pass|<realm>/<site>/<name>\fR.
@@ -203,142 +254,266 @@ Needs the ACL \fBview_public:object\fR.
 Show the UUID of the password.
 .br
 Needs the ACL \fBview_public:object\fR.
-.hy
-.ad
 .TP
-.B list \fR[\fB\-\-offline\fR] [\fB\-\-attribute\fR \fIattribute\fR] [\fB\-a\fR] [\fIregex\fR]
-List password objects.
+.B list \fR[\fB\-\-offline\fR] [\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] [\fIpattern\fR]
+List the password names, and with a pattern only those that match it, e.g. \fBserver*\fR.
+You get the passwords you may change; \fB\-a\fR adds those you may only look at.
+\fB\-\-attribute\fR matches the pattern against that attribute instead of the name.
+With \fB\-\-offline\fR the passwords kept on this host are searched the same way.
 .TP
 .B rename \fIpassword\fR \fInew_name\fR
-Rename a password object.
+Rename the password object.
+The new name must not be in use in the site, and is taken in lower case.
+.br
+Needs \fBrename:object\fR.
 .TP
 .B move \fR[\fB\-\-keep\-acls\fR] \fIpassword\fR \fIunit\fR
-Move a password object to another unit.
-The members of the new unit count from then on.
+Move the password object into another unit.
+ACL inheritance is on for passwords, see \fBenable_acl_inheritance\fR: the default ACLs of the old unit are taken away and those of the new one given.
+\fB\-\-keep\-acls\fR keeps all ACLs as they are.
+.br
+The members of the new unit count from then on, see \fBWho gets a key\fR above.
 Run \fBupdate_keys\fR when they differ.
+.br
+Needs \fBmove\fR on the password and \fBadd:pass\fR on the unit.
 .TP
 .B touch \fIpassword\fR
-Write the object again, for example to build its index again.
-.TP
-.B auto_disable \fIpassword\fR \fItime\fR
-Set auto\-disable time.
-It is either a relative time with a leading \fB+\fR, e.g. \fB+30D\fR, or an absolute one, e.g. \fB"09:53 13.06.2023"\fR.
-The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
-.BR otpme (7).
-A relative time counts from when it is set, and again from when the password object is enabled.
-\fB0\fR removes it.
-It is refused for an object the realm or a site comes with, e.g. the admin user; a time set on one before does nothing.
+Write the index entries of the password again; the hosts that keep it fetch it anew.
+.br
+Needs \fBtouch\fR.
+.hy
+.ad
 .SS Entries
+.na
+.nh
+An entry is added with \fBadd\fR, see above.
+Only the client sees the entries: it opens them with the key of the user, see DESCRIPTION.
+.PP
+A change writes all entries again.
+So it needs a key as well, like reading, unless the password has no entries yet, and members with a valid signature, see \fBWho gets a key\fR above.
+Members that have no key yet get one with the change; one who left keeps it until \fBupdate_keys\fR.
 .TP
 .B show_password \fR[\fB\-\-offline\fR] \fIpassword\fR [\fIentry\fR]
-Show the entries with their passwords.
-Without \fIentry\fR all entries are shown.
+Print the entries with their passwords, or only \fIentry\fR:
+.RS
+.PP
+.nf
+server1/idrac
+    username: root
+    password: ...
+    url: https://idrac.example.org
+    notes:
+.fi
+.RE
+.IP
+\fB\-\-offline\fR reads what this host keeps, see \fBOffline use\fR above.
+Online, each call is written to the audit log.
 .br
 Needs \fBview:entries\fR and a key.
 .TP
 .B list_entries \fR[\fB\-\-offline\fR] \fIpassword\fR
-Show the entries without their passwords.
+The same without the passwords.
 .br
 Needs \fBview:entries\fR and a key.
 .TP
 .B change_entry \fR[\fB\-\-username\fR \fIusername\fR] [\fB\-\-url\fR \fIurl\fR] [\fB\-\-notes\fR \fInotes\fR] [\fB\-\-password\fR] \fIpassword\fR \fIentry\fR
-Change an entry.
-\fB\-\-password\fR asks for a new password.
+Change the fields given; an empty value, e.g. \fB\-\-notes ""\fR, clears one.
+\fB\-\-password\fR asks for a new password, twice.
+Without any of them, nothing is changed and it says so.
 .br
-Needs \fBedit:entry\fR.
+Needs \fBedit:entry\fR and a key.
 .TP
 .B del_entry \fIpassword\fR \fIentry\fR
-Delete an entry.
+Delete the entry.
 .br
-Needs \fBdelete:entry\fR.
+Needs \fBdelete:entry\fR and a key.
+.hy
+.ad
 .SS Keys
+.na
+.nh
 .TP
 .B update_keys \fIpassword\fR | \fB\-\-all\fR [\fB\-\-unit\fR \fIunit\fR]
-Give the key to the members that have none, and take it from the users
-that are no longer members.
-Run it after the members were signed again.
-.RS
-.PP
-When a user lost the key, the password gets a new key, and all entries
-are encrypted with it.
-That user may still know what they read before.
-Change those passwords.
-.PP
-\fB\-\-all\fR does every password you may give keys of, one by one.
+Bring the keys of the password in line with its members, see \fBWho gets a key\fR above: members that have no key get one, and users that are no longer members lose it.
+Run it after the members were signed again, after a user left, and after \fBmove\fR.
+.IP
+When a user lost the key, the client makes a new key and encrypts all entries with it, so a key kept from before opens nothing written from then on.
+What that user read before, they may still know: change those passwords.
+.IP
+\fB\-\-all\fR does every password of this site you may give keys of, one by one; the others are left out.
 \fB\-\-unit\fR limits that to one unit and the units below it.
-.PP
-Needs \fBedit:keys\fR, and a key yourself.
-.RE
+At the end it says how many were done, and names the ones that failed.
+\fB\-\-all\fR and \fB\-\-unit\fR are refused together with a \fIpassword\fR.
+.br
+Needs \fBedit:keys\fR, and a key yourself, unless the password has no keys yet.
+.hy
+.ad
 .SS Objects
+.na
+.nh
+Which nodes, hosts, devices and clients a password belongs to, see \fBPasswords of other objects\fR above.
+Nothing is needed on the object itself, only the ACL on the password.
+When the object is deleted, the password keeps its UUID until \fBremove_orphans\fR.
 .TP
 .B add_node \fIpassword\fR \fInode\fR
-The password belongs to this node.
-.TP
+.TQ
 .B remove_node \fIpassword\fR \fInode\fR
-The password no longer belongs to this node.
+The password belongs to this node of the site, or no longer.
+.br
+Needs \fBadd:node\fR or \fBremove:node\fR.
 .TP
 .B add_host \fIpassword\fR \fIhost\fR
-The password belongs to this host.
-.TP
+.TQ
 .B remove_host \fIpassword\fR \fIhost\fR
-The password no longer belongs to this host.
+The password belongs to this host, of any site of the realm, or no longer.
+\fBremove_host\fR also takes the UUID of a host that is gone.
+.br
+Needs \fBadd:host\fR or \fBremove:host\fR.
 .TP
 .B add_device \fIpassword\fR \fIdevice\fR
-The password belongs to this device.
-.TP
+.TQ
 .B remove_device \fIpassword\fR \fIdevice\fR
-The password no longer belongs to this device.
+The password belongs to this device of the realm, or no longer.
+.br
+Needs \fBadd:device\fR or \fBremove:device\fR.
 .TP
 .B add_client \fIpassword\fR \fIclient\fR
-The password belongs to this client.
-.TP
+.TQ
 .B remove_client \fIpassword\fR \fIclient\fR
-The password no longer belongs to this client.
+The password belongs to this client of the site, or no longer.
+.br
+Needs \fBadd:client\fR or \fBremove:client\fR.
+.hy
+.ad
 .SS Object Changelog
+.na
+.nh
 Every change to the object writes an entry: who made it, when, and what was done.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
+.PP
+For the entries of a password it says "add entry", "change entry" or "delete entry", never which one: the name stays on the client, like the rest of the entry.
+Reading them is not a change; \fBshow_password\fR goes to the audit log instead.
+.PP
+The \fBchangelog\fR config parameter can switch that off.
+It is read along the cascade of the password, and nothing is written where it is off \(em not for that password, and not for the ones below a unit that switched it off.
+Without any value anywhere it is on.
 .PP
 An \fIentry_id\fR is the number the listing shows in front of an entry, counted from 0.
 .PP
 Only the comment of an entry can be changed or removed.
 What was done and by whom stays as it is.
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIpassword\fR
-Show the changelog of the password object.
+Show the changelog of the password object, one entry per line: its \fIentry_id\fR, the time, who made the change and what was done, then a detail in round brackets and the comment in square brackets where there are any.
+.br
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fIpassword\fR \fIentry_id\fR \fIcomment\fR
 Set the comment of that entry, or replace the one it has.
+That writes an entry of its own.
+.br
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B del_changelog \fIpassword\fR \fIentry_id\fR
 Remove the comment of that entry.
+The entry itself stays, and an entry without a comment is refused.
+That writes an entry of its own.
+.br
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIpassword\fR
 Remove every entry of the changelog.
-Needs the ACL \fBclear:changelog\fR, and the config parameter
+Afterwards it holds one entry: that it was cleared.
+.br
+This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
 has to allow it (see \fBotpme\fR(7)).
+It is true by default, but where no value is found at all, clearing is refused.
+A value set on the token you are signed in with counts first.
+Without one, the value of the object counts, read along its cascade.
+.hy
+.ad
 .SS Policy Management
+.na
+.nh
+A \fIpolicy\fR is the name of a policy, not a path.
+It is looked for in the site of the password.
+Which policies there are, and what each of them does, is in
+.BR otpme\-policy (1).
+.PP
+One type does something on a password:
+.B authonaction
+asks whoever changes the password to authenticate for it again, see \fBAUTH ON ACTION HOOKS\fR below.
+Every other type is refused.
+.PP
+Reading the entries has no hook: \fB\-\-offline\fR reads what the host keeps without asking a node, so a policy could not stop it.
+What guards the entries is the key of the user, e.g. on a YubiKey.
+.PP
+Attaching and detaching ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
 .B add_policy \fIpassword\fR \fIpolicy\fR
 Attach a policy to the password object.
+.br
+A policy has a list of object types it is for; one that does not name \fBpass\fR is refused.
+So is a second policy of a type that allows only one per object.
+.br
 Needs the ACL \fBassign:policy\fR.
 .TP
 .B remove_policy \fIpassword\fR \fIpolicy\fR
 Remove a policy from the password object.
-Needs the ACL \fBremove:policy\fR.
+.br
+Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
+Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
+.TP
+.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIpassword\fR
+List the policies attached to the password object, the disabled ones too, marked \fB(disabled)\fR.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
+.br
+Needs the ACL \fBview:policies\fR.
+.hy
+.ad
 .SS ACL Management
+.na
+.nh
+An ACL says what somebody may do with this password object.
+The somebody is a role or a token, never a user.
+.PP
+What the three forms \fBacl\fR, \fB+acl\fR and \fB++acl\fR mean is under \fBACLs\fR in
+.BR otpme (7).
+Tab completion after \fBadd_acl\fR offers all ACLs of a password object.
+.PP
+The usual ACLs for working with the passwords of a unit are in the base ACL group \fBPASSUSER\fR, see
+.BR otpme\-aclgroup (1).
+Give it on the unit as \fB@PASSUSER,+@PASSUSER\fR: \fB@PASSUSER\fR lets the owner add and delete passwords in the unit, \fB+@PASSUSER\fR work with the passwords in it.
+\fB++@PASSUSER\fR reaches the passwords in the sub units as well.
+Moving, policies and ACLs are not in it.
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
-.B add_acl \fIpassword\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
-Add an access control entry.
+.B add_acl \fIpassword\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
+Give a role or a token one or more ACLs on this password object.
+.br
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
+\fIowner\fR names it the way \fBlist_acls\fR prints it: a role as \fIsite/name\fR, or by its name alone on its own site; a token as \fI\%user/token\fR.
+An ACL can carry a value, for example \fBview:entries\fR.
+To give several ACLs at once, separate them with commas: \fB\%view:entries,edit:entry\fR.
+.br
+Needs the ACL \fBadd:acl\fR.
 .TP
-.B del_acl \fIpassword\fR \fIacl\fR
-Remove an access control entry.
+.B del_acl \fIpassword\fR \fIacl\fR[,\fIacl\fR]
+Take those ACLs away again.
+.br
+Here an \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fBrole:berlin/helpdesk:view:entries\fR.
+.br
+Needs the ACL \fBdelete:acl\fR.
 .TP
 .B list_acls \fIpassword\fR
-Show all ACLs of the password object.
+Show the ACLs that lie on this password object, i.e. who may do what with it.
+.br
+Needs the ACL \fBview:acl\fR.
 .TP
 .B enable_acl_inheritance \fIpassword\fR
 Let a move of the password swap its default ACLs: what the old unit handed down is taken away, and what the new unit hands down is given.
@@ -359,124 +534,157 @@ Needs the ACL \fBenable:acl_inheritance\fR.
 A move leaves the ACLs of the password as they are: whoever could reach it in the old unit still can, and the new unit gives nobody anything.
 .br
 Needs the ACL \fBdisable:acl_inheritance\fR.
+.hy
+.ad
 .SS Configuration
+.na
+.nh
+\fBconfig\fR sets the parameters every object has; for a password these are \fBchangelog\fR and \fBallow_changelog_clearing\fR, see \fBObject Changelog\fR.
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B config \fR[\fB\-a\fR] [\fB\-d\fR] \fIpassword\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set, append to or delete a config parameter.
+Set a parameter on the password object.
+.RS
+.TP
+.B \-d
+Remove the parameter from the password object, or with a value only that one value from a list.
+It is not set back to a default: what applies afterwards is whatever the unit or the site says.
+.TP
+.B \-a
+Append the value to a parameter that holds a list, instead of replacing what is there.
+.RE
+.IP
+The ACL is per parameter, \fBset:config:<parameter>\fR.
 .TP
 .B get_config \fIpassword\fR \fIparameter\fR
-Show a config parameter.
+What the parameter comes to for this password object, once the object, its units and its site have been looked at.
+So this answers what applies, where \fBshow_config\fR answers what was set here.
+.br
+Needs the ACL \fBview:config:<parameter>\fR.
 .TP
 .B show_config \fIpassword\fR [\fIparameter\fR]
-Show the config parameters of the password object.
+The parameters set on the password object itself, or only the one named.
+Nothing is shown for a parameter that it gets from a unit or from the site.
+.br
+Needs the ACL \fBview:config:<parameter>\fR; without it a parameter is left out of the list, and one named is refused.
 .TP
 .B description \fIpassword\fR \fR[\fIdescription\fR]
 Set the description.
-It is not encrypted.
+Without one OTPme asks and offers the current text for editing.
+It is not encrypted: \fBshow\fR lists it, and a host keeps it for \fB\-\-offline\fR.
+.br
+Needs the ACL \fBedit:description\fR.
 .TP
 .B info \fR[\fB\-\-language\fR \fILANG\fR] \fIpassword\fR \fR[\fIinfo\fR]
 Set free-form info text.
 It is not encrypted.
-If \fIinfo\fR is omitted, the current info text is opened in the editor
-specified by the \fBEDITOR\fR environment variable.
+If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable (default: vim).
+.br
+Needs the ACL \fBedit:info\fR.
+.br
+Without
+.B \-\-language
+the text is the administrator's own note.
+Nothing shows the info of a password to a user, so a text for a language stays a note as well.
 .TP
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIpassword\fR
-Dump the info text to stdout.
-.SS Import/Export
+Write one of those texts to stdout.
+\fB\-\-language\fR picks which one; without it you get the note of the administrator.
+.br
+Needs the ACL \fBview:info\fR.
+.hy
+.ad
+.SS Export and Cleanup
+.na
+.nh
+There is no import on this page: reading an export back in is \fBotpme\-tool import\fR, see
+.BR otpme\-tool (1).
+.PP
+.B remove_orphans
+asks before it changes anything; the global option \fB\-f\fR skips the question.
 .TP
-.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIpassword\fR
-Export the password object.
-The entries stay encrypted.
+.B export \fR[\fB\-\-password\fR \fIpassphrase\fR] \fIpassword\fR
+Write the whole password object to stdout, as JSON.
+.RS
+.PP
+Without \fB\-\-password\fR it is written as it is, in clear.
+With one, a key is derived from that passphrase and the object is encrypted with it; the salt goes into the output, so the passphrase is all you need to read it back.
+.PP
+The entries stay encrypted either way: only a user with a key of the password can read them, as with \fBshow_password\fR.
+.PP
+The nodes, hosts, devices and clients of the password and the users with a key are named by UUID, so an export says something only in the realm it came from.
+.PP
+Needs the ACL \fBexport\fR.
+.RE
 .TP
 .B remove_orphans \fIpassword\fR
-Remove references to objects that are gone, and the keys of users that
-are gone.
-.SH OPTIONS
-.SS Display Options
-.TP
-.B \-\-offline
-Read the passwords this host keeps, without asking a node.
-Only with \fBshow\fR, \fBlist\fR, \fBlist_entries\fR and \fBshow_password\fR.
-.TP
-.B \-a
-Show all password objects.
-.TP
-.B \-z \fISIZE\fR
-Limit output size.
-.TP
-.B \-\-fields \fIFIELD1,FIELD2\fR
-Display only specified fields.
-.TP
-.B \-\-policy\-limit \fIN\fR
-Limit number of policies shown.
-.TP
-.B \-\-limit \fIN\fR
-Limit number of items shown per object.
-.TP
-.B \-\-sort\-by \fIFIELD\fR
-Sort output by field.
-.TP
-.B \-\-reverse
-Reverse sort order.
-.TP
-.B \-\-raw
-Output without headers/borders.
-.TP
-.B \-\-csv
-Output as CSV.
-.TP
-.B \-\-csv\-sep \fISEP\fR
-CSV separator character.
-.SS General Options
-.TP
-.B \-\-keep\-acls
-Keep the ACLs when moving a password object.
-.TP
-.B \-\-password \fIPASS\fR
-Password for encrypting exports.
+Remove what the password object still points at although it is gone.
+.RS
 .PP
-Global options are available for all commands. See
-.BR otpme (1)
-for details.
+That is its ACLs and its policies, the nodes, hosts, devices and clients it belongs to, and the keys of users that are gone.
+.PP
+It shows everything it found and asks once for all of it.
+It asks nothing and changes nothing when it finds nothing.
+.PP
+Needs the ACL \fBremove:orphans\fR.
+.RE
+.hy
+.ad
+.SH OPTIONS
+Every option belongs to one command and is described with that command above.
+.PP
+Global options work with every command, see
+.BR otpme (1).
 .SH EXAMPLES
+.na
+.nh
+.SS Who gets the keys
 .TP
 .B otpme-unit config passwords password_store_members \(aqrole|example.org/berlin/admins\(aq
-Give the members of the role "admins" the keys of the passwords in the
-unit "passwords"
+The users of the role \fBadmins\fR get the keys of the passwords in the unit \fBpasswords\fR.
 .TP
 .B otpme-unit sign_password_members passwords
-Sign the members
+A user signs the members.
+Until then nobody gets a key.
 .TP
-.B otpme-tool add_signer \-\-signer\-type password \(aquser|example.org/berlin/alice\(aq
-On each host, as root: trust the signatures of alice
+.B otpme-tool add_signer \-\-signer\-type password \(aquser|example.org/alice\(aq
+On each host, as root: trust the signatures of \fBalice\fR.
+.SS A password for a node
 .TP
 .B otpme-pass add \-\-node node1 \-\-username root \-\-url https://node1\-idrac.example.org node1 idrac
-Add the password "node1" with the entry "idrac", for the node "node1"
-.TP
-.B otpme-pass add passwords/servers/server1 root
-Add a password in the unit "passwords/servers"
+The password \fBnode1\fR with its first entry \fBidrac\fR, for the node \fBnode1\fR.
+The password of the entry is asked for twice.
 .TP
 .B otpme-pass show_password node1 idrac
-Show the entry "idrac" with its password
+The entry \fBidrac\fR with its password.
 .TP
 .B otpme-node show_password node1
-Show all passwords of the node "node1"
+All passwords of the node \fBnode1\fR.
 .TP
 .B otpme-pass change_entry \-\-password node1 idrac
-Change the password of the entry
+A new password for the entry.
+.SS Passwords in a unit of their own
+.TP
+.B otpme-unit add passwords/servers
+.TQ
+.B otpme-pass add passwords/servers/server1 root
+The unit \fBpasswords/servers\fR, and the password \fBserver1\fR in it with the entry \fBroot\fR.
 .TP
 .B otpme-pass update_keys \-\-all \-\-unit passwords/servers
-Bring the keys of all passwords below "passwords/servers" in line with the
-members
+Bring the keys of all passwords below \fBpasswords/servers\fR in line with the members, e.g. after a user has left.
+.SS Offline use
 .TP
-.B otpme-unit config passwords password_offline_cache host1,host2
-Let the hosts "host1" and "host2" keep the passwords for offline use
+.B otpme-unit config passwords password_offline_cache \(aqhost|example.org/host1,host|example.org/host2\(aq
+The hosts \fBhost1\fR and \fBhost2\fR keep the passwords of the unit \fBpasswords\fR for offline use.
 .TP
-.B otpme-unit config \-a passwords password_offline_cache 'group|example.org/admins'
-Let the hosts in the group "admins" keep them as well
+.B otpme-unit config \-a passwords password_offline_cache \(aqgroup|example.org/admins\(aq
+The hosts in the group \fBadmins\fR keep them as well.
 .TP
 .B otpme-pass show_password \-\-offline node1
-Read the password this host keeps, without asking a node
+Read the password \fBnode1\fR from what this host keeps, without asking a node.
+.hy
+.ad
 .\" BEGIN AUTH ON ACTION HOOKS
 .\" Generated by update_hooks_man.py. Do not edit, the next run
 .\" overwrites it.
@@ -486,25 +694,52 @@ See
 .B Auth On Action Policy
 in
 .BR otpme\-policy (1).
-A pass has the hooks every object type has, and no others.
+A pass has the hooks every object type has, and these; a command of another name is in brackets:
+.RS
+.PP
+.na
+.nh
+add_client, add_device, add_entry\ (add), add_host, add_node, change_entry, del_entry, remove_client, remove_device, remove_host, remove_node, update_keys.
+.hy
+.ad
+.RE
 .\" END AUTH ON ACTION HOOKS
 .SH FILES
+.na
+.nh
+.TP
+\fI/var/lib/otpme/tree/\fR
+The objects of the realm.
+A password is the directory \fI<name>.pass\fR in the directory of its unit, e.g. \fI<realm>.realm/<site>.site/passwords.unit/node1.pass/\fR, with its settings in \fIobject.json\fR, on the nodes of its site only, never on a host.
+Change them with the commands above, not in the files.
 .TP
 \fI/var/cache/otpme/offline/<user_uuid>/pass.json\fR
-The passwords a host keeps for the user, encrypted.
+The passwords a host keeps for the user, see \fBOffline use\fR.
+The directory is \fIoffline\fR below \fBCACHE_DIR\fR in
+.BR otpme.conf (5).
+\fBotpme\-agent\fR writes it for the user, readable by the user alone, and replaces it as a whole on every fetch.
+The entries in it stay encrypted; the names, units, descriptions and the objects the passwords belong to are in clear.
+.hy
+.ad
 .SH SEE ALSO
+.na
+.nh
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
 .BR otpme.conf (5),
 .BR otpme\-unit (1),
 .BR otpme\-site (1),
+.BR otpme\-policy (1),
+.BR otpme\-aclgroup (1),
 .BR otpme\-tool (1),
 .BR otpme\-user (1),
 .BR otpme\-node (1),
 .BR otpme\-host (1),
 .BR otpme\-device (1),
-.BR otpme\-client (1)
+.BR otpme\-client (1),
+.BR otpme\-trash (1)
+.hy
+.ad
 
 .SH AUTHOR
 the2nd <the2nd@otpme.org>

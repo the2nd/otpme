@@ -297,6 +297,17 @@ def get_child_sessions(session_uuid, tree_level=0):
 @match_class_typing
 class Session(OTPmeLockObject):
     """ OTPme session object. """
+    # backup.backup_object() and restore_object() call these for every
+    # object type. A session is no OTPmeBaseObject, and its config is
+    # all there is to back up and restore.
+    @classmethod
+    def get_backup_data(cls, object_id, object_uuid, object_config, file_content):
+        return file_content
+
+    @classmethod
+    def restore_object_data(cls, object_id, object_uuid, object_data, callback):
+        pass
+
     def __init__(self,
         session_type: Union[str,None]=None,
         username: Union[str,None]=None,

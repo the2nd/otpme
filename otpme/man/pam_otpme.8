@@ -1,295 +1,358 @@
-.TH PAM_OTPME 8 "2025" "OTPme" "System Administration"
+.TH PAM_OTPME 8 "2026-11-10" "OTPme 0.3.0a288" "OTPme Manual"
 .SH NAME
-pam_otpme \- PAM module for OTPme authentication with offline login support
+pam_otpme \- PAM module that logs users in to an OTPme realm, also offline
 .SH SYNOPSIS
 .nf
 auth [success=1 default=ignore] pam_python.so pam_otpme.py [\fIoptions\fR...]
+session required pam_python.so pam_otpme.py
 .fi
 .SH DESCRIPTION
+.na
+.nh
 .B pam_otpme
-is a PAM module that authenticates users against an OTPme realm.
-It is loaded via
+logs a user of the realm in on this host.
+It is a Python script that
 .B pam_python.so
-and supports online authentication against the OTPme daemon as well as fully
-offline logins using locally cached credentials.
+runs, see INSTALLATION.
+.TP
+.B auth
+Checks the login at the nodes, with a password, an OTP, a smartcard or an SSH key, see OPTIONS, and starts the OTPme agent, which holds the login session.
+On a screen unlock it only checks the user again.
+Then PAM sets the credentials, and pam_otpme adds the user to the dynamic groups, see \fBALLOW_DYNAMIC_GROUPS\fR in
+.BR otpme.conf (5).
+.TP
+.B session
+Starts the SSH agent when the session starts, see \fBstart_ssh_agent\fR.
+When the session ends, it stops the SSH agent and the OTPme agent.
+.TP
+.B account
+Lets every user through: who may log in is checked by \fBauth\fR.
+.SS Offline logins
+When the nodes do not answer, a user can log in with an offline copy of the login token.
+The host writes one at a login with \fBcache_login_tokens\fR, if the token allows it:
+.RS
 .PP
-When a user logs in online, the module can cache the user's token credentials
-on the local host so that subsequent logins succeed even when the OTPme server
-is unreachable.
-Offline caching must be enabled individually for each token on the server:
+.B otpme\-token enable_offline \fItoken\fR
+.RE
 .PP
-.nf
-otpme-token enable_offline <token>
-.fi
+The copy is encrypted with a key made from the password, see \fBoffline_key_func\fR.
 .PP
-Offline credentials are protected by a key derivation function (KDF) whose
-parameters can be tuned based on the strength of the user's password.
+With session keeping, the copy also holds the login session, and an offline login takes it up again instead of starting a new one:
+.RS
 .PP
-In addition to offline tokens, the module supports
-.IR "offline session keeping" .
-When enabled for a token, the login session is cached alongside the offline
-credentials and automatically restored on the next offline login.
-Session keeping is enabled per token on the server:
+.B otpme\-token enable_session_keep \fItoken\fR
+.RE
+.SS Shares
+At a login, the shares of the user are mounted, also when an offline login takes up a kept session.
+It is on by default; to turn it off for a user:
+.RS
 .PP
-.nf
-otpme-token enable_session_keep <token>
-.fi
-.PP
-If the user has shares configured and auto-mount is enabled, shares are
-mounted automatically when a session is restored from cache:
-.PP
-.nf
-otpme-user enable_auto_mount <user>
-.fi
-.PP
-The module also supports hardware smartcards (e.g. YubiKey HMAC-SHA1) and SSH
-key authentication via an SSH agent (e.g. YubiKey with GPG applet combined with
-an OTPme
-.B ssh
-token).
+.B otpme\-user disable_auto_mount \fIuser\fR
+.RE
+.hy
+.ad
 .SH INSTALLATION
-.B pam_python.so
-must be installed before
+.na
+.nh
 .B pam_otpme
-can be used.
-On Debian and Ubuntu install the distribution package:
+is a Python script that
+.B pam_python.so
+runs, with the Python of the system.
+That Python has to be the version OTPme is installed for, e.g. 3.11.
+.TP
+1. pam_python
+On Debian and Ubuntu:
+.RS
 .PP
-.nf
-apt-get install libpam-python
-.fi
+.B apt\-get install libpam\-python
+.RE
+.TP
+2. The script
+It comes with OTPme as \fIetc/otpme/deploy/pam/pam\-python/pam_otpme.py\fR below the \fIsite\-packages\fR directory, and is in \fI/etc/otpme/deploy/pam/pam\-python/\fR once \fIetc/otpme\fR is copied to \fI/etc\fR (see \fIREADME.md\fR).
+\fBpam_python.so\fR looks for a script without a path in \fI/lib/security/\fR, so link it there:
+.RS
 .PP
-The
-.B pam_otpme.py
-script is installed as part of OTPme and is typically located in the OTPme
-Python package directory.
+.B ln \-s /etc/otpme/deploy/pam/pam\-python/pam_otpme.py /lib/security/
+.RE
+.TP
+3. The path to OTPme
+The script reads \fI/etc/otpme/PYTHONPATH\fR, one directory per line, to find OTPme in its virtual environment, e.g.:
+.RS
+.PP
+.B /opt/otpme/lib/python3.11/site\-packages/
+.RE
+.TP
+4. The PAM config
+\fI/etc/otpme/deploy/pam/\fR has \fIotpme\-auth\fR, \fIotpme\-account\fR and \fIotpme\-session\fR.
+Copy them to \fI/etc/pam.d/\fR and, in the PAM config of a service, replace \fB@include common\-auth\fR and the others with \fB@include otpme\-auth\fR and so on.
+\fIdeploy/pam/examples/sshd\fR in the sources of OTPme shows it for SSH.
+.hy
+.ad
 .SH OPTIONS
-Options are passed as space-separated arguments after
+.na
+.nh
+The options go after
 .B pam_otpme.py
-on the PAM configuration line.
+on the PAM line, separated by spaces.
+An option it does not know is ignored, a value it does not know gives a warning in the log and the default stays.
 .TP
 .B cache_login_tokens
-Cache login tokens that are configured for offline usage on the server.
-This enables subsequent offline logins after a successful online
-authentication.
+After an online login, keep the login token on this host for offline logins, if it may be kept: see \fBenable_offline\fR in
+.BR otpme\-token (1).
 .TP
 .B try_first_pass
-Try to reuse the password supplied by a previously stacked PAM module.
-If no password is available, prompt the user.
+Take the password a PAM module above this one asked for; without one, ask.
 .TP
 .B use_first_pass
-Use the password supplied by a previously stacked PAM module.
-Fail immediately if no password is available.
+Take the password a PAM module above this one asked for; without one, the login fails.
+.IP
+Without either of them, pam_otpme asks for the password itself.
 .TP
 .B nullok
-Allow authentication with an empty password.
+Allow an empty password, e.g. for a \fBfido2\fR token that needs none.
 .TP
 .BI send_password= auto|false
-Controls whether the user's password is sent to the OTPme server.
-Values:
-.B auto
-\- send the password only if the server requests it (default);
-.B false
-\- never send the password to the server (useful for token types that do
-not require the password on the server side, e.g. SSH tokens).
+Whether the password goes to the nodes.
+\fBauto\fR (default): if the token of the user needs it there.
+\fBfalse\fR: never, e.g. for a token that is checked with an SSH key, so the password does not leave the host.
 .TP
 .BI use_smartcard= auto|true|false
-Controls smartcard usage (e.g. YubiKey HMAC-SHA1).
-Values:
-.B auto
-\- use a locally connected smartcard if one is detected (default);
-.B true
-\- require a smartcard, login without one is not possible;
-.B false
-\- ignore any connected smartcard.
+Use a smartcard, e.g. the HMAC\-SHA1 slot of a YubiKey.
+\fBauto\fR (default): if one is plugged in.
+\fBtrue\fR: always; without one the login fails.
+\fBfalse\fR: never.
 .TP
 .BI use_ssh_agent= auto|true|false
-Controls authentication via SSH key from an SSH agent (e.g. YubiKey with
-GPG applet used together with an OTPme
+Log in with an SSH key from an SSH agent, e.g. a YubiKey with the GPG applet for an
 .B ssh
-token).
-Values:
-.B auto
-\- use the SSH agent if a suitable key is available (default);
-.B true
-\- require a valid SSH key from the agent, login without one is not possible;
-.B false
-\- do not use and do not start an SSH agent.
+token of OTPme.
+\fBauto\fR (default): if the agent has a key the nodes know.
+\fBtrue\fR: always, and start the agent; without a key the login fails.
+\fBfalse\fR: never, and do not start the agent.
 .TP
 .BI start_ssh_agent= auto|true|false
-Controls whether an SSH agent is started at login.
-Values:
-.B auto
-\- decide based on public keys received from the server (default);
-.B true
-\- always start an SSH agent;
-.B false
-\- never start an SSH agent.
+Start an SSH agent at login.
+\fBauto\fR (default): if the nodes send SSH keys of the user.
+\fBtrue\fR: always.
+\fBfalse\fR: never.
+When it is not set, \fBuse_ssh_agent=true\fR and \fBfalse\fR set it to the same.
 .TP
 .B unlock_via_offline_token
-When set, screen unlock uses the locally cached offline token and does not
-send an authentication request to the OTPme server.
+On a screen unlock, check the password against the offline copy of the login token, if this host has one, and ask no node.
 .TP
-.BI do_dot1x= auto|force
-Perform 802.1x port authentication on login.
-Requires a Network Manager dummy connection to be configured beforehand.
-The
-.B ca-cert
-and
-.B domain-suffix-match
-options are required so the supplicant validates the RADIUS server before
-sending credentials. All OTPme nodes share the site certificate whose SAN
-is
-.IR <site>.<realm> ,
-so one
-.B domain-suffix-match
-covers every RADIUS node. Example:
+.BI do_dot1x= auto|force|false
+Log the network port in with 802.1X at login, through a NetworkManager connection (default: \fBfalse\fR).
+pam_otpme writes the user name and the password or OTP into that connection, see \fBdot1x_token_types\fR, and brings it up.
+Nothing happens when the interface of the connection has no link, e.g. on WLAN.
+\fBauto\fR: only when the default gateway does not answer a ping.
+\fBforce\fR: always; the connection goes down and up again.
+On a screen unlock, when the gateway does not answer, the connection is brought up again with what the login wrote into it, because the user may not change the connection.
+That works with the OTP of \fByubikey_piv\fR only when the access group the RADIUS server checks the port login against has sessions, see \fBenable_sessions\fR in
+.BR otpme\-accessgroup (1):
+then the OTP of the login may be used again while the session lasts.
+.IP
+The connection has to exist.
+\fBca\-cert\fR and \fBdomain\-suffix\-match\fR make the supplicant check the RADIUS server before it sends anything.
+All nodes of a site have the certificate of the site, with \fI<site>.<realm>\fR as its name, so one \fBdomain\-suffix\-match\fR covers every RADIUS node.
+Identity and password are only placeholders here:
+.RS
 .PP
 .nf
-nmcli connection add type ethernet con-name "dot1x-lan" ifname enp0s25 \\
-    802-1x.eap ttls \\
-    802-1x.phase2-auth pap \\
-    802-1x.ca-cert /etc/otpme/ssl/ca.pem \\
-    802-1x.domain-suffix-match <site>.<realm> \\
-    802-1x.anonymous-identity "anonymous@<realm>" \\
-    802-1x.identity "user" \\
-    802-1x.password "pass"
+nmcli connection add type ethernet con\-name "dot1x\-lan" ifname enp0s25 \\
+    802\-1x.eap ttls \\
+    802\-1x.phase2\-auth pap \\
+    802\-1x.ca\-cert /etc/otpme/ssl/ca.pem \\
+    802\-1x.domain\-suffix\-match berlin.example.org \\
+    802\-1x.anonymous\-identity "anonymous@example.org" \\
+    802\-1x.identity "user" \\
+    802\-1x.password "pass"
 .fi
-.IP
-Values:
-.B auto
-\- perform dot1x authentication only when the default gateway is unreachable
-(ICMP ping must be allowed);
-.B force
-\- always perform dot1x authentication on login (restarts the network
-connection).
-The option
-.B dot1x_token_types
-must also be set.
+.RE
 .TP
 .BI dot1x_connection= name
-Name of the Network Manager connection to use for 802.1x port authentication.
-Defaults to
-.BR dot1x-lan .
+The NetworkManager connection (default: \fBdot1x\-lan\fR).
 .TP
-.BI dot1x_token_types= type
-Comma separated list of Token types used to generate the OTP for 802.1x port authentication.
-Currently supported types:
-.B yubikey_piv
-and
-.BR password .
+.BI dot1x_token_types= type[,type...]
+What the password of the connection is made from; without it, \fBdo_dot1x\fR does nothing and says so in the log.
+\fByubikey_piv\fR: an OTP derived by the YubiKey, which asks for its PIN; used when one is plugged in.
+\fBpassword\fR: the password of the login.
 .TP
 .BI dot1x_timeout= seconds
-Number of seconds to wait for the 802.1x port authentication to complete.
+How long to wait for the connection to come up (default: \fB10\fR).
 .TP
-.BI offline_key_func= func [; opt = val ,...]
-Key derivation function used to encrypt the locally cached offline token.
-The function name and its options are separated by
-.BR ; ,
-individual options by
-.BR , ,
-and key/value pairs by
-.BR : .
-The only supported function is
-.BR Argon2_i .
-Available options:
+.BI offline_key_func= func[;opt:val,...]
+How the key that encrypts the offline copy of the login token is made from the password, see \fBcache_login_tokens\fR (default: \fBArgon2_i\fR).
+\fBArgon2_i\fR, \fBArgon2_d\fR and \fBArgon2_id\fR work; another function gives a warning in the log and the default stays.
+After \fB;\fR come options as \fIopt\fB:\fIval\fR, separated by \fB,\fR; an option not given keeps its default:
+.RS
+.TP
 .B iterations
-\- number of iterations (default: 3);
+(default: \fB3\fR)
+.TP
+.B memory
+In KiB (default: between \fBmin_mem\fR and \fBmax_mem\fR, by the free memory of the host).
+.TP
 .B min_mem
-\- minimum memory in KiB (default: 65536);
+In KiB (default: \fB65536\fR).
+.TP
 .B max_mem
-\- maximum memory in KiB (default: 262144);
+In KiB (default: \fB262144\fR).
+.TP
 .B threads
-\- number of threads (default: 4).
-Example:
-.PP
+(default: \fB4\fR)
+.RE
+.IP
 .nf
-offline_key_func=Argon2_i;min_mem:65536,max_mem:262144,iterations:6,threads:4
+offline_key_func=Argon2_id;max_mem:524288,threads:2
 .fi
 .TP
-.BI check_offline_pass_strength= policy ; score : iterations [,...]
-Dynamically adjust the number of KDF iterations based on the strength of the
-user's password.
-A weaker password receives more iterations; a stronger password needs fewer.
-The first parameter specifies the OTPme password policy used to calculate the
-strength score.
-Use
-.B auto
-to use the policy assigned to the host.
-The second parameter (after
-.BR ; )
-is a comma-separated list of
-.IB score : iterations
-pairs that map a strength score to a number of KDF iterations.
-Example:
+.BI check_offline_pass_strength[= policy[;score:iterations,...]]
+A weak password gets more \fBiterations\fR of \fBoffline_key_func\fR, so its offline copy takes longer to guess.
+A password policy gives the password a score from 0 (weak) to 10 (strong), and the score picks the iterations.
+\fBiterations\fR given to \fBoffline_key_func\fR is then not used.
+.RS
+.TP
+.I policy
+The password policy, see
+.BR otpme\-policy (1)
+(default: \fBauto\fR, the password policy of the host).
+Without a policy the score is 0, and the log says so.
+.TP
+.I score:iterations
+How many iterations a score gets.
+The pairs you give replace these of the default:
+.RS
 .PP
 .nf
-check_offline_pass_strength=password_strength;0:6,1:6,2:6,3:5,4:5,5:5,6:3,7:3,8:3,9:3,10:3
+0:6,1:6,2:6,3:5,4:5,5:5,6:3,7:3,8:3,9:3,10:3
 .fi
-.TP
-.B offline_greeting
-Display a greeting message after a successful offline login.
+.RE
+.IP
+So a score of 0 to 2 gets 6 iterations, 3 to 5 gets 5, and 6 to 10 gets 3.
+.RE
+.IP
+.nf
+check_offline_pass_strength=password_strength;0:8,1:8,2:8
+.fi
 .TP
 .B online_greeting
-Display a greeting message after a successful online login.
+After a login to the realm, show "You are logged in to REALM '<realm>'.".
 .TP
-.BI message_timeout= seconds
-Duration in seconds for which PAM messages are displayed.
-Default:
-.BR 2 .
+.B offline_greeting
+After a login with the offline copy of the token, show "You are logged in offline!".
 .TP
 .B show_errors
-Show OTPme-specific login error messages to the user via the PAM conversation
-interface.
+When the login fails, show why, e.g. "Login failed: Host disabled".
+Without it, the reason is only in the log.
+.TP
+.BI message_timeout= seconds
+How long to wait after each message pam_otpme shows, so it can be read (default: \fB2\fR).
 .TP
 .BI connect_timeout= seconds
-Timeout in seconds when establishing a connection to the OTPme server.
-Default:
-.BR 3 .
+How long to wait for the connection to the nodes at login (default: \fB3\fR).
 .TP
 .BI connection_timeout= seconds
-Timeout in seconds when waiting for a response from the OTPme server.
-Default:
-.BR 30 .
+How long to wait for an answer of the nodes at login (default: \fB30\fR).
 .TP
 .B create_home
-Create the user's home directory on first login if it does not exist.
+Create the home directory of the user if it does not exist, with mode 0700.
+That happens before the password is checked, because the OTPme agent that the login starts keeps its files there.
 .TP
 .BI home_skel= path
-Path to a skeleton directory used when creating a new home directory.
-Requires
-.BR create_home .
+Copy the new home directory from this directory, e.g. \fI/etc/skel\fR.
+Without \fBcreate_home\fR it does nothing.
 .TP
 .B debug
-Enable verbose debug logging.
+Write debug messages to the log.
+.hy
+.ad
 .SH EXAMPLES
-A typical PAM entry that enables offline caching, smartcard and SSH agent
-support, adaptive KDF iterations and debug output:
+.na
+.nh
+.SS Login with offline copies
+\fI/etc/otpme/deploy/pam/otpme\-auth\fR has these lines.
+When pam_otpme lets the user in, \fBsuccess=1\fR skips \fBpam_deny\fR; else \fBpam_deny\fR ends the login:
 .PP
 .nf
 auth [success=1 default=ignore] pam_python.so pam_otpme.py \\
-    try_first_pass \\
-    cache_login_tokens \\
-    use_smartcard=auto \\
-    use_ssh_agent=auto \\
-    offline_key_func=Argon2_i;min_mem:65536,max_mem:262144,iterations:6,threads:4 \\
-    check_offline_pass_strength=password_strength;0:6,1:6,2:6,3:5,4:5,5:5,6:3,7:3,8:3,9:3,10:3 \\
-    debug
+    try_first_pass cache_login_tokens \\
+    use_smartcard=auto use_ssh_agent=auto start_ssh_agent=auto \\
+    create_home home_skel=/etc/skel \\
+    check_offline_pass_strength=password_strength;0:6,1:6,2:6,3:5,4:5,5:5,6:3,7:3,8:3,9:3,10:3
+auth requisite pam_deny.so
+auth required pam_permit.so
 .fi
-.PP
-A minimal entry for online-only authentication:
+.SS A stronger key for the offline copies
+Argon2_id with up to 512 MiB, and the iterations from the strength of the password, scored by the password policy of the host:
 .PP
 .nf
-auth [success=1 default=ignore] pam_python.so pam_otpme.py try_first_pass
+auth [success=1 default=ignore] pam_python.so pam_otpme.py \\
+    try_first_pass cache_login_tokens \\
+    offline_key_func=Argon2_id;max_mem:524288 \\
+    check_offline_pass_strength
 .fi
+.SS No new offline copies
+Without \fBcache_login_tokens\fR no new offline copy is written, so a login without the nodes works only with a copy from before.
+\fBshow_errors\fR shows why a login fails:
+.PP
+.nf
+auth [success=1 default=ignore] pam_python.so pam_otpme.py try_first_pass show_errors
+.fi
+.SS The session
+\fI/etc/otpme/deploy/pam/otpme\-session\fR has pam_otpme in the session part.
+When the session starts, it starts the SSH agent, see \fBstart_ssh_agent\fR.
+When the session ends, it stops the SSH agent and the OTPme agent, which logs the user out when needed:
+.PP
+.nf
+session required pam_python.so pam_otpme.py
+.fi
+.hy
+.ad
 .SH FILES
+.na
+.nh
 .TP
-.I /var/cache/otpme/offline/
-Directory where offline token credentials and cached login sessions are stored.
+.I /lib/security/pam_otpme.py
+The link to the script, see INSTALLATION.
+.TP
+.I /etc/otpme/PYTHONPATH
+Directories the script puts in front of the Python path, one per line, e.g. the \fIsite\-packages\fR of the virtual environment of OTPme.
+Without it, the script finds OTPme only when it runs from the sources.
+.TP
+.I /etc/otpme/deploy/pam/
+\fIotpme\-auth\fR, \fIotpme\-account\fR and \fIotpme\-session\fR, to copy to \fI/etc/pam.d/\fR.
+They are there once \fIetc/otpme\fR from \fIsite\-packages\fR is copied to \fI/etc\fR, see INSTALLATION.
+.TP
+.I /etc/otpme/otpme.conf
+Where pam_otpme logs to, see PAM LOGGING in
+.BR otpme.conf (5).
+.TP
+.I /var/log/otpme/pam.log
+The log with \fBPAM_USE_LOGFILE\fR, see \fBPAM_LOGFILE\fR in
+.BR otpme.conf (5).
+.TP
+.I /var/cache/otpme/offline/<user uuid>/
+The offline copies of the tokens of a user, see \fBcache_login_tokens\fR, and the login session kept with them, see \fBenable_session_keep\fR in
+.BR otpme\-token (1).
+.TP
+.I /var/cache/otpme/env/<user>/
+What a login of the user leaves for later, e.g. for the SSH agent when the session ends.
+.PP
+The two directories in \fI/var/cache/otpme/\fR move with \fBCACHE_DIR\fR in
+.BR otpme.conf (5).
 .SH SEE ALSO
-.BR otpme-tool (1),
+.BR otpme\-token (1),
+.BR otpme\-user (1),
+.BR otpme\-accessgroup (1),
+.BR otpme\-policy (1),
+.BR otpme\-tool (1),
 .BR otpme.conf (5),
-.BR pam (7),
-.BR pam_python (8)
+.BR pam.conf (5),
+.BR pam (7)
+.PP
+pam_python is described in the Debian package \fBlibpam\-python\-doc\fR.
+.hy
+.ad
 .SH AUTHOR
 the2nd <the2nd@otpme.org>
 .SH NOTE

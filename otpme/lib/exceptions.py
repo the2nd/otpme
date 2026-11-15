@@ -196,9 +196,6 @@ class DaemonQuit(OTPmeException):
 class DaemonReload(OTPmeException):
     pass
 
-class DaemonRestart(OTPmeException):
-    pass
-
 class CloseSocket(OTPmeException):
     pass
 

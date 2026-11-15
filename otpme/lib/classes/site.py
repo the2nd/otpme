@@ -51,6 +51,8 @@ from otpme.lib.compression.base import get_uncompressed_size
 from otpme.lib.policy.idrange.idrange  import BASE_POLICY_NAME
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 from otpme.lib.classes.otpme_object import name_len_setter
+from otpme.lib.classes.otpme_object import uuid_orphans
+from otpme.lib.classes.otpme_object import trust_orphans
 from otpme.lib.classes.otpme_object import write_acl_types
 from otpme.lib.classes.otpme_object import sync_safe_acls
 from otpme.lib.classes.otpme_object import \
@@ -69,6 +71,33 @@ logger = config.logger
 default_callback = config.get_callback()
 
 DUMP_SCRIPTS = ['key_script.sh', 'agent_script.sh', 'login_script.sh']
+
+# The migrations of "otpme-site upgrade": what has to happen once to a
+# site an older version set up. As (number, the OTPme version that
+# brought it, the Site method that does it), in order; a new one goes
+# at the end, with the next number. The site keeps the number of the
+# last one that ran (upgrade_level), and a new site starts at the last
+# one: it is set up as the code says already. See run_site_upgrades().
+SITE_UPGRADES = [
+                (1, "0.3.0a287", "upgrade_realm_user_acls"),
+                (2, "0.3.0a287", "upgrade_dead_acls"),
+                (3, "0.3.0a288", "upgrade_device_read_oids"),
+                (4, "0.3.0a288", "upgrade_realm_index"),
+                (5, "0.3.0a288", "upgrade_realm_view_acls"),
+                (6, "0.3.0a288", "upgrade_passuser_aclgroup"),
+                (7, "0.3.0a288", "upgrade_base_aclgroup_names"),
+                (8, "0.3.0a288", "upgrade_aclgroup_inherits"),
+                ]
+
+def get_upgrade_level_string(upgrade_level):
+    """ The upgrade level of a site with the version that brought it,
+    e.g. "2 (0.3.0a287)". """
+    if not upgrade_level:
+        return "0"
+    for number, version, _method in SITE_UPGRADES:
+        if number == upgrade_level:
+            return f"{number} ({version})"
+    return str(upgrade_level)
 
 # The logo of the SSO portal: what it may be, and how big. It is part of
 # the site object, which every node and host of the realm syncs, so it
@@ -271,7 +300,6 @@ commands = {
                                             'ca_valid',
                                             'site_key_len',
                                             'site_valid',
-                                            'no_dicts',
                                             'trusted_sites',
                                             ],
                     'job_type'          : 'process',
@@ -293,7 +321,6 @@ commands = {
                                             'ca_valid',
                                             'site_key_len',
                                             'site_valid',
-                                            'no_dicts',
                                             'trusted_sites',
                                         ],
                     'job_type'          : 'process',
@@ -1052,32 +1079,6 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     'config'   : {
             'default'    : {
                 'exists'    : {
@@ -1366,6 +1367,7 @@ def register_config():
                                     ctype=str,
                                     setter=backup_server_setter,
                                     getter=backup_server_getter,
+                                    orphans=uuid_orphans,
                                     object_types=object_types)
     # Backup time.
     def backup_time_setter(backup_time, **kwargs):
@@ -1822,6 +1824,38 @@ def register_config():
                                     setter=sso_rate_limit_setter,
                                     default_value="30/minute",
                                     object_types=['site'])
+    # Default accessgroups for new hosts/devices.
+    def get_accessgroup_object(ag):
+        """ Resolve an accessgroup name to the accessgroup object.
+
+        Only an accessgroup of our own site, as with the roles below
+        (get_role_object()): the host or device is added to the
+        accessgroup object itself, and that of another site is only
+        synced in here.
+        """
+        result = backend.search(object_type='accessgroup',
+                                attribute="name",
+                                value=ag,
+                                realm=config.realm,
+                                site=config.site,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown accessgroup: {ag}")
+            msg = msg.format(ag=ag)
+            raise ValueError(msg)
+        return result[0]
+    def ag_getter(uuid, callback=JobCallback, **kwargs):
+        result = backend.search(object_type='accessgroup',
+                                attribute="uuid",
+                                value=uuid,
+                                return_type="instance")
+        if not result:
+            # Show the unresolvable accessgroup instead of hiding it. A
+            # getter that raises makes the value None, and the parameter
+            # would be taken from the unit or site above instead.
+            return uuid
+        ag = result[0]
+        return ag.name
     # Hosts accessgroup.
     def hosts_ag_setter(ag, callback=JobCallback, **kwargs):
         """ Resolve the hosts accessgroup to its UUID.
@@ -1831,34 +1865,16 @@ def register_config():
         add hosts to it must be checked here, or setting this parameter
         would be a way to add hosts to any accessgroup.
         """
-        result = backend.search(object_type='accessgroup',
-                                attribute="name",
-                                value=ag,
-                                return_type="instance")
-        if not result:
-            msg = _("Unknown accessgroup: {ag}")
-            msg = msg.format(ag=ag)
-            raise ValueError(msg)
-        ag = result[0]
+        ag = get_accessgroup_object(ag)
         if not ag.verify_acl("add:host"):
             msg = denied_msg(ag, "add:host")
             raise PermissionDenied(msg)
         return ag.uuid
-    def hosts_ag_getter(uuid, callback=JobCallback, **kwargs):
-        result = backend.search(object_type='accessgroup',
-                                attribute="uuid",
-                                value=uuid,
-                                return_type="instance")
-        if not result:
-            msg = _("Unknown accessgroup: {uuid}")
-            msg = msg.format(uuid=uuid)
-            raise ValueError(msg)
-        ag = result[0]
-        return ag.name
     config.register_config_parameter(name="hosts_accessgroup",
                                     ctype=str,
                                     setter=hosts_ag_setter,
-                                    getter=hosts_ag_getter,
+                                    getter=ag_getter,
+                                    orphans=uuid_orphans,
                                     object_types=['site', 'unit'])
     # Devices accessgroup.
     def device_ag_setter(ag, callback=JobCallback, **kwargs):
@@ -1869,34 +1885,16 @@ def register_config():
         permission to add devices to it must be checked here, or setting
         this parameter would be a way to add devices to any accessgroup.
         """
-        result = backend.search(object_type='accessgroup',
-                                attribute="name",
-                                value=ag,
-                                return_type="instance")
-        if not result:
-            msg = _("Unknown accessgroup: {ag}")
-            msg = msg.format(ag=ag)
-            raise ValueError(msg)
-        ag = result[0]
+        ag = get_accessgroup_object(ag)
         if not ag.verify_acl("add:device"):
             msg = denied_msg(ag, "add:device")
             raise PermissionDenied(msg)
         return ag.uuid
-    def device_ag_getter(uuid, callback=JobCallback, **kwargs):
-        result = backend.search(object_type='accessgroup',
-                                attribute="uuid",
-                                value=uuid,
-                                return_type="instance")
-        if not result:
-            msg = _("Unknown accessgroup: {uuid}")
-            msg = msg.format(uuid=uuid)
-            raise ValueError(msg)
-        ag = result[0]
-        return ag.name
     config.register_config_parameter(name="devices_accessgroup",
                                     ctype=str,
                                     setter=device_ag_setter,
-                                    getter=device_ag_getter,
+                                    getter=ag_getter,
+                                    orphans=uuid_orphans,
                                     object_types=['site', 'unit'])
     # Default roles for new hosts/devices.
     def get_role_object(role):
@@ -1957,6 +1955,7 @@ def register_config():
                                     ctype=str,
                                     setter=hosts_role_setter,
                                     getter=role_getter,
+                                    orphans=uuid_orphans,
                                     object_types=['site', 'unit'])
     # Devices role.
     def devices_role_setter(role, callback=JobCallback, **kwargs):
@@ -1976,6 +1975,7 @@ def register_config():
                                     ctype=str,
                                     setter=devices_role_setter,
                                     getter=role_getter,
+                                    orphans=uuid_orphans,
                                     object_types=['site', 'unit'])
     # VLAN.
     object_types = [
@@ -2091,6 +2091,7 @@ def register_config():
                                     warn_if_exists=True,
                                     setter=vlan_trusts_setter,
                                     getter=vlan_trusts_getter,
+                                    orphans=trust_orphans,
                                     object_types=['site'])
     def get_vlan_object(vlan):
         """ Resolve a VLAN path to the VLAN object. """
@@ -2190,6 +2191,7 @@ def register_config():
                                     warn_if_exists=True,
                                     setter=vlans_setter,
                                     getter=vlans_getter,
+                                    orphans=uuid_orphans,
                                     object_types=object_types)
     # Role devices tokens added by the SSO portal added to.
     object_types = [
@@ -2246,6 +2248,7 @@ def register_config():
                                     warn_if_exists=True,
                                     setter=device_token_roles_setter,
                                     getter=device_token_roles_getter,
+                                    orphans=uuid_orphans,
                                     object_types=object_types)
     # Whose users may carry our device token roles, and which of them.
     #
@@ -2262,6 +2265,9 @@ def register_config():
         callback=JobCallback, **kwargs):
         if isinstance(sites, str):
             sites = sites.split(",")
+        own_site = config.site
+        if config_object is not None:
+            own_site = config_object.name
         trusts = []
         for entry in sites:
             site_name = entry
@@ -2277,6 +2283,11 @@ def register_config():
                 msg = _("Unknown site: {site}")
                 msg = msg.format(site=site_name)
                 raise ValueError(msg)
+            # The list is read for users of other sites only.
+            if site_name == own_site:
+                msg = _("Users of site '{site}' need no entry: {entry}")
+                msg = msg.format(site=own_site, entry=entry)
+                raise ValueError(msg)
             site_uuid = result[0]
             if not role_name:
                 trusts.append(site_uuid)
@@ -2284,18 +2295,15 @@ def register_config():
             # Our own role. Which site that is comes from the object
             # the parameter is being set on, not from config.site: an
             # admin may well be sitting on another site while doing it.
-            role_site = config.site
-            if config_object is not None:
-                role_site = config_object.name
             result = backend.search(object_type='role',
                                     attribute="name",
                                     value=role_name,
                                     realm=config.realm,
-                                    site=role_site,
+                                    site=own_site,
                                     return_type="uuid")
             if not result:
                 msg = _("Unknown role: {site}/{role}")
-                msg = msg.format(site=role_site, role=role_name)
+                msg = msg.format(site=own_site, role=role_name)
                 raise ValueError(msg)
             trusts.append(f"{site_uuid}:{result[0]}")
         return trusts
@@ -2335,11 +2343,184 @@ def register_config():
                                     warn_if_exists=True,
                                     setter=trust_device_tokens_roles_setter,
                                     getter=trust_device_tokens_roles_getter,
+                                    orphans=trust_orphans,
+                                    object_types=['site'])
+    # Roles and access groups an SSO token goes into when the account
+    # recovery of the SSO portal creates it, because the user had none
+    # for that portal yet. Setting one of them is what allows the
+    # recovery to create a token at all.
+    #
+    # Read on the user's home site, which creates the token. Which of
+    # them the token gets is decided by the site each one lives on: its
+    # portal adds the token to its own roles and access groups only,
+    # and for a user of another site only to those it lists in
+    # sso_token_deploy_trusts. The add:token check below is a help for
+    # the administrator, nothing the other site relies on.
+    def sso_token_deploy_setter(object_type):
+        def setter(object_ids, callback=JobCallback, **kwargs):
+            if isinstance(object_ids, str):
+                object_ids = object_ids.split(",")
+            object_uuids = []
+            for object_id in object_ids:
+                object_id = object_id.strip()
+                if not object_id:
+                    continue
+                if "/" in object_id:
+                    object_site, object_name = object_id.split("/", 1)
+                else:
+                    object_site = config.site
+                    object_name = object_id
+                result = backend.search(object_type=object_type,
+                                        attribute="name",
+                                        value=object_name,
+                                        realm=config.realm,
+                                        site=object_site,
+                                        return_type="instance")
+                if not result:
+                    msg = _("Unknown {object_type}: {object_id}")
+                    msg = msg.format(object_type=object_type,
+                                    object_id=object_id)
+                    raise ValueError(msg)
+                x_object = result[0]
+                if not x_object.verify_acl("add:token"):
+                    msg = denied_msg(x_object, "add:token")
+                    raise PermissionDenied(msg)
+                if x_object.uuid in object_uuids:
+                    continue
+                object_uuids.append(x_object.uuid)
+            return object_uuids
+        return setter
+    def sso_token_deploy_getter(object_uuids, callback=JobCallback, **kwargs):
+        if isinstance(object_uuids, str):
+            object_uuids = object_uuids.split(",")
+        object_paths = []
+        for object_uuid in object_uuids:
+            x_object = backend.get_object(uuid=object_uuid)
+            if x_object is None:
+                # Show the unresolvable entry instead of hiding it.
+                object_paths.append(object_uuid)
+                continue
+            object_paths.append(f"{x_object.site}/{x_object.name}")
+        return object_paths
+    config.register_config_parameter(name="sso_token_deploy_roles",
+                                    ctype=list,
+                                    warn_if_exists=True,
+                                    setter=sso_token_deploy_setter('role'),
+                                    getter=sso_token_deploy_getter,
+                                    orphans=uuid_orphans,
+                                    object_types=['site', 'unit', 'user'])
+    config.register_config_parameter(name="sso_token_deploy_accessgroups",
+                                    ctype=list,
+                                    warn_if_exists=True,
+                                    setter=sso_token_deploy_setter('accessgroup'),
+                                    getter=sso_token_deploy_getter,
+                                    orphans=uuid_orphans,
+                                    object_types=['site', 'unit', 'user'])
+    # Whose users get a token the account recovery created into which of
+    # our roles and access groups.
+    #
+    # Same two levels as device_token_roles_trusts. A bare site name
+    # says that we add tokens of that site's users at all;
+    # "<site>:role/<name>" and "<site>:accessgroup/<name>" say into
+    # which of our own roles and access groups. Our own users need no
+    # entry. Stored as "<site uuid>" and "<site uuid>:<object uuid>".
+    def sso_token_deploy_trusts_setter(trusts, config_object=None,
+        callback=JobCallback, **kwargs):
+        if isinstance(trusts, str):
+            trusts = trusts.split(",")
+        # Our own objects. Which site that is comes from the object the
+        # parameter is being set on, see device_token_roles_trusts.
+        own_site = config.site
+        if config_object is not None:
+            own_site = config_object.name
+        trust_uuids = []
+        for entry in trusts:
+            entry = entry.strip()
+            if not entry:
+                continue
+            site_name = entry
+            object_path = None
+            if ":" in entry:
+                site_name, object_path = entry.split(":", 1)
+            result = backend.search(object_type='site',
+                                    attribute="name",
+                                    value=site_name,
+                                    realm=config.realm,
+                                    return_type="uuid")
+            if not result:
+                msg = _("Unknown site: {site}")
+                msg = msg.format(site=site_name)
+                raise ValueError(msg)
+            # The list is read for users of other sites only.
+            if site_name == own_site:
+                msg = _("Users of site '{site}' need no entry: {entry}")
+                msg = msg.format(site=own_site, entry=entry)
+                raise ValueError(msg)
+            site_uuid = result[0]
+            if not object_path:
+                trust_uuids.append(site_uuid)
+                continue
+            object_type = None
+            object_name = None
+            if "/" in object_path:
+                object_type, object_name = object_path.split("/", 1)
+            if object_type not in ('role', 'accessgroup') or not object_name:
+                msg = _("Invalid entry, want <site>:role/<name> or <site>:accessgroup/<name>: {entry}")
+                msg = msg.format(entry=entry)
+                raise ValueError(msg)
+            result = backend.search(object_type=object_type,
+                                    attribute="name",
+                                    value=object_name,
+                                    realm=config.realm,
+                                    site=own_site,
+                                    return_type="uuid")
+            if not result:
+                msg = _("Unknown {object_type}: {site}/{name}")
+                msg = msg.format(object_type=object_type,
+                                site=own_site,
+                                name=object_name)
+                raise ValueError(msg)
+            trust_uuids.append(f"{site_uuid}:{result[0]}")
+        return trust_uuids
+    def sso_token_deploy_trusts_getter(trusts, callback=JobCallback, **kwargs):
+        if isinstance(trusts, str):
+            trusts = trusts.split(",")
+        entries = []
+        for entry in trusts:
+            site_uuid = entry
+            object_uuid = None
+            if ":" in entry:
+                site_uuid, object_uuid = entry.split(":", 1)
+            x_site = backend.get_object(object_type="site", uuid=site_uuid)
+            if x_site is None:
+                # Show the unresolvable entry instead of hiding it.
+                entries.append(entry)
+                continue
+            if not object_uuid:
+                entries.append(x_site.name)
+                continue
+            x_object = backend.get_object(uuid=object_uuid)
+            if x_object is None:
+                entries.append(f"{x_site.name}:{object_uuid}")
+                continue
+            entries.append(f"{x_site.name}:{x_object.type}/{x_object.name}")
+        return entries
+    config.register_config_parameter(name="sso_token_deploy_trusts",
+                                    ctype=list,
+                                    warn_if_exists=True,
+                                    setter=sso_token_deploy_trusts_setter,
+                                    getter=sso_token_deploy_trusts_getter,
+                                    orphans=trust_orphans,
                                     object_types=['site'])
     # Admin-access trusts.
-    def admin_access_trusts_setter(sites, callback=JobCallback, **kwargs):
+    def admin_access_trusts_setter(sites, config_object=None,
+        callback=JobCallback, **kwargs):
         if isinstance(sites, str):
             sites = sites.split(",")
+        # The site the parameter is set on, see device_token_roles_trusts.
+        own_site = config.site
+        if config_object is not None:
+            own_site = config_object.name
         sites_uuids = []
         for site_name in sites:
             result = backend.search(object_type='site',
@@ -2350,6 +2531,12 @@ def register_config():
             if not result:
                 msg = _("Unknown site: {site}")
                 msg = msg.format(site=site_name)
+                raise ValueError(msg)
+            # Asked of a node of another site only (see
+            # _from_other_site_node() in sso1.py).
+            if site_name == own_site:
+                msg = _("Users of site '{site}' need no entry: {entry}")
+                msg = msg.format(site=own_site, entry=site_name)
                 raise ValueError(msg)
             site_uuid = result[0]
             sites_uuids.append(site_uuid)
@@ -2375,6 +2562,7 @@ def register_config():
                                     warn_if_exists=True,
                                     setter=admin_access_trusts_setter,
                                     getter=admin_access_trusts_getter,
+                                    orphans=uuid_orphans,
                                     object_types=['site'])
     # Run auth scripts of users from other sites?
     #
@@ -2387,9 +2575,14 @@ def register_config():
                                     default_value=False,
                                     object_types=['site'])
     # Passkeys allowed trusts.
-    def sso_allow_passkeys_trusts_setter(sites, callback=JobCallback, **kwargs):
+    def sso_allow_passkeys_trusts_setter(sites, config_object=None,
+        callback=JobCallback, **kwargs):
         if isinstance(sites, str):
             sites = sites.split(",")
+        # The site the parameter is set on, see device_token_roles_trusts.
+        own_site = config.site
+        if config_object is not None:
+            own_site = config_object.name
         sites_uuids = []
         for site_name in sites:
             result = backend.search(object_type='site',
@@ -2400,6 +2593,13 @@ def register_config():
             if not result:
                 msg = _("Unknown site: {site}")
                 msg = msg.format(site=site_name)
+                raise ValueError(msg)
+            # Own users are trusted without an entry, and a request of
+            # a node of our own site is never asked about (see
+            # _from_other_site_node() in sso1.py).
+            if site_name == own_site:
+                msg = _("Users of site '{site}' need no entry: {entry}")
+                msg = msg.format(site=own_site, entry=site_name)
                 raise ValueError(msg)
             site_uuid = result[0]
             sites_uuids.append(site_uuid)
@@ -2425,6 +2625,7 @@ def register_config():
                                     warn_if_exists=True,
                                     setter=sso_allow_passkeys_trusts_setter,
                                     getter=sso_allow_passkeys_trusts_getter,
+                                    orphans=uuid_orphans,
                                     object_types=['site'])
     # The same for tiqr. Only for token types whose secret passes through
     # the portal: a phone delivers its tiqr secret to the site whose QR
@@ -2436,6 +2637,7 @@ def register_config():
                                     warn_if_exists=True,
                                     setter=sso_allow_passkeys_trusts_setter,
                                     getter=sso_allow_passkeys_trusts_getter,
+                                    orphans=uuid_orphans,
                                     object_types=['site'])
     # And for TOTP: the portal site shows the secret (and the PIN) of a
     # new TOTP token to the browser, so it sees both.
@@ -2444,6 +2646,7 @@ def register_config():
                                     warn_if_exists=True,
                                     setter=sso_allow_passkeys_trusts_setter,
                                     getter=sso_allow_passkeys_trusts_getter,
+                                    orphans=uuid_orphans,
                                     object_types=['site'])
     # Allow passkeys in SSO portal.
     config.register_config_parameter(name="sso_allow_passkeys",
@@ -2721,6 +2924,7 @@ def register_config():
                                     warn_if_exists=True,
                                     setter=site_admin_blacklist_setter,
                                     getter=site_admin_blacklist_getter,
+                                    orphans=uuid_orphans,
                                     object_types=['site'])
     # Reverse proxy IPs.
     def reverse_proxy_ips_setter(proxy_ips, **kwargs):
@@ -2780,6 +2984,7 @@ def register_config():
                                     warn_if_exists=True,
                                     setter=scopes_setter,
                                     getter=scopes_getter,
+                                    orphans=uuid_orphans,
                                     object_types=['site', 'unit'])
     # LDIF attribute name to source the OIDC ``email`` claim from.
     # Default is the standard inetOrgPerson ``mail`` attribute.
@@ -3318,6 +3523,7 @@ def register_config():
                                     ctype=list,
                                     setter=host_names_to_uuids,
                                     getter=host_uuids_to_names,
+                                    orphans=uuid_orphans,
                                     admin_only=True,
                                     object_types=['site'])
     # The hosts that may ask idled who is here ("otpme-tool who" and
@@ -3332,6 +3538,7 @@ def register_config():
                                     ctype=list,
                                     setter=host_names_to_uuids,
                                     getter=host_uuids_to_names,
+                                    orphans=uuid_orphans,
                                     admin_only=True,
                                     object_types=['site'])
     # Send share notifications.
@@ -3422,6 +3629,7 @@ def register_config():
                                     ctype=str,
                                     setter=perferred_node_setter,
                                     getter=preferred_node_getter,
+                                    orphans=uuid_orphans,
                                     object_types=['site'])
 
 def register_hooks():
@@ -3564,6 +3772,9 @@ class Site(OTPmeObject):
         # switched maintenance on (see maintenance.py).
         self.otpme_version = None
         self.maintenance = None
+        # The number of the last migration of SITE_UPGRADES that ran on
+        # the site. None for a site from before them, which is at 0.
+        self.upgrade_level = None
         # The workers of a running "otpme-site upgrade", and how many
         # the command asked for. See write_objects_to_upgrade().
         self._config_upgrade_pool = None
@@ -3783,6 +3994,12 @@ class Site(OTPmeObject):
             'OTPME_VERSION'             : {
                                             'var_name'  : 'otpme_version',
                                             'type'      : str,
+                                            'required'  : False,
+                                        },
+
+            'UPGRADE_LEVEL'             : {
+                                            'var_name'  : 'upgrade_level',
+                                            'type'      : int,
                                             'required'  : False,
                                         },
 
@@ -5748,6 +5965,8 @@ class Site(OTPmeObject):
                                             locality=ca_locality,
                                             organization=ca_organization,
                                             ou=ca_ou, email=ca_email,
+                                            key_len=ca_key_len,
+                                            valid=ca_valid,
                                             verify_acls=False)
             except Exception as e:
                 msg = _("Error creating site CA cert: {e}")
@@ -6121,13 +6340,12 @@ class Site(OTPmeObject):
         ):
         """ Bring this site up to the code that runs it.
 
-        Five things an update leaves behind: config parameters the
+        Four things an update leaves behind: config parameters the
         site does not have yet, base ACL groups that are missing or hold
-        what an older version said, the ACLs realm users got one by one
-        before the ACL group realm_user, ACLs that grant nothing, and
-        object configs stored in an older version than the code writes.
-        See upgrade_config_params(), aclgroup.add_base_aclgroups(),
-        upgrade_realm_user_acls(), upgrade_dead_acls() and
+        what an older version said, the migrations of SITE_UPGRADES the
+        site has not had, and object configs stored in an older version
+        than the code writes. See upgrade_config_params(),
+        aclgroup.add_base_aclgroups(), run_site_upgrades() and
         upgrade_object_configs().
 
         <procs> is how many workers write the objects, where there
@@ -6149,14 +6367,9 @@ class Site(OTPmeObject):
             result = add_base_aclgroups(self, callback=callback)
             if result is False:
                 return result
-            # Realm users get realm_user instead of the ACLs one by one.
-            # A walk over the site, with the workers we were given.
-            result = self.upgrade_realm_user_acls(procs=procs,
-                                                callback=callback)
-            if result is False:
-                return result
-            # ACLs older versions gave that grant nothing.
-            result = self.upgrade_dead_acls(callback=callback)
+            # What has to happen once to a site an older version set
+            # up, the ones it has not had yet.
+            result = self.run_site_upgrades(procs=procs, callback=callback)
             if result is False:
                 return result
             self._config_upgrade_procs = procs
@@ -6708,9 +6921,11 @@ class Site(OTPmeObject):
             config.site_init = True
 
         # A new site is at the code that adds it, and not in
-        # maintenance (see maintenance.py).
+        # maintenance (see maintenance.py). It needs none of the
+        # migrations: it is set up as the code says.
         self.otpme_version = otpme.__version__
         self.config_versions = config.get_config_versions()
+        self.upgrade_level = SITE_UPGRADES[-1][0]
 
         # Start site add.
         add_result = self._add(**kwargs)
@@ -6722,6 +6937,11 @@ class Site(OTPmeObject):
         self.set_default_config_params()
 
         config.site_init = False
+
+        # Realm.init() does it for the first site.
+        if not config.realm_init:
+            if not self.add_realm_view_acls(callback=callback):
+                return callback.error()
 
         # Update index.
         self.update_index("address", self.address)
@@ -6842,7 +7062,6 @@ class Site(OTPmeObject):
         site_key_len: Union[int,None]=None,
         site_valid: Union[int,None]=None,
         dictionaries: Union[List,None]=None,
-        no_dicts: bool=False,
         id_ranges: Union[str,None]=None,
         trusted_sites: Union[List,None]=None,
         verbose_level: int=0,
@@ -6913,7 +7132,7 @@ class Site(OTPmeObject):
             if result:
                 site_address = result[0]
 
-        # We always need a site address as floaging cluster IP.
+        # We always need a site address as floating cluster IP.
         if not site_address:
             msg = _("Unable to resolve: {site_fqdn}")
             msg = msg.format(site_fqdn=site_fqdn)
@@ -6956,6 +7175,10 @@ class Site(OTPmeObject):
 
         # Set REALM_USERS_GROUP UUID.
         self.user_role_uuid = stuff.gen_uuid()
+        # The site admin role is added with the base objects, when the
+        # first node joins. The realm wants its UUID now, see
+        # add_realm_view_acls().
+        self.admin_role_uuid = stuff.gen_uuid()
         # Add site REALM_USER role to REALM_USERS_GROUP.
         if not config.realm_init:
             if not self.sub:
@@ -7010,12 +7233,9 @@ class Site(OTPmeObject):
         if not add_status:
             return callback.error(_("Unable to add base objects."))
 
-        # Create base dicts.
-        if no_dicts:
-            dictionaries_sorted = []
-        else:
-            # None without --dicts, and the loops below want a list.
-            dictionaries_sorted = dictionaries or []
+        # Create base dicts. None without --dicts, and the loops below
+        # want a list.
+        dictionaries_sorted = dictionaries or []
 
         # Get base dictionaries.
         base_dictionaries = config.get_base_objects("dictionary")
@@ -7038,9 +7258,8 @@ class Site(OTPmeObject):
                 msg = _("Problem adding base dictionary '{dictionary_path}'.")
                 msg = msg.format(dictionary_path=dictionary.path)
                 return callback.error(msg)
-            # Get path to dictionary file.
-            dict_file = _("{dictionary_dir}/{d}.gz")
-            dict_file = dict_file.format(dictionary_dir=config.dictionary_dir, d=d)
+            # Get path to dictionary file. A path, not a text: no _().
+            dict_file = os.path.join(config.dictionary_dir, f"{d}.gz")
 
             if not os.path.exists(dict_file):
                 msg = _("No such file or directory: {dict_file}")
@@ -7192,7 +7411,7 @@ class Site(OTPmeObject):
         return no_acl_units
 
     def get_realm_user_acls(self, realm_user_role):
-        """ What every realm user may see: the base ACL group realm_user,
+        """ What every realm user may see: the base ACL group REALM_USERS,
         on the site itself and on the tree below it. """
         from otpme.lib.classes.aclgroup import REALM_USER_ACLGROUP
         result = backend.search(object_type="aclgroup",
@@ -7212,7 +7431,7 @@ class Site(OTPmeObject):
                 ]
 
     def get_old_realm_user_acls(self, realm_user_role):
-        """ What realm users got before the base ACL group realm_user:
+        """ What realm users got before the base ACL group REALM_USERS:
         view_public on every object type of the site, view:attribute on
         sites, units, users and groups, one by one. """
         view_objects = ['site']
@@ -7231,7 +7450,7 @@ class Site(OTPmeObject):
     def add_realm_user_acls(self, realm_user_role,
         procs: Union[int,None]=None,
         callback: JobCallback=default_callback):
-        """ Give the realm users the base ACL group realm_user on the site
+        """ Give the realm users the base ACL group REALM_USERS on the site
         and on the tree below it. Only the object types it has entries
         for get it, and the units, which hand it on. In one call: it
         walks the whole site, and the walk is what this costs. """
@@ -7247,9 +7466,42 @@ class Site(OTPmeObject):
                             verbose_level=1,
                             callback=callback)
 
+    def get_pending_upgrades(self):
+        """ The entries of SITE_UPGRADES after upgrade_level, in order.
+        While there are any the site is in maintenance, see
+        maintenance.get_reasons(). """
+        upgrade_level = self.upgrade_level or 0
+        return [x for x in SITE_UPGRADES if x[0] > upgrade_level]
+
+    def run_site_upgrades(self, procs: Union[int,None]=None,
+        callback: JobCallback=default_callback):
+        """ Run the migrations of SITE_UPGRADES the site has not had.
+
+        In order, from the one after upgrade_level. After each one the
+        site keeps its number, so one that fails is where the next run
+        starts again, and one that ran never runs again. A migration
+        has to cope with having been cut short half way, though: the
+        number is written after it, not with it.
+
+        <procs> is for the ones that walk the site.
+        """
+        for number, version, method_name in self.get_pending_upgrades():
+            msg = _("Running upgrade {number} ({version}): {method}")
+            msg = msg.format(number=number, version=version,
+                            method=method_name)
+            callback.send(msg)
+            method = getattr(self, method_name)
+            result = method(procs=procs, callback=callback)
+            if not result:
+                return callback.error()
+            self.upgrade_level = number
+            if self._write(callback=callback) is False:
+                return callback.error()
+        return callback.ok()
+
     def upgrade_realm_user_acls(self, procs: Union[int,None]=None,
         callback: JobCallback=default_callback):
-        """ Put the base ACL group realm_user in place of the ACLs realm
+        """ Put the base ACL group REALM_USERS in place of the ACLs realm
         users got one by one before it, on every object of the site.
         Done once: with the old ACLs gone from the site and the new ones
         on it, there is nothing to do. """
@@ -7275,7 +7527,7 @@ class Site(OTPmeObject):
         new_acls = self.get_realm_user_acls(realm_user_role)
         if not [x for x in new_acls if x not in self.acls]:
             return callback.ok()
-        msg = _("Giving realm users the ACL group realm_user...")
+        msg = _("Giving realm users the ACL group REALM_USERS...")
         callback.send(msg)
         add_result = self.add_realm_user_acls(realm_user_role,
                                             procs=procs,
@@ -7320,9 +7572,246 @@ class Site(OTPmeObject):
                 dead_acls.append((realm, [realm_acl]))
         return dead_acls
 
-    def upgrade_dead_acls(self, callback: JobCallback=default_callback):
+    def get_duplicate_device_names(self):
+        """ Device names of our site that a device of another site has
+        too, as {name: [site, ...]}. Before device names were unique in
+        the realm they were unique in their site only. """
+        result = backend.search(object_type="device",
+                                attribute="uuid",
+                                value="*",
+                                realm=self.realm,
+                                return_attributes=['name', 'site'])
+        sites_by_name = {}
+        for x_data in result.values():
+            try:
+                x_name = x_data['name']
+                x_site = x_data['site']
+            except KeyError:
+                continue
+            if isinstance(x_name, list):
+                x_name = x_name[0]
+            if isinstance(x_site, list):
+                x_site = x_site[0]
+            sites_by_name.setdefault(x_name, []).append(x_site)
+        duplicates = {}
+        for x_name, x_sites in sites_by_name.items():
+            if len(x_sites) < 2:
+                continue
+            if self.name not in x_sites:
+                continue
+            duplicates[x_name] = sorted(x_sites)
+        return duplicates
+
+    def upgrade_realm_index(self, procs: Union[int,None]=None,
+        callback: JobCallback=default_callback):
+        """ Realm.init() did not put auth_enabled and sync_enabled of
+        the realm into the index. The table of "otpme-realm show" reads
+        them from there, and said both were off. Only enable_auth and
+        the like wrote them, and the realm refuses both for itself.
+
+        The realm is written on its master site, so only there.
+        <procs> is not used, see run_site_upgrades(). """
+        realm = backend.get_object(object_type="realm",
+                                uuid=config.realm_uuid)
+        if not realm:
+            return callback.ok()
+        if realm.master != self.uuid:
+            return callback.ok()
+        missing = [x for x in ("auth_enabled", "sync_enabled")
+                    if x not in realm.index]
+        if not missing:
+            return callback.ok()
+        msg = _("Writing authentication and synchronization of the realm to the index...")
+        callback.send(msg)
+        for x_attribute in missing:
+            realm.update_index(x_attribute, getattr(realm, x_attribute))
+        if realm._write(callback=callback) is False:
+            return callback.error()
+        cache.flush()
+        return callback.ok()
+
+    def get_realm_view_acls(self):
+        """ view_public on the realm for the site admin role and the
+        realm user role of this site, as raw ACLs.
+
+        "otpme-realm show" wants it, and for the realm a token in the
+        admin role is not an admin (see OTPmeObject._verify_acl()).
+        Realm.init() gives it to the roles of the first site. """
+        role_uuids = [self.admin_role_uuid, self.user_role_uuid]
+        return [f"role:{x}:view_public" for x in role_uuids if x]
+
+    def add_realm_view_acls(
+        self,
+        sites: Union[List,None]=None,
+        callback: JobCallback=default_callback,
+        ):
+        """ Put the ACLs of get_realm_view_acls() of these sites, or of
+        this one, on the realm.
+
+        The realm is written on its master site, and the sync takes it
+        from there: on any other site the change would be lost. A sub
+        site added there gets them when the master site runs
+        upgrade_realm_view_acls().
+
+        Site.add() runs before the first node of the new site joins,
+        which is when its roles are added (add_base_objects()). Their
+        UUIDs are set already, so the ACLs go on with an owner that is
+        not there yet. """
+        if sites is None:
+            sites = [self]
+        realm = backend.get_object(object_type="realm", uuid=config.realm_uuid)
+        if not realm:
+            return callback.ok()
+        if realm.master != config.site_uuid:
+            return callback.ok()
+        missing = []
+        for x_site in sites:
+            for x_acl in x_site.get_realm_view_acls():
+                if x_acl in realm.acls:
+                    continue
+                if x_acl in missing:
+                    continue
+                missing.append(x_acl)
+        if not missing:
+            return callback.ok()
+        # The policies of the command that got us here ran already.
+        add_result = realm.add_acl(raw_acls=missing,
+                                force=True,
+                                recursive_acls=False,
+                                apply_default_acls=False,
+                                ignore_unknown_owner=True,
+                                verify_acls=False,
+                                run_policies=False,
+                                callback=callback)
+        if not add_result:
+            return add_result
+        callback.write_modified_objects()
+        cache.flush()
+        return callback.ok()
+
+    def upgrade_passuser_aclgroup(self, procs: Union[int,None]=None,
+        callback: JobCallback=default_callback):
+        """ Add the base ACL group PASSUSER, see aclgroup.py.
+
+        upgrade() puts every base group in place on each run already,
+        before the migrations (add_base_aclgroups()). As a migration of
+        its own, a site from before it is in maintenance until it has
+        run, so nobody works there without the group. Adding it again
+        does no harm.
+
+        <procs> is not used, see run_site_upgrades(). """
+        from otpme.lib.classes.aclgroup import add_base_aclgroups
+        msg = _("Adding the base ACL group PASSUSER...")
+        callback.send(msg)
+        return add_base_aclgroups(self, callback=callback)
+
+    def upgrade_aclgroup_inherits(self, procs: Union[int,None]=None,
+        callback: JobCallback=default_callback):
+        """ An ACL group holds the groups it inherits from now, not the
+        groups that inherit from it. On the group that gave the entries,
+        the list let whoever kept a group of their own add any other
+        group to it, REALM_USERS as well, and so change what that one
+        grants wherever it is given, from another site too.
+
+        Turns the lists round (aclgroup.turn_old_member_lists()), then
+        puts the base groups in place again: what one of them inherits
+        is what the code says, so one that was made a member of a group
+        of somebody's no longer inherits from it.
+
+        <procs> is not used, see run_site_upgrades(). """
+        from otpme.lib.classes.aclgroup import add_base_aclgroups
+        from otpme.lib.classes.aclgroup import turn_old_member_lists
+        msg = _("Turning the member lists of the ACL groups round...")
+        callback.send(msg)
+        if not turn_old_member_lists(self, callback=callback):
+            return callback.error()
+        if not add_base_aclgroups(self, callback=callback):
+            return callback.error()
+        callback.write_modified_objects()
+        cache.flush()
+        return callback.ok()
+
+    def upgrade_base_aclgroup_names(self, procs: Union[int,None]=None,
+        callback: JobCallback=default_callback):
+        """ The base ACL groups have their names in upper case now, like
+        the base roles and access groups: realm_user is REALM_USERS,
+        usermanager is USERMANAGER and so on. add_base_aclgroups()
+        renames them, before it looks for them by the new name; their
+        UUID stays, and with it every ACL they are given in.
+
+        upgrade() runs that on each call already. As a migration of its
+        own, a site from before it is in maintenance until it has run.
+
+        <procs> is not used, see run_site_upgrades(). """
+        from otpme.lib.classes.aclgroup import add_base_aclgroups
+        return add_base_aclgroups(self, callback=callback)
+
+    def upgrade_realm_view_acls(self, procs: Union[int,None]=None,
+        callback: JobCallback=default_callback):
+        """ Site.add() gave the roles of a new site nothing on the realm:
+        their admins and realm users could not run "otpme-realm show".
+        Give it to the roles of every site of the realm.
+
+        The realm is written on its master site, so only there.
+        <procs> is not used, see run_site_upgrades(). """
+        realm = backend.get_object(object_type="realm",
+                                uuid=config.realm_uuid)
+        if not realm:
+            return callback.ok()
+        if realm.master != self.uuid:
+            return callback.ok()
+        sites = backend.search(object_type="site",
+                                attribute="uuid",
+                                value="*",
+                                realm=self.realm,
+                                return_type="instance")
+        msg = _("Giving the roles of every site view_public on the realm...")
+        callback.send(msg)
+        return self.add_realm_view_acls(sites=sites, callback=callback)
+
+    def upgrade_device_read_oids(self, procs: Union[int,None]=None,
+        callback: JobCallback=default_callback):
+        """ The read OID of a device is realm and name now, see
+        device.py. The index holds the one of before, with the site:
+        write the index entries of our devices again.
+
+        A name that a device of another site has too is one read OID for
+        two devices, and a lookup by name takes either one. Said, but no
+        reason to stop: the site stays in maintenance until the upgrade
+        is done, and in maintenance nobody could rename them. Which one
+        to rename is for the admin to decide; <unit>/<name> and the UUID
+        name each of them.
+
+        <procs> is not used, see run_site_upgrades(). """
+        duplicates = self.get_duplicate_device_names()
+        for x_name, x_sites in sorted(duplicates.items()):
+            msg = _("Device name in more than one site, rename one of them: {name} ({sites})")
+            msg = msg.format(name=x_name, sites=", ".join(x_sites))
+            callback.send(msg)
+        devices = backend.search(object_type="device",
+                                attribute="uuid",
+                                value="*",
+                                realm=self.realm,
+                                site=self.name,
+                                return_type="instance")
+        if not devices:
+            return callback.ok()
+        msg = _("Writing the index entries of the devices again...")
+        callback.send(msg)
+        for x_device in devices:
+            result = x_device._write(update_last_modified_by=False,
+                                    full_index_update=True,
+                                    callback=callback)
+            if result is False:
+                return callback.error()
+        cache.flush()
+        return callback.ok()
+
+    def upgrade_dead_acls(self, procs: Union[int,None]=None,
+        callback: JobCallback=default_callback):
         """ Take away the ACLs of get_dead_acls(). They do no harm, but
-        list_acls shows them as rights nobody has. """
+        list_acls shows them as rights nobody has. <procs> is not used:
+        every migration gets it, see run_site_upgrades(). """
         dead_acls = self.get_dead_acls()
         if not dead_acls:
             return callback.ok()
@@ -7664,10 +8153,13 @@ class Site(OTPmeObject):
             roles_unit = config.get_default_unit("role")
             role_path = f"/{self.realm}/{self.name}/{roles_unit}/{r}"
             # Select role UUID set by _add(). This is required because we
-            # add REALM_USER role to REALM_USERS_GROUP on master site.
+            # add REALM_USER role to REALM_USERS_GROUP on master site,
+            # and both roles get an ACL on the realm there.
             role_uuid = None
             if r == config.realm_user_role:
                 role_uuid = self.user_role_uuid
+            if r == config.site_admin_role:
+                role_uuid = self.admin_role_uuid
 
             # Add role.
             role = Role(path=role_path, template=template, uuid=role_uuid)
@@ -8397,6 +8889,8 @@ class Site(OTPmeObject):
 
         # Shown to whoever sees the site, as in the table of "show".
         lines.append(f'OTPME_VERSION="{self.otpme_version or ""}"')
+        upgrade_level = get_upgrade_level_string(self.upgrade_level)
+        lines.append(f'UPGRADE_LEVEL="{upgrade_level}"')
 
         trusted_sites = []
         if self.verify_acl("view:trusts") \

@@ -104,11 +104,12 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
-List the node names, and with a regex only those that match it. You get
-the nodes you may change; **-a** adds those you may only look at.  
-**--attribute** matches the regex against that attribute instead of the
-name: **list --attribute enabled True** lists the nodes that are
+**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+List the node names, and with a pattern only those that match it, see
+**SELECTING OBJECTS** in **otpme**(1). You get the nodes you may change;
+**-a** adds those you may only look at.  
+**--attribute** matches the pattern against that attribute instead of
+the name: **list --attribute enabled True** lists the nodes that are
 enabled. A value that is not text has to be spelled out — **\*** matches
 none of it.
 
@@ -509,18 +510,23 @@ A command that changes something asks first; the global option **-f**
 skips the question.
 
 **changelog *node***  
-Show the changelog of the node. Needs the ACL **view:changelog**.
+Show the changelog of the node, one entry per line: its *entry_id*, the
+time, who made the change and what was done, then a detail in round
+brackets and the comment in square brackets where there are any. Needs
+the ACL **view:changelog**.
 
 **edit_changelog *node* *entry_id* *comment***  
-Set the comment of that entry, or replace the one it has. Needs the ACL
-**edit:changelog**.
+Set the comment of that entry, or replace the one it has. That writes an
+entry of its own. Needs the ACL **edit:changelog**.
 
 **del_changelog *node* *entry_id***  
 Remove the comment of that entry. The entry itself stays, and an entry
-without a comment is refused. Needs the ACL **edit:changelog**.
+without a comment is refused. That writes an entry of its own. Needs the
+ACL **edit:changelog**.
 
 **clear_changelog *node***  
-Remove every entry of the changelog.  
+Remove every entry of the changelog. Afterwards it holds one entry: that
+it was cleared.  
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
@@ -537,10 +543,6 @@ Four types do something on a node: **logintimes** says when somebody may
 log in here, **forcetoken** which token they have to use,
 **autodisable** switches the node off after a time, and **authonaction**
 asks whoever changes something here to authenticate for it again.
-
-A **defaultpolicies** policy is taken as well, because it fits every
-object in the tree, but nothing reads it on a node: what gives a new
-node its policies is such a policy on the unit or the site above it.
 
 A policy on the node runs at every login to it. A policy on a role runs
 only where that role is assigned to the node and holds the token that is
@@ -584,10 +586,11 @@ skips the question.
 
 **add_acl *node* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this node.  
-*owner_type* is **role** or **token**. *owner* is the path of that role
-or token. An ACL can carry a value, for example **view:tokens**. To give
-several ACLs at once, separate them with commas:
-**view:tokens,view:status**.  
+*owner_type* is **role** or **token**. *owner* names it the way
+**list_acls** prints it: a role as *site/name*, or by its name alone on
+its own site; a token as *user/token*. An ACL can carry a value, for
+example **view:tokens**. To give several ACLs at once, separate them
+with commas: **view:tokens,view:status**.  
 Needs the ACL **add:acl**.
 
 **del_acl *node* *acl*\[,*acl*\]**  
@@ -704,7 +707,9 @@ On a node that is its ACLs, its policies, the tokens and roles added to
 it, and its vote script. A token that is gone takes the login interfaces
 and the SSH options that were stored with it. A vote script that is gone
 is worth clearing: the node votes 1 at every election while it is named
-and missing.
+and missing. Config parameters set on the node that keep other objects
+lose the ones that are gone, e.g. a token or role in
+**allow_confd_jobs**, the way **config -d** does.
 
 The join node and the join token stay. Both keep a note of what they
 pointed at so they can still be shown, and they say what happened, not
@@ -823,13 +828,15 @@ Delete the object. The node that holds the master role is refused.
 
 An auth on action policy can ask for a login again before these actions.
 See **Auth On Action Policy** in **otpme-policy**(1). A node has the
-hooks every object type has, and these:
+hooks every object type has, and these; a command of another name is in
+brackets:
 
-> add_dynamic_group, add_token, change_public_key, change_vote_script,
-> disable_jotp_rejoin, disable_vote_script, enable_jotp_rejoin,
-> enable_vote_script, join, leave, limit_logins, remove_dynamic_group,
-> remove_token, renew_cert, revoke_cert, set_config_parameter,
-> unlimit_logins.
+> add_dynamic_group, add_token, change_public_key (public_key),
+> change_vote_script (vote_script), disable_jotp, disable_jotp_rejoin,
+> disable_lotp, disable_vote_script, enable_jotp, enable_jotp_rejoin,
+> enable_lotp, enable_vote_script, join, leave, limit_logins,
+> remove_dynamic_group, remove_token, renew_cert, revoke_cert,
+> set_config_parameter (config), unlimit_logins.
 
 # FILES
 
@@ -878,13 +885,13 @@ The SSH keys of that user, as sshd gets them through
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme.conf**(5),
-**pam_otpme**(8), **otpme-cluster**(1), **otpme-tool**(1),
-**otpme-host**(1), **otpme-realm**(1), **otpme-site**(1),
-**otpme-token**(1), **otpme-role**(1), **otpme-script**(1),
-**otpme-share**(1), **otpme-pool**(1), **otpme-pass**(1),
-**otpme-policy**(1), **otpme-backup**(1), **otpme-shell**(1),
-**otpme-trash**(1), **otpme-ca**(1)
+**otpme**(1), **otpme**(7), **otpme.conf**(5), **pam_otpme**(8),
+**otpme-cluster**(1), **otpme-tool**(1), **otpme-host**(1),
+**otpme-realm**(1), **otpme-site**(1), **otpme-token**(1),
+**otpme-role**(1), **otpme-script**(1), **otpme-share**(1),
+**otpme-pool**(1), **otpme-pass**(1), **otpme-policy**(1),
+**otpme-backup**(1), **otpme-shell**(1), **otpme-trash**(1),
+**otpme-ca**(1)
 
 # AUTHOR
 

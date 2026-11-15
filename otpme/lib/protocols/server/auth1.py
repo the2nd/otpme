@@ -442,19 +442,23 @@ class OTPmeAuthP1(OTPmeServer1):
                                         pid=True)
 
     def get_user(self, username):
-        # Check if user exists.
-        if stuff.is_mac_address(username):
+        # A MAC address (MAB) names a host or a device. The switch may
+        # send it in any form, see stuff.normalize_mac(). An address set
+        # before it was normalized may be in upper case.
+        mac_address = stuff.normalize_mac(username)
+        user = None
+        if mac_address:
             result = backend.search(object_types=['host', 'device'],
                                     attribute="mac_address",
-                                    value=username,
+                                    values=[mac_address, mac_address.upper()],
                                     realm=config.realm,
                                     run_policies=True,
                                     return_type="instance",
                                     _no_func_cache=True)
-            if not result:
-                return
-            user = result[0]
-        else:
+            if result:
+                user = result[0]
+        # A user name may look like a MAC address, e.g. deadbeefcafe.
+        if not user:
             user = backend.get_object(object_type="user",
                                     name=username,
                                     realm=config.realm,

@@ -37,10 +37,10 @@ accessgroup.
 
 **autodisable**  
 Disable the object it is assigned to after a time, or after it was
-unused for that long. For every object type except the realm and
-policies, and not for an object the realm or a site comes with, e.g. the
-admin user. "Unused for" only where the object keeps its last use: user,
-token, host, node, client, device, resolver, share.
+unused for that long. For every object type except the realm, policies,
+scripts and passwords, and not for an object the realm or a site comes
+with, e.g. the admin user. "Unused for" only where the object keeps its
+last use: user, token, host, node, client, device, resolver, share.
 
 **forcetoken**  
 Which token types or pass types a login there must use. For role, host,
@@ -169,8 +169,9 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[*regex*\]**  
-List the policy names, and with a regex only those that match it.
+**list \[*pattern*\]**  
+List the policy names, and with a pattern only those that match it, see
+**SELECTING OBJECTS** in **otpme**(1).
 
 **enable *policy***  
 Enable a disabled policy.
@@ -282,18 +283,19 @@ An ACL says what somebody may do with this policy. The somebody is a
 role or a token, never a user.
 
 What the three forms **acl**, **+acl** and **++acl** mean is under
-**ACLs** in **otpme**(7). Which ACLs a policy knows, those of **policy**
-and those of its type, is in **otpme-acls**(7).
+**ACLs** in **otpme**(7). Tab completion after **add_acl** offers the
+ACLs a policy knows, those of **policy** and those of its type.
 
 A command that changes something asks first; the global option **-f**
 skips the question.
 
 **add_acl *policy* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this policy.  
-*owner_type* is **role** or **token**. *owner* is the path of that role
-or token. An ACL can carry a value, for example **view:policy_type**. To
-give several ACLs at once, separate them with commas:
-**view:policy_type,view:status**.  
+*owner_type* is **role** or **token**. *owner* names it the way
+**list_acls** prints it: a role as *site/name*, or by its name alone on
+its own site; a token as *user/token*. An ACL can carry a value, for
+example **view:policy_type**. To give several ACLs at once, separate
+them with commas: **view:policy_type,view:status**.  
 Needs the ACL **add:acl**.
 
 **del_acl *policy* *acl*\[,*acl*\]**  
@@ -347,18 +349,23 @@ A command that changes something asks first; the global option **-f**
 skips the question.
 
 **changelog *policy***  
-Show the changelog of the policy. Needs the ACL **view:changelog**.
+Show the changelog of the policy, one entry per line: its *entry_id*,
+the time, who made the change and what was done, then a detail in round
+brackets and the comment in square brackets where there are any. Needs
+the ACL **view:changelog**.
 
 **edit_changelog *policy* *entry_id* *comment***  
-Set the comment of that entry, or replace the one it has. Needs the ACL
-**edit:changelog**.
+Set the comment of that entry, or replace the one it has. That writes an
+entry of its own. Needs the ACL **edit:changelog**.
 
 **del_changelog *policy* *entry_id***  
 Remove the comment of that entry. The entry itself stays, and an entry
-without a comment is refused. Needs the ACL **edit:changelog**.
+without a comment is refused. That writes an entry of its own. Needs the
+ACL **edit:changelog**.
 
 **clear_changelog *policy***  
-Remove every entry of the changelog.  
+Remove every entry of the changelog. Afterwards it holds one entry: that
+it was cleared.  
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
@@ -558,13 +565,16 @@ whitelist.
 A hook is an action on an object type, e.g. **user change_pin** or
 **unit pre_add_user**. A new policy gets every hook there is. **show**
 *policy* lists the ones it has (**HOOKS**) and the ones removed by hand
-(**REMOVED_HOOKS**). Every object type has these:
+(**REMOVED_HOOKS**). Every object type has these; a command of another
+name is in brackets:
 
 > add, add_acl, add_attribute, add_extension, add_object_class,
-> add_policy, change_description, change_unit, del_acl, del_attribute,
-> del_object_class, delete, disable, disable_acl_inheritance, enable,
-> enable_acl_inheritance, export, get_acls, modify, remove_extension,
-> remove_orphans, remove_policy, rename.
+> add_policy, change_auto_disable (auto_disable), change_description
+> (description), change_info (info), change_unit (move), del_acl,
+> del_attribute, del_object_class, delete (del), disable,
+> disable_acl_inheritance, enable, enable_acl_inheritance, export,
+> get_acls (list_acls), modify, remove_extension, remove_orphans,
+> remove_policy, rename, show_config_parameters (show_config).
 
 The hooks an object type has on top of these are in its man page,
 section **AUTH ON ACTION HOOKS**.
@@ -972,23 +982,26 @@ New users in the unit it get theirs from here.
 
 An auth on action policy can ask for a login again before these actions.
 See **Auth On Action Policy** above. A policy has the hooks every object
-type has, and these:
+type has, and these; a command of another name is in brackets:
 
 > add_creator_acl, add_default_group, add_default_policy,
 > add_default_role, add_hook, add_id_range, add_token_acl, add_user_acl,
-> add_whitelist, change_auto_disable, change_default_group,
-> change_force_pass_types, change_force_token_types, change_login_times,
-> change_password_min_len, change_pin_min_len, change_reauth_expiry,
-> change_reauth_timeout, change_strength_checker,
-> change_strength_checker_opts, del_creator_acl, del_id_range,
-> del_token_acl, del_user_acl, disable_require_lower,
+> add_whitelist (whitelist_role or whitelist_token),
+> change_default_group (default_group), change_force_pass_types
+> (force_pass_types), change_force_token_types (force_token_types),
+> change_login_times (login_times), change_password_min_len
+> (password_min_len), change_pin_min_len (pin_min_len),
+> change_reauth_expiry (reauth_expiry), change_reauth_timeout
+> (reauth_timeout), change_strength_checker (strength_checker),
+> change_strength_checker_opts (strength_checker_opts), del_creator_acl,
+> del_id_range, del_token_acl, del_user_acl, disable_require_lower,
 > disable_require_number, disable_require_special,
 > disable_require_upper, disable_strength_checker, enable_require_lower,
 > enable_require_number, enable_require_special, enable_require_upper,
 > enable_strength_checker, remove_default_group, remove_default_policy,
-> remove_default_role, remove_hook, remove_whitelist,
-> set_config_parameter, set_default_unit, set_template,
-> show_config_parameters, update_hooks.
+> remove_default_role, remove_hook, remove_whitelist (unwhitelist_role
+> or unwhitelist_token), set_config_parameter (config), set_default_unit
+> (set_unit), set_template, update_hooks.
 
 # FILES
 
@@ -1002,12 +1015,11 @@ not in the file.
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-site**(1),
-**otpme-unit**(1), **otpme-user**(1), **otpme-token**(1),
-**otpme-group**(1), **otpme-role**(1), **otpme-accessgroup**(1),
-**otpme-host**(1), **otpme-node**(1), **otpme-client**(1),
-**otpme-dictionary**(1), **otpme-trash**(1), **otpme-tool**(1),
-**cron**(5)
+**otpme**(1), **otpme**(7), **otpme-site**(1), **otpme-unit**(1),
+**otpme-user**(1), **otpme-token**(1), **otpme-group**(1),
+**otpme-role**(1), **otpme-accessgroup**(1), **otpme-host**(1),
+**otpme-node**(1), **otpme-client**(1), **otpme-dictionary**(1),
+**otpme-trash**(1), **otpme-tool**(1), **cron**(5)
 
 # AUTHOR
 

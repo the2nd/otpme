@@ -364,7 +364,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'get_resolver_objects',
-                    'oargs'              : ['object_type'],
+                    'oargs'             : ['object_types'],
                     'job_type'          : 'process',
                     },
                 },
@@ -490,32 +490,6 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     'config'   : {
             'default'    : {
                 'exists'    : {
@@ -574,6 +548,13 @@ def register():
                                     default_value=64,
                                     setter=name_len_setter,
                                     object_types=['site', 'unit'])
+    # Whether the objects a resolver deletes (run with deletions,
+    # delete_objects) go to the trash. See
+    # Resolver._add_objects_to_trash().
+    config.register_config_parameter(name="add_resolver_objects_to_trash",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=['site', 'unit', 'resolver'])
     register_hooks()
     register_backend()
     register_object_unit()
@@ -595,6 +576,7 @@ def register_hooks():
     config.register_auth_on_action_hook("resolver", "enable_deletions")
     config.register_auth_on_action_hook("resolver", "disable_deletions")
     config.register_auth_on_action_hook("resolver", "change_key_attribute")
+    config.register_auth_on_action_hook("resolver", "set_sync_interval")
     config.register_auth_on_action_hook("resolver", "get_resolver_objects")
     config.register_auth_on_action_hook("resolver", "enable_sync_units")
     config.register_auth_on_action_hook("resolver", "disable_sync_units")
@@ -717,6 +699,10 @@ class Resolver(OTPmeObject):
         self.sync_units = False
         self.sync_interval = 300
         self.track_last_used = True
+        # Resolvers should not inherit ACLs by default. Left at None, the
+        # object "cannot inherit ACLs": enable_acl_inheritance failed and
+        # move never swapped default ACLs.
+        self.acl_inheritance_enabled = False
         self._sub_sync_fields = {
                     'host'  : {
                         'trusted'  : [
@@ -829,9 +815,9 @@ class Resolver(OTPmeObject):
         _caller="API",
         **kwargs,
         ):
-        """ Enable deletion of objects missing on resolver site. """
+        """ Create the units the remote DNs name, and the objects in them. """
         if self.sync_units:
-            msg = "Sync of units already enabled."
+            msg = _("Sync of units already enabled.")
             return callback.error(msg)
 
         msg = _("Enable sync of units for resolver '{resolver_name}'?: ")
@@ -848,7 +834,8 @@ class Resolver(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = str(e)
+                return callback.error(msg)
         self.sync_units = True
         return self._cache(callback=callback)
 
@@ -865,9 +852,9 @@ class Resolver(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Disable deletion of objects missing on resolver site. """
+        """ Put the objects into the default units of their types. """
         if not self.sync_units:
-            msg = "Sync of units already disabled."
+            msg = _("Sync of units already disabled.")
             return callback.error(msg)
 
         msg = _("Disable sync of units for resolver '{resolver_name}'?: ")
@@ -884,7 +871,8 @@ class Resolver(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = str(e)
+                return callback.error(msg)
         self.sync_units = False
         return self._cache(callback=callback)
 
@@ -903,7 +891,7 @@ class Resolver(OTPmeObject):
         ):
         """ Enable deletion of objects missing on resolver site. """
         if self.sync_deletions:
-            msg = "Sync of deletions already enabled."
+            msg = _("Sync of deletions already enabled.")
             return callback.error(msg)
 
         msg = _("Enable deletions for resolver '{resolver_name}'? Objects missing on the resolver site get deleted on the next run.: ")
@@ -920,7 +908,8 @@ class Resolver(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = str(e)
+                return callback.error(msg)
         self.sync_deletions = True
         return self._cache(callback=callback)
 
@@ -939,7 +928,7 @@ class Resolver(OTPmeObject):
         ):
         """ Disable deletion of objects missing on resolver site. """
         if not self.sync_deletions:
-            msg = "Sync of deletions already disabled."
+            msg = _("Sync of deletions already disabled.")
             return callback.error(msg)
 
         msg = _("Disable deletions for resolver '{resolver_name}'?: ")
@@ -956,7 +945,8 @@ class Resolver(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = str(e)
+                return callback.error(msg)
         self.sync_deletions = False
         return self._cache(callback=callback)
 
@@ -978,6 +968,16 @@ class Resolver(OTPmeObject):
         """ Change attribute used to sync objects. """
         if not key_attribute:
             return callback.error(_("Got empty key attribute."))
+        if not self._check_object_types([object_type], callback=callback):
+            return callback.error()
+
+        msg = _("Set key attribute of {object_type} for resolver '{resolver_name}' to '{key_attribute}'?: ")
+        msg = msg.format(object_type=object_type,
+                        resolver_name=self.name,
+                        key_attribute=key_attribute)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -987,9 +987,21 @@ class Resolver(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = str(e)
+                return callback.error(msg)
         self.key_attributes[object_type] = key_attribute
         return self._cache(callback=callback)
+
+    def _check_object_types(self, object_types, callback=default_callback):
+        """ Refuse --object-types the resolver does not have. """
+        for object_type in object_types or []:
+            if object_type in self.object_types:
+                continue
+            msg = _("Unknown object type: {object_type} (known: {known})")
+            msg = msg.format(object_type=object_type,
+                            known=", ".join(self.object_types))
+            return callback.error(msg)
+        return callback.ok()
 
     @check_acls(['run', 'test'])
     @audit_log()
@@ -1003,13 +1015,16 @@ class Resolver(OTPmeObject):
         **kwargs,
         ):
         """ Test the resolver. """
+        if not self._check_object_types(object_types, callback=callback):
+            return callback.error()
         if run_policies:
             try:
                 self.run_policies("test",
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = str(e)
+                return callback.error(msg)
         # Call child class test().
         exit_status = self._test(verbose_level=verbose_level,
                                         callback=callback)
@@ -1023,7 +1038,13 @@ class Resolver(OTPmeObject):
 
         return callback.ok(_("All tests successful."))
 
+    # The lock is for the changelog entry: run changes the objects it
+    # syncs, not the resolver, so nothing else writes the resolver and the
+    # entry was lost. A run by hand writes it now; the runs of hostd pass
+    # changelog=False, or the resolver would get an entry and a sync to
+    # every host each sync_interval.
     @check_acls(['run'])
+    @object_lock(full_lock=True)
     @audit_log()
     @object_changelog("run resolver")
     def run(
@@ -1038,6 +1059,8 @@ class Resolver(OTPmeObject):
         **kwargs,
         ):
         """ Run the resolver. """
+        if not self._check_object_types(object_types, callback=callback):
+            return callback.error()
         msg = _("Run resolver '{resolver_name}'? This adds, changes and (if enabled) deletes objects.: ")
         msg = msg.format(resolver_name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -1049,7 +1072,8 @@ class Resolver(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = str(e)
+                return callback.error(msg)
         # Set last used time.
         self.update_last_used_time()
         # Call sync method.
@@ -1061,6 +1085,10 @@ class Resolver(OTPmeObject):
 
         if sync_status is False:
             return callback.error()
+
+        # Written for the changelog entry, see above.
+        if kwargs.get("changelog", True):
+            self._cache(callback=callback)
 
         return sync_status
 
@@ -1177,7 +1205,9 @@ class Resolver(OTPmeObject):
             if not self.sync_deletions:
                 continue
 
-            x_result = self.get_resolver_objects(object_types=[object_type])
+            # As OIDs: a unit cannot be found by its name alone.
+            x_result = self.get_resolver_objects(object_types=[object_type],
+                                                return_type="oid")
             for x_type in x_result:
                 if not x_type in all_local_objects:
                     all_local_objects[x_type] = []
@@ -1538,7 +1568,7 @@ class Resolver(OTPmeObject):
                                                 'posix': posix_attributes,
                                                 }
                             try:
-                                x_object.add(uuid=x_uuid,
+                                add_result = x_object.add(uuid=x_uuid,
                                         group=group,
                                         no_token_infos=True,
                                         extensions=['posix'],
@@ -1555,6 +1585,21 @@ class Resolver(OTPmeObject):
                                 msg, log_msg = _("Unable to add {object_type}: {x_name}: {error}", log=True)
                                 msg = msg.format(object_type=object_type, x_name=x_name, error=e)
                                 log_msg = log_msg.format(object_type=object_type, x_name=x_name, error=e)
+                                logger.critical(log_msg)
+                                if interactive:
+                                    callback.error(msg)
+                                continue
+                            # A refusal comes as callback.error(), which
+                            # has told why already, not as an exception.
+                            # Taken as added it went on to its attributes
+                            # and counted as a success.
+                            if not add_result:
+                                failed_objects.append(x_name)
+                                sync_status = False
+                                object_failed = True
+                                msg, log_msg = _("Unable to add {object_type}: {x_name}", log=True)
+                                msg = msg.format(object_type=object_type, x_name=x_name)
+                                log_msg = log_msg.format(object_type=object_type, x_name=x_name)
                                 logger.critical(log_msg)
                                 if interactive:
                                     callback.error(msg)
@@ -1826,8 +1871,9 @@ class Resolver(OTPmeObject):
                 x_object._write()
 
         # Delete orphan objects.
+        add_to_trash = self._add_objects_to_trash()
         for object_type in all_local_objects:
-            for x in all_local_objects[object_type]:
+            for x_oid in all_local_objects[object_type]:
                 if daemon_run:
                     if not self.is_enabled:
                         break
@@ -1837,13 +1883,9 @@ class Resolver(OTPmeObject):
                         break
                     if not config.master_node:
                         break
-                if x in all_remote_objects[object_type]:
+                if x_oid.name in all_remote_objects[object_type]:
                     continue
 
-                x_oid = oid.OTPmeOid(object_type=object_type,
-                                realm=config.realm,
-                                site=config.sitem,
-                                name=x)
                 if test:
                     msg, log_msg = _("Would remove {object_type}: {x_oid}", log=True)
                     msg = msg.format(object_type=object_type, x_oid=x_oid)
@@ -1864,8 +1906,14 @@ class Resolver(OTPmeObject):
                 # Try to remove object.
                 deleted_by = f"resolver:{self.name}"
                 x_object = backend.get_object(object_id=x_oid)
+                # Gone since the search, e.g. deleted with its unit.
+                if not x_object:
+                    continue
                 try:
-                    x_object.delete(force=True, verify_acls=False, deleted_by=deleted_by)
+                    x_object.delete(force=True,
+                                    verify_acls=False,
+                                    add_to_trash=add_to_trash,
+                                    deleted_by=deleted_by)
                     removed_objects.append(x_oid)
                 except Exception as e:
                     sync_status = False
@@ -1907,6 +1955,8 @@ class Resolver(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
+    @audit_log()
+    @object_changelog("add")
     def add(
         self,
         ldap_template: Union[str,None]=None,
@@ -1955,8 +2005,12 @@ class Resolver(OTPmeObject):
                                 verbose_level=verbose_level,
                                 callback=callback, **kwargs)
 
+    # Checked before the question: a resolver is admin only (see
+    # verify_acl()), and _rename() alone asked only after it.
+    @check_acls(['rename'])
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     @object_changelog("rename from {self.name} to {new_name}")
     def rename(
         self,
@@ -1967,26 +2021,27 @@ class Resolver(OTPmeObject):
         **kwargs,
         ):
         """ Rename resolver. """
-        msg = _("Rename resolver '{resolver_name}' to '{new_name}'?: ")
-        msg = msg.format(resolver_name=self.name, new_name=new_name)
-        if not self.ask_change_confirmation(msg, force=force, callback=callback):
-            return callback.abort()
-
         # Check if resolver is in use.
         try:
             rename_lock = locking.acquire_lock(LOCK_TYPE, self.lock_id, timeout=0)
         except LockWaitTimeout:
-            return callback.error("This resolver is currently running.")
-
-        # Build new OID.
-        new_oid = oid.get(object_type="resolver",
-                            realm=self.realm,
-                            site=self.site,
-                            unit=self.unit,
-                            name=new_name)
+            msg = _("This resolver is currently running.")
+            return callback.error(msg)
 
         try:
-            result = self._rename(new_oid=new_oid,
+            msg = _("Rename resolver '{resolver_name}' to '{new_name}'?: ")
+            msg = msg.format(resolver_name=self.name, new_name=new_name)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
+
+            # Build new OID.
+            new_oid = oid.get(object_type="resolver",
+                                realm=self.realm,
+                                site=self.site,
+                                unit=self.unit,
+                                name=new_name)
+
+            return self._rename(new_oid=new_oid,
                                 callback=callback,
                                 _caller=_caller,
                                 **kwargs)
@@ -1994,25 +2049,30 @@ class Resolver(OTPmeObject):
             # Release lock.
             rename_lock.release_lock()
 
-        return result
-
     # "edit:sync_interval", which is what write_value_acls says. The
     # bare name was in no list, so the ACL that can be given out did
     # not reach the method that asks for it.
     @check_acls(['edit:sync_interval'])
+    @object_lock()
+    @backend.transaction
     @audit_log()
     @object_changelog("set sync interval to {sync_interval}")
     def set_sync_interval(
         self,
         sync_interval: str,
         force: bool=False,
+        run_policies: bool=True,
         callback: JobCallback=default_callback,
+        _caller: str="API",
         **kwargs,
         ):
         """ Set resolver sync interval. """
         try:
             interval = units.time2int(sync_interval)
         except Exception:
+            interval = None
+        # 0 or less would run the resolver at every check of hostd.
+        if interval is None or interval < 1:
             msg = _("Invalid sync interval: {sync_interval}")
             msg = msg.format(sync_interval=sync_interval)
             return callback.error(msg)
@@ -2022,8 +2082,32 @@ class Resolver(OTPmeObject):
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
 
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("set_sync_interval",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
         self.sync_interval = interval
         return self._cache(callback=callback)
+
+    def _add_objects_to_trash(self):
+        """ Whether the objects this resolver deletes go to the trash.
+
+        The default of a config parameter is written into a site only
+        when the site is created; a site older than the parameter has
+        no value, and the cascade answers None. That means the default:
+        yes, as changelog_enabled() does. """
+        value = self.get_config_parameter("add_resolver_objects_to_trash")
+        if value is None:
+            return True
+        return bool(value)
 
     @check_acls(['get_objects'])
     @audit_log()
@@ -2038,6 +2122,8 @@ class Resolver(OTPmeObject):
         **kwargs,
         ):
         """ Get all resolver objects. """
+        if not self._check_object_types(object_types, callback=callback):
+            return callback.error()
         if object_types is None:
             object_types = []
         if run_policies:
@@ -2046,18 +2132,14 @@ class Resolver(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = str(e)
+                return callback.error(msg)
 
         if not object_types:
             object_types = self.object_types
 
         result = {}
         for object_type in object_types:
-            if object_type not in self.object_types:
-                msg = _("Unknown object type: {object_type}")
-                msg = msg.format(object_type=object_type)
-                raise Exception(msg)
-
             object_list = backend.search(attribute="resolver",
                                         value=self.uuid,
                                         object_type=object_type,
@@ -2071,7 +2153,9 @@ class Resolver(OTPmeObject):
 
         return callback.ok(result)
 
+    # Locked and written for the changelog entry, as run().
     @check_acls(['delete:objects'])
+    @object_lock(full_lock=True)
     @audit_log()
     @object_changelog("delete resolved objects")
     def delete_objects(
@@ -2085,6 +2169,8 @@ class Resolver(OTPmeObject):
         **kwargs,
         ):
         """ Delete resolver objects. """
+        if not self._check_object_types(object_types, callback=callback):
+            return callback.error()
         if object_types is None:
             object_types = []
         if not object_types:
@@ -2093,8 +2179,33 @@ class Resolver(OTPmeObject):
         try:
             del_lock = locking.acquire_lock(LOCK_TYPE, self.lock_id, timeout=0)
         except LockWaitTimeout:
-            return callback.error("This resolver is currently running.")
+            msg = _("This resolver is currently running.")
+            return callback.error(msg)
 
+        try:
+            result = self._delete_objects(object_types=object_types,
+                                        force=force,
+                                        run_policies=run_policies,
+                                        callback=callback,
+                                        _caller=_caller)
+        finally:
+            del_lock.release_lock()
+
+        # delete() calls us with changelog=False: it writes its own entry
+        # and must not have the resolver written again after it is gone.
+        if result is True and kwargs.get("changelog", True):
+            self._cache(callback=callback)
+        return result
+
+    def _delete_objects(
+        self,
+        object_types: List,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        ):
+        """ Delete resolver objects, with the lock held by delete_objects(). """
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2104,60 +2215,76 @@ class Resolver(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = str(e)
+                return callback.error(msg)
 
         # Get all objects of this resolver.
-        object_names = self.get_resolver_objects(object_types=object_types,
-                                                return_type="name")
-        exception_parts = []
-        if not force and self.confirmation_policy != "force":
-            for object_type in object_names:
-                object_count = len(object_names[object_type])
-                msg = _("Resolver '{name}' added {count} {object_type}ss.")
-                msg = msg.format(name=self.name, count=object_count, object_type=object_type)
-                exception_parts.append(msg)
-        exception = chr(10).join(exception_parts) if exception_parts else None
-        if not self.ask_delete_confirmation(force=force, exception=exception, callback=callback):
-            del_lock.release_lock()
-            return callback.abort()
-
         all_objects = self.get_resolver_objects(object_types=object_types,
-                                                return_type="uuid")
-        delete_status = True
+                                                return_type="uuid",
+                                                run_policies=False)
+        # A plain ok(): delete() asks for a true value back.
+        if not any(all_objects.values()):
+            msg = _("Resolver '{name}' has no objects to delete.")
+            msg = msg.format(name=self.name)
+            callback.send(msg)
+            return callback.ok()
+
+        if not force and self.confirmation_policy != "force":
+            found = []
+            for object_type in sorted(all_objects):
+                object_count = len(all_objects[object_type])
+                msg = _("Resolver '{name}' added {count} objects of type {object_type}.")
+                msg = msg.format(name=self.name, count=object_count, object_type=object_type)
+                found.append(msg)
+            if not self.ask_delete_confirmation(force=force,
+                                        exception="\n".join(found),
+                                        callback=callback):
+                return callback.abort()
+
+        failed = 0
+        deleted_by = f"resolver:{self.name}"
+        add_to_trash = self._add_objects_to_trash()
+        # Users before their groups, groups before their units.
         for object_type in reversed(all_objects):
             object_list = all_objects[object_type]
             for uuid in object_list:
-                # Get object.
                 o = backend.get_object(uuid=uuid)
+                # Gone since the search, e.g. deleted with its unit.
+                if not o:
+                    continue
                 msg, log_msg = _("Deleting {object_type}: {oid}", log=True)
                 msg = msg.format(object_type=object_type, oid=o.oid)
                 log_msg = log_msg.format(object_type=object_type, oid=o.oid)
                 logger.debug(log_msg)
                 callback.send(msg)
-                deleted_by = f"resolver:{self.name}"
                 try:
-                    o.delete(force=True,
-                            verify_acls=False,
-                            deleted_by=deleted_by,
-                            callback=callback)
+                    status = o.delete(force=True,
+                                    verify_acls=False,
+                                    add_to_trash=add_to_trash,
+                                    deleted_by=deleted_by,
+                                    callback=callback)
                 except Exception as e:
                     config.raise_exception()
-                    delete_status = False
+                    status = False
                     msg, log_msg = _("Failed to delete {object_type}: {oid}: {error}", log=True)
                     msg = msg.format(object_type=object_type, oid=o.oid, error=e)
                     log_msg = log_msg.format(object_type=object_type, oid=o.oid, error=e)
                     logger.warning(log_msg)
                     callback.send(msg)
+                if status is False:
+                    failed += 1
 
                 # Write modified objects (e.g. groups)
                 callback.write_modified_objects()
                 # Release cached locks.
                 callback.release_cache_locks()
 
-        # Release lock.
-        del_lock.release_lock()
+        if failed:
+            msg = _("{count} objects of resolver '{name}' could not be deleted.")
+            msg = msg.format(count=failed, name=self.name)
+            return callback.error(msg)
 
-        return delete_status
+        return callback.ok()
 
     @check_acls(['delete:object'])
     @object_lock(full_lock=True)
@@ -2199,62 +2326,78 @@ class Resolver(OTPmeObject):
             try:
                 self.run_policies("delete", callback=callback, _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = str(e)
+                return callback.error(msg)
 
         try:
             del_lock = locking.acquire_lock(LOCK_TYPE, self.lock_id, timeout=0)
         except LockWaitTimeout:
-            return callback.error("This resolver is currently running.")
+            msg = _("This resolver is currently running.")
+            return callback.error(msg)
 
+        try:
+            return self._delete(delete_objects=delete_objects,
+                                force=force,
+                                add_to_trash=add_to_trash,
+                                verbose_level=verbose_level,
+                                callback=callback)
+        finally:
+            del_lock.release_lock()
+
+    def _delete(
+        self,
+        delete_objects: bool=False,
+        force: bool=False,
+        add_to_trash: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        ):
+        """ Delete resolver, with the lock held by delete(). """
+        # One question for the objects the resolver added, then the
+        # usual one for the resolver.
         if not force and self.confirmation_policy != "force":
-            exception_parts = []
             if not delete_objects:
+                found = []
                 all_objects = self.get_resolver_objects()
-                for object_type in all_objects:
+                for object_type in sorted(all_objects):
                     object_count = len(all_objects[object_type])
-                    msg = _("Resolver '{name}' added {count}: {object_type}ss")
+                    if not object_count:
+                        continue
+                    msg = _("Resolver '{name}' added {count} objects of type {object_type}.")
                     msg = msg.format(name=self.name, count=object_count, object_type=object_type)
-                    exception_parts.append(msg)
-            if exception_parts:
-                msg = _("{exception_text}\nDelete resolver and all objects?: ")
-                msg = msg.format(exception_text=chr(10).join(exception_parts))
-                ask = callback.ask(msg)
-                if str(ask).lower() == "y":
-                    delete_objects = True
-
-                if not delete_objects:
-                    msg = (_("Delete resolver without objects?: "))
+                    found.append(msg)
+                if found:
+                    msg = _("{objects}\nDelete these objects as well?: ")
+                    msg = msg.format(objects="\n".join(found))
                     ask = callback.ask(msg)
-                    if str(ask).lower() != "y":
-                        del_lock.release_lock()
-                        return callback.abort()
-            exception = chr(10).join(exception_parts) if exception_parts else None
-            if not self.ask_delete_confirmation(force=force, exception=exception, callback=callback):
-                del_lock.release_lock()
+                    if str(ask).lower() == "y":
+                        delete_objects = True
+            if not self.ask_delete_confirmation(force=force, callback=callback):
                 return callback.abort()
 
-        delete_status = True
+        # With -f the resolver goes even when some of its objects did not,
+        # and the command still fails, as it did.
+        objects_failed = None
         if delete_objects:
             delete_status = self.delete_objects(force=True,
+                                        changelog=False,
                                         verbose_level=verbose_level,
                                         callback=callback)
             if not delete_status:
+                objects_failed = _("Deleting the objects of resolver '{name}' failed.")
+                objects_failed = objects_failed.format(name=self.name)
                 if not force:
-                    del_lock.release_lock()
-                    return callback.error(msg)
+                    return callback.error(objects_failed)
 
         # Delete object using parent class.
         del_status = OTPmeObject.delete(self, verbose_level=verbose_level,
                                         force=force,
                                         add_to_trash=add_to_trash,
                                         callback=callback)
-
-        if del_status is False or delete_status is False:
-            del_lock.release_lock()
+        if del_status is False:
             return callback.error()
-
-        # Release lock.
-        del_lock.release_lock()
+        if objects_failed:
+            return callback.error(objects_failed)
 
         return callback.ok()
 

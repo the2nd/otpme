@@ -36,7 +36,6 @@ ETC_CONF_FILE = os.path.join(config.config_dir, CONF_FILE_NAME)
 DBAPI = "pymysql"
 #DBAPI = "cymysql"
 #DBAPI = "mysqldb"
-MAX_CONNECTIONS = 500
 KEY_BUFFER_SIZE = "160M"
 THREAD_STACK = "192K"
 MAX_ALLOWED_PACKET = "512M"

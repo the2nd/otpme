@@ -21,8 +21,8 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-resolver [--type <resolver_type>] {command} [resolver]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-resolver show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [resolver]'),
-                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: -a :show_all=True: [|object|]',
+                    '_cmd_usage_help' : _('Usage: otpme-resolver show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [resolver]'),
+                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show resolvers.'),
                                     '-a'                    : _('Show all resolvers.'),
@@ -30,14 +30,21 @@ cmd_help = {
                                     '--fields f1,f2,f3'     : _('Output only given fields.'),
                                     '--policy-limit <limit>': _('Output max policies.'),
                                     '--limit <limit>'       : _('Limit number of items shown per object.'),
+                                    '--reverse'             : _('Reverse the output order.'),
+                                    '--sort-by <attribute>' : _('Sort output by <attribute>.'),
+                                    '--raw'                 : _('Output table without any headers/borders.'),
+                                    '--csv'                 : _('Output table as CSV.'),
+                                    '--csv-sep <separator>' : _('Separator between the CSV columns.'),
                                 },
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-resolver list [regex]'),
-                    'cmd'   :   '["search_regex"]',
+                    '_cmd_usage_help' : _('Usage: otpme-resolver list [--attribute attribute] [-a] [pattern]'),
+                    'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
-                                    'cmd'                   : _('List resolvers.'),
+                                    'cmd'                       : _('List resolvers.'),
+                                    '-a'                        : _('List all resolvers.'),
+                                    '--attribute <attribute>'   : _('Match the pattern against this attribute instead of the name.')
                                 },
                 },
 
@@ -55,6 +62,14 @@ cmd_help = {
                     '_help' :   {
                                     'cmd'                   : _('Delete resolver.'),
                                     '--no-trash'            : _('Delete without moving the object to the trash.'),
+                                },
+                },
+
+    'touch'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-resolver touch {resolver}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Touch resolver (e.g. migrate).'),
                                 },
                 },
 
@@ -150,7 +165,7 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-resolver config -d -a {resolver} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-resolver config [-d] [-a] {resolver} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to resolver.'),
@@ -202,11 +217,12 @@ cmd_help = {
                 },
 
 
-    'unit'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-resolver unit {resolver} {unit}'),
-                    'cmd'   :   '<|object|> <"new_unit">',
+    'move'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-resolver move [--keep-acls] {resolver} {unit}'),
+                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <"new_unit">',
                     '_help' :   {
                                     'cmd'                   : _('Change resolver\'s unit.'),
+                                    '--keep-acls'           : _('Keep object ACLs.')
                                 },
                 },
 
@@ -220,7 +236,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-resolver info {resolver} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-resolver info [--language <language>] {resolver} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set resolver info'),
@@ -229,7 +245,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-resolver dump_info {resolver}'),
+                    '_cmd_usage_help' : _('Usage: otpme-resolver dump_info [--language <language>] {resolver}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump resolver info'),
@@ -249,28 +265,24 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                 },
 
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
     '_show_config'    : {
                     'cmd'   :   '<|object|>',
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-resolver export --password <password> {resolver}'),
+                    '_cmd_usage_help' : _('Usage: otpme-resolver export [--password <password>] {resolver}'),
                     'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export resolver config to stdout.'),
                                     '--password <password>' : _('Encrypt object config with password.'),
+                                },
+                },
+
+    'remove_orphans'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-resolver remove_orphans {resolver}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove orphan UUIDs'),
                                 },
                 },
 

@@ -95,13 +95,16 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIregex\fR]
-List the role names, and with a regex only those that match it.
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+List the role names, and with a pattern only those that match it, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
 .br
 You get the roles you may change; \fB\-a\fR adds those you may only look at.
 .br
 .B \-\-attribute
-matches the regex against that attribute instead of the name: \fBlist \-\-attribute enabled True\fR lists the roles that are enabled.
+matches the pattern against that attribute instead of the name: \fBlist \-\-attribute enabled True\fR lists the roles that are enabled.
 A value that is not text has to be spelled out \(em \fB*\fR matches none of it.
 .TP
 .B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIrole\fR
@@ -171,6 +174,8 @@ It does when the token you are logged in with says \fBauto_sign\fR, when you hav
 .PP
 Some token types cannot be signed at all.
 Those are added without a signature.
+A link token can be signed when the token it points at can, see
+.BR otpme\-token (1).
 .TP
 .B add_token \fR[\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR] [\fB\-\-tags\fR \fItag1,tag2\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] [\fB\-\-skip\-portal\-token\fR] \fIrole\fR \fItoken\fR \fR[\fItoken_options\fR]
 Put a token into the role.
@@ -493,7 +498,7 @@ The other direction, the ACLs this role holds on other objects, is \fBfind_acls\
 Give a role or a token one or more ACLs on this role.
 .br
 \fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
-\fIowner\fR is the path of that role or token.
+\fIowner\fR names it the way \fBlist_acls\fR prints it: a role as \fIsite/name\fR, or by its name alone on its own site; a token as \fI\%user/token\fR.
 An ACL can carry a value, for example \fBview:tokens\fR.
 To give several ACLs at once, separate them with commas: \fB\%view:tokens,view:status\fR.
 .br
@@ -655,20 +660,23 @@ What was done and by whom stays as it is.
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIrole\fR
-Show the changelog of the role.
+Show the changelog of the role, one entry per line: its \fIentry_id\fR, the time, who made the change and what was done, then a detail in round brackets and the comment in square brackets where there are any.
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fIrole\fR \fIentry_id\fR \fIcomment\fR
 Set the comment of that entry, or replace the one it has.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B del_changelog \fIrole\fR \fIentry_id\fR
 Remove the comment of that entry.
 The entry itself stays, and an entry without a comment is refused.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIrole\fR
 Remove every entry of the changelog.
+Afterwards it holds one entry: that it was cleared.
 .br
 This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
@@ -828,12 +836,12 @@ See
 .B Auth On Action Policy
 in
 .BR otpme\-policy (1).
-A role has the hooks every object type has, and these:
+A role has the hooks every object type has, and these; a command of another name is in brackets:
 .RS
 .PP
 .na
 .nh
-add_dynamic_group, add_role, add_token, remove_dynamic_group, remove_role, remove_token, set_config_parameter.
+add_dynamic_group, add_role, add_token, remove_dynamic_group, remove_role, remove_token, set_config_parameter\ (config).
 .hy
 .ad
 .RE
@@ -851,7 +859,6 @@ A key is only written here while a role of the host holds the token \(em see \fB
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
 .BR otpme\-user (1),
 .BR otpme\-token (1),
 .BR otpme\-group (1),

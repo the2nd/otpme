@@ -21,8 +21,8 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-realm {command} [realm]"),
 
     'init'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm init {realm} {site} {fqdn} [address]'),
-                    'cmd'   :   '--country :"ca_country": --state :"ca_state": --locality :"ca_locality": --organization :"ca_organization": --ou :"ca_ou": --email :"ca_email": --ca-valid :ca_valid: --ca-key-len :ca_key_len: --site-valid :site_valid: --site-key-len :site_key_len: --node-valid :node_valid: --node-key-len :node_key_len: --no-dicts :no_dicts=True: --dicts ::[dictionaries]:: --id-ranges ::"id_ranges":: --no-index-indices :no_index_indices=True: <|object|> <"realm_master"> <"site_fqdn"> ["site_address"]',
+                    '_cmd_usage_help' : _('Usage: otpme-realm init [--country <country>] [--state <state>] [--locality <locality>] [--organization <organization>] [--ou <ou>] [--email <email>] [--ca-valid <days>] [--ca-key-len <bits>] [--site-valid <days>] [--site-key-len <bits>] [--node-valid <days>] [--node-key-len <bits>] [--dicts <dict1,dict2>] [--id-ranges <id_ranges>] [--no-index-indices] {realm} {site} {fqdn} [address]'),
+                    'cmd'   :   '--country :"ca_country": --state :"ca_state": --locality :"ca_locality": --organization :"ca_organization": --ou :"ca_ou": --email :"ca_email": --ca-valid :ca_valid: --ca-key-len :ca_key_len: --site-valid :site_valid: --site-key-len :site_key_len: --node-valid :node_valid: --node-key-len :node_key_len: --dicts ::[dictionaries]:: --id-ranges ::"id_ranges":: --no-index-indices :no_index_indices=True: <|object|> <"realm_master"> <"site_fqdn"> ["site_address"]',
                     '_help' :   {
                                     'cmd'                               : _('Init realm'),
                                     '--ca-valid'                        : _('CA certificates validity in days.'),
@@ -37,7 +37,6 @@ cmd_help = {
                                     '--site-key-len'                    : _('Key length for master site certificate in bits.'),
                                     '--node-valid'                      : _('Master node certificate validity in days.'),
                                     '--node-key-len'                    : _('Key length for master node certificate in bits.'),
-                                    '--no-dicts'                        : _('Do not add any word dictionaries (strength checker).'),
                                     '--dicts <dict1,dict2>'             : _('Add the given word dictionaries (strength checker).'),
                                     '--id-ranges <id_range_1,id_range2>': _('ID ranges to add.'),
                                     '--no-index-indices'                : _('Do not create index DB indices.'),
@@ -45,7 +44,7 @@ cmd_help = {
                 },
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [realm]'),
+                    '_cmd_usage_help' : _('Usage: otpme-realm show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [realm]'),
                     'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show realm(s)'),
@@ -83,12 +82,12 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm list [--attribute attribute] [-a] [regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-realm list [--attribute attribute] [-a] [pattern]'),
                     'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List realms.'),
                                     '-a'                        : _('List all realms.'),
-                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
+                                    '--attribute <attribute>'   : _('Match the pattern against this attribute instead of the name.')
                                 },
                 },
 
@@ -108,13 +107,6 @@ cmd_help = {
     #                            },
     #            },
 
-    'get_config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm get_config {realm} {parameter}'),
-                    'cmd'   :   '<|object|> <"parameter">',
-                    '_help' :   {
-                                    'cmd'                   : _('Get config parameter.'),
-                                },
-                },
     'show_oid'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm show_oid [--full] {realm}'),
                     'cmd'   :   '--full :full=True: <|object|>',
@@ -224,7 +216,7 @@ cmd_help = {
                 },
 
      'show_ldif'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm show_ldif {realm} -a attribute1,attribute2'),
+                    '_cmd_usage_help' : _('Usage: otpme-realm show_ldif {realm} [-a attribute1,attribute2]'),
                     'cmd'   :   '<|object|> -a :[attributes]:',
                     '_help' :   {
                                     'cmd'                   : _('Show LDIF representation of realm'),
@@ -275,7 +267,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm info {realm} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-realm info [--language <language>] {realm} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set realm info'),
@@ -284,7 +276,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm dump_info {realm}'),
+                    '_cmd_usage_help' : _('Usage: otpme-realm dump_info [--language <language>] {realm}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump realm info'),
@@ -301,18 +293,6 @@ cmd_help = {
                 },
 
     '_show_object_classes'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
                     'cmd'   :   '<|object|>',
                 },
 
@@ -345,7 +325,7 @@ cmd_help = {
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm export --password <password> {realm}'),
+                    '_cmd_usage_help' : _('Usage: otpme-realm export [--password <password>] {realm}'),
                     'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export realm config to stdout'),

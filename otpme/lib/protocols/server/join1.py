@@ -70,12 +70,25 @@ class OTPmeJoinP1(OTPmeServer1):
         self.session_otp = None
         # OTP type in use.
         self.session_otp_type = None
+        # The host the JOTP/LOTP is of. The key proves nothing for
+        # any other host.
+        self.session_otp_host_uuid = None
+        # Encryption of the response: that of the request.
+        self.response_enc_mod = None
+        self.response_enc_key = None
         # Indicates master node join.
         self.master_node_join = False
         # UUID of the host that was master-node-joined in this session. Used
         # to bind the follow-up add_site_cert/add_ca_crl commands to that
         # exact host so they cannot target an arbitrary foreign site.
         self.master_node_join_host_uuid = None
+        # Set when the master node join was finished. Only then the
+        # site certificate and CRL are taken.
+        self.master_node_join_finished = False
+        # Finish OTP: handed out by the first join request of this
+        # connection, taken once by the final one, for the same host.
+        self.fotp = None
+        self.fotp_host_uuid = None
         # Join/Leave job UUID.
         self.job_uuid = None
         self.callback = None
@@ -88,6 +101,13 @@ class OTPmeJoinP1(OTPmeServer1):
         self.pid = os.getpid()
         # Do atfork stuff.
         multiprocessing.atfork(quiet=True)
+
+    def encode_response(self, data):
+        """ Encode response, encrypted with the key of the request. """
+        return json.encode(data,
+                        encoding="base64",
+                        encryption=self.response_enc_mod,
+                        enc_key=self.response_enc_key)
 
     def get_host(self, host_name):
         """ Get host object. """
@@ -362,8 +382,15 @@ class OTPmeJoinP1(OTPmeServer1):
                 for x in result:
                     sync_objects.append(("user", x))
 
-            # Add base scripts.
+            # Add base scripts. A node only: the sync gives scripts to
+            # nodes and not to hosts (script.py registers the sync for
+            # nodes only), so a host given them here would keep them
+            # for good. A host fetches a script from a node when it
+            # runs one (script.get()), and a user's scripts come with
+            # the login.
             base_scripts = config.get_base_objects("script")
+            if host.type != "node":
+                base_scripts = []
             for x in base_scripts:
                 result = backend.search(object_type="script",
                                         attribute="name",
@@ -424,15 +451,17 @@ class OTPmeJoinP1(OTPmeServer1):
             sync_object_configs[object_id] = object_config
 
         # Build join response.
+        self.fotp = stuff.gen_secret(32)
+        self.fotp_host_uuid = host.uuid
         join_response = {
-                    'jotp'                  : host.jotp,
+                    'fotp'                  : self.fotp,
                     'object_configs'        : sync_object_configs,
                     'master_node_join'      : self.master_node_join,
                     'password_hash_salt'    : config.password_hash_salt,
                     }
 
         # Encode join response.
-        message = json.encode(join_response)
+        message = self.encode_response(join_response)
         status = True
 
         # Make sure we clean node from cache to prevent issues when joining
@@ -445,13 +474,25 @@ class OTPmeJoinP1(OTPmeServer1):
 
         return self.build_response(status, message)
 
-    def finish_join(self, host, host_public_key, callback,
-        host_cert=None, host_cert_req=None, site_cert_req=None,
-        site_ca_valid=None):
+    def finish_join(self, host, host_public_key, callback, fotp=None,
+        host_cert=None, host_cert_req=None, site_cert_req=None, site_ca_valid=None):
         """ Finalize realm join of given host. """
         log_msg = _("Trying to finalize realm join: {host_name}", log=True)[1]
         log_msg = log_msg.format(host_name=host.name)
         self.logger.debug(log_msg)
+        # Verify FOTP: the final request must follow the first one of
+        # this connection, for the same host, and is taken once.
+        fotp_valid = False
+        if self.fotp \
+        and isinstance(fotp, str) \
+        and host.uuid == self.fotp_host_uuid:
+            if hmac.compare_digest(self.fotp, fotp):
+                fotp_valid = True
+        self.fotp = None
+        self.fotp_host_uuid = None
+        if not fotp_valid:
+            msg = (_("Access denied: Wrong FOTP"))
+            raise OTPmeException(msg)
         # Finalize realm join.
         try:
             host.join_realm(verify_acls=False,
@@ -483,7 +524,6 @@ class OTPmeJoinP1(OTPmeServer1):
 
         # Build final join response.
         join_response = {
-                    'lotp'      : host.lotp,
                     'host_cert' : host.cert,
                     }
 
@@ -584,17 +624,22 @@ class OTPmeJoinP1(OTPmeServer1):
         join_response['message'] = "\n".join(msg)
 
         # Encode join response.
-        message = json.encode(join_response)
+        message = self.encode_response(join_response)
         status = True
 
         # Write changed objects.
         cache.flush()
 
+        # Now the site certificate and CRL of the master node may come.
+        if self.master_node_join \
+        and host.uuid == self.master_node_join_host_uuid:
+            self.master_node_join_finished = True
+
         self.logger.info(log_msg)
         return self.build_response(status, message)
 
     def handle_join_command(self, host_name, host_type,
-        host, jotp, force, _request, finish):
+        host, jotp_join, force, _request, finish):
         """ Handle join command. """
         # Check host join status.
         if host and host.joined and not force:
@@ -603,16 +648,11 @@ class OTPmeJoinP1(OTPmeServer1):
             msg = msg.format(host_desc=host_desc)
             raise OTPmeException(msg)
 
-        # Verify given JOTP.
-        if host and jotp:
+        if host and jotp_join:
             # Make sure JOTP is enabled for host/node.
             if not host.jotp_enabled:
                 msg = _("JOTP disabled for host: {host}")
                 msg = msg.format(host=host)
-                raise OTPmeException(msg)
-            # Make sure we compare JOTP as string.
-            if not hmac.compare_digest(host.jotp, str(jotp)):
-                msg = (_("Permission denied: Wrong JOTP"))
                 raise OTPmeException(msg)
 
         # Try to get host unit.
@@ -675,7 +715,7 @@ class OTPmeJoinP1(OTPmeServer1):
 
         if finish:
             # When finalizing the join process we need an JOTP.
-            if not self.authenticated and not jotp:
+            if not self.authenticated and not jotp_join:
                 msg = (_("Need JOTP to finalize join process."))
                 raise OTPmeException(msg)
 
@@ -722,17 +762,22 @@ class OTPmeJoinP1(OTPmeServer1):
                 host_public_key = _request['host_public_key']
             except Exception:
                 host_public_key = None
+            # Try FOTP.
+            try:
+                fotp = _request['fotp']
+            except Exception:
+                fotp = None
 
             # Try to finalize join process of host.
             return self.finish_join(host, host_public_key,
-                                    host_cert=host_cert,
+                                    fotp=fotp, host_cert=host_cert,
                                     host_cert_req=host_cert_req,
                                     site_cert_req=site_cert_req,
                                     site_ca_valid=site_ca_valid,
                                     callback=self.callback)
 
         # If we got a JOTP the host must already exist to proceed.
-        if jotp and not host:
+        if jotp_join and not host:
             msg, log_msg = _("Join phase 1 error: Unknown {host_type}: {host_fqdn}", log=True)
             msg = msg.format(host_type=host_type, host_fqdn=host_name)
             log_msg = log_msg.format(host_type=host_type, host_fqdn=host_name)
@@ -748,7 +793,7 @@ class OTPmeJoinP1(OTPmeServer1):
                             self.callback,
                             force=force)
 
-    def handle_leave_command(self, host_fqdn, host, lotp, _request):
+    def handle_leave_command(self, host_fqdn, host, lotp_leave, _request):
         """ Handle leave command. """
         # When leaving the realm the host must exist. ;)
         if not host:
@@ -788,25 +833,21 @@ class OTPmeJoinP1(OTPmeServer1):
         self.logger.debug(log_msg)
 
         # Make sure the given FQDN matches the client cert of the
-        # connecting host BEFORE verifying the LOTP.
+        # connecting host.
         if self.client_cn != host.fqdn:
             msg = _("Access denied: Client certificate does not match host FQDN: {client_cn} {host_fqdn}")
             msg = msg.format(client_cn=self.client_cn, host_fqdn=host.fqdn)
             raise OTPmeException(msg)
-        # Verify given LOTP.
-        if lotp:
+        # The LOTP was proven by the decryption of the request.
+        if lotp_leave:
             # Make sure LOTP is enabled for host/node.
             if not host.lotp_enabled:
                 msg = _("LOTP disabled for host: {host}")
                 msg = msg.format(host=host)
                 raise OTPmeException(msg)
-            # Make sure we compare LOTP as string.
-            if not hmac.compare_digest(host.lotp, str(lotp)):
-                msg = (_("Access denied: Wrong LOTP"))
-                raise OTPmeException(msg)
 
         # Without valid LOTP the user must be authenticated.
-        if not lotp and not self.authenticated:
+        if not lotp_leave and not self.authenticated:
             msg = (_("Access denied: Not authenticated"))
             raise OTPmeException(msg)
 
@@ -879,6 +920,7 @@ class OTPmeJoinP1(OTPmeServer1):
         if host.allow_jotp_rejoin:
             message_add = _("{msg}\nYou can use the following JOTP to re-join the {host_type}: {jotp}")
             message = message_add.format(msg=message, host_type=host.type, jotp=host.jotp)
+        message = self.encode_response(message)
         return self.build_response(status, message)
 
     def _process(self, command, command_args, **kwargs):
@@ -1016,6 +1058,7 @@ class OTPmeJoinP1(OTPmeServer1):
                 else:
                     self.session_otp = host.jotp
                     self.session_otp_type = "JOTP"
+                self.session_otp_host_uuid = host.uuid
 
         session_key = None
         session_enc_mod = None
@@ -1033,6 +1076,26 @@ class OTPmeJoinP1(OTPmeServer1):
                 message = message.format(otp_type=self.session_otp_type)
                 log_msg = log_msg.format(otp_type=self.session_otp_type)
                 self.logger.debug(log_msg)
+                status = False
+                return self.build_response(status, message)
+            # The key of this connection is that of one host and of one
+            # OTP type: it proves nothing for any other.
+            if host.uuid != self.session_otp_host_uuid:
+                message, log_msg = _("Permission denied: Encrypted request for other host: {host_name}", log=True)
+                message = message.format(host_name=host_name)
+                log_msg = log_msg.format(host_name=host_name)
+                self.logger.warning(log_msg)
+                status = False
+                return self.build_response(status, message)
+            if command == "leave":
+                need_otp_type = "LOTP"
+            else:
+                need_otp_type = "JOTP"
+            if self.session_otp_type != need_otp_type:
+                message, log_msg = _("Permission denied: Encrypted {command} request needs a {otp_type}", log=True)
+                message = message.format(command=command, otp_type=need_otp_type)
+                log_msg = log_msg.format(command=command, otp_type=need_otp_type)
+                self.logger.warning(log_msg)
                 status = False
                 return self.build_response(status, message)
             # Make sure request includes encryption type.
@@ -1109,6 +1172,10 @@ class OTPmeJoinP1(OTPmeServer1):
             status = False
             return self.build_response(status, message)
 
+        # The response goes back encrypted as the request came.
+        self.response_enc_mod = session_enc_mod
+        self.response_enc_key = session_key
+
         # For encrypted requests (e.g. JOTP) we have to make sure that request
         # args match command args (e.g. no MITM).
         if encrypted:
@@ -1161,17 +1228,16 @@ class OTPmeJoinP1(OTPmeServer1):
         except Exception:
             force = False
 
-        # Try to get JOTP.
-        try:
-            jotp = _request['jotp']
-        except Exception:
-            jotp = None
-
-        # Try to get LOTP.
-        try:
-            lotp = _request['lotp']
-        except Exception:
-            lotp = None
+        # A JOTP join or LOTP leave is a request that could be decrypted
+        # with the key of that OTP. The OTP itself never goes over the
+        # wire, and what the request says about it counts for nothing.
+        jotp_join = False
+        lotp_leave = False
+        if encrypted:
+            if self.session_otp_type == "JOTP":
+                jotp_join = True
+            if self.session_otp_type == "LOTP":
+                lotp_leave = True
 
         # Try to get finish flag.
         try:
@@ -1188,23 +1254,13 @@ class OTPmeJoinP1(OTPmeServer1):
             self.peer_config_versions = {}
 
         # We need at least JOTP/LOTP or an authenticated user.
-        if not jotp and not lotp and not self.authenticated:
+        if not jotp_join and not lotp_leave and not self.authenticated:
             message = (_("Please auth first."))
             status = status_codes.NEED_HOST_AUTH
             return self.build_response(status, message)
 
-        # Make sure JOTP/LOTP request is encrypted.
-        if jotp and not encrypted and not finish:
-            message = (_("Got JOTP in unencrypted request."))
-            status = False
-            return self.build_response(status, message)
-        if lotp and not encrypted:
-            message = (_("Got LOTP in unencrypted request."))
-            status = False
-            return self.build_response(status, message)
-
         # Check join ACL.
-        if command == "join" and not jotp:
+        if command == "join" and not jotp_join:
             result = backend.search(object_type="accessgroup",
                                     attribute="name",
                                     value=config.join_access_group,
@@ -1221,7 +1277,7 @@ class OTPmeJoinP1(OTPmeServer1):
                 return self.build_response(status, message)
 
         # Check leave ACL.
-        if command == "leave" and not lotp:
+        if command == "leave" and not lotp_leave:
             result = backend.search(object_type="accessgroup",
                                     attribute="name",
                                     value=config.join_access_group,
@@ -1254,7 +1310,7 @@ class OTPmeJoinP1(OTPmeServer1):
                 name = f"join {host_type} {host_name}"
             elif command == "leave":
                 add_job = True
-                auth_token = "JOTP"
+                auth_token = "LOTP"
                 name = f"leave {host_type} {host_name}"
             if add_job:
                 if config.auth_token:
@@ -1267,7 +1323,7 @@ class OTPmeJoinP1(OTPmeServer1):
                 join_result = self.handle_join_command(host_name,
                                                 host_type,
                                                 host,
-                                                jotp,
+                                                jotp_join,
                                                 force,
                                                 _request,
                                                 finish)
@@ -1286,7 +1342,7 @@ class OTPmeJoinP1(OTPmeServer1):
             try:
                 leave_result = self.handle_leave_command(host_fqdn,
                                                         host,
-                                                        lotp,
+                                                        lotp_leave,
                                                         _request)
             except Exception as e:
                 status = False
@@ -1304,7 +1360,7 @@ class OTPmeJoinP1(OTPmeServer1):
             # If this is a master node join we may have to update site cert.
             # Bind to the exact host that was master-node-joined so a peer
             # cannot push a certificate for an arbitrary foreign site.
-            if self.master_node_join \
+            if self.master_node_join_finished \
             and host \
             and host.uuid == self.master_node_join_host_uuid:
                 # Get hosts site.
@@ -1343,7 +1399,7 @@ class OTPmeJoinP1(OTPmeServer1):
             # If this is a master node join we have to update sites CRL.
             # Bind to the exact host that was master-node-joined so a peer
             # cannot overwrite an arbitrary foreign site's CRL.
-            if self.master_node_join \
+            if self.master_node_join_finished \
             and host \
             and host.uuid == self.master_node_join_host_uuid \
             and host.type == "node" and host.site_uuid != config.site_uuid:

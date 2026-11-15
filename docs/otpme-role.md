@@ -87,12 +87,13 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
-List the role names, and with a regex only those that match it.  
+**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+List the role names, and with a pattern only those that match it, see
+**SELECTING OBJECTS** in **otpme**(1).  
 You get the roles you may change; **-a** adds those you may only look
 at.  
-**--attribute** matches the regex against that attribute instead of the
-name: **list --attribute enabled True** lists the roles that are
+**--attribute** matches the pattern against that attribute instead of
+the name: **list --attribute enabled True** lists the roles that are
 enabled. A value that is not text has to be spelled out — **\*** matches
 none of it.
 
@@ -161,7 +162,8 @@ as a user, or when the role, its unit or its site say **auto_sign** (see
 **otpme**(7)).
 
 Some token types cannot be signed at all. Those are added without a
-signature.
+signature. A link token can be signed when the token it points at can,
+see **otpme-token**(1).
 
 **add_token \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign**\] \[**--tags** *tag1,tag2*\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] \[**--skip-portal-token**\] *role* *token* \[*token_options*\]**  
 Put a token into the role. From then on it reaches everything the role
@@ -491,10 +493,11 @@ The other direction, the ACLs this role holds on other objects, is
 
 **add_acl *role* *owner_type* *owner* *acl*\[**:***value*\]\[**,***acl*\[**:***value*\]\]**  
 Give a role or a token one or more ACLs on this role.  
-*owner_type* is **role** or **token**. *owner* is the path of that role
-or token. An ACL can carry a value, for example **view:tokens**. To give
-several ACLs at once, separate them with commas:
-**view:tokens,view:status**.  
+*owner_type* is **role** or **token**. *owner* names it the way
+**list_acls** prints it: a role as *site/name*, or by its name alone on
+its own site; a token as *user/token*. An ACL can carry a value, for
+example **view:tokens**. To give several ACLs at once, separate them
+with commas: **view:tokens,view:status**.  
 Needs the ACL **add:acl**.
 
 **del_acl *role* *acl*\[**,***acl*\]**  
@@ -669,18 +672,23 @@ A command that changes something asks first; the global option **-f**
 skips the question.
 
 **changelog *role***  
-Show the changelog of the role. Needs the ACL **view:changelog**.
+Show the changelog of the role, one entry per line: its *entry_id*, the
+time, who made the change and what was done, then a detail in round
+brackets and the comment in square brackets where there are any. Needs
+the ACL **view:changelog**.
 
 **edit_changelog *role* *entry_id* *comment***  
-Set the comment of that entry, or replace the one it has. Needs the ACL
-**edit:changelog**.
+Set the comment of that entry, or replace the one it has. That writes an
+entry of its own. Needs the ACL **edit:changelog**.
 
 **del_changelog *role* *entry_id***  
 Remove the comment of that entry. The entry itself stays, and an entry
-without a comment is refused. Needs the ACL **edit:changelog**.
+without a comment is refused. That writes an entry of its own. Needs the
+ACL **edit:changelog**.
 
 **clear_changelog *role***  
-Remove every entry of the changelog.  
+Remove every entry of the changelog. Afterwards it holds one entry: that
+it was cleared.  
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
@@ -844,10 +852,11 @@ Clean out what the role still points at although it is gone.
 
 An auth on action policy can ask for a login again before these actions.
 See **Auth On Action Policy** in **otpme-policy**(1). A role has the
-hooks every object type has, and these:
+hooks every object type has, and these; a command of another name is in
+brackets:
 
 > add_dynamic_group, add_role, add_token, remove_dynamic_group,
-> remove_role, remove_token, set_config_parameter.
+> remove_role, remove_token, set_config_parameter (config).
 
 # FILES
 
@@ -864,11 +873,11 @@ only written here while a role of the host holds the token — see
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-user**(1),
-**otpme-token**(1), **otpme-group**(1), **otpme-accessgroup**(1),
-**otpme-host**(1), **otpme-device**(1), **otpme-vlan**(1),
-**otpme-share**(1), **otpme-unit**(1), **otpme-policy**(1),
-**otpme-tool**(1), **otpme-trash**(1)
+**otpme**(1), **otpme**(7), **otpme-user**(1), **otpme-token**(1),
+**otpme-group**(1), **otpme-accessgroup**(1), **otpme-host**(1),
+**otpme-device**(1), **otpme-vlan**(1), **otpme-share**(1),
+**otpme-unit**(1), **otpme-policy**(1), **otpme-tool**(1),
+**otpme-trash**(1)
 
 # AUTHOR
 

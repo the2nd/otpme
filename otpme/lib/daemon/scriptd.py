@@ -138,10 +138,9 @@ def handle_script_request(request):
         group = config.root_script_group
     if group == config.group:
         group = config.root_script_group
-    try:
-        groups.remove("root")
-    except ValueError:
-        pass
+    # A supplementary group named like GROUP resolves to the local
+    # group of OTPme, so it goes too.
+    groups = [x for x in groups if x not in ("root", config.group)]
 
     # Get script class to run script with.
     if script_type in valid_script_classes:

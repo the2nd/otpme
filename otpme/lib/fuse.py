@@ -680,11 +680,11 @@ class OTPmeFS(fuse.Operations):
                             raise OSError(errno.EACCES, _("No share key received")) from err
                         # Decrypt share key with key script.
                         try:
-                            share_key = stuff.decrypt_share_key(self.username,
-                                                                share_key,
-                                                                key_mode=None,
-                                                                encode=False,
-                                                                share=self.share_id)
+                            share_key = stuff.pkey_decrypt(self.username,
+                                                        share_key,
+                                                        key_mode=None,
+                                                        encode=False,
+                                                        reason=f"Share: {self.share_id}")
                         except Exception as e:
                             log_msg = _("Failed to decrypt share key: {share}: {e}", log=True)[1]
                             log_msg = log_msg.format(share=self.share, e=e)
@@ -737,10 +737,10 @@ class OTPmeFS(fuse.Operations):
             if self.add_share_key:
                 # Encrypt share key with key script.
                 try:
-                    enc_share_key = stuff.encrypt_share_key(username=self.username,
-                                                            share_user=self.username,
-                                                            share_key=share_key,
-                                                            key_mode=None)
+                    enc_share_key = stuff.pkey_encrypt(username=self.username,
+                                                    recipient=self.username,
+                                                    data=share_key,
+                                                    key_mode=None)
                 except Exception as e:
                     log_msg = _("Failed to encrypt share key: {share}: {e}", log=True)[1]
                     log_msg = log_msg.format(share=self.share, e=e)
@@ -3331,6 +3331,10 @@ def mount_share(share, share_site, mount, nodes, encrypted, sotp_signing,
         share_id = stuff.get_share_id(share_realm or config.realm,
                                     share_site, share)
         fsname = f"OTPmeFS:/{share_id}"
+        # The type mount and findmnt show is fuse.<subtype>. Without one
+        # libfuse takes the name of the program, which says nothing
+        # about what is mounted.
+        subtype = "otpme"
         if logger is None:
             logger = config.logger
         msg = _("Got nodes: {share}: {nodes}")
@@ -3351,6 +3355,7 @@ def mount_share(share, share_site, mount, nodes, encrypted, sotp_signing,
                             foreground=foreground,
                             nothreads=True,
                             fsname=fsname,
+                            subtype=subtype,
                             )
         else:
             fuse.FUSE(OTPmeFS(share, share_site, logger, nodes=nodes,
@@ -3361,6 +3366,7 @@ def mount_share(share, share_site, mount, nodes, encrypted, sotp_signing,
                             foreground=foreground,
                             nothreads=True,
                             fsname=fsname,
+                            subtype=subtype,
                             )
     except Exception as e:
         log_msg = _("Failed to mount share: {share}: {error}", log=True)[1]

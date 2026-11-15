@@ -38,7 +38,7 @@ from otpme.lib import multiprocessing
 from otpme.lib.protocols import status_codes
 from otpme.lib.daemon.clusterd import calc_node_vote
 from otpme.lib.protocols.otpme_server import OTPmeServer1
-from otpme.lib.freeradius.utils import reload as freeradius_reload
+from otpme.lib.freeradius.utils import send_command as freeradius_command
 
 from otpme.lib.daemon.clusterd import SUPPORTED_STATE_DICTS
 from otpme.lib.daemon.clusterd import get_states_snapshot
@@ -1424,17 +1424,16 @@ class OTPmeClusterP1(OTPmeServer1):
                 logger.info(log_msg)
 
         elif command == "do_radius_reload":
+            # Done by controld, which logs how it went: FreeRADIUS may
+            # run as another user than we do.
             try:
-                freeradius_reload()
+                freeradius_command("reload_freeradius")
                 status = True
                 message = _("Radius reload done.")
             except Exception as e:
                 message = _("Radius reload failed: {error}")
                 message = message.format(error=e)
                 status = False
-            else:
-                log_msg = _("Freeradius reloaded.", log=True)[1]
-                logger.info(log_msg)
 
         elif command == "do_daemon_reload":
             # Reload e.g. after adding new CRL.
@@ -1502,7 +1501,7 @@ class OTPmeClusterP1(OTPmeServer1):
                         socket_uri = stuff.get_daemon_socket("clusterd", master_node)
                     except Exception as e:
                         log_msg = _("Failed to get clusterd socket: {node}: {error}", log=True)[1]
-                        log_msg = log_msg.format(node=x_node.name, error=e)
+                        log_msg = log_msg.format(node=master_node, error=e)
                         logger.critical(log_msg)
                         socket_uri = None
                     clusterd_conn = None
@@ -1511,7 +1510,7 @@ class OTPmeClusterP1(OTPmeServer1):
                             clusterd_conn = connections.get("clusterd", socket_uri=socket_uri)
                         except Exception as e:
                             log_msg = _("Cluster sync connection failed: {node}: {error}", log=True)[1]
-                            log_msg = log_msg.format(node=x_node.name, error=e)
+                            log_msg = log_msg.format(node=master_node, error=e)
                             logger.critical(log_msg)
                     if clusterd_conn:
                         log_msg = _("Starting sync of data objects...", log=True)[1]
@@ -1520,7 +1519,7 @@ class OTPmeClusterP1(OTPmeServer1):
                             clusterd_conn.sync()
                         except Exception as e:
                             log_msg = _("Master failover sync failed: {node}: {error}", log=True)[1]
-                            log_msg = log_msg.format(node=x_node.name, error=e)
+                            log_msg = log_msg.format(node=master_node, error=e)
                             logger.critical(log_msg)
                         finally:
                             clusterd_conn.close()
@@ -1549,6 +1548,9 @@ class OTPmeClusterP1(OTPmeServer1):
                         if sync_status is not False:
                             status = True
                             break
+                        # Not as fast as the loop can go: a sync that
+                        # fails at once would spin and flood the log.
+                        time.sleep(1)
 
             if status:
                 while True:

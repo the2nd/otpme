@@ -18,10 +18,11 @@ from otpme.lib.classes.ca import get_value_acls
 
 from otpme.lib.exceptions import *
 
+# No status and no ACL inheritance: a CA is always on (a base object)
+# and never moved.
 table_headers = [
                 "ca",
                 "unit",
-                "status",
                 "country",
                 "state",
                 "locality",
@@ -29,7 +30,6 @@ table_headers = [
                 "ou",
                 "email",
                 "policies",
-                "inherit",
                 "description",
                 ]
 
@@ -45,11 +45,9 @@ def register():
                         'organization',
                         'ou',
                         'email',
-                        'enabled',
                         'uuid',
                         'unit',
                         'description',
-                        'acl_inheritance_enabled',
                         ]
     read_acls, write_acls = get_acls(split=True)
     read_value_acls, write_value_acls = get_value_acls(split=True)
@@ -88,10 +86,6 @@ def row_getter(realm, site, ca_order, ca_data, acls,
         row = []
         ca_name = ca_data[ca_uuid]['name']
         try:
-            enabled = ca_data[ca_uuid]['enabled'][0]
-        except Exception:
-            enabled = False
-        try:
             unit_uuid = ca_data[ca_uuid]['unit'][0]
         except Exception:
             unit_uuid = None
@@ -123,10 +117,6 @@ def row_getter(realm, site, ca_order, ca_data, acls,
             description = ca_data[ca_uuid]['description'][0]
         except Exception:
             description = None
-        try:
-            acl_inheritance_enabled = ca_data[ca_uuid]['acl_inheritance_enabled'][0]
-        except Exception:
-            acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
@@ -144,18 +134,6 @@ def row_getter(realm, site, ca_order, ca_data, acls,
         if "unit" in output_fields:
             unit_string = get_unit_string(unit_uuid)
             row.append(unit_string)
-        # Status.
-        if "status" in output_fields:
-            if check_acl("view:status") \
-            or check_acl("enable:object") \
-            or check_acl("disable:object"):
-                if enabled:
-                    enabled_string = _("Enabled")
-                else:
-                    enabled_string = _("Disabled")
-                row.append(enabled_string)
-            else:
-                row.append("-")
         # Country.
         if "country" in output_fields:
             if country:
@@ -207,18 +185,6 @@ def row_getter(realm, site, ca_order, ca_data, acls,
                                                     object_uuid=ca_uuid,
                                                     max_policies=max_policies)
                 row.append(policies_string)
-            else:
-                row.append("-")
-        # Inherit.
-        if "inherit" in output_fields:
-            if check_acl("view:acl_inheritance") \
-            or check_acl("enable:acl_inheritance") \
-            or check_acl("disable:acl_inheritance"):
-                if acl_inheritance_enabled:
-                    acl_inheritance_string = _("Enabled")
-                else:
-                    acl_inheritance_string = _("Disabled")
-                row.append(acl_inheritance_string)
             else:
                 row.append("-")
         # Description.

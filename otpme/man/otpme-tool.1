@@ -19,7 +19,7 @@ Each command says who may run it; many need root.
 .SH COMMANDS
 .SS Realm
 .TP
-.B join \fR[\fB\-\-jotp\fR \fIjotp\fR] [\fB\-\-host\-type\fR \fBhost\fR|\fBnode\fR] [\fB\-\-unit\fR \fIunit\fR] [\fB\-\-host\-key\-len\fR \fIbits\fR] [\fB\-\-ca\-key\-len\fR \fIbits\fR] [\fB\-\-ca\-valid\fR \fIdays\fR] [\fB\-\-site\-key\-len\fR \fIbits\fR] [\fB\-\-site\-valid\fR \fIdays\fR] [\fB\-\-trust\-site\-cert\fR|\fB\-\-check\-site\-cert\fR \fIfingerprint\fR] [\fB\-\-joind\-uri\fR \fIuri\fR] [\fB\-\-no\-daemon\-start\fR] [\fIdomain\fR]
+.B join \fR[\fB\-\-jotp\fR \fIjotp\fR] [\fB\-\-hostname\fR \fIhostname\fR] [\fB\-\-host\-type\fR \fBhost\fR|\fBnode\fR] [\fB\-\-unit\fR \fIunit\fR] [\fB\-\-host\-key\-len\fR \fIbits\fR] [\fB\-\-ca\-key\-len\fR \fIbits\fR] [\fB\-\-ca\-valid\fR \fIdays\fR] [\fB\-\-site\-key\-len\fR \fIbits\fR] [\fB\-\-site\-valid\fR \fIdays\fR] [\fB\-\-trust\-site\-cert\fR|\fB\-\-check\-site\-cert\fR \fIfingerprint\fR] [\fB\-\-joind\-uri\fR \fIuri\fR] [\fB\-\-no\-daemon\-start\fR] [\fIdomain\fR]
 Make this machine a host or a node of a realm.
 You must be root, and the machine must not be in a realm yet.
 .RS
@@ -30,6 +30,13 @@ Realm and site come from the TXT records \fB_otpme\-realm._tcp.\fR\fIdomain\fR a
 Without \fIdomain\fR it is \fIsite\fR.\fIrealm\fR when \fB\-r\fR and \fB\-s\fR are given, else the domain of the FQDN of this machine.
 .br
 \fB\-\-joind\-uri\fR names the joind instead of the SRV record, e.g. \fBtcp://node1.berlin.example.org:2024\fR; 2024 is the port of joind.
+.PP
+\fBThe name.\fR
+The host or node gets the hostname of this machine as its name.
+\fB\-\-hostname\fR gives it another name, e.g. \fBweb1\fR.
+It is a name, not an FQDN.
+The domain to find the joind in stays that of this machine.
+After the join OTPme uses the name of the object, not the hostname of the machine.
 .PP
 \fBWho may join.\fR
 With \fB\-\-jotp\fR nobody logs in: the JOTP is the one-time password that
@@ -481,7 +488,10 @@ With
 .B \-\-tag \fItag\fR
 a signature counts only if it carries this tag too.
 Give it more than once for more, and a signature has to carry all of them.
-An OID, or \fItype\fB:\fIname\fR of an object of this site, stands for that object, and a tag for an object that does not exist is refused.
+An OID, \fItype\fR:\fIname\fR, e.g. \fBgroup:admins\fR, or \fItype\fR:\fIsite\fR/\fIname\fR, e.g. \fBrole:munich/admins\fR, stands for that object.
+\fItype\fR:\fIname\fR means the object of this site; if there is none, the one of that name in the realm.
+A name that is in more than one other site needs the site, e.g. \fBrole:munich/REALM_USER\fR: every site has a role of that name.
+A tag for an object that does not exist is refused.
 Anything else is taken as it is, for example \fBsometag\fR or \fBsometag=value\fR.
 .PP
 .B \-\-no\-verify\-token\-opts
@@ -981,7 +991,6 @@ The public keys written down with \fBPIN_HOST_KEYS\fR and \fBPIN_USER_KEYS\fR.
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
 .BR otpme.conf (5),
 .BR pam_otpme (8),
 .BR otpme\-realm (1),

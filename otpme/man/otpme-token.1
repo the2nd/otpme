@@ -37,7 +37,9 @@ An SSH public key.
 .TP
 .B fido2
 A hardware security key, e.g. a YubiKey or a Nitrokey.
-It signs a challenge, so nothing that can be typed is enough to sign in, and the signature is bound to the site that asked \(em which is what makes it phishing resistant.
+It signs a challenge, so nothing that can be typed is enough to sign in.
+The signature is bound to the site that asked: in the browser to the address of the page, at the OTPme client to its connection to the server.
+A signature that a fake portal or a fake server got from the user is worthless at the real one \(em which is what makes it phishing resistant.
 .br
 Next to
 .B passkey
@@ -126,7 +128,8 @@ Neither is a value for \fB\-\-type\fR.
 .B \-\-type \fItype\fB add \fR[\fB\-r\fR] \fIuser\fB/\fIname\fR
 Add a token to a user.
 .br
-\fB\-\-type\fR comes before the command, and it has to: the type decides which arguments and options \fBadd\fR takes, and OTPme reads it before it parses the rest of the line.
+The type decides which arguments and options \fBadd\fR takes, so OTPme reads \fB\-\-type\fR before the rest of the line.
+It may stand anywhere on the line; this page puts it in front.
 \fB\-r\fR replaces a token of that name and keeps its UUID, which is what a setup run does when it runs again.
 .br
 An \fBhotp\fR, \fBtotp\fR or \fBmotp\fR token shows its new secret and PIN, a \fBpassword\fR or \fBotp_push\fR token the password it made up.
@@ -233,8 +236,11 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fB\-a\fR] \fR[\fIregex\fR]
-List the token paths, and with a regex only those that match it, e.g. \fBalice/*\fR for the tokens of one user.
+.B list \fR[\fB\-a\fR] \fR[\fIpattern\fR]
+List the token paths, and with a pattern only those that match it, e.g. \fBalice/*\fR for the tokens of one user, see
+.B SELECTING OBJECTS
+in
+.BR otpme (1).
 .br
 You get the tokens you may change; \fB\-a\fR adds those you may only look at.
 .TP
@@ -672,20 +678,23 @@ What was done and by whom stays as it is.
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fItoken\fR
-Show the changelog of the token.
+Show the changelog of the token, one entry per line: its \fIentry_id\fR, the time, who made the change and what was done, then a detail in round brackets and the comment in square brackets where there are any.
 Needs the ACL \fBview:changelog\fR.
 .TP
 .B edit_changelog \fItoken\fR \fIentry_id\fR \fIcomment\fR
 Set the comment of that entry, or replace the one it has.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B del_changelog \fItoken\fR \fIentry_id\fR
 Remove the comment of that entry.
 The entry itself stays, and an entry without a comment is refused.
+That writes an entry of its own.
 Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fItoken\fR
 Remove every entry of the changelog.
+Afterwards it holds one entry: that it was cleared.
 .br
 This needs more than the ACL \fBclear:changelog\fR: the config parameter
 .B allow_changelog_clearing
@@ -734,7 +743,7 @@ A command that changes something asks first; the global option \fB\-f\fR skips t
 Give a role or a token one or more ACLs on this token.
 .br
 \fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
-\fIowner\fR is the path of that role or token.
+\fIowner\fR names it the way \fBlist_acls\fR prints it: a role as \fIsite/name\fR, or by its name alone on its own site; a token as \fI\%user/token\fR.
 An ACL can carry a value, for example \fBview:token_type\fR.
 To give several ACLs at once, separate them with commas: \fB\%view:token_type,view:status\fR.
 .br
@@ -838,6 +847,7 @@ Remove what the token still points at although it is gone.
 .PP
 On a token that is its ACLs, its policies and its signatures.
 An ACL for a role that was deleted is one, and so is a signature of a user that is gone.
+Config parameters set on the token that keep other objects lose the ones that are gone, e.g. a deleted VLAN in \fBvlans\fR or a deleted role in \fBadmin_access_role\fR, the way \fBconfig \-d\fR does.
 .PP
 It shows everything it found and asks once for all of it.
 It asks nothing and changes nothing when it finds nothing.
@@ -846,7 +856,7 @@ Needs the ACL \fBremove:orphans\fR.
 .RE
 .SH TOKEN TYPE COMMANDS
 Each type has commands of its own.
-They need \fB\-\-type\fR in front of the command, because the name of a command says nothing about the type:
+They need \fB\-\-type\fR, because the name of a command says nothing about the type:
 .PP
 .RS
 .B otpme\-token \-\-type hotp resync alice/phone
@@ -1000,12 +1010,6 @@ The kind of key: \fBrsa\fR, \fBed25519\fR or \fBecdsa\fR.
 Set the password of the token.
 See the password token above for \fB\-\-weak\-password\fR.
 .TP
-.B 2f_token \fItoken\fR \fIsecond_factor_token\fR
-Set the token that is asked for as the second factor.
-.TP
-.B enable_2f \fItoken\fR / \fBdisable_2f \fItoken\fR
-Ask for that second token, or stop asking.
-.TP
 .B get_sign_data \fR[\fB\-\-tags\fR \fItag1,tag2\fR] \fItoken\fR
 The bytes that have to be signed, for signing somewhere else.
 .PP
@@ -1025,6 +1029,13 @@ below.
 .B add \fItoken\fR \fIdestination_token\fR
 Make the link and say which token it points at, as \fIuser\fB/\fIname\fR.
 Whoever signs in with the link uses the credential of that token.
+.PP
+A link can be signed when the token it points at can, e.g. an SSH token.
+The signature is on the link, and it covers the key of that token: point the link at another token, or give that token a new key, and it no longer verifies.
+A host takes the signature of the link, for the user who owns the link, not the one of the token it points at.
+A link takes the same signing commands as an SSH token, see
+.B Signing a token
+below.
 .SS YubiKey HMAC
 .TP
 .B secret \fItoken\fR \fR[\fIsecret\fR]
@@ -1183,7 +1194,7 @@ needs it, and so does every command under
 .B TOKEN TYPE COMMANDS
 \(em the type decides which commands there are at all.
 .br
-It goes in front of the command, not after it: OTPme reads the type before it parses the rest of the line.
+It may stand anywhere on the line; this page puts it in front of the command.
 .PP
 Global options work with every command, see
 .BR otpme (1).
@@ -1295,12 +1306,12 @@ See
 .B Auth On Action Policy
 in
 .BR otpme\-policy (1).
-A token has the hooks every object type has, and these:
+A token has the hooks every object type has, and these; a command of another name is in brackets:
 .RS
 .PP
 .na
 .nh
-add_dynamic_group, add_sign, change_2f_token, change_auth_script, change_counter_check_range, change_encrypt_public_key, change_key_type, change_mode, change_offline_expiry, change_offline_unused_expiry, change_password, change_phone_number, change_pin, change_push_script, change_push_token, change_sign_public_key, change_ssh_public_key, change_timedrift_tolerance, change_validity_time, del_sign, deploy, disable_2f_token, disable_auth_script, disable_mschap, disable_offline, disable_pin, disable_session_keep, disable_sso_deploy, dump_token_data, enable_2f_token, enable_auth_script, enable_mschap, enable_offline, enable_pin, enable_session_keep, enable_sso_deploy, encrypt_public_key, gen_mschap, gen_qrcode, get_otp, key_type, move, remove_dynamic_group, resync, set_config_parameter, set_temp_password, set_token_data, show_config_parameters, show_pin, show_secret, sign_public_key, ssh_public_key.
+add_dynamic_group, add_sign, change_2f_token\ (2f_token), change_auth_script\ (auth_script), change_counter_check_range\ (counter_check_range), change_encrypt_public_key\ (encrypt_public_key), change_key_type\ (key_type), change_mode\ (mode), change_offline_expiry\ (offline_expiry), change_offline_unused_expiry\ (offline_unused_expiry), change_password\ (password), change_phone_number\ (phone_number), change_pin\ (pin), change_push_script\ (push_script), change_push_token\ (push_token), change_sign_public_key\ (sign_public_key), change_ssh_public_key\ (ssh_public_key), change_timedrift_tolerance\ (timedrift_tolerance), change_validity_time\ (validity_time), del_sign, deploy, disable_2f_token\ (disable_2f), disable_auth_script, disable_mschap, disable_offline, disable_pin, disable_session_keep, disable_sso_deploy, dump_token_data, enable_2f_token\ (enable_2f), enable_auth_script, enable_mschap, enable_offline, enable_pin, enable_session_keep, enable_sso_deploy, encrypt_public_key, gen_mschap, gen_qrcode, get_otp, key_type, move, remove_dynamic_group, resync, set_config_parameter\ (config), set_temp_password\ (temp_password), set_token_data, show_pin, show_secret, sign_public_key, ssh_public_key.
 .hy
 .ad
 .RE
@@ -1321,7 +1332,6 @@ Written by \fBhostd\fR from the tokens of the realm.
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),
-.BR otpme\-acls (7),
 .BR otpme\-user (1),
 .BR otpme\-role (1),
 .BR otpme\-policy (1),

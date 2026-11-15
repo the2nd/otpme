@@ -127,12 +127,12 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*regex*\]**  
-List the client names, and with a regex only those that match it. You
-get the clients you may change; **-a** adds those you may only look
-at.  
-**--attribute** matches the regex against that attribute instead of the
-name: **list --attribute oidc_auth True** lists the OIDC clients. A
+**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+List the client names, and with a pattern only those that match it, see
+**SELECTING OBJECTS** in **otpme**(1). You get the clients you may
+change; **-a** adds those you may only look at.  
+**--attribute** matches the pattern against that attribute instead of
+the name: **list --attribute oidc_auth True** lists the OIDC clients. A
 value that is not text has to be spelled out — **\*** matches none of
 it.
 
@@ -592,18 +592,23 @@ Only the comment of an entry can be changed or removed. What was done
 and by whom stays as it is.
 
 **changelog *client***  
-Show the changelog of the client. Needs the ACL **view:changelog**.
+Show the changelog of the client, one entry per line: its *entry_id*,
+the time, who made the change and what was done, then a detail in round
+brackets and the comment in square brackets where there are any. Needs
+the ACL **view:changelog**.
 
 **edit_changelog *client* *entry_id* *comment***  
-Set the comment of that entry, or replace the one it has. Needs the ACL
-**edit:changelog**.
+Set the comment of that entry, or replace the one it has. That writes an
+entry of its own. Needs the ACL **edit:changelog**.
 
 **del_changelog *client* *entry_id***  
 Remove the comment of that entry. The entry itself stays, and an entry
-without a comment is refused. Needs the ACL **edit:changelog**.
+without a comment is refused. That writes an entry of its own. Needs the
+ACL **edit:changelog**.
 
 **clear_changelog *client***  
-Remove every entry of the changelog.  
+Remove every entry of the changelog. Afterwards it holds one entry: that
+it was cleared.  
 This needs more than the ACL **clear:changelog**: the config parameter
 **allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
 true by default, but where no value is found at all, clearing is
@@ -646,10 +651,11 @@ ACLs exist, is under **ACLs** in **otpme**(7).
 
 **add_acl *client* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
 Give a role or a token one or more ACLs on this client.  
-*owner_type* is **role** or **token**. *owner* is the path of that role
-or token. An ACL can carry a value, for example **view:secret**. To give
-several ACLs at once, separate them with commas:
-**view:secret,view:status**.  
+*owner_type* is **role** or **token**. *owner* names it the way
+**list_acls** prints it: a role as *site/name*, or by its name alone on
+its own site; a token as *user/token*. An ACL can carry a value, for
+example **view:secret**. To give several ACLs at once, separate them
+with commas: **view:secret,view:status**.  
 Needs the ACL **add:acl**.
 
 **del_acl *client* *acl*\[,*acl*\]**  
@@ -733,8 +739,10 @@ Needs the ACL **edit:description**.
 Set free-form info text. If *info* is omitted, the current text is
 opened in the editor named by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note about
-the object, which no user is ever shown. With a language it is text for
-the users in that language.  
+the object, which no user is ever shown. A text can be written for a
+language as well, for the places that show such a text to a user;
+nothing shows the info of a client, so for a client it stays a note
+either way.  
 Needs the ACL **edit:info**.
 
 **dump_info \[**--language** *LANG*\] *client***  
@@ -754,8 +762,8 @@ Needs the ACL **export**.
 **remove_orphans *client***  
 Remove references to objects that are gone.  
 A token or a role that is deleted leaves its UUID behind in every client
-that held it. This clears those out, together with orphan ACLs, policies
-and signatures.  
+that held it. This clears those out, together with orphan ACLs and
+policies.  
 It asks once for everything it found; the global option **-f** skips the
 question.  
 Needs the ACL **remove:orphans**.
@@ -829,7 +837,10 @@ needs. Keep the timeout short for that reason: it is the window in which
 a password that was seen once is enough.
 
 The cache lives in the RADIUS worker that answered, not in the cluster,
-and it is gone when that process is.
+and it is gone when that process is. Without the Python module of
+FreeRADIUS (**USE_RADIUS_MOD** in **otpme.conf**(5)) **otpme-auth**
+keeps it in the cache of the node instead, with the password as an HMAC;
+the switch and the timeout are the same.
 
 # THE SSO PORTAL
 
@@ -1021,29 +1032,34 @@ about it.
 
 An auth on action policy can ask for a login again before these actions.
 See **Auth On Action Policy** in **otpme-policy**(1). A client has the
-hooks every object type has, and these:
+hooks every object type has, and these; a command of another name is in
+brackets:
 
 > add_address, add_oidc_grant_type, add_oidc_logout_redirect_uri,
-> add_oidc_redirect_uri, add_oidc_response_type, add_role, add_sso_logo,
-> add_token, change_access_group, change_auth_cache_timeout,
-> change_helper_url, change_login_url, change_oidc_auth_method,
-> change_oidc_backchannel_ca_cert, change_oidc_backchannel_logout_uri,
-> change_oidc_id_token_alg, change_oidc_sector_identifier_uri,
-> change_oidc_subject_type, change_secret, change_sso_name, del_address,
-> del_oidc_grant_type, del_oidc_logout_redirect_uri,
-> del_oidc_redirect_uri, del_oidc_response_type, del_sso_logo,
-> disable_auth_cache, disable_dot1x, disable_oidc,
-> disable_oidc_backchannel_tls_verify,
+> add_oidc_redirect_uri, add_oidc_response_type, add_role, add_sso_logo
+> (sso_logo), add_token, change_access_group (access_group),
+> change_auth_cache_timeout (auth_cache_timeout), change_helper_url
+> (helper_url), change_login_url (login_url), change_oidc_auth_method
+> (oidc_auth_method), change_oidc_backchannel_ca_cert
+> (oidc_backchannel_ca_cert), change_oidc_backchannel_logout_uri
+> (oidc_backchannel_logout_uri), change_oidc_id_token_alg
+> (oidc_id_token_alg), change_oidc_sector_identifier_uri
+> (oidc_sector_identifier_uri), change_oidc_subject_type
+> (oidc_subject_type), change_secret (secret), change_sso_name
+> (sso_name), del_address, del_oidc_grant_type,
+> del_oidc_logout_redirect_uri, del_oidc_redirect_uri,
+> del_oidc_response_type, del_sso_logo, disable_auth_cache,
+> disable_dot1x, disable_oidc, disable_oidc_backchannel_tls_verify,
 > disable_oidc_force_backchannel_logout, disable_sso, disable_sso_popup,
 > dump_sso_logo, enable_auth_cache, enable_dot1x, enable_oidc,
 > enable_oidc_backchannel_tls_verify,
 > enable_oidc_force_backchannel_logout, enable_sso, enable_sso_popup,
-> limit_logins, remove_role, remove_token, set_config_parameter,
-> show_secret, unlimit_logins.
+> limit_logins, remove_role, remove_token, set_config_parameter
+> (config), show_secret, unlimit_logins.
 
 # SEE ALSO
 
-**otpme**(1), **otpme**(7), **otpme-acls**(7), **otpme-accessgroup**(1),
+**otpme**(1), **otpme**(7), **otpme-accessgroup**(1),
 **otpme-scope**(1), **otpme-site**(1), **otpme-token**(1),
 **otpme-role**(1), **otpme-user**(1), **otpme-vlan**(1),
 **otpme-host**(1), **otpme-pass**(1), **otpme-policy**(1),

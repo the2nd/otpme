@@ -225,9 +225,28 @@ def get_link_status(connection="dot1x-lan"):
     link_status = result.stdout.strip().split(":")[-1] == "on"
     return link_status
 
-def is_mac_address(s):
+def normalize_mac(s):
+    """ The MAC address s in lower case with ":", None if it is none.
+
+    Switches send the MAC address at MAB in different forms:
+    aa:bb:cc:dd:ee:ff, AA-BB-CC-DD-EE-FF, aabb.ccdd.eeff or
+    aabbccddeeff. A MAC address is stored, looked up and compared in
+    this one form.
+    """
     import re
-    return bool(re.fullmatch(r'([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}', s))
+    if not isinstance(s, str):
+        return None
+    value = s.strip().lower()
+    hex_pair = "[0-9a-f]{2}"
+    if re.fullmatch(rf'{hex_pair}([:-]){hex_pair}(\1{hex_pair}){{4}}', value):
+        digits = value.replace(":", "").replace("-", "")
+    elif re.fullmatch(r'[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}', value):
+        digits = value.replace(".", "")
+    elif re.fullmatch(r'[0-9a-f]{12}', value):
+        digits = value
+    else:
+        return None
+    return ":".join(digits[i:i+2] for i in range(0, 12, 2))
 
 def is_email(s):
     """ Basic EAI-capable structural check for an e-mail address.
@@ -432,44 +451,6 @@ def gen_password(length=16, require_lowercase=True, require_uppercase=True,
     if count > 1:
         return [_gen_one() for _ in range(count)]
     return _gen_one()
-
-#def gen_password(len=16, capital=True, numbers=True, symbols=False,
-#    secure=False, ambiguous=False, exclude_chars=None, count=1):
-#    """ Generate password via pwgen. """
-#    from subprocess import Popen
-#    from subprocess import PIPE
-#    from otpme.lib import config
-#
-#    pwgen_bin = config.pwgen_bin
-#    pwgen_cmd = [ pwgen_bin ]
-#    if capital:
-#        pwgen_cmd.append("-c")
-#    else:
-#        pwgen_cmd.append("-A")
-#    if numbers:
-#        pwgen_cmd.append("-n")
-#    else:
-#        pwgen_cmd.append("-0")
-#    if symbols:
-#        pwgen_cmd.append("-y")
-#        if exclude_chars:
-#            pwgen_cmd.append("-r")
-#            pwgen_cmd.append(exclude_chars)
-#    if secure:
-#        pwgen_cmd.append("-s")
-#    if ambiguous:
-#        pwgen_cmd.append("-B")
-#    pwgen_cmd.append(str(len))
-#    pwgen_cmd.append(str(count))
-#    pipe = Popen(pwgen_cmd, stdout=PIPE, shell=False)
-#    password = pipe.communicate()[0]
-#    password = password.decode()
-#    if count > 1:
-#        password = password.replace('\n', ' ')
-#        password = password.split(' ')[0:count]
-#    else:
-#        password = password.replace('\n', '')
-#    return password
 
 def get_random_bits(xbits):
     """ Get random bits. """
@@ -1192,97 +1173,70 @@ def string_to_type(value, ignore_int=False, ignore_float=False):
 
     return value
 
-def conf_to_dict(file_content, parameters=None):
-    """ Convert config file content (key=val) to dict. """
-    # FIXME: Make this function work with re2.
-    import re
-    remove_start_quotation = False
-    value_start_found = False
-    value_end_found = False
-    multiline_value = False
-    value_quotation = None
+CONF_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+def conf_to_dict(file_content, parameters=None, file_name=None):
+    """ Convert config file content (NAME=value) to dict.
+
+    A value is in double or single quotes, which may span lines (they
+    are joined without a separator), or without quotes up to the end of
+    the line. After the value, "#" starts a comment. A line that is
+    none of this raises an OTPmeException that names it: the parser
+    before dropped an unquoted value without a word (and failed with a
+    TypeError on one in the first line), and a comment after a value
+    swallowed the next line into it.
+    """
+    def wrong_format(number, line):
+        msg = _("Wrong config file format: {file}:{number}: {line}")
+        msg = msg.format(file=file_name or "config", number=number, line=line)
+        return OTPmeException(msg)
+
     object_config = {}
-    para_values = []
-    for line in file_content.split("\n"):
-        # Remove new line from line..
-        if line.endswith('\n'):
-            line = line.replace('\n', '')
-
-        if line.strip().startswith("#"):
+    lines = file_content.split("\n")
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        index += 1
+        number = index
+        stripped = line.strip()
+        # Skip empty lines and comments.
+        if not stripped or stripped.startswith("#"):
             continue
-
-        # Skip empty lines.
-        if len(line) == 0:
-            continue
-
-        # Skip comments.
-        # If we already found the value start this is a multi line value.
-        if value_start_found:
-            para_val = line
-        elif "=" in line:
-            # Get parameter name and value from config file line.
-            try:
-                para_name, para_val = line.split('=', 1)
-                para_name = para_name.strip()
-                para_val = para_val.strip()
-            except Exception:
-                msg = _("Wrong config file format: {line}")
-                msg = msg.format(line=line)
-                raise Exception(msg) from None
-            if parameters and not para_name in parameters:
-                continue
-
-        # Remove quotation mark from value start.
-        if not value_start_found:
-            if para_val.startswith('"'):
-                value_quotation = '"'
-                remove_start_quotation = True
-            elif para_val.startswith("'"):
-                value_quotation = "'"
-                remove_start_quotation = True
-
-        if remove_start_quotation:
-            value_start_found = True
-            quotation_re = f'^{value_quotation}'
-            para_val = re.sub(quotation_re, '', para_val)
-            #print("START_FOUND", para_val)
-            remove_start_quotation = False
-            if not para_val.endswith(value_quotation):
-                multiline_value = True
-
-        # Remove quotation mark from value end.
-        if not value_end_found:
-            if para_val.endswith(value_quotation):
-                #print("END_FOUND:", para_val)
-                value_end_found = True
-                quotation_re = f'{value_quotation}$'
-                para_val = re.sub(quotation_re, '', para_val)
-
-        if multiline_value:
-            # Skip empty value lines (e.g. for multiline values).
-            if len(para_val) != 0:
-                para_val = string_to_type(para_val)
-                para_values.append(para_val)
-
-        if not value_end_found:
-            continue
-
-        # Try to get build new dict entry with the correct value type
-        # (string_to_type()).
-        if multiline_value:
-            para_values = "".join(para_values)
-            new_para = { para_name : para_values }
+        if "=" not in stripped:
+            raise wrong_format(number, line)
+        name, value = stripped.split("=", 1)
+        name = name.strip()
+        value = value.strip()
+        if not CONF_NAME_RE.match(name):
+            raise wrong_format(number, line)
+        if value[:1] in ('"', "'"):
+            quote = value[0]
+            rest = value[1:]
+            parts = []
+            # A value in quotes ends at the next quote, which may be
+            # on a later line.
+            while quote not in rest:
+                parts.append(rest)
+                if index >= len(lines):
+                    raise wrong_format(number, line)
+                rest = lines[index]
+                index += 1
+            end = rest.index(quote)
+            parts.append(rest[:end])
+            tail = rest[end+1:].strip()
+            if tail and not tail.startswith("#"):
+                raise wrong_format(number, line)
+            value = "".join(parts)
+        elif value.startswith("#"):
+            value = ""
         else:
-            para_val = string_to_type(para_val)
-            new_para = { para_name : para_val }
-
-        # Update object config value
-        object_config.update(new_para)
-
-        value_start_found = False
-        value_end_found = False
-        multiline_value = False
-        para_values = []
+            # Without quotes a comment starts at " #".
+            comment = re.search(r"\s#", value)
+            if comment:
+                value = value[:comment.start()].rstrip()
+        if parameters and name not in parameters:
+            continue
+        object_config[name] = string_to_type(value)
 
     return object_config
 
@@ -1945,6 +1899,10 @@ def run_key_script(username, script_command, script_options=None,
     script_env['PATH'] = script_path.strip(os.pathsep)
     # Set username for key script.
     script_env['_OTPME_KEYSCRIPT_USER'] = username
+    # What otpme-agent shows when it asks to confirm a use of the PIV
+    # card comes from the --reason of this run (see key_script.sh). One
+    # we inherited was for another.
+    script_env.pop('OTPME_AGENT_REASON', None)
     # Tell the script that it must not ask the servers for anything.
     #
     # Only where the caller knows it would deadlock: signing a SOTP
@@ -2019,17 +1977,19 @@ def run_key_script(username, script_command, script_options=None,
                         call=call)
     return return_val
 
-def encrypt_share_key(username, share_user, share_key, key_mode, disable_ctrl_c=False):
-    # Make sure share key is bytes.
-    if isinstance(share_key, str):
-        share_key = share_key.encode()
+def pkey_encrypt(username, recipient, data, key_mode, disable_ctrl_c=False):
+    """ Encrypt a key (of a share, of a password) with the public key
+    of <recipient>, with the key script command pkey_encrypt. """
+    # Make sure data is bytes.
+    if isinstance(data, str):
+        data = data.encode()
     # Command for key script.
     script_command = [ "pkey_encrypt" ]
     # Add key mode.
     if key_mode == "server":
         script_command.append("--server-key")
-    # Add share user option.
-    script_options = ['-u', share_user]
+    # Add recipient option.
+    script_options = ['-u', recipient]
     # Run key script.
     proc = run_key_script(username=username,
                         call=False,
@@ -2037,7 +1997,7 @@ def encrypt_share_key(username, share_user, share_key, key_mode, disable_ctrl_c=
                         script_command=script_command,
                         script_options=script_options,
                         disable_ctrl_c=disable_ctrl_c)
-    proc.stdin.write(share_key)
+    proc.stdin.write(data)
     proc.stdin.flush()
     proc.stdin.close()
     encrypted_share_key = proc.stdout.read()
@@ -2053,20 +2013,23 @@ def encrypt_share_key(username, share_user, share_key, key_mode, disable_ctrl_c=
         encrypted_share_key = encrypted_share_key.decode()
     return encrypted_share_key
 
-def decrypt_share_key(username, encrypted_share_key,
-    key_mode, share=None, encode=True, disable_ctrl_c=False):
+def pkey_decrypt(username, data, key_mode, reason=None, encode=True,
+    disable_ctrl_c=False):
+    """ Decrypt a key (of a share, of a password) with the private key
+    of <username>, with the key script command pkey_decrypt.
+
+    <reason> is what otpme-agent shows when it asks to confirm. """
     import base64
-    # Make sure share key is bytes.
-    if isinstance(encrypted_share_key, str):
-        encrypted_share_key = encrypted_share_key.encode()
+    # Make sure data is bytes.
+    if isinstance(data, str):
+        data = data.encode()
     # Command for key script.
     script_command = [ "pkey_decrypt" ]
     # Add key mode.
     if key_mode == "server":
         script_command.append("--server-key")
     # Add key script reason.
-    if share is not None:
-        reason = f"Share: {share}"
+    if reason is not None:
         script_command.append("--reason")
         script_command.append(reason)
     # Run key script.
@@ -2075,7 +2038,7 @@ def decrypt_share_key(username, encrypted_share_key,
                         return_proc=True,
                         script_command=script_command,
                         disable_ctrl_c=disable_ctrl_c)
-    proc.stdin.write(encrypted_share_key)
+    proc.stdin.write(data)
     proc.stdin.flush()
     proc.stdin.close()
     proc.wait()
@@ -2156,7 +2119,7 @@ def sign_sotp(username, sotp, key_mode, share=None,
 #                                                    object_list=[username],
 #                                                    parse_command_syntax=False,
 #                                                    client_type="RAPI")
-#    share_key = decrypt_share_key(username,
+#    share_key = pkey_decrypt(username,
 #                                encrypted_share_key,
 #                                key_mode=None,
 #                                disable_ctrl_c=disable_ctrl_c)

@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-client {command} [client]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-client show [--policy-limit <limit>] [--scope-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [client]'),
+                    '_cmd_usage_help' : _('Usage: otpme-client show [--policy-limit <limit>] [--scope-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [client]'),
                     'cmd'   :   '--policy-limit :max_policies: --scope-limit :max_scopes: --limit :limit: --fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show client(s)'),
@@ -40,12 +40,12 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-client list [--attribute attribute] [-a] [regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-client list [--attribute attribute] [-a] [pattern]'),
                     'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List clients'),
                                     '-a'                        : _('List all clients.'),
-                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.'),
+                                    '--attribute <attribute>'   : _('Match the pattern against this attribute instead of the name.'),
                                 },
                 },
 
@@ -163,7 +163,7 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-client config -d -a {client} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-client config [-d] [-a] {client} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to client.'),
@@ -265,7 +265,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-client info {client} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-client info [--language <language>] {client} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set client info'),
@@ -274,7 +274,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-client dump_info {client}'),
+                    '_cmd_usage_help' : _('Usage: otpme-client dump_info [--language <language>] {client}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump client info'),
@@ -294,24 +294,12 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                 },
 
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
     '_show_config'    : {
                     'cmd'   :   '<|object|>',
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-client export --password <password> {client}'),
+                    '_cmd_usage_help' : _('Usage: otpme-client export [--password <password>] {client}'),
                     'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export client config to stdout'),
@@ -336,7 +324,7 @@ cmd_help = {
                 },
 
     'list_tokens'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-client list_tokens {client}'),
+                    '_cmd_usage_help' : _('Usage: otpme-client list_tokens [--return-type <type>] [--token-types <hotp,totp>] {client}'),
                     'cmd'   :   '--return-type :"return_type": --token-types :[token_types]: [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List assigned tokens.'),

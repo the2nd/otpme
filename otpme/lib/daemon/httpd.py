@@ -129,6 +129,15 @@ class HttpDaemon(OTPmeDaemon):
 
         # Create cert/key files for flask.
         own_site = backend.get_object(uuid=config.site_uuid)
+        # A host gets them only as SSO host of its site. Without them
+        # we failed later on with "No private key loaded.", which did
+        # not say what is missing.
+        if not own_site.sso_cert or not own_site.sso_key:
+            msg, log_msg = _("No SSO certificate/key synced to this host. Make it an SSO host: otpme-site add_sso_host {site} {host}", log=True)
+            msg = msg.format(site=config.site, host=config.host_data['name'])
+            log_msg = log_msg.format(site=config.site, host=config.host_data['name'])
+            self.logger.critical(log_msg)
+            raise OTPmeException(msg)
         if own_site.sso_cert and own_site.sso_key:
             try:
                 check_ssl_cert_key(own_site.sso_cert, own_site.sso_key)

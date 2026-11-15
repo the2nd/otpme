@@ -414,11 +414,12 @@ cmd_help = {
 
 
     'join'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool join [--jotp <jotp>] [--host-type <node|host>] [--unit <unit>] [--host-key-len <bits>] [--ca-key-len <bits>] [--ca-valid <days>] [--site-key-len <bits>] [--site-valid <days>] [--trust-site-cert|--check-site-cert <fp>] [--joind-uri <joind_uri>] [--no-daemon-start] [domain]'),
-                    'cmd'   :   '--jotp :"jotp": --host-type :"host_type": --unit :"unit": --trust-site-cert :trust_site_cert=True: --check-site-cert :"site_cert_fingerprint": --host-key-len :host_key_len: --node-key-len :host_key_len: --ca-key-len :ca_key_len: --ca-valid :ca_valid: --site-key-len :site_key_len: --site-valid :site_valid: --joind-uri :"joind_uri": --no-daemon-start :no_daemon_start=True: [|object|]',
+                    '_cmd_usage_help' : _('Usage: otpme-tool join [--jotp <jotp>] [--hostname <hostname>] [--host-type <node|host>] [--unit <unit>] [--host-key-len|--node-key-len <bits>] [--ca-key-len <bits>] [--ca-valid <days>] [--site-key-len <bits>] [--site-valid <days>] [--trust-site-cert|--check-site-cert <fp>] [--joind-uri <joind_uri>] [--no-daemon-start] [domain]'),
+                    'cmd'   :   '--jotp :"jotp": --hostname :"host_name": --host-type :"host_type": --unit :"unit": --trust-site-cert :trust_site_cert=True: --check-site-cert :"site_cert_fingerprint": --host-key-len :host_key_len: --node-key-len :host_key_len: --ca-key-len :ca_key_len: --ca-valid :ca_valid: --site-key-len :site_key_len: --site-valid :site_valid: --joind-uri :"joind_uri": --no-daemon-start :no_daemon_start=True: [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('Join OTPme realm'),
                                     '--jotp <jotp>'             : _('Join using the given JOTP.'),
+                                    '--hostname <hostname>'     : _('Join with this name instead of the hostname of the system.'),
                                     '--host-type <host_type>'   : _('Join host as type <host_type>.'),
                                     '--unit <unit>'             : _('Join host to the given unit.'),
                                     '--host-key-len <key_len>'  : _('Key length of the certificate of this host or node (also --node-key-len).'),

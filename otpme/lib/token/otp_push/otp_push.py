@@ -271,11 +271,15 @@ def register_config_params():
     push_script_name = "push_script.sh"
     scripts_unit = config.get_default_unit("script")
     default_push_script = f"{scripts_unit}/{push_script_name}"
+    # Imported where it is used: this module takes nothing else from the
+    # object classes.
+    from otpme.lib.classes.otpme_object import uuid_orphans
     config.register_config_parameter(name="default_otp_push_script",
                                     ctype=str,
                                     getter=script_getter,
                                     setter=script_setter,
                                     default_value=default_push_script,
+                                    orphans=uuid_orphans,
                                     object_types=object_types)
     # Register push scripot.
     config.register_base_object("script", push_script_name)

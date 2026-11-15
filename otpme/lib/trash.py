@@ -563,9 +563,14 @@ def empty(cluster=True, auth_token=None, full=False, callback=default_callback, 
     return callback.ok()
 
 def show_trash(max_len=10, border=True, header=True,
-    output_fields=None, callback=default_callback, **kwargs):
+    output_fields=None, csv=False, csv_sep=";",
+    callback=default_callback, **kwargs):
+    """ The trash entries, newest first, as a table, or with <csv> one
+    row per line with <csv_sep> between the columns. """
     if output_fields is None:
         output_fields = []
+    # The rows as they go into the table, for the CSV output.
+    csv_rows = []
     table_headers = [
                     "trash_id",
                     "object",
@@ -628,6 +633,10 @@ def show_trash(max_len=10, border=True, header=True,
                             trash_id_added = True
                             x_row = [trash_id, x_oid, deleted_by, deletion_date]
                         table.add_row(x_row)
+                        # Every CSV row says its entry: without the
+                        # table around it, an empty first column says
+                        # nothing.
+                        csv_rows.append([trash_id, x_oid, deleted_by, deletion_date])
 
     if entry_counter > max_len:
         msg = _("Size limit exceeded. Listed {max_len} entries out of {entry_counter}.")
@@ -637,6 +646,16 @@ def show_trash(max_len=10, border=True, header=True,
         msg = _("Total {entry_counter} entries.")
         msg = msg.format(entry_counter=entry_counter)
         footer = msg
+
+    if csv:
+        field_index = [table_headers.index(x) for x in output_fields
+                        if x in table_headers]
+        lines = []
+        if header:
+            lines.append(csv_sep.join(table_headers[i] for i in field_index))
+        for x_row in csv_rows:
+            lines.append(csv_sep.join(str(x_row[i]) for i in field_index))
+        return callback.ok("\n".join(lines), return_value=True)
 
     # Get output string from table.
     output = table.get_string(start=0,

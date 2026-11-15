@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-role {command} [role]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-role show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [role]'),
+                    '_cmd_usage_help' : _('Usage: otpme-role show [--policy-limit <limit>] [--token-limit <limit>] [--role-limit <limit>] [--accessgroup-limit <limit>] [--group-limit <limit>] [--scope-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [--limit <limit>] [--sort-by <attribute>] [--reverse] [--raw] [--csv] [--csv-sep <separator>] [role]'),
                     'cmd'   :   '--fields :"output_fields": -z :max_len: --sort-by :"sort_by": --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": --limit :limit: --token-limit :max_tokens: --role-limit :max_roles: --accessgroup-limit :max_ags: --group-limit :max_groups: --policy-limit :max_policies: --scope-limit :max_scopes: [|object|]',
                     '_help' :   {
                                     'cmd'                           : _('Show role(s)'),
@@ -44,12 +44,12 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-role list [--attribute attribute] [-a] [regex]'),
+                    '_cmd_usage_help' : _('Usage: otpme-role list [--attribute attribute] [-a] [pattern]'),
                     'cmd'   :   '--attribute :"attribute": -a :show_all=True: ["search_regex"]',
                     '_help' :   {
                                     'cmd'                       : _('List roles.'),
                                     '-a'                        : _('List all roles.'),
-                                    '--attribute <attribute>'   : _('Match the regex against this attribute instead of the name.')
+                                    '--attribute <attribute>'   : _('Match the pattern against this attribute instead of the name.')
                                 },
                 },
 
@@ -170,7 +170,7 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-role config -d -a {role} {param} [value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-role config [-d] [-a] {role} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to role.'),
@@ -236,7 +236,7 @@ cmd_help = {
                 },
 
      'show_ldif'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-role show_ldif {role} -a attribute1,attribute2'),
+                    '_cmd_usage_help' : _('Usage: otpme-role show_ldif {role} [-a attribute1,attribute2]'),
                     'cmd'   :   '<|object|> -a :[attributes]:',
                     '_help' :   {
                                     'cmd'                   : _('Show LDIF representation of role'),
@@ -322,7 +322,7 @@ cmd_help = {
                 },
 
     'info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-role info {role} [info]'),
+                    '_cmd_usage_help' : _('Usage: otpme-role info [--language <language>] {role} [info]'),
                     'cmd'   :   '--language :"language": <|object|> ["info"]',
                     '_help' :   {
                                     'cmd'                   : _('Set role info'),
@@ -331,7 +331,7 @@ cmd_help = {
                 },
 
     'dump_info'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-role dump_info {role}'),
+                    '_cmd_usage_help' : _('Usage: otpme-role dump_info [--language <language>] {role}'),
                     'cmd'   :   '--language :"language": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump role info'),
@@ -351,24 +351,12 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                 },
 
-    '_show_supported_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_show_supported_recursive_default_acls'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
     '_show_config'    : {
                     'cmd'   :   '<|object|>',
                 },
 
     'export'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-role export --password <password> {role}'),
+                    '_cmd_usage_help' : _('Usage: otpme-role export [--password <password>] {role}'),
                     'cmd'   :   '--password :"password": <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Export role config to stdout'),
@@ -506,7 +494,7 @@ cmd_help = {
                                 },
                 },
     'list_sync_users'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-role list_sync_users {role}'),
+                    '_cmd_usage_help' : _('Usage: otpme-role list_sync_users [--return-type <type>] {role}'),
                     'cmd'   :   '--return-type :"return_type": [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List sync users.'),
@@ -514,7 +502,7 @@ cmd_help = {
                                 },
                 },
     'list_users'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-role list_users {role}'),
+                    '_cmd_usage_help' : _('Usage: otpme-role list_users [--return-type <type>] {role}'),
                     'cmd'   :   '--return-type :"return_type": [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List users.'),
@@ -522,7 +510,7 @@ cmd_help = {
                                 },
                 },
     'list_tokens'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-role list_tokens {role}'),
+                    '_cmd_usage_help' : _('Usage: otpme-role list_tokens [--return-type <type>] [--token-types <hotp,totp>] {role}'),
                     'cmd'   :   '--return-type :"return_type": --token-types :[token_types]: [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('List assigned tokens.'),
@@ -531,7 +519,7 @@ cmd_help = {
                                 },
                 },
     'list_roles'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-role list_roles -r {role}'),
+                    '_cmd_usage_help' : _('Usage: otpme-role list_roles [-r] {role}'),
                     'cmd'   :   '-r :recursive=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('List assigned roles.'),

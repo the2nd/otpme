@@ -61,13 +61,38 @@ piv_ecdh = None
 piv_get_public_key = None
 piv_export_public_key = None
 piv_derive_password = None
+piv_gen_csr = None
 hpke_decap_x25519 = None
 hpke_info_default = None
+
+# The commands that go to the PIV card. They run in a thread of their
+# own (OTPmeAgent._piv_request()), because asking the user to confirm
+# one must not hold up the other commands of the agent.
+PIV_COMMANDS = [
+                "piv_login",
+                "piv_check",
+                "piv_sign",
+                "piv_decrypt",
+                "piv_hpke_decrypt",
+                "piv_derive_password",
+                "piv_get_public_key",
+                "piv_csr",
+                ]
+# The ones of them that use the private key, and are confirmed.
+PIV_KEY_COMMANDS = [
+                "piv_sign",
+                "piv_decrypt",
+                "piv_hpke_decrypt",
+                "piv_derive_password",
+                "piv_csr",
+                ]
+# How long pinentry waits for the user, in seconds.
+PIV_PROMPT_TIMEOUT = 60
 
 def _load_piv():
     global get_piv, slot_map, piv_sign, piv_decrypt, piv_ecdh
     global piv_get_public_key, piv_export_public_key, piv_derive_password
-    global hpke_decap_x25519, hpke_info_default
+    global piv_gen_csr, hpke_decap_x25519, hpke_info_default
     if get_piv is not None:
         return
     from otpme.lib.smartcard.yubikey.piv import get_piv as _gp
@@ -78,6 +103,7 @@ def _load_piv():
     from otpme.lib.smartcard.yubikey.piv import get_public_key as _pgpk
     from otpme.lib.smartcard.yubikey.piv import export_public_key as _pepk
     from otpme.lib.smartcard.yubikey.piv import derive_password as _pdp
+    from otpme.lib.smartcard.yubikey.piv import gen_csr as _pgc
     from otpme.lib.encryption.x25519 import hpke_decap_x25519_aes256gcm as _hd
     from otpme.lib.encryption.x25519 import HPKE_INFO_DEFAULT as _hi
     get_piv = _gp
@@ -88,6 +114,7 @@ def _load_piv():
     piv_get_public_key = _pgpk
     piv_export_public_key = _pepk
     piv_derive_password = _pdp
+    piv_gen_csr = _pgc
     hpke_decap_x25519 = _hd
     hpke_info_default = _hi
 
@@ -213,6 +240,8 @@ class OTPmeAgent(UnixDaemon):
         self.piv_conn = None
         self.piv_session = None
         self.piv_start = 0
+        # One use of the card at a time, see _piv_request().
+        self.piv_lock = threading.Lock()
         # When the passwords this host may keep were last fetched, per
         # user, and that only one fetch runs at a time (sync_pass_cache()).
         self.pass_cache_synced = {}
@@ -304,6 +333,224 @@ class OTPmeAgent(UnixDaemon):
         except Exception:
             self._close_piv()
             return False
+
+    def _piv_login(self, pin):
+        """ Open the card and verify the PIN. """
+        _load_piv()
+        if self.piv_session:
+            self._close_piv()
+        try:
+            self.piv_session, self.piv_conn = get_piv()
+        except Exception as e:
+            msg = _("Unable to get PIV session: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg) from e
+        try:
+            self.piv_session.verify_pin(pin)
+        except Exception as e:
+            self._close_piv()
+            msg = _("PIN verification failed: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg) from e
+        self.piv_start = time.monotonic()
+
+    def _get_login_session(self, login_pid):
+        """ The login session a request came from, or an empty one. """
+        for x in (login_pid, str(login_pid)):
+            try:
+                return self.login_sessions[x]
+            except (KeyError, TypeError):
+                continue
+        return {}
+
+    def _ask_user(self, session, description, pin=False):
+        """ Ask the user of a login session, with pinentry on the
+        display or the terminal of the session. Returns the PIN, or
+        whether the user confirmed. """
+        from otpme.lib.pinentry import pynentry
+        display = session.get('display')
+        tty = session.get('tty')
+        if pin:
+            return pynentry.get_password(prompt=_("PIN"),
+                                        description=description,
+                                        display=display,
+                                        tty=tty,
+                                        executable=config.pinentry,
+                                        timeout=PIV_PROMPT_TIMEOUT)
+        # On the display alone, see _check_piv_action().
+        return pynentry.get_confirm(description=description,
+                                    title=_("OTPme agent"),
+                                    display=display,
+                                    executable=config.pinentry,
+                                    timeout=PIV_PROMPT_TIMEOUT)
+
+    def _get_action_text(self, command, reason=None):
+        """ What the user is asked to confirm: what the card is to do,
+        and what the caller says it is for (the key script's --reason). """
+        command_texts = {
+                'piv_sign'              : _("Sign data with the PIV card."),
+                'piv_decrypt'           : _("Decrypt data with the PIV card."),
+                'piv_hpke_decrypt'      : _("Decrypt data with the PIV card."),
+                'piv_derive_password'   : _("Derive a password with the PIV card."),
+                'piv_csr'               : _("Create a certificate signing request with the PIV card."),
+                }
+        lines = [command_texts.get(command, command)]
+        if reason:
+            msg = _("Reason given: {reason}")
+            msg = msg.format(reason=reason)
+            lines.append(msg)
+        return "\n".join(lines)
+
+    def _check_piv_action(self, command, request):
+        """ Ask the user to confirm a use of the private key and make
+        sure there is a PIV session. Without one the PIN is asked for,
+        with the same text: entering it confirms. With
+        AGENT_CONFIRM_ACTIONS off an open session is used without
+        asking.
+
+        The confirmation is asked on a display only. On a console the
+        shell of the user still reads from the terminal while a request
+        comes in (signing the SOTP of a login), and a pinentry there
+        fights it for the input. """
+        login_pid = request['login_pid']
+        session = self._get_login_session(login_pid)
+        text = self._get_action_text(command, request.get('reason'))
+        if self.piv_session and not self._check_piv():
+            self._close_piv()
+        if not self.piv_session:
+            pin = self._ask_user(session, text, pin=True)
+            if not pin:
+                msg = _("No PIN given.")
+                raise OTPmeException(msg)
+            self._piv_login(pin)
+        elif config.agent_confirm_actions and session.get('display'):
+            if not self._ask_user(session, text):
+                msg = _("Request not confirmed.")
+                raise OTPmeException(msg)
+
+    def _piv_command(self, command, request):
+        """ Run a PIV command and return what goes back. """
+        _load_piv()
+        if command == "piv_login":
+            try:
+                pin = request['pin']
+            except KeyError:
+                msg = _("Request misses PIN.")
+                raise OTPmeException(msg)
+            self._piv_login(pin)
+            return _("Smartcard PIN verified.")
+
+        if command == "piv_check":
+            if self._check_piv():
+                return _("PIV session is active.")
+            msg = _("No active PIV session.")
+            raise OTPmeException(msg)
+
+        if command == "piv_get_public_key":
+            # The public key needs no PIN, so without a PIV session the
+            # card is opened for it alone.
+            slot = request.get('slot', 'AUTHENTICATION')
+            if self.piv_session and self._check_piv():
+                return piv_export_public_key(slot=slot,
+                                            piv_session=self.piv_session)
+            piv_session, piv_conn = get_piv()
+            try:
+                return piv_export_public_key(slot=slot,
+                                            piv_session=piv_session)
+            finally:
+                piv_conn.close()
+
+        data = None
+        if command in ("piv_sign", "piv_decrypt", "piv_hpke_decrypt"):
+            data = bytes.fromhex(request['data'])
+
+        self._check_piv_action(command, request)
+
+        if command == "piv_sign":
+            result = piv_sign(data=data,
+                            slot=request.get('slot', 'AUTHENTICATION'),
+                            padding=request.get('padding', 'pss'),
+                            piv_session=self.piv_session)
+            return result.hex()
+
+        if command == "piv_decrypt":
+            result = piv_decrypt(cipher_text=data,
+                                slot=request.get('slot', 'KEY_MANAGEMENT'),
+                                padding=request.get('padding', 'oaep'),
+                                piv_session=self.piv_session)
+            return result.hex()
+
+        if command == "piv_hpke_decrypt":
+            slot = request.get('slot', 'KEY_MANAGEMENT')
+            info = request.get('info')
+            if info is None:
+                info_bytes = hpke_info_default
+            elif isinstance(info, str):
+                info_bytes = info.encode()
+            else:
+                info_bytes = info
+            # Recipient pubkey for the KEM context comes from the same
+            # slot we'll do the ECDH on.
+            from cryptography.hazmat.primitives.serialization \
+                import Encoding, PublicFormat
+            recipient_pub = piv_get_public_key(slot=slot,
+                                            piv_session=self.piv_session)
+            recipient_pub_bytes = recipient_pub.public_bytes(Encoding.Raw,
+                                                            PublicFormat.Raw)
+            def _agent_ecdh(enc_bytes):
+                return piv_ecdh(peer_public_key=enc_bytes,
+                                slot=slot,
+                                piv_session=self.piv_session)
+            result = hpke_decap_x25519(blob=data,
+                                    recipient_public_bytes=recipient_pub_bytes,
+                                    ecdh_func=_agent_ecdh,
+                                    info=info_bytes)
+            return result.hex()
+
+        if command == "piv_derive_password":
+            return piv_derive_password(challenge=request['challenge'],
+                                    slot=request.get('slot', 'AUTHENTICATION'),
+                                    length=request.get('length', 32),
+                                    piv_session=self.piv_session)
+
+        if command == "piv_csr":
+            return piv_gen_csr(subject=request['subject'],
+                            slot=request.get('slot', 'AUTHENTICATION'),
+                            san_email=request.get('san_email'),
+                            key_usage=request.get('key_usage'),
+                            ext_key_usage=request.get('ext_key_usage'),
+                            piv_session=self.piv_session)
+
+        msg = _("Unknown agent command.")
+        raise OTPmeException(msg)
+
+    def _piv_request(self, sender, command, request):
+        """ Run a PIV command and send the answer back. In a thread of
+        its own, see PIV_COMMANDS. One at a time: there is one card. """
+        comm_handler = self.comm_queue.get_handler("piv_request")
+        login_pid = request['login_pid']
+        try:
+            with self.piv_lock:
+                message = self._piv_command(command, request)
+            status_code = status_codes.OK
+        except OTPmeException as e:
+            message = str(e)
+            status_code = status_codes.ERR
+        except Exception as e:
+            message = _("PIV command failed: {command}: {e}")
+            message = message.format(command=command, e=e)
+            self.logger.warning(message)
+            status_code = status_codes.ERR
+        response_data = {
+                    'login_pid'     : login_pid,
+                    'status_code'   : status_code,
+                    'message'       : message,
+                    }
+        comm_handler.send(recipient=sender,
+                        command="agent_response",
+                        data=response_data,
+                        autoclose=True)
+        comm_handler.close()
 
     def signal_handler(self, _signal, frame):
         """ Handle signals. """
@@ -453,7 +700,7 @@ class OTPmeAgent(UnixDaemon):
         file_content = fd.read()
         fd.close()
         # Load config data.
-        conf = stuff.conf_to_dict(file_content)
+        conf = stuff.conf_to_dict(file_content, file_name=agent_conf_file)
 
         try:
             self.idle_timeout = conf['IDLE_TIMEOUT']
@@ -1545,7 +1792,7 @@ class OTPmeAgent(UnixDaemon):
         except Exception:
             pass
 
-    def get_jwt(self, login_pid, realm, site, challenge, use_dns=None):
+    def get_jwt(self, login_pid, realm, site, challenge):
         """ Request JWT for the given login session. """
         login_user = self.login_sessions[login_pid]['login_user']
         login_realm = self.login_sessions[login_pid]['realm']
@@ -1560,8 +1807,7 @@ class OTPmeAgent(UnixDaemon):
             authd_conn = self.get_daemon_conn(realm=login_realm,
                                             site=login_site,
                                             daemon=daemon,
-                                            login_pid=login_pid,
-                                            use_dns=use_dns)
+                                            login_pid=login_pid)
         except AuthFailed as e:
             log_msg = _("Authentication failed while sending requesting JWT: '{daemon}'. Closing connection...", log=True)[1]
             log_msg = log_msg.format(daemon=daemon)
@@ -1604,7 +1850,7 @@ class OTPmeAgent(UnixDaemon):
             raise Exception(msg)
         return response
 
-    def login_user(self, login_pid, realm, site, use_dns=None):
+    def login_user(self, login_pid, realm, site):
         """ Login user to realm/site using JWT challenge/response. """
         from otpme.lib.classes.login_handler import LoginHandler
         login_session = self.login_sessions[login_pid]
@@ -1624,12 +1870,9 @@ class OTPmeAgent(UnixDaemon):
             raise Exception(log_msg) from err
         offline = server_session['offline']
 
-        if use_dns is None:
-            use_dns = config.use_dns
-
         # Helper method to get JWT from within OTPmeClient().
-        def _get_jwt(challenge, use_dns=use_dns):
-            return self.get_jwt(login_pid, realm, site, challenge, use_dns=use_dns)
+        def _get_jwt(challenge):
+            return self.get_jwt(login_pid, realm, site, challenge)
 
         # Get login handler.
         login_handler = LoginHandler()
@@ -1639,7 +1882,6 @@ class OTPmeAgent(UnixDaemon):
                                 realm=realm,
                                 site=site,
                                 login_use_dns=False,
-                                use_dns=use_dns,
                                 jwt_auth=True,
                                 jwt_method=_get_jwt,
                                 auth_only=False,
@@ -1872,19 +2114,16 @@ class OTPmeAgent(UnixDaemon):
         self.logger.info(log_msg)
 
     def get_daemon_conn(self, realm, site, daemon,
-        login_pid, keepalive=False, use_dns=None):
+        login_pid, keepalive=False):
         # Check if we have a session for the given realm/site.
         have_session = False
         if realm in self.login_sessions[login_pid]['server_sessions']:
             if site in self.login_sessions[login_pid]['server_sessions'][realm]:
                 have_session = True
 
-        if use_dns is None:
-            use_dns = config.use_dns
-
         if not have_session:
             try:
-                self.login_user(login_pid, realm, site, use_dns=use_dns)
+                self.login_user(login_pid, realm, site)
             except Exception as e:
                 config.raise_exception()
                 msg = _("Unable to login to: {realm}/{site}: {e}")
@@ -2043,8 +2282,7 @@ class OTPmeAgent(UnixDaemon):
                                                 site=site,
                                                 daemon=daemon,
                                                 login_pid=login_pid,
-                                                keepalive=keepalive,
-                                                use_dns=use_dns)
+                                                keepalive=keepalive)
                 raise AuthFailed(msg) from e
             except Exception as e:
                 msg, log_msg = _("Error getting daemon connection: {daemon}: {e}", log=True)
@@ -2169,10 +2407,14 @@ class OTPmeAgent(UnixDaemon):
             except KeyError:
                 site = None
             daemon = request['daemon']
-            try:
-                use_dns = request['use_dns']
-            except Exception:
-                use_dns = config.use_dns
+
+            # The card, in a thread that answers on its own.
+            if daemon == "agent" and command in PIV_COMMANDS:
+                start_thread(name=self.full_name,
+                            target=self._piv_request,
+                            target_args=(sender, command, request),
+                            daemon=True)
+                continue
 
             # Handle commands to ourselves from connection handler.
             if daemon == "agent":
@@ -2181,8 +2423,7 @@ class OTPmeAgent(UnixDaemon):
                     try:
                         message = self.login_user(login_pid,
                                                 realm,
-                                                site,
-                                                use_dns=use_dns)
+                                                site)
                         status_code = status_codes.OK
                     except Exception as e:
                         message = _("Failed to login user: {e}")
@@ -2281,202 +2522,6 @@ class OTPmeAgent(UnixDaemon):
                             message = _("Session renegotiation failed.")
                         status_code = status_codes.ERR
 
-                elif command == "piv_login":
-                    _load_piv()
-                    try:
-                        pin = request['pin']
-                    except KeyError:
-                        message = _("Request misses PIN.")
-                        status_code = status_codes.ERR
-                    else:
-                        if self.piv_session:
-                            self._close_piv()
-                        try:
-                            self.piv_session, self.piv_conn = get_piv()
-                        except Exception as e:
-                            message = _("Unable to get PIV session: {e}")
-                            message = message.format(e=e)
-                            status_code = status_codes.ERR
-                        else:
-                            try:
-                                self.piv_session.verify_pin(pin)
-                            except Exception as e:
-                                message = _("PIN verification failed: {e}")
-                                message = message.format(e=e)
-                                status_code = status_codes.ERR
-                            else:
-                                message = _("Smartcard PIN verified.")
-                                status_code = status_codes.OK
-                                self.piv_start = time.monotonic()
-
-                elif command == "piv_check":
-                    if self._check_piv():
-                        message = _("PIV session is active.")
-                        status_code = status_codes.OK
-                    else:
-                        message = _("No active PIV session.")
-                        status_code = status_codes.ERR
-
-                elif command == "piv_sign":
-                    if not self.piv_session:
-                        message = _("No PIV session. Run piv_login first.")
-                        status_code = status_codes.ERR
-                    else:
-                        _load_piv()
-                        try:
-                            data = request['data']
-                            slot = request.get('slot', 'AUTHENTICATION')
-                            data = bytes.fromhex(data)
-                            padding = request.get('padding', 'pss')
-                            try:
-                                result = piv_sign(
-                                    data=data,
-                                    slot=slot,
-                                    padding=padding,
-                                    piv_session=self.piv_session,
-                                )
-                            except Exception as e:
-                                message = _("Sign failed: {e}")
-                                message = message.format(e=e)
-                                status_code = status_codes.ERR
-                            else:
-                                message = result.hex()
-                                status_code = status_codes.OK
-                        except Exception as e:
-                            message = _("PIV sign failed: {e}")
-                            message = message.format(e=e)
-                            status_code = status_codes.ERR
-
-                elif command == "piv_decrypt":
-                    if not self.piv_session:
-                        message = _("No PIV session. Run piv_login first.")
-                        status_code = status_codes.ERR
-                    else:
-                        _load_piv()
-                        try:
-                            data = request['data']
-                            data = bytes.fromhex(data)
-                            slot = request.get('slot', 'AUTHENTICATION')
-                            padding = request.get('padding', 'oaep')
-                            try:
-                                result = piv_decrypt(
-                                    cipher_text=data,
-                                    slot=slot,
-                                    padding=padding,
-                                    piv_session=self.piv_session,
-                                )
-                            except Exception as e:
-                                message = _("Decrypt failed: {e}")
-                                message = message.format(e=e)
-                                status_code = status_codes.ERR
-                            else:
-                                message = result.hex()
-                                status_code = status_codes.OK
-                        except Exception as e:
-                            raise
-                            message = _("PIV decrypt failed: {e}")
-                            message = message.format(e=e)
-                            status_code = status_codes.ERR
-
-                elif command == "piv_hpke_decrypt":
-                    if not self.piv_session:
-                        message = _("No PIV session. Run piv_login first.")
-                        status_code = status_codes.ERR
-                    else:
-                        _load_piv()
-                        try:
-                            blob = bytes.fromhex(request['data'])
-                            slot = request.get('slot', 'KEY_MANAGEMENT')
-                            info = request.get('info')
-                            if info is None:
-                                info_bytes = hpke_info_default
-                            elif isinstance(info, str):
-                                info_bytes = info.encode()
-                            else:
-                                info_bytes = info
-                            # Recipient pubkey for the KEM context comes
-                            # from the same slot we'll ECDH on.
-                            from cryptography.hazmat.primitives.serialization \
-                                import Encoding, PublicFormat
-                            recipient_pub = piv_get_public_key(
-                                slot=slot, piv_session=self.piv_session)
-                            recipient_pub_bytes = recipient_pub.public_bytes(
-                                Encoding.Raw, PublicFormat.Raw)
-                            def _agent_ecdh(enc_bytes):
-                                return piv_ecdh(
-                                    peer_public_key=enc_bytes,
-                                    slot=slot,
-                                    piv_session=self.piv_session,
-                                )
-                            try:
-                                result = hpke_decap_x25519(
-                                    blob=blob,
-                                    recipient_public_bytes=recipient_pub_bytes,
-                                    ecdh_func=_agent_ecdh,
-                                    info=info_bytes,
-                                )
-                            except Exception as e:
-                                message = _("HPKE-decap failed: {e}")
-                                message = message.format(e=e)
-                                status_code = status_codes.ERR
-                            else:
-                                message = result.hex()
-                                status_code = status_codes.OK
-                        except Exception as e:
-                            message = _("PIV HPKE-decrypt failed: {e}")
-                            message = message.format(e=e)
-                            status_code = status_codes.ERR
-
-                elif command == "piv_derive_password":
-                    if not self.piv_session:
-                        message = _("No PIV session. Run piv_login first.")
-                        status_code = status_codes.ERR
-                    else:
-                        _load_piv()
-                        try:
-                            challenge = request['challenge']
-                            slot = request.get('slot', 'AUTHENTICATION')
-                            length = request.get('length', 32)
-                            try:
-                                result = piv_derive_password(
-                                    challenge=challenge,
-                                    slot=slot,
-                                    length=length,
-                                    piv_session=self.piv_session,
-                                )
-                            except Exception as e:
-                                message = _("Sign failed: {e}")
-                                message = message.format(e=e)
-                                status_code = status_codes.ERR
-                            else:
-                                message = result
-                                status_code = status_codes.OK
-                        except Exception as e:
-                            message = _("PIV derive password failed: {e}")
-                            message = message.format(e=e)
-                            status_code = status_codes.ERR
-
-                elif command == "piv_get_public_key":
-                    if not self.piv_session:
-                        message = _("No PIV session. Run piv_login first.")
-                        status_code = status_codes.ERR
-                    else:
-                        _load_piv()
-                        try:
-                            # The slot name, export_public_key() maps
-                            # it itself. As PEM, which goes over the
-                            # socket where a key object does not.
-                            slot = request.get('slot', 'AUTHENTICATION')
-                            message = piv_export_public_key(
-                                slot=slot,
-                                piv_session=self.piv_session,
-                            )
-                            status_code = status_codes.OK
-                        except Exception as e:
-                            message = _("PIV get public key failed: {e}")
-                            message = message.format(e=e)
-                            status_code = status_codes.ERR
-
                 else:
                     message = _("Unknown agent command.")
                     status_code = status_codes.ERR
@@ -2500,14 +2545,13 @@ class OTPmeAgent(UnixDaemon):
                                             'sender':sender,
                                             'daemon':daemon,
                                             'login_pid':login_pid,
-                                            'use_dns':use_dns,
                                             'proxy_request':proxy_request},
                             daemon=True)
         # Close comm handler on exit.
         comm_handler.close()
 
     def proxy_command(self, realm, site, sender, daemon,
-        login_pid, proxy_request, use_dns=True):
+        login_pid, proxy_request):
         """ Proxy command to given realm/site/daemon. """
         # Try to get daemon connection.
         daemon_conn = None
@@ -2518,8 +2562,7 @@ class OTPmeAgent(UnixDaemon):
                 daemon_conn = self.get_daemon_conn(realm=realm,
                                                 site=site,
                                                 daemon=daemon,
-                                                login_pid=login_pid,
-                                                use_dns=use_dns)
+                                                login_pid=login_pid)
             except AuthFailed as e:
                 response = str(e)
                 status_code = status_codes.NEED_USER_AUTH
@@ -2586,8 +2629,7 @@ class OTPmeAgent(UnixDaemon):
                                         sender=sender,
                                         daemon=daemon,
                                         login_pid=login_pid,
-                                        proxy_request=proxy_request,
-                                        use_dns=use_dns)
+                                        proxy_request=proxy_request)
         except Exception as e:
             self.close_daemon_conn(realm, site, daemon, login_pid)
             response = _("Daemon connection broken while sending: {daemon}: {error}")
@@ -2986,8 +3028,14 @@ class OTPmeAgent(UnixDaemon):
             if self.piv_timeout and self.piv_conn:
                 now = time.monotonic()
                 piv_age = now - self.piv_start
-                if piv_age > self.piv_timeout:
-                    self._close_piv()
+                # Not while a use of the card runs, the next round
+                # closes it.
+                if piv_age > self.piv_timeout \
+                and self.piv_lock.acquire(blocking=False):
+                    try:
+                        self._close_piv()
+                    finally:
+                        self.piv_lock.release()
 
             self.expire_cached_keys()
 

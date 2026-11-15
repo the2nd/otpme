@@ -169,6 +169,8 @@ commands = {
                                         'max_len',
                                         'show_all',
                                         'output_fields',
+                                        'max_roles',
+                                        'max_policies',
                                         'limit',
                                         'search_regex',
                                         'sort_by',
@@ -470,32 +472,6 @@ commands = {
                     },
                 },
             },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     }
 
 def get_acls(**kwargs):
@@ -536,10 +512,17 @@ def register():
     register_backend()
     register_object_unit()
     register_sync_settings()
+    register_hooks()
     register_commands("device", commands)
     config.register_recursive_default_acl("site", "+device")
     config.register_default_acl("unit", "+device")
     config.register_recursive_default_acl("unit", "+device")
+
+def register_hooks():
+    # OTPmeDevice.change_mac() asks the policies for it; unregistered, an
+    # auth on action policy refused it as an unknown hook. A host runs
+    # it as well and registers it in host.py.
+    config.register_auth_on_action_hook("device", "change_mac")
 
 def register_object_unit():
     """ Register default unit for this object type. """
@@ -548,7 +531,10 @@ def register_object_unit():
 
 def register_oid():
     full_oid_schema = [ 'realm', 'site', 'unit', 'name' ]
-    read_oid_schema = [ 'realm', 'site', 'name' ]
+    # Device names are unique in the realm, as host names are: MAB finds
+    # a device of any site, and so does a name. The read OID needs no
+    # site (see OTPmeObject._name_in_use()).
+    read_oid_schema = [ 'realm', 'name' ]
     # OID regex stuff.
     unit_path_re = oid.object_regex['unit']['path']
     realm_name_re = oid.object_regex['realm']['name']
@@ -556,11 +542,13 @@ def register_oid():
     unit_name_re = oid.object_regex['unit']['name']
     device_name_re = '([0-9a-z]([0-9a-z_.-]*[0-9a-z]){0,})'
     device_path_re = f'{unit_path_re}[/]{device_name_re}'
-    # An OID is not a path, see accessgroup.py: no leading slash, and
-    # the unit part is optional because the read OID has none.
+    # An OID is not a path, see accessgroup.py: no leading slash. The
+    # read OID is "device|<realm>/<device>", the full one has site and
+    # unit. "device|<realm>/<site>/<device>", the read OID of before, is
+    # taken as well: decode_oid() makes the new one of it.
     #device_oid_re = f'device|{device_path_re}'
-    device_oid_re = (f'device[|]{realm_name_re}[/]{site_name_re}'
-                    f'([/]{unit_name_re})*[/]{device_name_re}')
+    device_oid_re = (f'device[|]{realm_name_re}[/]'
+                    f'({site_name_re}([/]{unit_name_re})*[/])?{device_name_re}')
     oid.register_oid_schema(object_type="device",
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,
@@ -660,26 +648,44 @@ class OTPmeDevice(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Set device MAC address. """
-        if not stuff.is_mac_address(mac_address):
-            msg = _("Invalid MAC address.")
-            return callback.error(msg)
-        if self.mac_address == mac_address:
-            msg = _("MAC address already set to: {mac_address}")
-            msg = msg.format(mac_address=mac_address)
-            return callback.error(msg)
+        """ Set device MAC address, or remove it with "". """
+        if mac_address == "":
+            new_mac = None
+            if not self.mac_address:
+                msg = _("No MAC address set.")
+                return callback.error(msg)
+        else:
+            # Stored in one form, see stuff.normalize_mac().
+            new_mac = stuff.normalize_mac(mac_address)
+            if not new_mac:
+                msg = _("Invalid MAC address.")
+                return callback.error(msg)
+            if self.mac_address == new_mac:
+                msg = _("MAC address already set to: {mac_address}")
+                msg = msg.format(mac_address=new_mac)
+                return callback.error(msg)
+            # One host or device per MAC address in the realm: MAB finds
+            # it by its address alone. An address set before it was
+            # normalized may be in upper case.
+            result = backend.search(attribute="mac_address",
+                                    values=[new_mac, new_mac.upper()],
+                                    return_type="oid")
+            result = [x for x in result if x != self.oid]
+            if result:
+                msg = _("MAC address already exists: {object}")
+                msg = msg.format(object=result[0])
+                return callback.error(msg)
 
-        msg = _("Change MAC address of device '{device_name}' to '{mac_address}'?: ")
-        msg = msg.format(device_name=self.name, mac_address=mac_address)
+        if new_mac:
+            msg = _("Change MAC address of {object_type} '{object_name}' to '{mac_address}'?: ")
+            msg = msg.format(object_type=self.type,
+                            object_name=self.name,
+                            mac_address=new_mac)
+        else:
+            msg = _("Remove MAC address of {object_type} '{object_name}'?: ")
+            msg = msg.format(object_type=self.type, object_name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
-        result = backend.search(attribute="mac_address",
-                                value=mac_address,
-                                return_type="instance")
-        if result:
-            msg = _("MAC address already exists: {object}")
-            msg = msg.format(object=result[0])
-            return callback.error(msg)
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -690,8 +696,11 @@ class OTPmeDevice(OTPmeObject):
                                 _caller=_caller)
             except Exception as e:
                 return callback.error()
-        self.mac_address = mac_address
-        self.update_index('mac_address', mac_address)
+        self.mac_address = new_mac
+        if new_mac:
+            self.update_index('mac_address', new_mac)
+        else:
+            self.del_index('mac_address')
         return self._cache(callback=callback)
 
     def show_config(self, config_lines=None, callback: JobCallback=default_callback, **kwargs):
@@ -832,18 +841,15 @@ class Device(OTPmeDevice):
             return callback.error()
         # Add device.
         add_result = super().add(callback=callback, **kwargs)
-        # Check for default accessgroup.
-        device_ag = self.get_config_parameter("devices_accessgroup")
+        # Check for default accessgroup. We hold its UUID, as with the
+        # role below: the setter checked add:device on just that one.
+        device_ag = self.get_config_parameter("devices_accessgroup",
+                                                apply_getter=False)
         if device_ag:
-            result = backend.search(object_type="accessgroup",
-                                    attribute="name",
-                                    value=device_ag,
-                                    realm=config.realm,
-                                    site=config.site,
-                                    return_type="instance")
-            if result:
-                ag = result[0]
+            ag = backend.get_object(object_type="accessgroup", uuid=device_ag)
+            if ag:
                 ag.add_device(device_name=self.name,
+                            device_uuid=self.uuid,
                             force=True,
                             verify_acls=False,
                             callback=callback)
@@ -921,6 +927,7 @@ class Device(OTPmeDevice):
                                 return_type="instance")
         for ag in result:
             ag.remove_device(device_name=self.name,
+                            device_uuid=self.uuid,
                             force=True,
                             verify_acls=False,
                             callback=callback)
@@ -955,6 +962,8 @@ class Device(OTPmeDevice):
         **kwargs,
         ):
         """ Rename device. """
+        # As add() does.
+        new_name = new_name.lower()
         msg = _("Rename device '{device_name}' to '{new_name}'?: ")
         msg = msg.format(device_name=self.name, new_name=new_name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):

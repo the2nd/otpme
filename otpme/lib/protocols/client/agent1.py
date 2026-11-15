@@ -32,7 +32,7 @@ class OTPmeAgentP1(object):
         self.logger = config.logger
         super().__init__(**kwargs)
 
-    def build_request(self, daemon, command, realm, site, use_dns=True,
+    def build_request(self, daemon, command, realm, site,
         command_args=None, encode_request=True, encrypt_request=True, **kwargs):
         """ Build agent request. """
         # Original request parameters.
@@ -47,7 +47,6 @@ class OTPmeAgentP1(object):
                         'realm'             : realm,
                         'site'              : site,
                         'daemon'            : daemon,
-                        'use_dns'           : use_dns,
                         'proxy_request'     : proxy_request,
                         }
         request = build_request(command="proxy_command",

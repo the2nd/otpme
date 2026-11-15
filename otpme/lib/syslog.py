@@ -5,6 +5,7 @@ import sys
 import ssl
 import socket
 import logging
+import logging.handlers
 from relppy.log_handler import RelpHandler
 from tlssysloghandler import TLSSysLogHandler
 
@@ -58,8 +59,10 @@ def get_reconnecting_handler(handler_class):
                 msg = _("Unknown facility: {facility}")
                 msg = msg.format(facility=facility)
                 raise OTPmeException(msg) from None
+            # The facility has to reach SysLogHandler, else every record
+            # goes out as LOG_USER.
             try:
-                super().__init__(*args, **kwargs)
+                super().__init__(*args, facility=facility, **kwargs)
             except Exception as e:
                 # We ignore socket errors because SysLogHandler calls createSocket()
                 # and we dont want the log handler to fail on __init__() because we
@@ -131,6 +134,43 @@ def get_reconnecting_handler(handler_class):
 
     return ReconnectingSysLogHandler
 
+def parse_address(address):
+    """ Split a syslog address into what SysLogHandler takes.
+
+    "/path" is a local socket, "host:port" is TCP, a bare "host" is UDP
+    on port 514. SysLogHandler takes every string for a socket path, so
+    a "host:port" given as it is never reached the server.
+    """
+    if address.startswith("/"):
+        return address, socket.SOCK_DGRAM
+    # [v6]:port, [v6] or a bare v6 address.
+    if address.startswith("["):
+        host, sep, port = address[1:].partition("]")
+        if port.startswith(":"):
+            port = port[1:]
+        elif port:
+            msg = _("Invalid syslog address: {address}")
+            msg = msg.format(address=address)
+            raise OTPmeException(msg)
+    elif address.count(":") > 1:
+        host = address
+        port = ""
+    else:
+        host, sep, port = address.partition(":")
+    if not host:
+        msg = _("Invalid syslog address: {address}")
+        msg = msg.format(address=address)
+        raise OTPmeException(msg)
+    if not port:
+        return (host, logging.handlers.SYSLOG_UDP_PORT), socket.SOCK_DGRAM
+    try:
+        port = int(port)
+    except ValueError:
+        msg = _("Invalid syslog address: {address}")
+        msg = msg.format(address=address)
+        raise OTPmeException(msg) from None
+    return (host, port), socket.SOCK_STREAM
+
 def get_log_handler(address="/dev/log", use_ssl=False, ca_cert_file=None,
     client_cert_file=None, client_key_file=None, facility=None,
     relp=False, spool_method=None, exception_on_emit=False):
@@ -139,6 +179,13 @@ def get_log_handler(address="/dev/log", use_ssl=False, ca_cert_file=None,
     logger = config.logger
     if facility is None:
         facility = config.syslog_facility
+    address_str = address
+    address, socktype = parse_address(address_str)
+    # TLS and RELP need TCP, and so a port.
+    if (use_ssl or relp) and socktype != socket.SOCK_STREAM:
+        msg = _("Invalid syslog address: {address}")
+        msg = msg.format(address=address_str)
+        raise OTPmeException(msg)
     if use_ssl:
         if not ca_cert_file:
             msg = _("Need <ca_cert_file> with use_ssl=True.")
@@ -151,11 +198,6 @@ def get_log_handler(address="/dev/log", use_ssl=False, ca_cert_file=None,
             # Load client cert/key.
             context.load_cert_chain(certfile=client_cert_file,
                                     keyfile=client_key_file)
-        address = address.split(":")
-        if len(address) < 2:
-            msg = _("Invalid syslog address: {address}")
-            msg = msg.format(address=address)
-            raise OTPmeException(msg)
         if relp:
             log_handler = RelpHandler(address=address,
                                     facility=facility,
@@ -175,7 +217,6 @@ def get_log_handler(address="/dev/log", use_ssl=False, ca_cert_file=None,
                                             exception_on_emit=exception_on_emit)
     else:
         if relp:
-            address = address.split(":")
             log_handler = RelpHandler(address=address,
                                     facility=facility,
                                     resend_size=32,
@@ -184,10 +225,6 @@ def get_log_handler(address="/dev/log", use_ssl=False, ca_cert_file=None,
                                     exception_on_emit=exception_on_emit,
                                     active_log_handlers=active_log_handlers)
         else:
-            if len(address.split(":")) < 2:
-                socktype = socket.SOCK_DGRAM
-            else:
-                socktype = socket.SOCK_STREAM
             reconnecting_handler = get_reconnecting_handler(logging.handlers.SysLogHandler)
             log_handler = reconnecting_handler(address=address,
                                             socktype=socktype,

@@ -3137,7 +3137,11 @@ class AuthHandler(object):
         if not self.auth_failed and self.auth_status is False:
             if self.user.type != "user":
                 self.count_fails = False
-                if self.user.mac_address == password:
+                # The switch may send the address in any form, and one
+                # set before it was normalized may be in upper case, see
+                # stuff.normalize_mac().
+                own_mac = stuff.normalize_mac(self.user.mac_address)
+                if own_mac and own_mac == stuff.normalize_mac(password):
                     if self.user.type == "host":
                         dev_is_valid = self.auth_group.is_assigned_host(self.user.uuid)
                         if not dev_is_valid:
@@ -3619,6 +3623,16 @@ class AuthHandler(object):
 
             # Return request cachable status.
             auth_response['request_cacheable'] = self.request_cacheable
+            # How long "otpme-auth verify --cache" (FreeRADIUS without
+            # the Python module) may answer this request from the cache:
+            # what the client allows, and not at all where its auth
+            # cache is off -- as the module does it.
+            auth_cache_timeout = None
+            if self.request_cacheable \
+            and self.auth_client \
+            and self.auth_client.auth_cache_enabled:
+                auth_cache_timeout = self.auth_client.auth_cache_timeout
+            auth_response['auth_cache_timeout'] = auth_cache_timeout
             # Return VLAN to be returned by rlm_python.
             if self.vlan:
                 auth_response['vlan'] = self.vlan

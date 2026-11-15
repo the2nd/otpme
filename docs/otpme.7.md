@@ -77,9 +77,10 @@ roles in the access group of the client can log in.
 
 # ARCHITECTURE OVERVIEW
 
-OTPme runs as a set of daemons. **otpme-controld** starts them. Nodes
-run all daemons. Hosts only run hostd and confd, and httpd or backupd if
-they are configured as SSO or backup server.
+OTPme runs as a set of daemons. **otpme-controld** starts them, see
+**otpme-controld**(8). Nodes run all daemons. Hosts only run hostd and
+confd, and httpd or backupd if they are configured as SSO or backup
+server.
 
 ## Daemons
 
@@ -153,6 +154,12 @@ Sends events to the **otpme-agent** of logged in users, for example that
 a share can be mounted.  
 Runs on: the master node only. clusterd starts it on the new master node
 when the master changes.
+
+**racd**  
+Remote access daemon. The two ends of a remote access session meet here:
+the host and the user who asked for a shell, see **otpme-shell**(1). It
+passes the bytes between them and reads none of them.  
+Runs on: the master node only, like idled.
 
 **confd**  
 Configuration daemon. It runs as root. It gets signed configuration jobs
@@ -727,9 +734,8 @@ ACLs as they are, and so does a move with **--keep-acls**. It is on for
 tokens and passwords, and off for everything else. Creating an object,
 **-a** and **-r** reach it either way.
 
-Which ACLs a kind of object knows is in **otpme-acls**(7). **list_acls**
-shows the ACLs an object has, and the shell completion offers the ones
-it takes after **add_acl**.
+**list_acls** shows the ACLs an object has. Which ACLs a kind of object
+knows, the tab completion offers after **add_acl**.
 
 ## ACL Groups
 
@@ -738,19 +744,20 @@ An ACL group is a set of ACLs, each for an object type, for example
 **@***group*, **+@***group* or **++@***group*:
 
 > **otpme-unit add_acl *linux/users* role *helpdesk*
-> @usermanager,++@usermanager**
+> @USERMANAGER,++@USERMANAGER**
 
 The unit *linux/users* and every object in the tree below it now grant
 the role *helpdesk* what the group holds for their type. **++@** alone
 counts only below the unit, not on the unit itself. Change the group,
 and the change counts at once on every object it is given on. Every site
-has the groups **realm_user**, **usermanager**, **useradmin** and
-**groupmanager**, see **otpme-aclgroup**(1).
+has the groups **REALM_USERS**, **USERMANAGER**, **USERADMIN**,
+**GROUPMANAGER** and **PASSUSER**, see **otpme-aclgroup**(1).
 
-**realm_user** is what every user of the realm may see: the site, units,
-users, groups, roles, hosts and nodes. The role **REALM_USER** has it on
-the whole site. A site from before the group gets it with **otpme-site
-upgrade**, which also takes away the ACLs realm users had one by one.
+**REALM_USERS** is what every user of the realm may see: the site,
+units, users, groups, roles, hosts and nodes. The role **REALM_USER**
+has it on the whole site. A site from before the group gets it with
+**otpme-site upgrade**, which also takes away the ACLs realm users had
+one by one.
 
 # OFFLINE AUTHENTICATION
 
@@ -1199,6 +1206,9 @@ This always works on the SSO token of the user, the one named by
 **default_sso_token_name**. If the type of that token is not in this
 list, recovery is refused. The default is an empty list, so recovery is
 off.  
+A user who has no SSO token yet gets a new one, but only where
+**sso_token_deploy_roles** or **sso_token_deploy_accessgroups** is set.
+Then the type the user picks has to be in this list.  
 The mail address for it is kept on the user, in the LDAP attribute
 **otpmeRecoveryMail**. The value is looked up at the user, then at the
 unit, then at the site, on the home site of the user.  
@@ -1233,6 +1243,59 @@ user (**otpme-user language**), or the one the browser asked for when
 the user has none.  
 Object types: site, unit, user
 
+**sso_token_deploy_roles (list)**  
+Comma separated list of roles the SSO portal adds a new SSO token to.
+The recovery creates that token when the user has none yet (see
+**allow_sso_token_recovery**). Without this parameter and
+**sso_token_deploy_accessgroups** it creates none, and a user without an
+SSO token gets no recovery mail.  
+A value is a role of the current site, or *site***/***role* for a role
+of another site. To set it you need the right to add tokens to the role
+(**add:token**). The value is looked up at the user, then at the unit,
+then at the site, on the home site of the user.  
+To sign in at the portal with the new token, name the **SSO_USER** role
+of that site: it is the role for SSO logins.  
+The new token is the SSO token of the portal the recovery runs at. That
+portal adds it only to its own roles of the list. A role of another site
+is what the user gets when the recovery runs at that site's portal. For
+a user of another site, the portal adds the token only to the roles that
+**sso_token_deploy_trusts** allows.  
+A token that the recovery replaces keeps its roles and gets no new
+ones.  
+Object types: site, unit, user
+
+**sso_token_deploy_accessgroups (list)**  
+Comma separated list of access groups the SSO portal adds a new SSO
+token to. It works like **sso_token_deploy_roles**, with access groups
+instead of roles.  
+Object types: site, unit, user
+
+**sso_token_deploy_trusts (list)**  
+Which of this site's roles and access groups get the new SSO token of a
+user of another site. Naming them in the user's
+**sso_token_deploy_roles** or **sso_token_deploy_accessgroups** is the
+home site's half of the decision, this parameter is the portal's half.
+Users of this site need no entry, and an entry for this site is
+refused.  
+An entry is *site*, *site:role/name* or *site:accessgroup/name*. *site*
+is the home site of the user, *name* is a role or access group of *this*
+site. Both kinds of entry are needed.  
+So the entries on site *munich* mean:
+
+**berlin**  
+adds new SSO tokens of users of site berlin here at all
+
+**berlin:role/SSO_USER**  
+adds them to this site's role *SSO_USER*, if the user's own
+**sso_token_deploy_roles** names it
+
+Without the bare site entry the token is still created, but it gets into
+nothing here, and the user cannot sign in with it.  
+The recovery page still says that it worked. So the portal writes a
+warning to its log for each entry that is missing here, and one more
+when the token got into no role or access group of this site at all.  
+Object types: site
+
 **admin_access_role (str)**  
 The SSO portal has an admin access: a member of this role can set a
 temporary password on the token of another user there. The admin or the
@@ -1246,10 +1309,16 @@ Can only be changed by an admin.
 Object types: site, unit, user, token
 
 **admin_access_trusts (list)**  
-The sites this site trusts for **admin_access_role**. When a user of one
-of these sites opens an admin access here, OTPme uses the role from the
-user of that site. For every other site only the **admin_access_role**
-of this site is used. Users of the own site are always trusted.  
+Comma-separated list of sites whose SSO portal may show and change the
+admin access of this site's users (see **admin_access_role**).  
+A user can sign in at the portal of another site. That portal sends the
+request to this site, the home site of the user, and this site only
+accepts it from a site in its list. It tells the requesting site by the
+certificate of its node, not by anything the request says. Without an
+entry, the users of this site do not get the admin access at the portals
+of other sites.  
+Users of this site need no entry, and an entry for this site is
+refused.  
 Object types: site
 
 **password_allowed_chars (str, default: 0-9A-Za-z!@#$%&\*()\_+-={}\[\]:;\<\>.?/)**  
@@ -1264,9 +1333,11 @@ hosts of the site, and the certificate of the site itself, which is used
 for TLS and for RADIUS. The CA of a site is signed by the CA of the
 realm, the CA of a sub-site by the CA of its parent site.
 
-**cert_key_len (int, default: 3072)**  
-How long the RSA key of a new certificate is, in bits. Allowed: 2048,
-3072, 4096 and 8192.  
+**cert_key_len (int, default: 4096)**  
+How long the RSA key of a new certificate is, in bits: of a client or
+server certificate, and of a host or node certificate the CA makes the
+key for. A host or node that sends a request at join makes its key
+itself. Allowed: 2048, 3072, 4096 and 8192.  
 Object types: site, unit, ca
 
 **cert_sign_algo (str, default: sha256)**  
@@ -1379,7 +1450,9 @@ Object types: site
 
 **hosts_accessgroup (str)**  
 The access group that every new host is added to. The value is the name
-of an access group that exists.  
+of an access group that exists, and it must be an access group of the
+same site. When the access group is deleted later, a new host goes into
+none, and the add says so.  
 This is for MAC Authentication Bypass (MAB): a device that can not log
 in by itself, for example a printer, is let into the network by its MAC
 address. The switch asks OTPme with that address, and the access group
@@ -1407,7 +1480,9 @@ can have a MAC address too, so it can also be used for MAB.
 
 **devices_accessgroup (str)**  
 The access group that every new device is added to. The value is the
-name of an access group that exists. The switch asks OTPme with the MAC
+name of an access group that exists, and it must be an access group of
+the same site. When the access group is deleted later, a new device goes
+into none, and the add says so. The switch asks OTPme with the MAC
 address of the device, and this access group says whether it is let
 in.  
 You need the **add:device** ACL on that access group to set this
@@ -1422,6 +1497,17 @@ write it as *site***/***role*, which is how a role is shown.
 You need the **add:device** ACL on that role to set this parameter,
 because the devices are added to it later without another check.  
 Object types: site, unit
+
+## Resolvers
+
+**add_resolver_objects_to_trash (bool, default: true)**  
+Whether the objects a resolver deletes go to the trash. That is what
+**run** does with **enable_deletions**, and what **delete_objects**
+does, see **otpme-resolver**(1). They can be restored from there with
+**otpme-trash**(1). Set it to false to delete them right away.  
+The value is looked up on the resolver, then on its unit and the units
+above it, then on the site. Without a value anywhere it is true.  
+Object types: site, unit, resolver
 
 ## VLAN
 
@@ -1511,7 +1597,7 @@ Which of this site's roles the SSO portal offers to users of other
 sites. Naming a role in the user's **device_token_roles** is the home
 site's half of the decision, this parameter is the portal's half. This
 parameter is the only place where that is decided. Users of this site
-need no entry.  
+need no entry, and an entry for this site is refused.  
 An entry is *site* or *site***:***role*. *site* is the home site of the
 user, *role* is a role of *this* site. No other role is ever offered
 here. Both kinds of entry are needed.  
@@ -1657,7 +1743,7 @@ Neither side can make the other's decision. The home site protects its
 users from other sites, the portal site protects its backend and access
 groups from users of other sites. A site not in the list gets nothing.
 There is no fallback to the local **sso_allow_passkeys**. Users of this
-site need no entry.  
+site need no entry, and an entry for this site is refused.  
 Object types: site
 
 **sso_allow_fido2_deploy (bool, default: true)**  
@@ -1789,7 +1875,7 @@ Neither side can make the other's decision. The home site protects the
 secrets of its users, the portal site protects its backend and access
 groups from users of other sites. A site not in the list gets nothing.
 There is no fallback to the local **sso_allow_totp**. Users of this site
-need no entry.  
+need no entry, and an entry for this site is refused.  
 Without the trust the Settings card is not offered at all, so an
 authenticator app cannot be deleted there either. Signing in with one is
 not affected.  
@@ -1862,7 +1948,9 @@ parameter is not synced to other sites.
     written into this site's backend and added to this site's SSO access
     group, roles and groups. So it gives a user of another site a new
     way in here. Without an entry the Settings card is not offered:
-    listing, enrolling, enabling and disabling phones.
+    listing, enrolling, enabling and disabling phones. Nor is tiqr
+    offered when the user sets up a phone as the SSO token here, on the
+    deploy page or by the account recovery.
 
 -   On the user's home site, it lists the portal sites. This protects
     the secrets of the home site's users from other sites. A phone
@@ -1877,7 +1965,7 @@ Neither side can make the other's decision. The home site protects the
 secrets of its users, the portal site protects its backend and access
 groups from users of other sites. A site not in the list gets nothing.
 There is no fallback to the local **sso_allow_tiqr**. Users of this site
-need no entry.  
+need no entry, and an entry for this site is refused.  
 Without the trust the Settings card is not offered at all, so a phone
 cannot be deleted there either. Signing in with a phone is not affected:
 the phone answers a login with a one-time response, and its secret stays
@@ -2926,7 +3014,8 @@ Object types: site, unit, node, share
 
 **backup_interval (time)**  
 How much time passes between two backups of this object. It takes time
-units, e.g. **1h** or **1D**, and it is shown in those units.  
+units, e.g. **1h** or **1D**, and it is shown in those units. Unset
+means 23h.  
 Object types: site, unit, node, share
 
 **backup_retry_interval (time, default: 5m)**  
@@ -2950,8 +3039,10 @@ Object types: site, unit, node, share
 
 **backup_key (str)**  
 The AES key the backups of this object are encrypted with, as 64 hex
-characters. OTPme makes one from 32 random bytes when the object is
-created, so there is no need to set one by hand.  
+characters. Set it without a value, and OTPme makes one from 32 random
+bytes. Without a key a backup is refused. Lose it, and the backups
+cannot be read any more. Set on the site or a unit, it is the key of
+every object below that has none of its own.  
 It is stored encrypted with the key of the site. **show_config** shows
 it in clear to whoever may read it, and **\<hidden\>** where the site
 key is not available.  
@@ -3059,12 +3150,30 @@ Comma separated list of patterns that are taken into the backup.
 Object types: node, share
 
 **backup_script (str)**  
-The OTPme script **backupd** runs around every backup, as a path
-relative to the scripts unit.  
+The OTPme script **backupd** runs around every backup it starts by
+itself, as a path relative to the scripts unit. **otpme-backup start**
+does not run it.  
 It is called with a **pre** hook before the backup and a **post** hook
-after it. An exit code other than 0 stops the run.  
+after a backup that worked. What a pre hook that fails does is
+**backup_pre_script_fail**. A post hook that fails is logged.  
 The default is the **backup_script.sh** that OTPme ships, in the default
 scripts unit. Only an admin may set this parameter.  
+Object types: site, unit, share, node
+
+**backup_pre_script_fail (str, default: report)**  
+What happens when the pre hook of **backup_script** fails, with an exit
+code other than 0.
+
+**abort**  
+No backup. It counts as a failed backup and is reported as one.
+
+**report**  
+The backup runs all the same. The failure is logged, and it is at the
+top of the report mail of the backup, and in its line of a summary
+report.
+
+A pre hook is there to get something ready, a database dump for example.
+With **report** a backup without it holds what was there before.  
 Object types: site, unit, share, node
 
 ## HOTP Tokens
@@ -3323,15 +3432,16 @@ The settings of one user, e.g. which agent to talk to.
 
 # SEE ALSO
 
-**otpme**(1), **otpme-acls**(7), **otpme.conf**(5), **pam_otpme**(8),
-**otpme-accessgroup**(1), **otpme-aclgroup**(1), **otpme-backup**(1),
-**otpme-ca**(1), **otpme-client**(1), **otpme-cluster**(1),
-**otpme-deploy**(1), **otpme-device**(1), **otpme-dictionary**(1),
-**otpme-group**(1), **otpme-host**(1), **otpme-inventory**(1),
-**otpme-mount**(1), **otpme-node**(1), **otpme-pass**(1),
-**otpme-policy**(1), **otpme-pool**(1), **otpme-realm**(1),
-**otpme-resolver**(1), **otpme-role**(1), **otpme-scope**(1),
-**otpme-script**(1), **otpme-share**(1), **otpme-site**(1),
+**otpme**(1), **otpme.conf**(5), **pam_otpme**(8),
+**otpme-controld**(8), **otpme-accessgroup**(1), **otpme-aclgroup**(1),
+**otpme-backup**(1), **local-backup**(1), **otpme-ca**(1),
+**otpme-client**(1), **otpme-cluster**(1), **otpme-deploy**(1),
+**otpme-device**(1), **otpme-dictionary**(1), **otpme-group**(1),
+**otpme-host**(1), **otpme-inventory**(1), **otpme-mount**(1),
+**otpme-node**(1), **otpme-pass**(1), **otpme-policy**(1),
+**otpme-pool**(1), **otpme-realm**(1), **otpme-resolver**(1),
+**otpme-role**(1), **otpme-scope**(1), **otpme-script**(1),
+**otpme-share**(1), **otpme-shell**(1), **otpme-site**(1),
 **otpme-token**(1), **otpme-tool**(1), **otpme-trash**(1),
 **otpme-unit**(1), **otpme-user**(1), **otpme-vlan**(1)
 

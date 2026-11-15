@@ -187,8 +187,10 @@ def wrap_key(fernet_key, public_key):
     ciphertext = key.encrypt(fernet_key)
     return base64.b64encode(ciphertext).decode()
 
-def apply_change(entries, action, entry_name, fields=None, password=None):
-    """ Add, change or delete an entry. """
+def check_change(entries, action, entry_name, fields=None, new_password=False):
+    """ Whether <action> can be done on <entries>, before the password
+    of the entry is asked for: else it was typed for nothing, e.g. for
+    an entry that exists already. """
     if fields is None:
         fields = {}
     if not entry_name:
@@ -199,15 +201,32 @@ def apply_change(entries, action, entry_name, fields=None, password=None):
             msg = _("Entry already exists: {entry_name}")
             msg = msg.format(entry_name=entry_name)
             raise OTPmeException(msg)
+        return
+    if entry_name not in entries:
+        msg = _("Unknown entry: {entry_name}")
+        msg = msg.format(entry_name=entry_name)
+        raise OTPmeException(msg)
+    if action == "change_entry":
+        # Without a field and a password it would write the entries
+        # again for nothing: a new revision, a changelog entry, and the
+        # hosts fetching it anew.
+        if not new_password \
+        and all(fields.get(x) is None for x in ENTRY_FIELDS):
+            msg = _("Nothing to change.")
+            raise OTPmeException(msg)
+
+def apply_change(entries, action, entry_name, fields=None, password=None):
+    """ Add, change or delete an entry. """
+    if fields is None:
+        fields = {}
+    check_change(entries, action, entry_name, fields=fields,
+                new_password=password is not None)
+    if action == "add_entry":
         entry = {'password': password}
         for x in ENTRY_FIELDS:
             entry[x] = fields.get(x) or ""
         entries[entry_name] = entry
         return entries
-    if entry_name not in entries:
-        msg = _("Unknown entry: {entry_name}")
-        msg = msg.format(entry_name=entry_name)
-        raise OTPmeException(msg)
     if action == "del_entry":
         entries.pop(entry_name)
         return entries
@@ -315,9 +334,13 @@ def handle_request(request, unwrap_key, get_password, local_args=None,
         if key_users - set(recipients):
             rotate = True
     else:
+        new_password = action == "add_entry" \
+                    or (action == "change_entry" and bool(local_args.get('new_password')))
+        # Before the password is asked for, see check_change().
+        check_change(entries, action, entry_name, fields=fields,
+                    new_password=new_password)
         password = None
-        if action == "add_entry" \
-        or (action == "change_entry" and local_args.get('new_password')):
+        if new_password:
             password = ask_password(get_password)
         entries = apply_change(entries, action, entry_name,
                                 fields=fields, password=password)

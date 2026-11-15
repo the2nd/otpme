@@ -31,6 +31,9 @@ from otpme.lib import config
 from otpme.lib.help import command_map
 #from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
+from otpme.lib.protocols.utils import bind_challenge
+from otpme.lib.protocols.utils import fido2_challenge
+from otpme.lib.protocols.utils import tag_test_challenge
 
 from otpme.lib. exceptions import *
 
@@ -41,6 +44,32 @@ REGISTER_AFTER = []
 
 def register():
     config.register_smartcard_type("fido2", Fido2ClientHandler, Fido2ServerHandler)
+
+def bind_request_options(request_options, session_key):
+    """ The request options with the challenge bound to the session key.
+
+    The challenge says nothing about who asked for it, and the origin
+    the key signs is https://<rp>, with the rp the server sends. So a
+    server that gets the request options from a second one and hands
+    them to the user as its own got back an assertion that logs in
+    there. Bound to this connection it is worthless everywhere else
+    (protocols/utils.bind_challenge). """
+    options = json.loads(request_options)
+    challenge = options['publicKey']['challenge']
+    challenge = fido2_challenge(bind_challenge(challenge, session_key))
+    options['publicKey']['challenge'] = challenge
+    return json.dumps(options)
+
+def tag_request_options(request_options):
+    """ The request options of a token test, with the challenge tagged
+    (protocols/utils.tag_test_challenge): the job that verifies a test
+    has no session key, and an assertion over a challenge as the server
+    sent it could be one bound at a second server. """
+    options = json.loads(request_options)
+    challenge = options['publicKey']['challenge']
+    challenge = fido2_challenge(tag_test_challenge(challenge))
+    options['publicKey']['challenge'] = challenge
+    return json.dumps(options)
 
 class CliInteraction(UserInteraction):
     def __init__(self, pin=None):
@@ -159,11 +188,14 @@ class Fido2ClientHandler(object):
         deploy_args['registration_data'] = registration_data
         return deploy_args
 
-    def handle_preauth(self, smartcard, password=None, **kwargs):
+    def handle_preauth(self, smartcard, password=None, session_key=None, **kwargs):
         rp = self.token_options['rp']
         request_options = self.token_options['request_options']
         is_2f_token = self.token_options['is_2f_token']
         pass_required = self.token_options['pass_required']
+        # Bind our assertion to this connection. The server binds the
+        # challenge of its auth state the same way before it verifies.
+        request_options = bind_request_options(request_options, session_key)
         self.enc_challenge = stuff.gen_secret(len=16)
         try:
             auth_response = smartcard.authenticate(rp=rp,
@@ -186,8 +218,10 @@ class Fido2ClientHandler(object):
         return smartcard_data
 
     def handle_authentication(self, smartcard, smartcard_data, password=None, **kwargs):
+        """ Answer the challenge of a token test (Fido2Token.test(), sent
+        with OTPME_SCAUTH), tagged, see tag_request_options(). """
         rp = smartcard_data['rp']
-        request_options = smartcard_data['request_options']
+        request_options = tag_request_options(smartcard_data['request_options'])
         try:
             auth_response = smartcard.authenticate(rp=rp,
                                             pin=password,
@@ -232,6 +266,12 @@ class Fido2ClientHandler(object):
 
 
 class Fido2ServerHandler(object):
+    # The assertion is over the challenge plus a hash of the session key,
+    # see bind_request_options(). The server binds the challenge of the
+    # auth state before the token verifies, and does not offer the token
+    # without a session key.
+    binds_challenge = True
+
     def __init__(self):
         self.auth_state = None
         self.token_type = None
@@ -256,8 +296,11 @@ class Fido2ServerHandler(object):
                     }
         return token_options
 
-    def prepare_authentication(self, smartcard_data):
-        smartcard_data['auth_state'] = self.auth_state
+    def prepare_authentication(self, smartcard_data, session_key=None):
+        auth_state = dict(self.auth_state)
+        challenge = bind_challenge(auth_state['challenge'], session_key)
+        auth_state['challenge'] = fido2_challenge(challenge)
+        smartcard_data['auth_state'] = auth_state
         return smartcard_data
 
 class Fido2(object):

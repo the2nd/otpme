@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import re
 import json as stdlib_json
 from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.hazmat.primitives.serialization import PublicFormat
@@ -22,6 +23,7 @@ from otpme.lib import encryption
 from otpme.lib.help import command_map
 from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.protocols.utils import bind_challenge
+from otpme.lib.protocols.utils import tag_test_challenge
 from otpme.lib.smartcard.yubikey import piv
 from otpme.lib.smartcard.yubikey.yubikey import Yubikey
 
@@ -29,6 +31,20 @@ from otpme.lib.smartcard.yubikey.yubikey import Yubikey
 # PIV slot roles used by this handler.
 SIGN_SLOT = "AUTHENTICATION"     # 9A — ECDSA/RSA sign, derive_password
 ENCRYPT_SLOT = "KEY_MANAGEMENT"  # 9D — RSA-decrypt / ECDH-unwrap
+
+# A challenge as Yubikeypiv.gen_challenge() makes it: 32 random bytes,
+# hex.
+CHALLENGE_RE = re.compile(r'^[0-9a-f]{64}$')
+
+def check_challenge(challenge):
+    """ Sign nothing but a challenge the server generated. One bound
+    already, to a connection of the server with another one, would give
+    a signature that logs in there (protocols/utils.tag_test_challenge).
+    """
+    if not isinstance(challenge, str) or not CHALLENGE_RE.match(challenge):
+        msg = _("Invalid smartcard challenge.")
+        raise SmartcardAuthFailed(msg)
+    return challenge
 
 
 def _load_backup_file(path):
@@ -485,7 +501,7 @@ class YubikeypivClientHandler(object):
         return deploy_args
 
     def handle_preauth(self, smartcard, password, session_key=None, **kwargs):
-        challenge = self.token_options['challenge']
+        challenge = check_challenge(self.token_options['challenge'])
         # Bind our answer to this connection, so that nobody can use it
         # on another one (protocols/utils.bind_challenge). What we send
         # back is the challenge as we got it: the server checks it is the
@@ -506,12 +522,18 @@ class YubikeypivClientHandler(object):
         return smartcard_data
 
     def handle_authentication(self, smartcard, smartcard_data, password, **kwargs):
-        challenge = smartcard_data['challenge']
+        """ Sign the challenge of a token test (Yubikeypiv.test(), sent
+        with OTPME_SCAUTH). It was signed as the server sent it, and so
+        anything a server sent: a challenge it got from a second one and
+        bound there to its own connection gave a signature that logs in
+        there. Tagged now, see protocols/utils.tag_test_challenge(). """
+        challenge = check_challenge(smartcard_data['challenge'])
+        sign_challenge = tag_test_challenge(challenge)
         # Sign challenge.
         try:
             signature = smartcard.sign_challenge(slot="AUTHENTICATION",
                                             pin=password,
-                                            challenge=challenge)
+                                            challenge=sign_challenge)
         except Exception as e:
             msg = _("Error sending signing challenge with smartcard: {error}")
             msg = msg.format(error=e)
@@ -591,7 +613,9 @@ class YubikeypivServerHandler(object):
                     }
         return token_options
 
-    def prepare_authentication(self, smartcard_data):
+    def prepare_authentication(self, smartcard_data, session_key=None):
+        # The challenge comes back with the answer, so the server binds
+        # it after it checked it (otpme_server.authenticate_user).
         return smartcard_data
 
 class Yubikeypiv(object):

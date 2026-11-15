@@ -1,482 +1,675 @@
-.TH OTPME.CONF 5 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.TH OTPME.CONF 5 "2026-11-09" "OTPme 0.3.0a288" "OTPme Manual"
 .SH NAME
 otpme.conf \- OTPme configuration file
 .SH SYNOPSIS
 .I /etc/otpme/otpme.conf
+.br
+.I ~/.otpme/otpme.conf
 .SH DESCRIPTION
-The
+.na
+.nh
 .B otpme.conf
-file configures the OTPme authentication system. It uses a simple KEY="VALUE" format. Lines starting with # are comments.
+sets how OTPme runs on this system: the index and cache, the daemons, logging, backups and more.
+The settings of the realm, its sites and objects are not here; they are config parameters of the objects, see
+.BR otpme (7).
 .PP
-A distribution template is provided at
-.IR /etc/otpme/otpme.conf.dist .
+Each line is \fINAME\fR=\fIvalue\fR, e.g.
+.RS
+.PP
+.B LOGLEVEL=\(dqINFO\(dq
+.RE
+.PP
+The value can be in double or single quotes, or without them.
+\fBTrue\fR and \fBFalse\fR are yes and no, a list is comma separated.
+A line that starts with \fB#\fR is a comment, and so is the rest of a line after a value and a \fB#\fR.
+An empty value is the same as no line: the default stays.
+A line OTPme cannot read stops it with a message that names the line.
+A parameter it does not know gives a message and is ignored.
+.PP
+A command reads the file each time it runs.
+The daemons read it when they start, and again on \fBotpme\-controld reload\fR.
+.PP
+A user can set some parameters for themselves, in \fI~/.otpme/otpme.conf\fR; that one wins for them.
+Those parameters say so below.
+.PP
+\fI/etc/otpme/otpme.conf.dist\fR has all parameters with a comment on each, see \fBFILES\fR.
+.hy
+.ad
 .SH GENERAL
+.na
+.nh
 .TP
 .B BIN_DIR
-Path to OTPme command binaries.
+The directory of the OTPme commands (default: \fI/usr/local/bin\fR).
+\fBotpme\-agent\fR and \fBotpme\-controld\fR are started from there, and scripts find the commands there: it comes first in their \fBPATH\fR and is in \fBOTPME_BIN_DIR\fR.
 .TP
 .B TIMEZONE
-Timezone used for certificates etc. (e.g. "Europe/Berlin").
+The time zone of the certificates a CA issues (default: \fBEurope/Berlin\fR).
 .TP
 .B LANGUAGE
-Language for OTPme output (e.g. "en").
+The language of the output (default: \fBenv\fR).
+\fBenv\fR takes it from \fBLC_ALL\fR, \fBLC_MESSAGES\fR or \fBLANG\fR, the first one set; without any it is \fBen\fR.
+There are \fBen\fR, \fBde\fR, \fBes\fR, \fBfr\fR and \fBit\fR; any other gives a message and \fBen\fR.
+What the servers answer is in the language of the user, if one was set with \fBotpme\-user language\fR.
+A user can set it in \fI~/.otpme/otpme.conf\fR as well.
 .TP
 .B LOG_LANGUAGE
-Language for log messages.
+The language of the log messages (default: \fBen\fR).
 .TP
-.B USER
-System user OTPme runs as (default: "otpme").
-.TP
-.B GROUP
-System group OTPme runs as (default: "otpme").
+.B USER\fR, \fBGROUP
+The system user and group that own the files of OTPme and that the daemons run as (default: \fBotpme\fR and \fBotpme\fR).
 .TP
 .B HANDLE_FILES_DIRS
-If True, OTPme creates missing directories/files and sets permissions automatically.
+Whether OTPme makes the directories and files it needs and sets their owner and mode (default: \fBTrue\fR).
+With \fBFalse\fR the package or the administrator has to see to that; a missing one is then an error.
 .TP
 .B PINENTRY
-Pinentry program to use (default: "/usr/bin/pinentry").
-.TP
-.B PWGEN
-Path to pwgen binary for password generation.
+The pinentry program (default: \fI/usr/bin/pinentry\fR).
+\fBotpme\-agent\fR asks for the PIN and for a confirmation with it, and \fBotpme\-pinentry\fR wraps it.
+A user can set it in \fI~/.otpme/otpme.conf\fR as well.
 .TP
 .B USE_MGMTD_SOCKET
-Enable use of mgmtd socket (\-\-socket) by default. Makes sense on nodes only.
+Whether a command goes to the local mgmtd through its socket when nobody is logged in, as the global option \fB\-\-socket\fR does (default: \fBFalse\fR).
+Without it, such a command fails with "Not logged in".
+Only on a node, where mgmtd runs.
+A user can set it in \fI~/.otpme/otpme.conf\fR as well.
 .TP
 .B USE_PAGER
-Whether to page long CLI output through a pager. Values: "auto" (default, page only when stdout is a TTY), "True" (always page), "False" (never page).
+Whether long output of a command is shown through a pager, only ever on a terminal (default: \fBauto\fR).
+\fBauto\fR pages when the output does not fit the terminal, \fBTrue\fR always, \fBFalse\fR never.
+The pager is the one \fBPAGER\fR names, else \fBpager\fR or \fBless\fR.
+A user can set it in \fI~/.otpme/otpme.conf\fR as well.
+.hy
+.ad
 .SH INDEX DATABASE
+.na
+.nh
+The index is the database next to the object files that OTPme searches.
+It can always be built again from the files, see \fBindex rebuild\fR in
+.BR otpme\-tool (1).
+PostgreSQL and MySQL run as a server of their own, with their files in \fI/var/lib/otpme/index/\fR and a socket in \fI/var/run/otpme/sockets/\fR; OTPme starts it and writes its configuration.
 .TP
 .B INDEX
-Index database type: "sqlite3", "postgres" or "mysql". Run "otpme-tool index stop" before changing this.
+The type: \fBsqlite3\fR, \fBpostgres\fR or \fBmysql\fR.
+It has to be set; without it no command runs.
+SQLite is meant for hosts with few objects; do not use it on nodes.
+Run \fBotpme\-tool index stop\fR before changing it.
+The index of the old type is not carried over.
 .TP
 .B AUTOSTART_INDEX
-Autostart index database on daemon start.
+Whether \fBotpme\-controld\fR starts the PostgreSQL or MySQL server when it starts, and stops it when it stops (default: \fBTrue\fR).
+With \fBFalse\fR the server has to run already, else the daemons do not start: "Index not started".
+The global option \fB\-\-no\-index\-start\fR does the same for one start.
+SQLite needs no server.
 .SS SQLite3
+The index is the file \fI/var/lib/otpme/index/objects.sqlite\fR.
+It is meant for hosts with few objects, not for nodes: a node holds all objects of the site, and its daemons write to the index at the same time.
 .TP
 .B SQLITE3_BIN
-Path to sqlite3 binary.
+The \fBsqlite3\fR program that \fBotpme\-tool index cli\fR opens (default: \fBsqlite3\fR).
 .TP
 .B SQLITE3_PRAGMA_SYNCHRONOUS
-SQLite3 synchronous pragma setting (default: "NORMAL").
+How often SQLite waits for the disk: \fBOFF\fR, \fBNORMAL\fR, \fBFULL\fR or \fBEXTRA\fR (default: \fBOFF\fR).
+With \fBOFF\fR a crash of the machine can damage the index; \fBotpme\-tool index rebuild\fR builds it again.
 .SS PostgreSQL
 .TP
-.B POSTGRES_PG_CTL_BIN
-Path to pg_ctl binary.
-.TP
-.B POSTGRES_PSQL_BIN
-Path to psql binary.
-.TP
-.B POSTGRES_CREATEDB_BIN
-Path to createdb binary.
-.TP
-.B POSTGRES_CREATEUSER_BIN
-Path to createuser binary.
-.TP
-.B POSTGRES_PG_ISREADY_BIN
-Path to pg_isready binary.
+.B POSTGRES_PG_CTL_BIN\fR, \fBPOSTGRES_PSQL_BIN\fR, \fBPOSTGRES_CREATEDB_BIN\fR, \fBPOSTGRES_CREATEUSER_BIN\fR, \fBPOSTGRES_PG_ISREADY_BIN
+The PostgreSQL programs (default: \fBpg_ctl\fR, \fBpsql\fR, \fBcreatedb\fR, \fBcreateuser\fR and \fBpg_isready\fR, found in \fBPATH\fR).
+On Debian \fBpg_ctl\fR is not in \fBPATH\fR: give the full path, e.g. \fI/usr/lib/postgresql/15/bin/pg_ctl\fR.
 .TP
 .B POSTGRES_DBAPI
-Python DB-API module (default: "psycopg2").
+The Python driver: \fBpsycopg2\fR (default), \fBpg8000\fR, \fBpygresql\fR or \fBpsycopg2cffi\fR.
 .TP
 .B POSTGRES_SOCKET_DIR
-PostgreSQL socket directory.
-.TP
-.B POSTGRES_DEFAULT_TEXT_SEARCH_CONFIG
-Default text search config.
+The directory of the socket (default: \fI/var/run/otpme/sockets/postgres\fR).
 .PP
-Tuning parameters:
-.B POSTGRES_WORK_MEM\fR,
-.B POSTGRES_SHARED_BUFFERS\fR,
-.B POSTGRES_EFFECTIVE_CACHE_SIZE\fR,
-.B POSTGRES_MAINTENANCE_WORK_MEM\fR,
-.B POSTGRES_DYNAMIC_SHARED_MEMORY_TYPE\fR,
-.B POSTGRES_MAX_CONNECTIONS\fR,
-.B POSTGRES_FSYNC\fR,
-.B POSTGRES_SYNCHRONOUS_COMMIT\fR,
-.B POSTGRES_RANDOM_PAGE_COST\fR,
-.B POSTGRES_ENABLE_HASHJOIN\fR.
+These go into the \fIpostgresql.conf\fR that OTPme writes, as the PostgreSQL setting of the same name in lower case: \fBPOSTGRES_WORK_MEM\fR is \fBwork_mem\fR.
+What they do is in the PostgreSQL documentation.
+The defaults:
+\fBPOSTGRES_MAX_CONNECTIONS\fR 500,
+\fBPOSTGRES_SHARED_BUFFERS\fR 512MB,
+\fBPOSTGRES_WORK_MEM\fR 128MB,
+\fBPOSTGRES_MAINTENANCE_WORK_MEM\fR 256MB,
+\fBPOSTGRES_EFFECTIVE_CACHE_SIZE\fR 512MB,
+\fBPOSTGRES_DYNAMIC_SHARED_MEMORY_TYPE\fR posix,
+\fBPOSTGRES_FSYNC\fR on,
+\fBPOSTGRES_SYNCHRONOUS_COMMIT\fR off,
+\fBPOSTGRES_RANDOM_PAGE_COST\fR 1.0,
+\fBPOSTGRES_ENABLE_HASHJOIN\fR off,
+\fBPOSTGRES_AUTOVACUUM\fR on,
+\fBPOSTGRES_AUTOVACUUM_WORK_MEM\fR \-1,
+\fBPOSTGRES_AUTOVACUUM_NAPTIME\fR 1min,
+\fBPOSTGRES_AUTOVACUUM_MAX_WORKERS\fR 5,
+\fBPOSTGRES_AUTOVACUUM_FREEZE_MAX_AGE\fR 100000,
+\fBPOSTGRES_AUTOVACUUM_VACUUM_THRESHOLD\fR 50,
+\fBPOSTGRES_AUTOVACUUM_ANALYZE_THRESHOLD\fR 50,
+\fBPOSTGRES_DATESTYLE\fR "iso, mdy",
+\fBPOSTGRES_TIMEZONE\fR and \fBPOSTGRES_LOG_TIMEZONE\fR Europe/Berlin,
+\fBPOSTGRES_DEFAULT_TEXT_SEARCH_CONFIG\fR pg_catalog.english.
 .PP
-Autovacuum settings:
-.B POSTGRES_AUTOVACUUM\fR,
-.B POSTGRES_AUTOVACUUM_WORK_MEM\fR,
-.B POSTGRES_AUTOVACUUM_NAPTIME\fR,
-.B POSTGRES_AUTOVACUUM_MAX_WORKERS\fR,
-.B POSTGRES_AUTOVACUUM_FREEZE_MAX_AGE\fR,
-.B POSTGRES_AUTOVACUUM_VACUUM_THRESHOLD\fR,
-.B POSTGRES_AUTOVACUUM_ANALYZE_THRESHOLD\fR.
-.PP
-Localization:
-.B POSTGRES_LC_TIME\fR,
-.B POSTGRES_LC_NUMERIC\fR,
-.B POSTGRES_LC_MESSAGES\fR,
-.B POSTGRES_LC_MONETARY\fR,
-.B POSTGRES_DATESTYLE\fR,
-.B POSTGRES_TIMEZONE\fR,
-.B POSTGRES_LOG_TIMEZONE\fR.
-.PP
-Custom config can be saved to
-.IR /etc/otpme/postgresql.conf .
+A file \fI/etc/otpme/postgresql.conf\fR is used instead of the one OTPme writes.
+Then none of the settings above apply.
 .SS MySQL
 .TP
+.B MYSQLD_BIN\fR, \fBMYSQL_BIN\fR, \fBMYSQL_ADMIN_BIN\fR, \fBMYSQL_INSTALL_DB
+The MySQL programs (default: \fI/usr/sbin/mysqld\fR, then \fBmysql\fR, \fBmysqladmin\fR and \fBmysql_install_db\fR, found in \fBPATH\fR).
+.TP
 .B MYSQL_DBAPI
-Python DB-API module (e.g. "cymysql").
-.TP
-.B MYSQL_BIN
-Path to mysql binary.
-.TP
-.B MYSQLD_BIN
-Path to mysqld binary.
-.TP
-.B MYSQL_ADMIN_BIN
-Path to mysqladmin binary.
-.TP
-.B MYSQL_INSTALL_DB
-Path to mysql_install_db binary.
+The Python driver: \fBpymysql\fR (default), \fBmysqldb\fR or \fBcymysql\fR.
 .TP
 .B MYSQL_SOCKET_DIR
-MySQL socket path.
+The directory of the socket \fImysqld.sock\fR (default: \fI/var/run/otpme/sockets/mysql\fR).
 .PP
-Tuning parameters:
-.B MYSQL_MAX_CONNECTIONS\fR,
-.B MYSQL_KEY_BUFFER_SIZE\fR,
-.B MYSQL_THREAD_STACK\fR,
-.B MYSQL_MAX_ALLOWED_PACKET\fR,
-.B MYSQL_THREAD_CACHE_SIZE\fR,
-.B MYSQL_QUERY_CACHE_LIMIT\fR,
-.B MYSQL_QUERY_CACHE_SIZE\fR,
-.B MYSQL_EXPIRE_LOGS_DAYS\fR,
-.B MYSQL_MAX_BINLOG_SIZE\fR,
-.B MYSQL_BINLOG_FORMAT\fR,
-.B MYSQL_CHARACTER_SET_SERVER\fR,
-.B MYSQL_COLLATION_SERVER\fR,
-.B MYSQL_MYISAM_RECOVER_OPTIONS\fR.
+These go into the \fImysql.cnf\fR that OTPme writes, as the MySQL setting of that name: \fBMYSQL_KEY_BUFFER_SIZE\fR is \fBkey_buffer_size\fR, \fBMYSQL_CHARACTER_SET_SERVER\fR is \fBcharacter\-set\-server\fR.
+The defaults:
+\fBMYSQL_MAX_CONNECTIONS\fR 512,
+\fBMYSQL_KEY_BUFFER_SIZE\fR 160M,
+\fBMYSQL_THREAD_STACK\fR 192K,
+\fBMYSQL_MAX_ALLOWED_PACKET\fR 512M,
+\fBMYSQL_THREAD_CACHE_SIZE\fR 8,
+\fBMYSQL_QUERY_CACHE_LIMIT\fR 10M,
+\fBMYSQL_QUERY_CACHE_SIZE\fR 160M,
+\fBMYSQL_EXPIRE_LOGS_DAYS\fR 10,
+\fBMYSQL_MAX_BINLOG_SIZE\fR 100M,
+\fBMYSQL_BINLOG_FORMAT\fR ROW,
+\fBMYSQL_CHARACTER_SET_SERVER\fR utf8mb4,
+\fBMYSQL_COLLATION_SERVER\fR utf8mb4_general_ci,
+\fBMYSQL_MYISAM_RECOVER_OPTIONS\fR BACKUP.
 .PP
-.B MYSQL_BINLOG_FORMAT
-must be "ROW" or "MIXED".
-The index reads with READ COMMITTED, and MySQL refuses every write with "STATEMENT".
+\fBMYSQL_BINLOG_FORMAT\fR must be \fBROW\fR or \fBMIXED\fR.
+The index reads with READ COMMITTED, and MySQL refuses every write with \fBSTATEMENT\fR.
 .PP
-Custom config can be saved to
-.IR /etc/otpme/mysql.cnf .
+A file \fI/etc/otpme/mysql.cnf\fR is used instead of the one OTPme writes.
+Then none of the settings above apply.
+.hy
+.ad
 .SH CACHE
+.na
+.nh
+The cache holds what the processes of a host or node share, in Redis or memcached: the state of the cluster and of running jobs, and the results of some lookups, such as the roles and tokens of a user and password hashes.
+It runs as a server of its own with a socket in \fI/var/run/otpme/sockets/\fR, and OTPme starts it and writes its configuration.
+Objects and search results stay in the memory of each process, see \fBOBJECT_CACHES\fR; sessions are files like the objects.
 .TP
 .B CACHE
-Cache daemon: "redis" or "memcached". Run "otpme-tool cache stop" before changing this.
+The cache server: \fBredis\fR (default) or \fBmemcached\fR.
+Run \fBotpme\-tool cache stop\fR before changing it.
 .TP
 .B AUTOSTART_CACHE
-Autostart cache on daemon start.
+Whether \fBotpme\-controld\fR starts the cache server when it starts, and stops it when it stops (default: \fBTrue\fR).
+With \fBFalse\fR the server has to run already, else the daemons do not start: "Cache not started".
+The global option \fB\-\-no\-cache\-start\fR does the same for one start.
 .TP
 .B FLUSH_CACHE_ON_START
-Flush cache on daemon start.
+Whether \fBotpme\-controld\fR empties the cache when it starts (default: \fBTrue\fR).
+With \fBFalse\fR the global option \fB\-\-cache\-flush\fR does it for one start.
 .TP
 .B OBJECT_CACHES
-Comma separated list of object_type:cache_size pairs (e.g. "user:2048,group:512").
-.TP
-.B PICKLE_CACHE_MODULE
-Pickle module for caching: "pickle" or "larch".
+How many objects of a type each process keeps in its own memory, as \fItype\fR\fB:\fR\fIcount\fR pairs separated by commas, e.g. \fBuser:2048,group:512\fR.
+When a type is full, the quarter used longest ago goes.
+The defaults: \fBuser\fR and \fBtoken\fR 10240, \fBscript\fR 512, \fBdictionary\fR 128, every other type 1024.
+A type not named keeps its default.
 .SS Redis
 .TP
-.B REDIS_CLI_BIN
-Path to redis-cli binary.
-.TP
-.B REDIS_SERVER_BIN
-Path to redis-server binary.
-.TP
-.B REDIS_MAXMEMORY
-Maximum memory for Redis (e.g. "128M").
-.TP
-.B REDIS_MAXMEMORY_POLICY
-Eviction policy: "lru" (volatile-lru) or "lfu" (volatile-lfu, requires Redis 4.0+).
-.TP
-.B REDIS_MAXMEMORY_SAMPLES
-LRU samples count.
-.TP
-.B REDIS_LFU_DECAY_TIME
-LFU decay time.
-.TP
-.B REDIS_LFU_LOG_FACTOR
-LFU log factor.
-.TP
-.B REDIS_LOGLEVEL
-Redis log level (e.g. "notice").
-.TP
-.B REDIS_DATABASES
-Number of Redis databases.
+.B REDIS_SERVER_BIN\fR, \fBREDIS_CLI_BIN
+The Redis programs (default: \fBredis\-server\fR and \fBredis\-cli\fR, found in \fBPATH\fR).
+\fBotpme\-tool cache cli\fR opens \fBredis\-cli\fR.
 .TP
 .B REDIS_SOCKET
-Redis socket path.
+The socket (default: \fI/var/run/otpme/sockets/redis.sock\fR).
+Redis listens on no TCP port.
+.TP
+.B REDIS_MAXMEMORY
+How much memory Redis may use (default: \fB128M\fR).
+.TP
+.B REDIS_MAXMEMORY_POLICY
+What goes when that is full: \fBlru\fR, the entries used longest ago (Redis \fBvolatile\-lru\fR), or \fBlfu\fR, the ones used least often (\fBvolatile\-lfu\fR) (default: \fBlru\fR).
+.TP
+.B REDIS_MAXMEMORY_SAMPLES
+With \fBlru\fR: how many entries Redis looks at to pick one (default: \fB5\fR).
+.TP
+.B REDIS_LFU_LOG_FACTOR\fR, \fBREDIS_LFU_DECAY_TIME
+With \fBlfu\fR: Redis \fBlfu\-log\-factor\fR and \fBlfu\-decay\-time\fR (default: \fB10\fR and \fB1\fR).
+.TP
+.B REDIS_LOGLEVEL
+The log level of Redis, written to \fI/var/log/otpme/redis.log\fR (default: \fBnotice\fR).
+.TP
+.B REDIS_DATABASES
+How many databases Redis has (default: \fB16\fR).
 .TP
 .B REDIS_PERSISTENCE
-Enable Redis persistence. Note: stores sensitive data on disk.
+Whether Redis writes the cache to disk, in \fBREDIS_CACHE_DIR\fR (default: \fBFalse\fR).
+The cache holds password hashes; with \fBTrue\fR they are on the disk.
+With \fBFalse\fR OTPme also turns it off on a running Redis.
 .TP
 .B REDIS_CACHE_DIR
-Redis cache directory.
+Where Redis writes with \fBREDIS_PERSISTENCE\fR (default: \fI/var/cache/otpme/redis\fR).
 .PP
-Custom config can be saved to
-.IR /etc/otpme/redis.conf .
+A file \fI/etc/otpme/redis.conf\fR is used instead of the one OTPme writes.
+Then none of the settings above apply, but \fBREDIS_PERSISTENCE\fR still does.
 .SS Memcached
 .TP
 .B MEMCACHED_BIN
-Path to memcached binary.
+The memcached program (default: \fBmemcached\fR, found in \fBPATH\fR).
 .TP
 .B MEMCACHED_MAXMEM
-Maximum memory in MB.
+How much memory memcached may use, in MB (default: \fB128\fR).
 .TP
 .B MEMCACHED_THREADS
-Number of threads.
+The threads of memcached (default: \fB32\fR).
 .TP
 .B MEMCACHED_MAXCONN
-Maximum number of connections (default: 4096). Memcacheds own default of
-1024 is not enough here: the connection pool holds one connection per thread
-and process and never gives it back, so every daemon, every ldapd worker and
-every forked child adds to the count. Once the limit is reached memcached
-turns new connections away at the door, which reaches the client as a
-connection reset on a cache that is running fine:
-.PP
+How many connections memcached takes (default: \fB4096\fR).
+The default of memcached itself, 1024, is not enough here: the connection pool holds one connection per thread and process and never gives it back, so every daemon, every ldapd worker and every forked child adds to the count.
+Once the limit is reached memcached turns new connections away, which reaches the client as a connection reset on a cache that is running fine:
 .RS
+.PP
 .B Memcache get error: ... CONNECTION FAILURE(Connection reset by peer)
 .RE
 .TP
 .B MEMCACHED_MAX_OBJECT_SIZE
-Maximum object size (e.g. "8m"). Increase if role/group objects grow large.
+The largest entry memcached takes (default: \fB8m\fR).
+Make it larger if roles or groups with many members grow beyond it.
 .TP
-.B MEMCACHED_SOCKET
-Memcached socket path.
+.B MEMCACHED_SOCKET\fR, \fBMEMCACHED_PIDFILE
+The socket and the PID file (default: \fI/var/run/otpme/sockets/memcached.sock\fR and \fI/var/run/otpme/pidfiles/memcached.pid\fR).
+Memcached listens on no TCP or UDP port.
 .TP
 .B MEMCACHED_OPTS
-Full custom command line options. If set, all other memcached options are ignored.
+The whole command line of memcached.
+All other memcached settings above are then ignored, so it has to give \fB\-s\fR with the socket and \fB\-P\fR with the PID file: OTPme looks for memcached there.
+.hy
+.ad
 .SH FREERADIUS
+.na
+.nh
+On a node OTPme runs a FreeRADIUS server of its own on port 1812, with its configuration in \fI/var/run/otpme/freeradius/\fR.
+It runs only while the node is enabled and the cluster has a quorum; otherwise it is stopped.
+The RADIUS clients are the OTPme clients, see
+.BR otpme\-client (1).
+.PP
+\fBotpme\-controld\fR starts it as root, and FreeRADIUS then changes to its own user.
+With the module (\fBUSE_RADIUS_MOD\fR) that is \fBFREERADIUS_USER\fR: it has no access to the objects of OTPme and gets the client of a request and the session of a cached login from \fBotpme\-hostd\fR.
+Without the module it is the OTPme user, because \fBotpme\-auth\fR reads the auth cache of the node.
+The configuration directory and its files belong to the OTPme user and to the group of FreeRADIUS, which may only read them.
 .TP
 .B START_FREERADIUS
-Start freeradius with OTPme.
+Whether the node runs FreeRADIUS (default: \fBTrue\fR).
 .TP
 .B FREERADIUS_BIN
-Path to freeradius binary.
+The FreeRADIUS program (default: \fI/usr/sbin/freeradius\fR).
 .TP
-.B RADIUS_CACHE_TIME
-Radius cache time in seconds.
+.B FREERADIUS_USER\fR, \fBFREERADIUS_GROUP
+The user and group FreeRADIUS runs as with the module (default: \fBfreerad\fR and \fBfreerad\fR).
+.TP
+.B FREERADIUS_LOG_DIR
+Where FreeRADIUS writes \fIradius.log\fR with the module, and the module its audit log \fIaudit.log\fR (default: \fI/var/log/freeradius\fR).
+The module does not send its audit log to \fBAUDIT_LOG_SERVER\fR, because \fBFREERADIUS_USER\fR may not read the certificate and key of the node; what authd does for it goes there as always.
+It is made for \fBFREERADIUS_USER\fR when it is missing.
+Without the module \fIradius.log\fR is in the log directory of OTPme.
 .TP
 .B USE_RADIUS_MOD
-Use OTPme radius module.
+Whether FreeRADIUS checks a request through the Python module of OTPme (default: \fBTrue\fR).
+The module also adds the VLAN and the MPPE keys to the answer.
+With \fBFalse\fR every request starts \fBotpme\-auth verify\fR, which is slower, and no VLAN is sent.
+Either way an answer comes from the cache only where the client has its auth cache enabled, for its \fBauth_cache_timeout\fR, see \fBTHE AUTH CACHE\fR in
+.BR otpme\-client (1).
 .TP
-.B RADIUS_START_SERVERS
-Number of start servers.
-.TP
-.B RADIUS_MAX_SERVERS
-Maximum number of servers.
-.TP
-.B RADIUS_MIN_SPARE_SERVERS
-Minimum spare servers.
-.TP
-.B RADIUS_MAX_SPARE_SERVERS
-Maximum spare servers.
+.B RADIUS_START_SERVERS\fR, \fBRADIUS_MAX_SERVERS\fR, \fBRADIUS_MIN_SPARE_SERVERS\fR, \fBRADIUS_MAX_SPARE_SERVERS
+The thread pool of FreeRADIUS: \fBstart_servers\fR, \fBmax_servers\fR, \fBmin_spare_servers\fR and \fBmax_spare_servers\fR (default: \fB32\fR, \fB64\fR, \fB8\fR and \fB16\fR).
+.PP
+A file \fI/etc/otpme/freeradius/radiusd.conf\fR is used instead of the one OTPme writes.
+Then none of the settings above apply but \fBSTART_FREERADIUS\fR, \fBFREERADIUS_BIN\fR and \fBFREERADIUS_GROUP\fR, and the user FreeRADIUS runs as is the one the file gives.
+The log of the module is \fBRADIUS_MOD_LOGFILE\fR, see \fBPAM LOGGING\fR.
+.hy
+.ad
 .SH HAPROXY (LDAP LOAD BALANCING)
-Spread LDAP requests over the ldapd instances of all member nodes via a haproxy that binds on the floating cluster IP. Clients keep reaching ldapd directly on its own port as well; haproxy is only the load-balanced listener on the cluster IP.
+.na
+.nh
+An haproxy on the floating IP of the site spreads LDAP connections over the ldapd of all enabled member nodes, its own one included, to the one with the fewest connections.
+It runs on the node that holds the floating IP, started and stopped by \fBotpme\-controld\fR along with it, so it follows the master to another node.
+When a member node comes or goes it is reloaded without dropping a connection.
+.PP
+It passes the connections on as they are, LDAPS with the site certificate, so the \fBdc=\fIclient\fR of a bind DN still picks the access group.
+ldapd sees the address of haproxy, not that of the client.
+Clients can still reach every ldapd directly on its own port, 2026.
+.PP
+The nodes are reached by their FQDN, so they have to resolve.
+Without a site address haproxy is not started.
 .TP
 .B START_HAPROXY
-Start haproxy with OTPme (default: True). Set to False to disable the LDAP load balancer on this host.
+Whether the node runs haproxy (default: \fBFalse\fR; the distributed \fIotpme.conf\fR sets \fBTrue\fR).
+haproxy has to be installed.
 .TP
 .B HAPROXY_BIN
-Path to the haproxy binary (default: /usr/sbin/haproxy).
+The haproxy program (default: \fI/usr/sbin/haproxy\fR).
 .TP
 .B HAPROXY_PORT
-Port on the floating cluster IP that clients connect to (default: 636). 636 is where LDAP clients look for LDAPS, which is what dovecot and SOGo want to be pointed at.
+The port on the floating IP that clients connect to (default: \fB636\fR).
+636 is where LDAP clients look for LDAPS, which is what dovecot and SOGo want to be pointed at.
 .TP
 .B HAPROXY_MAXCONN
-Maximum concurrent connections haproxy accepts (default: 4096).
+How many connections haproxy takes at once (default: \fB4096\fR).
 .TP
 .B HAPROXY_CHECK_INTERVAL
-How often a member node is health-checked (default: 5s).
+How often each node is checked with a TCP connect (default: \fB5s\fR).
+A node is out after 3 failed checks and back after 2 good ones.
 .TP
 .B HAPROXY_CONNECT_TIMEOUT
-Timeout for connecting to a backend ldapd (default: 5s).
+How long haproxy waits for a connection to an ldapd (default: \fB5s\fR).
 .TP
-.B HAPROXY_CLIENT_TIMEOUT
-Idle timeout for client connections (default: 1h). Generous on purpose: dovecot keeps its LDAP connection open between logins, and cutting an idle one only makes it reconnect.
-.TP
-.B HAPROXY_SERVER_TIMEOUT
-Idle timeout for backend connections (default: 1h).
+.B HAPROXY_CLIENT_TIMEOUT\fR, \fBHAPROXY_SERVER_TIMEOUT
+How long an idle connection to the client and to the ldapd is kept (default: \fB1h\fR and \fB1h\fR).
+Generous on purpose: dovecot keeps its LDAP connection open between logins, and cutting an idle one only makes it reconnect.
+.PP
+The times are in the format of haproxy, e.g. \fB5s\fR, \fB10m\fR, \fB1h\fR.
+.PP
+A file \fI/etc/otpme/haproxy/haproxy.cfg\fR is used instead of the one OTPme writes.
+Then none of the settings above apply but \fBSTART_HAPROXY\fR and \fBHAPROXY_BIN\fR, and the member nodes are not added: the file has to name them itself.
+.hy
+.ad
 .SH ENCRYPTION
+.na
+.nh
+On a node and on a host the object files are encrypted with the master key, a Fernet key (AES with HMAC) of 44 base64 characters.
 .TP
 .B KEY_COMMAND
-Command or path to get the encryption key. Can be a file path (file:///path/to/key) or a command that outputs the key to stdout.
+Where the master key comes from (default: \fBfile://etc/otpme/otpme.key\fR).
+.RS
+.TP
+.B file://\fIpath\fR
+A file that holds the key.
+\fIpath\fR is the absolute path without its first slash: \fBfile://etc/otpme/otpme.key\fR is \fI/etc/otpme/otpme.key\fR.
+\fBotpme\-realm init\fR and the join of a host or node write it, from a master password that is asked for, and keep its salt in \fI/etc/otpme/otpme.key_salt\fR.
+\fBotpme\-tool regen_master_key\fR writes it again from the password and that salt.
+.TP
+.I command
+A program, with its arguments, that writes the key to stdout.
+OTPme then writes no key file; the program has to give the same key every time.
+.RE
 .TP
 .B MASTER_KEY_HASH_TYPE
-Hash type for generating master key from password (e.g. "Argon2_i").
+How the master key is made from the master password (default: \fBArgon2_i\fR).
+The hash type is not kept with the salt: change it after the key was made and \fBregen_master_key\fR gives another key.
 .TP
 .B OFFLINE_TOKEN_HASH_TYPE
-Hash type for offline token encryption key derivation.
+How the key that encrypts the offline login data of a user on a host is made from their password (default: \fBArgon2_i\fR).
+It counts for offline logins saved from then on.
+A user can set it in \fI~/.otpme/otpme.conf\fR as well.
 .TP
 .B OBJECT_EXPORT_HASH_TYPE
-Hash type for object export encryption key derivation.
+How \fBexport \-\-password\fR makes its key from the password (default: \fBArgon2_i\fR).
+The export keeps the salt but not the hash type: \fBotpme\-tool import\fR has to run with the same one.
+A user can set it in \fI~/.otpme/otpme.conf\fR as well.
+.PP
+The hash types are \fBArgon2_i\fR, \fBArgon2_id\fR, \fBArgon2_d\fR and \fBPBKDF2\fR.
+.hy
+.ad
 .SH SSL
+.na
+.nh
+The files a host or node gets when it joins the realm, and that hostd keeps up to date.
+OTPme writes them; change the paths only to have them somewhere else.
 .TP
-.B SSL_SITE_CERT_FILE
-Path to site SSL certificate (default: /etc/otpme/ssl/site_cert.pem).
-.TP
-.B SSL_CERT_FILE
-Path to SSL certificate (default: /etc/otpme/ssl/cert.pem).
-.TP
-.B SSL_KEY_FILE
-Path to SSL private key (default: /etc/otpme/ssl/key.pem).
+.B SSL_CERT_FILE\fR, \fBSSL_KEY_FILE
+The certificate of this host or node, issued by the CA of its site, and its private key (default: \fI/etc/otpme/ssl/cert.pem\fR and \fI/etc/otpme/ssl/key.pem\fR).
+Daemons answer with them, and commands connect with them, also the ones a user starts: so both are owned by \fBotpme\fR and readable by the group \fBrealmusers\fR, mode 0640.
 .TP
 .B SSL_CA_FILE
-Path to CA certificate (default: /etc/otpme/ssl/ca.pem).
+The CA certificates a host or node trusts (default: \fI/etc/otpme/ssl/ca.pem\fR), mode 0640 like the two above.
+.TP
+.B SSL_SITE_CERT_FILE
+The certificate of each site, one file per site (default: \fI/etc/otpme/ssl/{realm}\-{site}.pem\fR).
+\fB{realm}\fR and \fB{site}\fR stand for the names: \fI/etc/otpme/ssl/example.org\-berlin.pem\fR.
+A file that is there is kept as it is when a sync brings another certificate; \fBotpme\-tool sync \-\-request\-site\-cert\fR replaces it, see
+.BR otpme\-tool (1).
+Mode 0644.
 .TP
 .B HOST_KEY_FILE
-Path to host/node RSA key file (default: /etc/otpme/ssl/hostkey.pem).
+The RSA key a host or node authenticates itself with (default: \fI/etc/otpme/ssl/hostkey.pem\fR).
+Mode 0600.
+.hy
+.ad
 .SH DIRECTORIES
+.na
+.nh
+Where OTPme keeps its files.
+A change takes effect when the daemons start again; the files that are there are not moved.
 .TP
 .B DATA_DIR
-Directory for object configs (default: /var/lib/otpme).
+The objects and what goes with them (default: \fI/var/lib/otpme\fR): the object files in \fItree/\fR, the index in \fIindex/\fR, the sessions, the trash and the data objects such as jobs and inventories in \fIdata/\fR.
 .TP
 .B SPOOL_DIR
-Directory for sessions etc. (default: /var/spool/otpme).
+Work in progress (default: \fI/var/spool/otpme\fR): open transactions, the sync, the cluster journal and what is waiting for nsscache.
 .TP
 .B CACHE_DIR
-Directory for cached logins etc. (default: /var/cache/otpme).
+What a host keeps for itself (default: \fI/var/cache/otpme\fR): the offline logins, the nsscache files, the keys of signers, the Redis files with \fBREDIS_PERSISTENCE\fR.
 .TP
 .B RUN_DIR
-Directory for pidfiles and sockets (default: /var/run/otpme).
+PID files, sockets and locks, and the configuration OTPme writes for FreeRADIUS and haproxy (default: \fI/var/run/otpme\fR).
 .TP
 .B LOG_DIR
-Directory for logfiles (default: /var/log/otpme).
+The log files (default: \fI/var/log/otpme\fR).
 .TP
 .B MOUNT_ROOT_DIR
-Mount root directory (default: /otpme). A share is mounted below it as \fI<user>/<realm>/<site>/<share>\fR.
+Where shares are mounted on a host (default: \fI/otpme\fR), as \fI<user>/<realm>/<site>/<share>\fR.
+It is owned by root and the group \fBrealmusers\fR, mode 0770.
 .TP
 .B SHARE_ROOT
-Overrides the \fBshare_root\fR config parameter.
+Where the shares of a node keep their data, for every share on this node.
+Set, it counts instead of the config parameter \fBshare_root\fR of the shares, see
+.BR otpme\-share (1).
+.hy
+.ad
 .SH DNS
+.na
+.nh
+OTPme reaches the daemons of a site by the FQDNs of the site (\fBauth_fqdn\fR, \fBmgmt_fqdn\fR, see
+.BR otpme\-site (1)),
+so those have to resolve; without them it takes the address of the site.
+Beyond that DNS says where to log in and where to join, from these records in the DNS domain of the host:
+.PP
+.RS
+.nf
+_otpme\-realm._tcp   TXT  "example.org"
+_otpme\-site._tcp    TXT  "berlin"
+_otpme\-join._tcp    SRV  10 1 2024 login.example.org.
+.fi
+.RE
+.PP
+The domain is the FQDN of the host without its first label: \fBnb1.example.org\fR looks in \fBexample.org\fR.
 .TP
 .B LOGIN_USE_DNS
-Use DNS to get login realm/site. Required for cross-site login. DNS records needed:
-.nf
-  _otpme-realm    TXT "realm.example.com"
-  _otpme-site     TXT "sitename"
-  _otpme-login    SRV 10 1 2020 login.example.com.
-  _otpme-join     SRV 10 1 2024 login.example.com.
-.fi
-.TP
-.B USE_DNS
-Use DNS to resolve site address. If False, the configured site IP is used directly.
+Whether a login on a host goes to the realm and site the TXT records name, instead of those the host belongs to (default: \fBTrue\fR).
+That lets a notebook of one site log in at another.
+A node never asks.
+The global options \fB\-\-login\-use\-dns\fR and \fB\-\-login\-no\-dns\fR override it for one command.
+.PP
+\fBotpme\-tool join\fR always asks DNS, in the domain it is given, else in \fIsite\fB.\fIrealm\fR, else in the domain of the host: the SRV record for joind (unless \fB\-\-joind\-uri\fR names it), else the address of the domain itself with port 2024, and the TXT records for the realm and site it is not given.
+.hy
+.ad
 .SH LOGIN
+.na
+.nh
 .TP
-.B VALID_LOGIN_USERS
-Comma separated list of users allowed to login. Optionally with UUID (username:uuid).
+.B VALID_LOGIN_USERS\fR, \fBDENY_LOGIN_USERS
+Which users may log in on this host, as names separated by commas (default: empty, everybody).
+An entry \fIname\fB:\fIuuid\fR also matches the user with that UUID, so a renamed user stays matched.
+A user in \fBDENY_LOGIN_USERS\fR is refused, also when \fBVALID_LOGIN_USERS\fR names them; with \fBVALID_LOGIN_USERS\fR set, everybody else is refused.
+It counts for a login through pam_otpme, and the SSH keys of a refused user are not written to their \fIauthorized_keys\fR.
 .TP
-.B DENY_LOGIN_USERS
-Comma separated list of users denied from login. Optionally with UUID (username:uuid).
-.TP
-.B LOGOUT_PASS_LEN
-Length of Session-Logout-Password (SLP).
-.TP
-.B ALLOW_DYNAMIC_GROUPS
-Comma separated list of dynamic groups users are allowed to be assigned to. If set to False, no dynamic groups are allowed. If empty, all dynamic groups are allowed except those in DENY_DYNAMIC_GROUPS.
-.TP
-.B DENY_DYNAMIC_GROUPS
-Comma separated list of dynamic groups users are NOT allowed to be assigned to.
+.B ALLOW_DYNAMIC_GROUPS\fR, \fBDENY_DYNAMIC_GROUPS
+Which dynamic groups a user gets at login, as names separated by commas (default: empty, all).
+A dynamic group is a group of this host that pam_otpme adds the user to: those of the host and those of the login token and its roles, see \fBadd_dynamic_group\fR in
+.BR otpme\-role (1).
+A group in \fBDENY_DYNAMIC_GROUPS\fR is left out; with \fBALLOW_DYNAMIC_GROUPS\fR set, only the groups it names are added.
+\fBALLOW_DYNAMIC_GROUPS\fR \fBFalse\fR adds none.
+A group that does not exist on the host is left out with a warning.
+.hy
+.ad
 .SH SIGNERS
+.na
+.nh
+A signer is a user or a role whose signatures this host accepts, see \fBadd_signer\fR in
+.BR otpme\-tool (1).
+The signers of the host check token signatures (e.g. whether an SSH token is signed for a group), the key script and the agent script.
+A user can have private signers of their own for these three, in \fI~/.otpme/signers/\fR (\fBadd_signer \-\-private\fR).
+These parameters say whether those count.
+A disabled signer never counts.
 .TP
-.B FORCE_TOKEN_SIGNERS
-If True (default), user-defined token signers are ignored. If False, users can define their own. Can also be a comma separated list of usernames whose private signers are ignored.
+.B FORCE_TOKEN_SIGNERS\fR, \fBFORCE_KEY_SCRIPT_SIGNERS\fR, \fBFORCE_AGENT_SCRIPT_SIGNERS
+For token signatures, the key script and the agent script (default: \fBTrue\fR):
+.RS
 .TP
-.B FORCE_KEY_SCRIPT_SIGNERS
-Same rules as FORCE_TOKEN_SIGNERS, for key script signers.
+.B True
+Only the signers of the host count; private signers are ignored.
 .TP
-.B FORCE_AGENT_SCRIPT_SIGNERS
-Same rules as FORCE_TOKEN_SIGNERS, for agent script signers.
+.B False
+A user who has private signers gets them instead of those of the host.
+.TP
+.I user\fR[\fB,\fIuser\fR]...
+Only the signers of the host count for these users; every other user gets their private signers, where they have any.
+.RE
+.hy
+.ad
 .SH SCRIPTS
+.na
+.nh
+scriptd runs the scripts of a node: authorization scripts of users and tokens, the scripts of \fBscript_otp\fR and \fBscript_static\fR tokens, push scripts, share scripts and the vote script.
+It never runs a script as root or as \fBUSER\fR/\fBGROUP\fR.
+An authorization script, the script of a \fBscript_otp\fR or \fBscript_static\fR token and a push script run as the user they are for and with the group of that user.
+The authorization script of a user and a push script also get the other groups of the user.
+A share script and the vote script run as the user and group below.
 .TP
-.B ROOT_SCRIPT_USER
-User to run root scripts as (default: "nobody").
-.TP
-.B ROOT_SCRIPT_GROUP
-Group to run root scripts as (default: "nogroup").
+.B ROOT_SCRIPT_USER\fR, \fBROOT_SCRIPT_GROUP
+The user and group a script runs as instead of root or \fBUSER\fR/\fBGROUP\fR (default: \fBnobody\fR and \fBnogroup\fR).
+.hy
+.ad
 .SH PAM LOGGING
-.TP
-.B PAM_USE_SYSLOG
-Log PAM events to syslog.
-.TP
-.B PAM_USE_SYSTEMD
-Log PAM events to systemd journal.
+.na
+.nh
+Where pam_otpme writes its log, see
+.BR pam_otpme (8).
+It uses the first of \fBPAM_USE_LOGFILE\fR, \fBPAM_USE_SYSLOG\fR and \fBPAM_USE_SYSTEMD\fR that is \fBTrue\fR.
+If none is, it logs nothing.
+The level is \fBLOGLEVEL\fR.
 .TP
 .B PAM_USE_LOGFILE
-Log PAM events to logfile.
+Write to \fBPAM_LOGFILE\fR (default: \fBFalse\fR).
+A screen unlock runs pam_otpme as the user, who can not write to that file; pam_otpme then uses the next one that is \fBTrue\fR.
 .TP
 .B PAM_LOGFILE
-PAM logfile path (default: /var/log/otpme/pam.log).
+The log file (default: \fI/var/log/otpme/pam.log\fR).
+.TP
+.B PAM_USE_SYSLOG
+Send to the local syslog (\fI/dev/log\fR), with facility \fBLOCAL7\fR (default: \fBFalse\fR).
+.TP
+.B PAM_USE_SYSTEMD
+Send to the systemd journal (default: \fBTrue\fR).
 .TP
 .B RADIUS_MOD_LOGFILE
-Radius module logfile path (default: /var/log/otpme/radius-module.log).
+The log file of the FreeRADIUS module of OTPme, see \fBFREERADIUS\fR (default: \fI/var/log/freeradius/radius\-module.log\fR).
+It has to be a file \fBFREERADIUS_USER\fR may write.
+The module always writes there.
+.hy
+.ad
 .SH AUDIT LOG
+.na
+.nh
+Every daemon of OTPme writes an audit log: each change of an object (who did it, from which client, in which session, and what), and the logins, sessions and other events of its protocols.
+The agent writes none.
+.PP
+Without \fBAUDIT_LOG_ENABLED\fR and \fBAUDIT_LOG_SERVER\fR the audit log goes to \fIaudit.log\fR in \fBLOG_DIR\fR.
+With both, it goes to that syslog server instead.
+An entry the server does not get is kept in \fIaudit_log/\fR in \fBSPOOL_DIR\fR, and hostd sends it again every 60 seconds, starting with \fBLOG_RESEND:\fR and the time it was written.
 .TP
 .B AUDIT_LOG_ENABLED
-Enable audit logging.
-.TP
-.B AUDIT_LOG_FACILITY
-Syslog facility for audit log (default: "DAEMON").
+Send the audit log to \fBAUDIT_LOG_SERVER\fR (default: \fBFalse\fR).
 .TP
 .B AUDIT_LOG_SERVER
-Audit log server address (e.g. "host:port").
+The syslog server, as \fIhost\fB:\fIport\fR for TCP, or as \fIhost\fR for UDP on port 514 (default: none).
+TLS and RELP need the port.
 .TP
 .B AUDIT_LOG_PROTOCOL
-Audit log protocol: "syslog" or "relp".
+\fBsyslog\fR (default) or \fBrelp\fR.
+.TP
+.B AUDIT_LOG_FACILITY
+The syslog facility, e.g. \fBDAEMON\fR, \fBAUTH\fR or \fBLOCAL0\fR to \fBLOCAL7\fR (default: \fBDAEMON\fR).
 .TP
 .B AUDIT_LOG_USE_TLS
-Enable TLS for audit log transport.
+Talk TLS to the server (default: \fBFalse\fR).
+Its certificate must be signed by \fBAUDIT_LOG_CA_CERT\fR and hold the host name of \fBAUDIT_LOG_SERVER\fR.
+Without \fBAUDIT_LOG_CA_CERT\fR the audit log goes to the file.
 .TP
 .B AUDIT_LOG_CA_CERT
-CA certificate for audit log TLS.
+The CA certificate that checks the server (default: none).
 .TP
 .B AUDIT_LOG_USE_CLIENT_CERT
-Use client certificate for audit log.
+With TLS, also show the server a certificate of this host: \fBAUDIT_LOG_CERT\fR and \fBAUDIT_LOG_KEY\fR (default: \fBFalse\fR).
+Without them the audit log goes to the file.
 .TP
-.B AUDIT_LOG_CERT
-Client certificate for audit log.
-.TP
-.B AUDIT_LOG_KEY
-Client key for audit log.
+.BR AUDIT_LOG_CERT ", " AUDIT_LOG_KEY
+The client certificate and its key (default: none).
+.hy
+.ad
 .SH SYSLOG
+.na
+.nh
+With \fBSYSLOG_ENABLED\fR and \fBSYSLOG_SERVER\fR the daemons send their log to that syslog server instead of their log files in \fBLOG_DIR\fR.
+A daemon started with \fB\-d\fR, and \fBotpme\-realm init\fR, still log to the terminal.
+A message the server does not get is lost: unlike the audit log it is not kept.
+Without \fBSYSLOG_CA_CERT\fR, or without \fBSYSLOG_CERT\fR or \fBSYSLOG_KEY\fR where they are needed, the daemons log to their files.
+The parameters work like those of \fBAUDIT LOG\fR:
 .TP
 .B SYSLOG_ENABLED
-Enable syslog logging.
-.TP
-.B SYSLOG_FACILITY
-Syslog facility (default: "DAEMON").
+Send the log to \fBSYSLOG_SERVER\fR (default: \fBFalse\fR).
 .TP
 .B SYSLOG_SERVER
-Syslog server address.
+\fIhost\fB:\fIport\fR for TCP, or \fIhost\fR for UDP on port 514 (default: none).
+TLS and RELP need the port.
 .TP
 .B SYSLOG_PROTOCOL
-Syslog protocol: "syslog" or "relp".
+\fBsyslog\fR (default) or \fBrelp\fR.
+.TP
+.B SYSLOG_FACILITY
+The syslog facility (default: \fBDAEMON\fR).
 .TP
 .B SYSLOG_USE_TLS
-Enable TLS for syslog transport.
+Talk TLS to the server, checked with \fBSYSLOG_CA_CERT\fR (default: \fBFalse\fR).
 .TP
 .B SYSLOG_CA_CERT
-CA certificate for syslog TLS.
+The CA certificate that checks the server (default: none).
 .TP
 .B SYSLOG_USE_CLIENT_CERT
-Use client certificate for syslog.
+With TLS, also show the server \fBSYSLOG_CERT\fR and \fBSYSLOG_KEY\fR (default: \fBFalse\fR).
 .TP
-.B SYSLOG_CERT
-Client certificate for syslog.
-.TP
-.B SYSLOG_KEY
-Client key for syslog.
+.BR SYSLOG_CERT ", " SYSLOG_KEY
+The client certificate and its key (default: none).
+.hy
+.ad
 .SH SYNCHRONIZATION
+.na
+.nh
+hostd syncs the objects of this host, and its other data, from the master node of its site.
+On the master node, hostd syncs from the master nodes of the other sites.
+It also starts a sync when it is told to, see \fBsync\fR in
+.BR otpme\-tool (1).
 .TP
 .B SYNC_INTERVAL
-Interval in seconds between sync attempts with master node.
+Seconds from one sync to the next (default: \fB180\fR).
 .TP
 .B SYNC_RETRY_INTERVAL
-Retry interval in seconds if sync fails.
+Seconds until a sync that failed is tried again (default: \fB10\fR).
 .TP
 .B SYNC_RETRY_COUNT
-Number of retries to reach consistent state before waiting for SYNC_INTERVAL.
+How many runs one sync may take to reach the state of the master node (default: \fB5\fR).
+An object that changes on the master node while it is fetched makes another run.
+After the last one the sync counts as failed.
 .TP
 .B SYNC_IGNORE_CHANGED_OBJECTS
-If True, sync objects as received even if they changed during sync. May lead to inconsistent state but helps when objects change frequently.
+Keep an object as it came, even if it changed on the master node while it was fetched, and make no further run for it (default: \fBFalse\fR).
+This helps when objects change faster than a sync can follow; the objects here can then be out of step with each other until the next sync.
+For one sync, use \fBdo_sync \-\-ignore\-changed\-objects\fR in
+.BR otpme\-tool (1).
 .TP
 .B PIN_HOST_KEYS
 If True, write down the public key of every host that is synced here, and hold the host to it.
@@ -542,96 +735,147 @@ Default False.
 See
 .BR otpme\-pass (1).
 .RE
+.hy
+.ad
 .SH DAEMON
+.na
+.nh
 .TP
 .B MASTER_FAILOVER_SYNC
-Do a sync on master node failover.
+Sync once more before the master role moves on request, see \fBmaster_failover\fR in
+.BR otpme\-cluster (1)
+(default: \fBFalse\fR).
+The node that takes the role syncs the data objects, the sessions and then the objects from the old master node.
+A sync that fails is tried again every second, until it works.
 .TP
 .B TWO_NODE_TIMEOUT
-Seconds to wait for second node in two-node clusters.
+Seconds a node of a two\-node site waits for the other node when clusterd starts (default: \fB30\fR).
+If the other node does not come in that time, the node elects a master node alone.
+See \fBTWO NODES\fR in
+.BR otpme\-cluster (1).
 .TP
 .B CONTROLD_HEARTBEAT_INTERVAL
-Interval in seconds for heartbeat messages to child daemons.
+Seconds from one check of the daemons to the next (default: \fB15\fR).
+At each check controld sends a heartbeat to each of its daemons, and starts one that is not running.
 .TP
 .B CONTROLD_HEARTBEAT_TIMEOUT
-Timeout in seconds for heartbeat messages.
+Seconds controld waits for the answer to a heartbeat (default: \fB15\fR).
+If you see \(dqDaemon '<name>' is not responding\(dq in the log under high load, make this longer.
 .TP
 .B CONTROLD_HEARTBEAT_RETRY_INTERVAL
-Retry interval in seconds for failed heartbeat messages.
+Seconds until controld sends a heartbeat again that got no answer (default: \fB3\fR).
 .TP
 .B CONTROLD_HEARTBEAT_RETRY
-Max retries before restarting a child daemon.
-.TP
-.B INTER_DAEMON_COMM_TIMEOUT
-Timeout for inter-daemon communication. Increase if daemons report "not responding" under high load.
+How many heartbeats in a row may go without an answer (default: \fB3\fR).
+After the last one, controld restarts the daemon.
 .TP
 .B BACKEND_POLICY_INTERVAL
-Max interval in seconds the backend executes object policies (e.g. autodisable).
-.TP
-.B RELOAD_CONFIG_INTERVAL
-Interval in seconds to check for config file changes.
+Seconds between two runs of the policies of an object when it is read, for example
+.B auto_disable
+(default: \fB60\fR).
+The policies run when the object is read and this time has passed since their last run, in each process on its own.
+So an object can stay enabled up to this long after its time to disable has come.
+A short time means more work on each read.
+.hy
+.ad
 .SH AGENT
+.na
+.nh
+otpme\-agent runs as the user, but it reads these from this file only, not from the config file of the user.
+It holds a connection to each daemon a login session uses, for example authd or mgmtd.
 .TP
 .B AGENT_CONNECTION_IDLE_TIMEOUT
-Seconds before otpme-agent closes idle daemon connections.
+Seconds after the last request on a daemon connection until otpme\-agent closes it (default: \fB300\fR).
+Keepalive messages do not count as requests.
+The next request opens the connection again.
 .TP
 .B AGENT_KEEPALIVE_INTERVAL
-Interval in seconds for keepalive messages to daemons.
+Seconds without a message on a daemon connection until otpme\-agent sends a keepalive message on it (default: \fB5\fR).
+A connection whose keepalive message fails is closed.
+This is also the longest time otpme\-agent waits between two checks of its login sessions.
 .TP
 .B AGENT_PASS_CACHE_INTERVAL
-Interval in seconds in which otpme-agent fetches the passwords this host may keep for offline use.
-It also fetches them at login and when one of them changes.
+Seconds from one fetch of the passwords this host may keep for offline use to the next (default: \fB3600\fR).
+otpme\-agent also fetches them at the first login of the user, and when one of them changes.
 Which passwords a host may keep is set with the config parameter
 .B password_offline_cache
 of a unit or site.
-Default 3600.
+.TP
+.B AGENT_CONFIRM_ACTIONS
+Whether otpme\-agent asks to confirm each use of a YubiKey in PIV mode, signing or decrypting, while it holds the PIN login of the card (default: \fBTrue\fR).
+It shows what the use is for, e.g. the share or the password.
+Without the PIN login it asks for the PIN instead, with the same text.
+.br
+It asks only in a graphical session of the user: on a console the shell reads the terminal, so the card is used without asking there.
+.br
+The user cannot switch it off.
+.hy
+.ad
 .SH NETWORK
+.na
+.nh
 .TP
 .B MAX_REQUEST_SIZE
-The largest single request OTPme accepts from the other side, in bytes.
+The largest single request OTPme accepts from the other side, in bytes (default: \fB104857600\fR, 100 MiB).
 A request larger than this is refused.
 This is a safety limit and not a speed setting.
 Raise it only when a backup, a sync or a restore fails because something you move is bigger than it.
 Most daemons have a smaller limit of their own; this value is used where a daemon has none.
 .TP
 .B POSIX_MSGSIZE_MAX
-Max POSIX message queue message size. Set to "auto" to read from /proc/sys/fs/mqueue/msgsize_max.
+The largest message, in bytes, in the POSIX message queues the OTPme processes talk over (default: \fB8192\fR).
+A longer message is sent in parts.
+\fBauto\fR reads it from
+.IR /proc/sys/fs/mqueue/msgsize_max .
+Linux refuses a larger value than that file for a process without the privilege to exceed it, see
+.BR mq_overview (7).
 .TP
 .B RLIMIT_MSGQUEUE
-Max POSIX message queue size (see getrlimit(2)). Increase for large installations.
+The most bytes all POSIX message queues of a user may hold together (default: \fB2621440000\fR), see
+.BR getrlimit (2).
+Applied when an OTPme process starts.
+As with \fBRLIMIT_NOFILE\fR, it is only ever raised, never lowered, and only root can raise the hard limit.
+A process without privileges takes the soft limit only as high as the hard limit allows.
 .TP
-.B RLIMIT_NOFILE \fR(default: 65536)
-Max open files (see getrlimit(2)), applied when a daemon starts.
+.B RLIMIT_NOFILE
+The most files a process may have open (default: \fB65536\fR), see
+.BR getrlimit (2).
+Applied when an OTPme process starts.
 .br
 Set here rather than left to the system, because
 .I /etc/security/limits.conf
 does not reach a daemon: that file is read by
 .BR pam_limits (8),
-which only runs for a PAM session \- a login, an ssh connection, su. A service
-started at boot never passes through it and keeps the kernel default of 1024.
+which only runs for a PAM session \- a login, an ssh connection, su.
+A service started at boot never passes through it and keeps the kernel default of 1024.
 With a socket per connection across the daemons under
-.BR otpme-controld ,
-plus cluster, redis and the index database, that runs out and shows up as "too
-many open files".
+.BR otpme\-controld ,
+plus cluster, redis and the index database, that runs out and shows up as \(dqtoo many open files\(dq.
 .br
-Only ever raised, never lowered, so a higher limit set through your init system
-(\fBLimitNOFILE\fR for systemd, \fBrc_ulimit\fR in \fI/etc/conf.d/otpme\fR for
-OpenRC) is left alone. Raising the hard limit needs privileges; without them the
-soft limit is taken as high as the hard limit allows.
+Only ever raised, never lowered, so a higher limit set through your init system (\fBLimitNOFILE\fR for systemd, \fBrc_ulimit\fR in \fI/etc/conf.d/otpme\fR for OpenRC) is left alone.
+Only root can raise the hard limit.
+A process without privileges, such as a command or the otpme\-agent of a user, takes the soft limit only as high as the hard limit allows.
 .TP
 .B FLOATING_IP_IFACE
-Name of the network interface the floating cluster IP is assigned to (e.g. "eth0").
+The network interface the floating IP of the site is put on, on the master node, e.g. \fBeth0\fR (default: not set).
+Without it, the interface whose network holds the address is taken, with the netmask of that network.
+With it, the address is put on this interface as a single host (/32, or /128 for IPv6).
+.hy
+.ad
 .SH STORAGE
+.na
+.nh
 .TP
 .B OBJECT_JSON_COMPRESSION
-Compression for object JSON files (e.g. "lz4"). Set to "none" (or leave unset) to store objects uncompressed.
+How the files of the objects are compressed: \fBlz4\fR, \fBgzip\fR, \fBzlib\fR or \fBbzip\fR (default: not set, uncompressed; \fBnone\fR is the same).
+A file is read with whatever it was written with, so a change takes effect with the next write of each object, and the old files stay readable.
+Any other value is refused when OTPme starts.
 .TP
 .B PRETTIFY_OBJECT_JSON
-Pretty-print object JSON files.
+Write the files of the objects with line breaks and indentation, easier to read and bigger (default: \fBFalse\fR).
 .TP
 .B FSYNC_FILE_WRITES
-Sync every file OTPme writes to disk before it goes on: objects, transactions, keys.
-Off by default.
+Sync every file OTPme writes to disk before it goes on: objects, transactions, keys (default: \fBFalse\fR).
 .br
 A file is written under another name first and then put in place of the old one, so a crash leaves the old file or the new one, never part of one.
 (Not a file with a second hard link, or one OTPme may write but not replace: those are written in place.)
@@ -640,101 +884,176 @@ Turn it on for another filesystem, or where those seconds must not be lost eithe
 .br
 It costs a few milliseconds on every file, and a change of one object writes several of them.
 Measure it on your disks before you turn it on for a site with many changes.
+.hy
+.ad
 .SH LOGGING
+.na
+.nh
 .TP
 .B LOGLEVEL
-Log level: CRITICAL, ERROR, WARNING, INFO or DEBUG.
+The lowest level that is logged: \fBCRITICAL\fR, \fBERROR\fR, \fBWARNING\fR, \fBINFO\fR or \fBDEBUG\fR (default: \fBINFO\fR).
+Any other value is taken as \fBINFO\fR, with a message.
+Debug options such as \fB\-dd\fR log \fBDEBUG\fR whatever is set here.
 .TP
 .B LOG_AUTH_DATA
-Log authentication data (passwords, challenge/response). Can be True, False or a comma separated list of usernames.
+Print what each authentication request sends: password, OTP, SOTP, challenge and so on (default: \fBFalse\fR).
+\fBTrue\fR does it for every user, a comma separated list of user names for these users only.
+It works only with \fBLOGLEVEL\fR \fBDEBUG\fR or a debug option.
+It prints to the standard output of the daemon, never to the log file or syslog: in the foreground that is the terminal, under systemd the journal.
+Use it only to find a fault in a test setup, never in production.
 .TP
 .B LOG_EXC_INFO
-Attach exception info (traceback of the exception currently being handled) to warning/error/critical/fatal log records. Only takes effect inside an except: block. Callers that pass exc_info explicitly override this. Default: False.
+Add the traceback of the exception that is being handled to warning, error and critical log messages (default: \fBFalse\fR).
+Only for messages that are written while an exception is handled; where the code says itself whether to add it, that wins.
 .TP
 .B TRACEBACKS
-Print Python tracebacks.
+Show the Python traceback when a command or daemon ends with an error (default: \fBFalse\fR).
+Without it, only the error message is shown.
+Read when the process starts.
 .TP
 .B SHOW_JOB_TITLE
-Show job title in process name.
+Show the name of the job in the process title of a job, after its UUID (default: \fBFalse\fR).
+.hy
+.ad
 .SH SSO
+.na
+.nh
 .TP
 .B SSO_SERVER
-If set to "True",
-.B httpd
-is started on this host so it can serve the SSO portal. The host must
-also be marked as SSO host via
-.B otpme\-site add_sso_host
-so that the required SSO secrets and certificate/key
-.RB ( SSO_SECRET ,
-.BR SSO_CSRF_SECRET ,
-.BR SSO_CERT ,
-.BR SSO_KEY )
-are synchronized to it.
+Run the SSO portal, \fBhttpd\fR, on this host (default: \fBFalse\fR).
+Only for hosts: a node runs it always, whatever is set here.
+.br
+The host has to be an SSO host of its site, see \fBadd_sso_host\fR in
+.BR otpme\-site (1).
+Only then is it synced what the portal needs: \fBSSO_CERT\fR, \fBSSO_KEY\fR, \fBSSO_SECRET\fR and \fBSSO_CSRF_SECRET\fR.
+Without that, httpd stops at start with an error that says so.
+.hy
+.ad
 .SH BACKUP
+.na
+.nh
+.SS Backup server
+These make this system a backup server.
 .TP
 .B BACKUP_SERVER
-If True, backupd is started on this host.
+Accept backups from other systems (default: \fBFalse\fR).
+On a node, backupd always runs, for the backups of the node and its shares, and this makes it listen for others as well.
+On a host, this starts backupd.
 .TP
 .B BACKUP_DIR
-Backup root directory. All backup repositories are created here (default: /var/backups).
+The directory all repositories are kept in (default: \fI/var/backups\fR).
+A repository \fItype\fR/\fIsite\fR/\fIname\fR is the directory \fIsite\fR/\fItype\fR/\fIname\fR in it.
+It has to exist.
 .TP
 .B ALLOW_NEW_BACKUP_REPOS
-Allow new repositories from these client certificate CNs. Comma separated list or False.
-.PP
-Backup of nodes and shares must be configured via OTPme config parameters.
-The following settings are only used for OTPme hosts or non-OTPme hosts.
+Who may create a new repository with their first backup (default: \fBFalse\fR).
+\fBFalse\fR: nobody, \fBTrue\fR: everyone, or a comma separated list of the names (CN) in the client certificates that may.
+A repository that exists asks for its password either way.
+.SS Backup of this system
+The backups of nodes and shares are set with config parameters of these objects, see
+.BR otpme\-backup (1).
+The ones below are for the backup of a host, or of a system that is not part of the realm.
+They are used by \fBotpme\-backup start localhost\fR, as root.
+Nothing starts it on a schedule; run it from cron or a systemd timer.
 .TP
 .B BACKUP_REPOSITORY
-Backup repository path (e.g. backupserver1.site.realm:host_type/site/hostname).
+Where the backup goes: \fIserver\fR:\fItype\fR/\fIsite\fR/\fIname\fR, e.g. \fBnode1.berlin.example.org:host/berlin/client1\fR (default: not set).
+\fIserver\fR is the address of a backup server.
 .TP
 .B BACKUP_MODE
-Backup mode: "pack" or "tree".
+How a new repository stores its files: \fBpack\fR or \fBtree\fR (default: \fBpack\fR).
+It counts only when the repository is created; after that it keeps its mode.
+See
+.BR otpme\-backup (1).
 .TP
 .B BACKUP_REPO_PASS_FILE
-Path to a file that holds the repository password.
+The file with the password of the repository, in its first line (default: \fI/etc/otpme/backup.pass\fR).
 .TP
 .B BACKUP_KEY_FILE
-Path to a file that holds the AES key used to encrypt the backup (generate with \fBopenssl rand \-hex 32 > /etc/otpme/backup.key\fR).
+The file with the key the backup is encrypted with, as 64 hex digits in its first line (default: \fI/etc/otpme/backup.key\fR).
+Make one with:
+.RS
+.PP
+.B openssl rand \-hex 32 > /etc/otpme/backup.key
+.RE
+.IP
+Keep a copy elsewhere: without the key, nothing in the backup can be read.
+.IP
+Both files are read only by root, and not at all if anyone may read them: then OTPme says so.
 .TP
 .B BACKUP_EXCLUDE_SPECIAL
-Exclude special files from backup.
+Leave out special files: devices, sockets, pipes (default: \fBTrue\fR).
 .TP
 .B BACKUP_EXCLUDES
-Comma separated list of paths to exclude from backup.
+A comma separated list of paths to leave out, relative to \fI/\fR and without the leading slash; patterns with \fB*\fR and \fB?\fR work (default: not set).
 .TP
 .B BACKUP_INCLUDES
-Comma separated list of paths to include in backup.
+A comma separated list of paths, like \fBBACKUP_EXCLUDES\fR, that are backed up even when an exclude covers them (default: not set).
 .TP
 .B BACKUP_CLIENT_CERT
-Client certificate for non-OTPme hosts. Create with: otpme-ca create_client_cert SITE_CA hostname cert.pem key.pem
+The client certificate of a system that is not part of the realm (default: not set).
+Make it with \fBcreate_client_cert\fR in
+.BR otpme\-ca (1),
+e.g.:
+.RS
+.PP
+.B otpme\-ca create_client_cert SITE_CA client1 cert.pem key.pem
+.RE
+.IP
+Its CN is the name \fBALLOW_NEW_BACKUP_REPOS\fR lists.
+A host of the realm uses its own certificate and needs none of these three.
 .TP
 .B BACKUP_CLIENT_KEY
-Client key for non-OTPme hosts.
+The key of that certificate (default: not set).
 .TP
 .B BACKUP_CLIENT_CA
-CA certificate for non-OTPme hosts (copy from node: /etc/otpme/ssl/ca.pem).
+The CA certificate of the site, copied from \fI/etc/otpme/ssl/ca.pem\fR of a node (default: not set).
+.hy
+.ad
 .SH FILES
+.na
+.nh
 .TP
 .I /etc/otpme/otpme.conf
-Main configuration file.
+This file.
+.TP
+.I ~/.otpme/otpme.conf
+The config file of a user, for the parameters that say \(dqA user can set it\(dq above.
+Any other parameter in it is ignored.
 .TP
 .I /etc/otpme/otpme.conf.dist
-Distribution template.
+The file as it comes with OTPme, with all parameters and a comment on each.
+pip puts it in \fIetc/otpme/\fR below its \fIsite\-packages\fR directory, not here; on install you copy it here, and to \fIotpme.conf\fR, see \fIREADME.md\fR.
 .TP
-.I /etc/otpme/otpme.key
-Default encryption key file.
+\fI/etc/otpme/otpme.key\fR, \fI/etc/otpme/otpme.key_salt\fR
+The master key and its salt, see \fBKEY_COMMAND\fR.
 .TP
-.I /etc/otpme/redis.conf
-Custom Redis configuration.
+\fI/etc/otpme/backup.pass\fR, \fI/etc/otpme/backup.key\fR
+The password of the repository and the key of the backup of this system, see \fBBACKUP\fR.
 .TP
-.I /etc/otpme/postgresql.conf
-Custom PostgreSQL configuration.
-.TP
-.I /etc/otpme/mysql.cnf
-Custom MySQL configuration.
+\fI/etc/otpme/redis.conf\fR, \fI/etc/otpme/postgresql.conf\fR, \fI/etc/otpme/mysql.cnf\fR
+If there, used instead of the config OTPme writes for Redis, PostgreSQL or MySQL.
+The parameters of this file for that program then do nothing.
+.hy
+.ad
 .SH SEE ALSO
+.na
+.nh
 .BR otpme (1),
-.BR otpme (7)
+.BR otpme (7),
+.BR otpme\-tool (1),
+.BR otpme\-site (1),
+.BR otpme\-cluster (1),
+.BR otpme\-client (1),
+.BR otpme\-backup (1),
+.BR otpme\-ca (1),
+.BR otpme\-pass (1),
+.BR otpme\-role (1),
+.BR otpme\-share (1),
+.BR otpme\-shell (1),
+.BR pam_otpme (8)
+.hy
+.ad
 
 .SH AUTHOR
 the2nd <the2nd@otpme.org>

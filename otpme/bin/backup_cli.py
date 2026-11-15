@@ -122,7 +122,7 @@ def main():
     p.add_argument("--dry-run", action="store_true",
                     help="Show what would be backed up without storing anything")
     p.add_argument("--mode", choices=["tree", "pack"], default=None,
-                    help="Repository mode: 'tree' (default, FUSE-mountable) or 'pack' (index-only, no tree/meta files)")
+                    help="Mode of a new repository: 'pack' (default, index-only, no tree/meta files) or 'tree' (FUSE-mountable); an existing one keeps its mode")
 
     p = sub.add_parser("restore", help="Restore a backup (or a single file/dir)")
     p.add_argument("snapshot", help="Snapshot name")
@@ -180,6 +180,13 @@ def main():
 
     # Create server (storage-only, no password needed)
     server = BackupServer(args.backup_dir)
+
+    # Only a backup makes a repository. Any other command on a directory
+    # without one made an empty repository there, a typo in -d included,
+    # and then said "snapshot not found".
+    if args.command != "backup" and not server.snapshots_dir.exists():
+        print(f"No backup repository: {args.backup_dir}", file=sys.stderr)
+        sys.exit(1)
 
     # Commands that need crypto (client)
     needs_client = args.command in ("backup", "restore", "verify", "ls")

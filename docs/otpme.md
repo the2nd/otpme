@@ -38,13 +38,6 @@ renews a login session, in seconds. Default: 30.
 **-c *config_file***  
 Use alternative config file.
 
-**--no-dns**  
-Do not resolve OTPme site address via DNS. This is the default, see
-**USE_DNS** in **otpme.conf**(5).
-
-**--use-dns**  
-Resolve OTPme site address via DNS.
-
 **--login-no-dns**  
 Do not resolve OTPme login point via DNS.
 
@@ -99,8 +92,8 @@ lost or break things. OTPme prints a warning in this case.
 ## General Options
 
 **--type *object_type***  
-Object type to act on, for example the token type. It goes before the
-command, for example **otpme-token --type totp add alice/totp**.
+Object type to act on, for example the token type. It may stand anywhere
+on the line, for example **otpme-token --type totp add alice/totp**.
 
 **-f**  
 Do not ask any questions: every confirmation counts as answered with
@@ -338,7 +331,7 @@ nothing else changes objects at the same time: changes can get lost.
 ## Daemon Options
 
 These options are used when starting the daemons with
-**otpme-controld**.
+**otpme-controld**, see **otpme-controld**(8).
 
 **-l *file***  
 Write the log to this file instead of stdout.
@@ -358,19 +351,42 @@ hostd syncs objects even if they change while syncing.
 **--keep-floating-ip**  
 On the master node: do not remove the floating IP when the daemons stop.
 
+# SELECTING OBJECTS
+
+**show** and **list** take a name, and what they do with it is the same
+on every page.
+
+**show *name***  
+The name of an object prints that object, one value per line.
+
+**show *name***$****  
+The same object as a row of the table, as without a name. The **$**
+makes it no name of an object, and it is dropped before the search.
+
+**show *pattern*, **list** *pattern***  
+Anything else is a pattern: **\*** stands for any text, everything else
+for itself, and upper and lower case differ. **ber\*** finds **berlin**
+and **bern**. It is no regex: a **.** is a dot. **list** takes no **$**.
+
+**show *unit***/**, **list** *unit***/****  
+A unit path that ends with **/**, e.g. **devices/** or
+**/example.org/berlin/devices/**, asks for the objects of that unit; its
+sub units are not part of it.
+
 # SEE ALSO
 
 **otpme**(7), **otpme.conf**(5), **pam_otpme**(8),
-**otpme-accessgroup**(1), **otpme-backup**(1), **otpme-ca**(1),
+**otpme-controld**(8), **otpme-accessgroup**(1), **otpme-aclgroup**(1),
+**otpme-backup**(1), **local-backup**(1), **otpme-ca**(1),
 **otpme-client**(1), **otpme-cluster**(1), **otpme-deploy**(1),
 **otpme-device**(1), **otpme-dictionary**(1), **otpme-group**(1),
-**otpme-host**(1), **otpme-inventory**(1), **otpme-node**(1),
-**otpme-pass**(1), **otpme-policy**(1), **otpme-pool**(1),
-**otpme-realm**(1), **otpme-resolver**(1), **otpme-role**(1),
-**otpme-scope**(1), **otpme-script**(1), **otpme-share**(1),
-**otpme-shell**(1), **otpme-site**(1), **otpme-token**(1),
-**otpme-tool**(1), **otpme-trash**(1), **otpme-unit**(1),
-**otpme-user**(1), **otpme-vlan**(1)
+**otpme-host**(1), **otpme-inventory**(1), **otpme-mount**(1),
+**otpme-node**(1), **otpme-pass**(1), **otpme-policy**(1),
+**otpme-pool**(1), **otpme-realm**(1), **otpme-resolver**(1),
+**otpme-role**(1), **otpme-scope**(1), **otpme-script**(1),
+**otpme-share**(1), **otpme-shell**(1), **otpme-site**(1),
+**otpme-token**(1), **otpme-tool**(1), **otpme-trash**(1),
+**otpme-unit**(1), **otpme-user**(1), **otpme-vlan**(1)
 
 # AUTHOR
 

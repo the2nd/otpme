@@ -15,7 +15,11 @@ if os.path.exists(PYTHONPATH_FILE):
     fd = open(PYTHONPATH_FILE, "r")
     try:
         for x in fd.readlines():
-            x = x.replace("\n", "")
+            x = x.strip()
+            # An empty line would put "" first, the current directory
+            # of the service that loads PAM, to import from.
+            if not x:
+                continue
             if x in sys.path:
                 continue
             sys.path.insert(0, x)

@@ -57,6 +57,8 @@ write_acls = []
 
 read_value_acls = {}
 write_value_acls = {
+                    # No "ca": a site has its CA and no other, there
+                    # is no command to add or delete one.
                     "add"       : [
                                 "unit",
                                 "user",
@@ -66,7 +68,6 @@ write_value_acls = {
                                 "node",
                                 "host",
                                 "role",
-                                "ca",
                                 "script",
                                 "policy",
                                 "resolver",
@@ -91,7 +92,6 @@ write_value_acls = {
                                 "node",
                                 "host",
                                 "role",
-                                "ca",
                                 "script",
                                 "policy",
                                 "resolver",
@@ -582,32 +582,6 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'show_password_members',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'default_acls' },
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    '_show_supported_recursive_default_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_supported_acls',
-                    'args'              : { 'acl_types' : 'recursive_default_acls' },
                     'job_type'          : 'thread',
                     },
                 },

@@ -47,6 +47,7 @@ from otpme.lib import filetools
 from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.otpme_object import OTPmeDataObject
 from otpme.lib.classes.otpme_object import check_index_attribute
+from otpme.lib.classes.otpme_object import uuid_orphans
 
 logger = config.logger
 
@@ -121,6 +122,7 @@ def register_config_params():
                                     warn_if_exists=True,
                                     setter=hosts_setter,
                                     getter=hosts_getter,
+                                    orphans=uuid_orphans,
                                     object_types=['site'])
 
 def register_oid():

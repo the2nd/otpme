@@ -1610,18 +1610,19 @@ def get_object_from_cache(
     if not instance:
         return None
     now = time.time()
-    # Get last cache read time to prevent calling policies to frequently.
+    # Get the time policies last ran to prevent calling them too
+    # frequently. Not the time of the last read: an object read more
+    # often than the interval would never get its policies run.
     if run_policies:
         try:
-            last_read = instance_cache_read_times[read_oid.read_oid]
+            last_run = instance_cache_read_times[read_oid.read_oid]
         except Exception:
-            last_read = 0
-        age = now - last_read
+            last_run = 0
+        age = now - last_run
         if age > config.backend_policy_interval:
             # Call policies for the "exists" hook (e.g. auto_disable policy).
             instance.run_policies("exists")
-    # Update read time.
-    instance_cache_read_times[read_oid.read_oid] = now
+            instance_cache_read_times[read_oid.read_oid] = now
     return instance
 
 #def search_ldif(ldif, attribute, value, less_than=False,

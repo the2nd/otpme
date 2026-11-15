@@ -21,7 +21,7 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-trash {command}"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-trash show [--fields <field1,field2,field3>] [-z <size_limit>]'),
+                    '_cmd_usage_help' : _('Usage: otpme-trash show [--fields <field1,field2,field3>] [-z <size_limit>] [--raw] [--csv] [--csv-sep <separator>]'),
                     'cmd'   :   '--fields :"output_fields": --raw :header=False: --csv :csv=True: --csv-sep :"csv_sep": -z :max_len:',
                     '_help' :   {
                                     'cmd'                   : _('Show trash.'),
@@ -29,7 +29,7 @@ cmd_help = {
                 },
 
     'restore'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-trash restore --keep --objects <object_id_1,object_id_2> {trash_id}'),
+                    '_cmd_usage_help' : _('Usage: otpme-trash restore [--keep] [--objects <object_id_1,object_id_2>] {trash_id}'),
                     'cmd'   :   '--objects :[objects]: --keep :keep_trash=True: [|object|]',
                     '_help' :   {
                                     'cmd'                                   : _('Restore object(s).'),

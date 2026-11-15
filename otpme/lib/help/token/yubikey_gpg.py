@@ -18,7 +18,7 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     'deploy' : {
-                    '_cmd_usage_help' : _('Usage: otpme-token --type yubikey_gpg deploy -d -r -n --key-len <key_len> --backup <backup_file> --restore <restore_file> {token}'),
+                    '_cmd_usage_help' : _('Usage: otpme-token --type yubikey_gpg deploy [-d] [-r] [-n] [--key-len <key_len>] [--backup <backup_file>] [--restore <restore_file>] {token}'),
                     'cmd'   :   '-n :no_token_write=True: --key-len :key_len: -r :replace=True: --backup :gpg_backup_file: --restore :gpg_restore_file: -d :debug=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Initialize yubikey GPG applet.'),
