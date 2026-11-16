@@ -55,7 +55,7 @@ This is for objects used at more than one site, e.g. users added on one site whi
 The node that answers uses the VLAN of its own site.
 If there is none, it uses the first VLAN its \fBvlan_trusts\fR allow, in the order of the entries.
 .SS Across sites
-A VLAN of another site, or a VLAN for an object of another site, is used only if the site that answers allows it in its \fBvlan_trusts\fR, as \fIsite\fR[\fB:\fIvlan_site\fR[\fB/\fIvlan\fR]], see
+A VLAN of another site, or a VLAN for an object of another site, is used only if the site that answers allows it in its \fBvlan_trusts\fR, as \fIsite\fR[\fB:\f(BIvlan_site\fR[\fB/\f(BIvlan\fR]], see
 .BR otpme (7).
 The port is in the network of that site, so that site decides.
 \fBassign\fR alone is not enough: the site that names the VLAN checks it on its own copy of the VLAN.
@@ -78,7 +78,7 @@ It is unique in the site, whatever unit it is in, and may be \fBmax_vlan_name_le
 .br
 Needs \fBadd:vlan\fR on the unit.
 .TP
-.B del \fR[\fB\-\-no\-trash\fR] \fIvlan\fR
+\fBdel\fR [\fB\-\-no\-trash\fR] \fIvlan\fR
 Delete the VLAN.
 It goes to the trash, see
 .BR otpme\-trash (1);
@@ -91,7 +91,7 @@ They are not listed, because that parameter is not in the index.
 .br
 Needs \fBdelete:object\fR on the VLAN or \fBdelete:vlan\fR on the unit.
 .TP
-.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] [\fIvlan\fR]
+\fBshow\fR [\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] [\fIvlan\fR]
 Without a VLAN: a table of all of them, with their unit, status, VLAN ID, tokens, roles, hosts, devices, policies, ACL inheritance and description.
 A member of another site has its site after it, a disabled one \fB(D)\fR.
 .RS
@@ -123,7 +123,7 @@ A column you may not see says \fB\-\fR.
 With a VLAN named, this prints the VLAN itself, one value per line: \fBVLAN_ID\fR, \fBTOKENS\fR, \fBROLES\fR, \fBHOSTS\fR and \fBDEVICES\fR; one you may not see is empty.
 That needs \fBview_public:object\fR.
 .TP
-.B show_oid \fR[\fB\-\-full\fR] \fIvlan\fR
+\fBshow_oid\fR [\fB\-\-full\fR] \fIvlan\fR
 Show the OID of the VLAN: \fB\%vlan|<realm>/<site>/<name>\fR.
 With \fB\-\-full\fR the full OID, which names the unit as well: \fB\%vlan|<realm>/<site>/<unit_path>/<name>\fR.
 .br
@@ -134,7 +134,7 @@ Show the UUID of the VLAN.
 .br
 Needs the ACL \fBview_public:object\fR.
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] [\fIpattern\fR]
+\fBlist\fR [\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] [\fIpattern\fR]
 List the VLAN names, and with a pattern only those that match it, see
 .B SELECTING OBJECTS
 in
@@ -160,7 +160,7 @@ Without a VLAN ID the switch gets the new name from then on.
 .br
 Needs \fBrename:object\fR.
 .TP
-.B move \fR[\fB\-\-keep\-acls\fR] \fIvlan\fR \fIunit\fR
+\fBmove\fR [\fB\-\-keep\-acls\fR] \fIvlan\fR \fIunit\fR
 Move the VLAN into another unit.
 It keeps its ACLs; where ACL inheritance is on for it (off for VLANs by default, see \fBenable_acl_inheritance\fR), the default ACLs of the old unit are taken away and those of the new one given.
 \fB\-\-keep\-acls\fR keeps all ACLs as they are.
@@ -331,7 +331,7 @@ Remove a policy from the VLAN.
 Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
-.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIvlan\fR
+\fBlist_policies\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIvlan\fR
 List the policies attached to the VLAN, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR); without it the names.
 Only the names are marked.
@@ -353,10 +353,10 @@ Besides the ACLs every object has, these matter for a VLAN:
 .B assign
 Name this VLAN in the \fBvlans\fR config parameter of an object, see \fBDESCRIPTION\fR.
 .TP
-.B edit:vlan_id\fR, \fBview:vlan_id
+\fBedit:vlan_id\fR, \fBview:vlan_id
 Change and see the VLAN ID, see \fBVLAN ID\fR.
 .TP
-.B add:token\fR, \fBadd:role\fR, \fBadd:host\fR, \fBadd:device
+\fBadd:token\fR, \fBadd:role\fR, \fBadd:host\fR, \fBadd:device
 Add members, see \fBMembers\fR.
 \fBremove:\fR with the same values takes them out again, \fBview:\fR with the plural (\fBview:tokens\fR, ...) lists them.
 .RE
@@ -409,7 +409,7 @@ Needs the ACL \fBdisable:acl_inheritance\fR.
 .nh
 A VLAN has two config parameters, see \fBCONFIG PARAMETERS\fR.
 .TP
-.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIvlan\fR \fIparameter\fR \fR[\fIvalue\fR]
+\fBconfig\fR [\fB\-d\fR] [\fB\-a\fR] \fIvlan\fR \fIparameter\fR \fR[\fIvalue\fR]
 Set a parameter on the VLAN.
 .RS
 .TP
@@ -441,7 +441,7 @@ Without one OTPme asks and offers the current text for editing.
 .br
 Needs the ACL \fBedit:description\fR.
 .TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIvlan\fR \fR[\fIinfo\fR]
+\fBinfo\fR [\fB\-\-language\fR \fILANG\fR] \fIvlan\fR \fR[\fIinfo\fR]
 Set free-form info text.
 If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
 .br
@@ -450,7 +450,7 @@ Nothing shows the info of a VLAN to a user, so a text for a language stays a not
 .br
 Needs the ACL \fBedit:info\fR.
 .TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIvlan\fR
+\fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fIvlan\fR
 Write one of those texts to stdout.
 \fB\-\-language\fR picks which one; without it you get the note of the administrator.
 .br
@@ -459,7 +459,7 @@ Needs the ACL \fBview:info\fR.
 .ad
 .SS Export and Cleanup
 .TP
-.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIvlan\fR
+\fBexport\fR [\fB\-\-password\fR \fIpassword\fR] \fIvlan\fR
 Write the whole object of the VLAN to stdout, as JSON: its VLAN ID, members, ACLs, policies, config parameters and the rest.
 \fBotpme\-tool import\fR reads it back.
 .br

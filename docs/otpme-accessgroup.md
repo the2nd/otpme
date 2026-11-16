@@ -48,7 +48,7 @@ it, and a name that is one of theirs is taken as that group.
 Needs the ACL **add:accessgroup** on the unit it is created in, not on
 the group — there is none yet.
 
-**del \[**--no-trash**\] *accessgroup***  
+**del** \[**--no-trash**\] *accessgroup*  
 Delete an access group. It goes to the trash, from where
 **otpme-trash**(1) can bring it back; **--no-trash** deletes it right
 away.  
@@ -61,7 +61,7 @@ Needs the ACL **delete:object** on the group, or **delete:accessgroup**
 on the unit it sits in.  
 A group a site brings with it cannot be deleted.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*accessgroup*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*accessgroup*\]  
 Without a group: a table of all of them, with their child groups, the
 failed logins they allow, whether they sign the SOTP, their sessions and
 timeouts, their child sessions and their policies.
@@ -109,7 +109,7 @@ UUID, which is how **remove_orphans** has something to find.
 
 <!-- -->
 
-**show_oid \[**--full**\] *accessgroup***  
+**show_oid** \[**--full**\] *accessgroup*  
 Show the OID of the access group:
 **accessgroup\|\<realm\>/\<site\>/\<name\>**. With **--full** the full
 OID, which names the unit as well:
@@ -122,7 +122,7 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the group names, and with a pattern only those that match it, see
 **SELECTING OBJECTS** in **otpme**(1). You get the groups you may
 change; **-a** adds those you may only look at.  
@@ -147,7 +147,7 @@ Rename an access group.
 The clients that name it follow the rename, because a client holds the
 group and not its name. A group a site brings with it cannot be renamed.
 
-**move \[**--keep-acls**\] *accessgroup* *unit***  
+**move** \[**--keep-acls**\] *accessgroup* *unit*  
 Move the group into another unit. Its ACLs move with it: the default
 ACLs of the old unit are taken away and those of the new one are
 applied. **--keep-acls** leaves the ACLs of the group as they are.
@@ -166,11 +166,11 @@ on one before does nothing.
 
 ## Token and Role Assignment
 
-A token is named by its path, *user***/***token*. A role is named by its
+A token is named by its path, ***user*/*token***. A role is named by its
 name, which is looked for in the site of the access group, or as
-*site***/***role* to take one from another site of the realm.
+***site*/*role*** to take one from another site of the realm.
 
-**add_token \[**--skip-portal-token**\] *accessgroup* *token_path* \[*token_options*\]**  
+**add_token** \[**--skip-portal-token**\] *accessgroup* *token_path* \[*token_options*\]  
 Let this token use the service.  
 With SOTP signing enabled the sign public key of the token's user is
 copied into the access group, see **SOTP SIGNING**.  
@@ -193,7 +193,7 @@ group they are kept with the assignment and nothing reads them. They are
 not in **show_config** either, only in **export**.  
 Needs the ACL **add:token**.
 
-**remove_token \[**--skip-portal-token**\] *accessgroup* *token_path***  
+**remove_token** \[**--skip-portal-token**\] *accessgroup* *token_path*  
 Take the token away from the group. A UUID is taken as well, which is
 how a reference to a token that is gone is cleared out.  
 The sign public key of the user goes with their last token in this
@@ -204,7 +204,7 @@ for the user are removed as well, after a confirmation;
 **--skip-portal-token** removes only the given token.  
 Needs the ACL **remove:token**.
 
-**list_tokens \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *accessgroup***  
+**list_tokens** \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *accessgroup*  
 List the tokens assigned to the group, by their path. Disabled tokens
 are listed too.  
 **--return-type** selects what to print instead (**name**, **read_oid**,
@@ -449,7 +449,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *accessgroup***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *accessgroup*  
 List the policies attached to the access group, the disabled ones too,
 marked **(disabled)**. Use **--return-type** to select the attribute
 returned (**name**, **read_oid**, **full_oid**, **uuid**). Use
@@ -518,7 +518,7 @@ value wins (see **otpme**(7)).
 Which parameters an access group takes is in **CONFIG PARAMETERS**
 below.
 
-**config \[**-d**\] \[**-a**\] *accessgroup* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *accessgroup* *parameter* \[*value*\]  
 Set a parameter on the group.
 
 **-d**  
@@ -530,12 +530,12 @@ whatever the unit or the site says.
 Append the value to a parameter that holds a list, instead of replacing
 what is there.
 
-The ACL is per parameter, **set:config:***parameter*.
+The ACL is per parameter, **set:config:*parameter***.
 
 **show_config *accessgroup* \[*parameter*\]**  
 The config parameters set on the group itself, or only the one named.  
 Nothing is shown for a parameter that the group gets from a unit or from
-the site, and nothing for one whose ACL **view:config:***parameter* you
+the site, and nothing for one whose ACL **view:config:*parameter*** you
 do not hold. The settings of the group — its sessions, its timeouts, its
 tokens and roles — are not config parameters: **show** and **export**
 are where those are.
@@ -544,14 +544,14 @@ are where those are.
 What the parameter comes to for this group, once the group, its units
 and its site have been looked at. So this answers what applies, where
 **show_config** answers what was set here.  
-Needs the ACL **view:config:***parameter*, the same one that opens it in
+Needs the ACL **view:config:*parameter***, the same one that opens it in
 **show_config**.
 
 **description *accessgroup* \[*description*\]**  
 Set the description. Without one OTPme asks and offers the current text
 for editing.
 
-**info \[**--language** *LANG*\] *accessgroup* \[*info*\]**  
+**info** \[**--language** *LANG*\] *accessgroup* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor named by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note about
@@ -564,7 +564,7 @@ in. Any other placeholder is refused, here and not when somebody needs
 that mail. Which text is sent follows the language of the user, see
 **otpme**(7).
 
-**dump_info \[**--language** *LANG*\] *accessgroup***  
+**dump_info** \[**--language** *LANG*\] *accessgroup*  
 Write one of those texts to stdout, for reading it with something other
 than the editor.  
 **--language** picks which one; without it you get the note of the
@@ -598,7 +598,7 @@ back in is **otpme-tool import,** see **otpme-tool**(1).
 **remove_orphans** asks before it changes anything; the global option
 **-f** skips the question.
 
-**export \[**--password** *password*\] *accessgroup***  
+**export** \[**--password** *password*\] *accessgroup*  
 Write the whole object of the group to stdout, as JSON.  
 Without **--password** it is written as it is, in clear. With one, a key
 is derived from that password and the object is encrypted with it; the

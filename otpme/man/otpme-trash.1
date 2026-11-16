@@ -25,13 +25,13 @@ It grows until somebody runs \fBdel\fR or \fBempty\fR.
 An admin sees and handles every entry of the trash.
 Anyone else only the entries of what their own token deleted; there is no ACL for it.
 .TP
-.B show \fR[\fB\-z\fR \fIn\fR] [\fB\-\-fields\fR \fIfield1,field2\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR]
+\fBshow\fR [\fB\-z\fR \fIn\fR] [\fB\-\-fields\fR \fIfield1,field2\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR]
 List the entries, newest first: the trash ID, the objects in it, who deleted them and when.
 One deletion is one entry, with every object it deleted, e.g. a user and its tokens.
 \fB\-z\fR shows that many entries (default: 10), and the last line says how many there are.
 The fields are \fBtrash_id\fR, \fBobject\fR, \fBdeleted_by\fR and \fBdeletion_date\fR; \fB\-\-raw\fR leaves the header and the borders out, \fB\-\-csv\fR prints one row per line with \fB;\fR between the columns and the trash ID in every row, and \fB\-\-csv\-sep\fR uses another separator.
 .TP
-.B restore \fR[\fB\-\-keep\fR] [\fB\-\-objects\fR \fIoid1,oid2\fR] \fItrash_id\fR
+\fBrestore\fR [\fB\-\-keep\fR] [\fB\-\-objects\fR \fIoid1,oid2\fR] \fItrash_id\fR
 Put the objects of the entry back, units before what is in them.
 A token comes back into the roles, groups and access groups it was in.
 An object with the UUID of one that exists is refused, and one with the name of one that exists is asked about first; the global option \fB\-f\fR overwrites it.

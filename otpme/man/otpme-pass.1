@@ -91,7 +91,7 @@ Both are needed.
 .PP
 .B view:entries
 allows \fBshow_password\fR and \fBlist_entries\fR.
-.B add:entry\fR, \fBedit:entry
+\fBadd:entry\fR, \fBedit:entry
 and
 .B delete:entry
 allow changes to entries.
@@ -180,7 +180,7 @@ Devices, Clients and Description.
 .na
 .nh
 .TP
-.B add \fR[\fB\-\-node\fR \fInode\fR] [\fB\-\-host\fR \fIhost\fR] [\fB\-\-device\fR \fIdevice\fR] [\fB\-\-client\fR \fIclient\fR] [\fB\-\-username\fR \fIusername\fR] [\fB\-\-url\fR \fIurl\fR] [\fB\-\-notes\fR \fInotes\fR] \fIpassword\fR [\fIentry\fR]
+\fBadd\fR [\fB\-\-node\fR \fInode\fR] [\fB\-\-host\fR \fIhost\fR] [\fB\-\-device\fR \fIdevice\fR] [\fB\-\-client\fR \fIclient\fR] [\fB\-\-username\fR \fIusername\fR] [\fB\-\-url\fR \fIurl\fR] [\fB\-\-notes\fR \fInotes\fR] \fIpassword\fR [\fIentry\fR]
 Add a password object.
 With a path, e.g. \fBpasswords/servers/server1\fR, it goes into that unit; else into the unit a \fBdefaultunits\fR policy names, see
 .BR otpme\-policy (1),
@@ -196,7 +196,7 @@ When the password object is there already, \fBadd\fR adds the \fIentry\fR to it,
 .br
 Needs \fBadd:pass\fR on the unit.
 .TP
-.B del \fR[\fB\-\-no\-trash\fR] \fIpassword\fR
+\fBdel\fR [\fB\-\-no\-trash\fR] \fIpassword\fR
 Delete the password object.
 It goes to the trash, see
 .BR otpme\-trash (1);
@@ -205,7 +205,7 @@ The hosts that keep it are told, and drop it.
 .br
 Needs \fBdelete:object\fR on the password or \fBdelete:pass\fR on the unit.
 .TP
-.B show \fR[\fB\-\-offline\fR] [\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] [\fIpassword\fR]
+\fBshow\fR [\fB\-\-offline\fR] [\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] [\fIpassword\fR]
 Without a password: a table of all of them, with their unit, the nodes, hosts, devices and clients they belong to, policies, ACL inheritance and description.
 The entries are not in it, see \fBshow_password\fR.
 .RS
@@ -238,13 +238,13 @@ Which column to sort by, and the other way round.
 .IP
 A column you may not see says \fB\-\fR.
 With a password named, this prints the object itself instead of a table row, one value per line, e.g. \fBNODES\fR; that needs \fBview_public:object\fR.
-\fBshow\fR \fIpassword\fB$\fR prints that one password as a table row.
+\fBshow\fR \f(BIpassword\fB$\fR prints that one password as a table row.
 A name that is no password is a pattern with \fB*\fR, not a regex, and a unit path that ends with \fB/\fR shows the passwords of that unit, see
 .B SELECTING OBJECTS
 in
 .BR otpme (1).
 .TP
-.B show_oid \fR[\fB\-\-full\fR] \fIpassword\fR
+\fBshow_oid\fR [\fB\-\-full\fR] \fIpassword\fR
 Show the OID of the password: \fB\%pass|<realm>/<site>/<name>\fR.
 With \fB\-\-full\fR the full OID, which names the unit as well: \fB\%pass|<realm>/<site>/<unit_path>/<name>\fR.
 .br
@@ -255,7 +255,7 @@ Show the UUID of the password.
 .br
 Needs the ACL \fBview_public:object\fR.
 .TP
-.B list \fR[\fB\-\-offline\fR] [\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] [\fIpattern\fR]
+\fBlist\fR [\fB\-\-offline\fR] [\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] [\fIpattern\fR]
 List the password names, and with a pattern only those that match it, e.g. \fBserver*\fR.
 You get the passwords you may change; \fB\-a\fR adds those you may only look at.
 \fB\-\-attribute\fR matches the pattern against that attribute instead of the name.
@@ -267,7 +267,7 @@ The new name must not be in use in the site, and is taken in lower case.
 .br
 Needs \fBrename:object\fR.
 .TP
-.B move \fR[\fB\-\-keep\-acls\fR] \fIpassword\fR \fIunit\fR
+\fBmove\fR [\fB\-\-keep\-acls\fR] \fIpassword\fR \fIunit\fR
 Move the password object into another unit.
 ACL inheritance is on for passwords, see \fBenable_acl_inheritance\fR: the default ACLs of the old unit are taken away and those of the new one given.
 \fB\-\-keep\-acls\fR keeps all ACLs as they are.
@@ -293,7 +293,7 @@ A change writes all entries again.
 So it needs a key as well, like reading, unless the password has no entries yet, and members with a valid signature, see \fBWho gets a key\fR above.
 Members that have no key yet get one with the change; one who left keeps it until \fBupdate_keys\fR.
 .TP
-.B show_password \fR[\fB\-\-offline\fR] \fIpassword\fR [\fIentry\fR]
+\fBshow_password\fR [\fB\-\-offline\fR] \fIpassword\fR [\fIentry\fR]
 Print the entries with their passwords, or only \fIentry\fR:
 .RS
 .PP
@@ -311,12 +311,12 @@ Online, each call is written to the audit log.
 .br
 Needs \fBview:entries\fR and a key.
 .TP
-.B list_entries \fR[\fB\-\-offline\fR] \fIpassword\fR
+\fBlist_entries\fR [\fB\-\-offline\fR] \fIpassword\fR
 The same without the passwords.
 .br
 Needs \fBview:entries\fR and a key.
 .TP
-.B change_entry \fR[\fB\-\-username\fR \fIusername\fR] [\fB\-\-url\fR \fIurl\fR] [\fB\-\-notes\fR \fInotes\fR] [\fB\-\-password\fR] \fIpassword\fR \fIentry\fR
+\fBchange_entry\fR [\fB\-\-username\fR \fIusername\fR] [\fB\-\-url\fR \fIurl\fR] [\fB\-\-notes\fR \fInotes\fR] [\fB\-\-password\fR] \fIpassword\fR \fIentry\fR
 Change the fields given; an empty value, e.g. \fB\-\-notes ""\fR, clears one.
 \fB\-\-password\fR asks for a new password, twice.
 Without any of them, nothing is changed and it says so.
@@ -333,7 +333,7 @@ Needs \fBdelete:entry\fR and a key.
 .na
 .nh
 .TP
-.B update_keys \fIpassword\fR | \fB\-\-all\fR [\fB\-\-unit\fR \fIunit\fR]
+\fBupdate_keys \f(BIpassword\fR | \fB\-\-all\fR [\fB\-\-unit\fR \fIunit\fR]
 Bring the keys of the password in line with its members, see \fBWho gets a key\fR above: members that have no key get one, and users that are no longer members lose it.
 Run it after the members were signed again, after a user left, and after \fBmove\fR.
 .IP
@@ -467,7 +467,7 @@ Remove a policy from the password object.
 Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
-.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIpassword\fR
+\fBlist_policies\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIpassword\fR
 List the policies attached to the password object, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
@@ -543,7 +543,7 @@ Needs the ACL \fBdisable:acl_inheritance\fR.
 .PP
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
-.B config \fR[\fB\-a\fR] [\fB\-d\fR] \fIpassword\fR \fIparameter\fR \fR[\fIvalue\fR]
+\fBconfig\fR [\fB\-a\fR] [\fB\-d\fR] \fIpassword\fR \fIparameter\fR \fR[\fIvalue\fR]
 Set a parameter on the password object.
 .RS
 .TP
@@ -576,7 +576,7 @@ It is not encrypted: \fBshow\fR lists it, and a host keeps it for \fB\-\-offline
 .br
 Needs the ACL \fBedit:description\fR.
 .TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIpassword\fR \fR[\fIinfo\fR]
+\fBinfo\fR [\fB\-\-language\fR \fILANG\fR] \fIpassword\fR \fR[\fIinfo\fR]
 Set free-form info text.
 It is not encrypted.
 If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable (default: vim).
@@ -588,7 +588,7 @@ Without
 the text is the administrator's own note.
 Nothing shows the info of a password to a user, so a text for a language stays a note as well.
 .TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIpassword\fR
+\fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fIpassword\fR
 Write one of those texts to stdout.
 \fB\-\-language\fR picks which one; without it you get the note of the administrator.
 .br
@@ -604,7 +604,7 @@ There is no import on this page: reading an export back in is \fBotpme\-tool imp
 .B remove_orphans
 asks before it changes anything; the global option \fB\-f\fR skips the question.
 .TP
-.B export \fR[\fB\-\-password\fR \fIpassphrase\fR] \fIpassword\fR
+\fBexport\fR [\fB\-\-password\fR \fIpassphrase\fR] \fIpassword\fR
 Write the whole password object to stdout, as JSON.
 .RS
 .PP

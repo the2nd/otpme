@@ -33,7 +33,7 @@ somebody holds; see **DESCRIPTION**. On this page such a command says
 **(admin only)** after its ACL. The ACLs of the commands that only read
 can be given to others.
 
-**--type ldap add \[**--template** *template*\] *resolver***  
+**--type ldap add **\[**--template** *template*\] *resolver*  
 Add a resolver of that type; **ldap** is the only one.  
 It starts disabled, so it does not run before it is set up, see
 **enable**. **--template openldap** fills in the LDAP filters, key
@@ -43,7 +43,7 @@ With a path, e.g. **ldap/corp**, it goes into that unit; else into the
 unit a **defaultunits** policy names, or into **resolvers**.  
 Needs the ACL **add:resolver** on the unit (admin only).
 
-**del \[**--no-trash**\] *resolver***  
+**del** \[**--no-trash**\] *resolver*  
 Delete the resolver. It goes to the trash, see **otpme-trash**(1);
 **--no-trash** deletes it right away.  
 If the resolver has added objects, it says how many of each type and
@@ -52,7 +52,7 @@ the global option **-f** it asks nothing and deletes the resolver only,
 not its objects. A running resolver is refused.  
 Needs the ACL **delete:object** (admin only).
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*resolver*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*resolver*\]  
 Without a resolver: a table of them, with their unit, type, status,
 whether they delete objects (**sync_deletions**), policies, ACL
 inheritance and description.
@@ -81,7 +81,7 @@ another separator.
 A column you may not see says **-**. With a resolver named, this prints
 the object itself instead of a table row, one value per line.
 
-**show_oid \[**--full**\] *resolver***  
+**show_oid** \[**--full**\] *resolver*  
 Show the OID of the resolver: **resolver\|\<realm\>/\<site\>/\<name\>**.
 With **--full** the full OID, which names the unit as well:
 **resolver\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
@@ -91,7 +91,7 @@ Needs the ACL **view_public:object**.
 Show the UUID of the resolver.  
 Needs the ACL **view_public:object**.
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 The names of the resolvers, one per line; with *pattern* only those it
 matches, see **SELECTING OBJECTS** in **otpme**(1). **-a** also lists
 the ones you may only look at. **--attribute** matches the pattern
@@ -112,7 +112,7 @@ Write the resolver anew, as it is, e.g. after an upgrade of its object
 version.  
 Needs the ACL **touch** (admin only).
 
-**auto_disable \[**-u**\] *resolver* *time***  
+**auto_disable** \[**-u**\] *resolver* *time*  
 Set auto-disable time. It is either a relative time with a leading
 **+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
 The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
@@ -129,7 +129,7 @@ Needs the ACL **edit:auto_disable** (admin only).
 Rename the resolver. A running resolver is refused.  
 Needs the ACL **rename** (admin only).
 
-**move \[**--keep-acls**\] *resolver* *unit***  
+**move** \[**--keep-acls**\] *resolver* *unit*  
 Move the resolver to another unit. Whether its ACLs change with it, see
 **enable_acl_inheritance**; **--keep-acls** leaves them as they are.  
 Needs the ACL **move** (admin only).
@@ -141,7 +141,7 @@ An LDAP resolver handles the object types **unit**, **group** and
 e.g. **user,group**; another type is refused. Without it a command works
 on all three.
 
-**run \[**--object-types** *types*\] *resolver***  
+**run** \[**--object-types** *types*\] *resolver*  
 Fetch the objects from the servers and bring OTPme in line with them:
 add the new ones, change the changed ones. Only with
 **enable_deletions** does it also delete the objects it added that the
@@ -153,19 +153,19 @@ run counts as a use of the resolver, see **auto_disable -u**. A resolver
 that is already running is refused.  
 Needs the ACL **run** (admin only).
 
-**test \[**--object-types** *types*\] *resolver***  
+**test** \[**--object-types** *types*\] *resolver*  
 Change nothing, but show what a run would do. Before that it connects to
 every server and checks that they all return the same number of objects;
 this check takes all types. At the end it says whether there were
 errors.  
 Needs the ACL **test** or **run** (admin only).
 
-**get_objects \[**--object-types** *types*\] *resolver***  
+**get_objects** \[**--object-types** *types*\] *resolver*  
 The objects this resolver has added to OTPme, not those on the servers:
 their names per type, printed as a Python dict.  
 Needs the ACL **get_objects**.
 
-**delete_objects \[**--object-types** *types*\] *resolver***  
+**delete_objects** \[**--object-types** *types*\] *resolver*  
 Delete the objects this resolver has added: users first, then groups,
 then units. They go to the trash, see **add_resolver_objects_to_trash**
 under **CONFIG PARAMETERS**. No ACL is checked on the objects
@@ -236,8 +236,8 @@ them it stops before it connects and says what is missing. A type
 without a filter is not fetched.
 
 **--type ldap add_server *resolver* *server_uri***  
-Add a server, as **ldaps://***host*\[**:***port*\] or
-**ldap://***host*\[**:***port*\]. **ldaps://** speaks TLS from the
+Add a server, as **ldaps://*host***\[**:*port***\] or
+**ldap://*host***\[**:*port***\]. **ldaps://** speaks TLS from the
 start, by default on port 636. **ldap://** always starts TLS first
 (StartTLS), by default on port 389; a server that cannot do that is
 refused when the resolver runs. The resolver never logs in without
@@ -309,7 +309,7 @@ group.
 
 Needs the ACL **add:attribute_mapping** (admin only). To see them,
 **show** needs the ACL **view:attribute_mapping**; it prints them as
-*dst_attr***:***src_attr*.
+***dst_attr*:*src_attr***.
 
 **--type ldap del_ldap_attribute *resolver* *object_type* *src_attr***  
 Remove the mapping of that server attribute. An unknown one is refused
@@ -347,7 +347,7 @@ Remove a policy from the resolver.
 Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it (admin only).
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *resolver***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *resolver*  
 List the policies attached to the resolver, the disabled ones too,
 marked **(disabled)**. Use **--return-type** to select the attribute
 returned (**name**, **read_oid**, **full_oid**, **uuid**); without it
@@ -411,7 +411,7 @@ Needs the ACL **disable:acl_inheritance** (admin only).
 
 A resolver has three config parameters, see **CONFIG PARAMETERS**.
 
-**config \[**-d**\] \[**-a**\] *resolver* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *resolver* *parameter* \[*value*\]  
 Set a parameter on the resolver.
 
 **-d**  
@@ -442,7 +442,7 @@ Set the description. Without one OTPme asks and offers the current text
 for editing.  
 Needs the ACL **edit:description** (admin only).
 
-**info \[**--language** *LANG*\] *resolver* \[*info*\]**  
+**info** \[**--language** *LANG*\] *resolver* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor named by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note. Nothing
@@ -450,7 +450,7 @@ shows the info of a resolver to a user, so a text for a language stays a
 note as well.  
 Needs the ACL **edit:info** (admin only).
 
-**dump_info \[**--language** *LANG*\] *resolver***  
+**dump_info** \[**--language** *LANG*\] *resolver*  
 Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator.  
 Needs the ACL **view:info**.
@@ -505,7 +505,7 @@ along its cascade.
 
 ## Export and Cleanup
 
-**export \[**--password** *password*\] *resolver***  
+**export** \[**--password** *password*\] *resolver*  
 Write the whole object of the resolver to stdout, as JSON: its type,
 servers, mappings, ACLs, policies, config parameters and the rest.
 **otpme-tool import** reads it back.  

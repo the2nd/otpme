@@ -103,7 +103,7 @@ A one-time password that a script of yours checks, not OTPme.
 The same for a static password.
 
 **link**  
-A token that points at another token, named as *user***/***name*.
+A token that points at another token, named as ***user*/*name***.
 Whoever signs in with it uses the credential of that token, which is how
 one person's key or password works for a second account.  
 Not every type may be the destination: **password**, **hotp**, **totp**,
@@ -127,7 +127,7 @@ Neither is a value for **--type**.
 
 ## Token Management
 
-**--type *type* add \[**-r**\] *user***/***name***  
+**--type** *type* **add** \[**-r**\] ***user*/*name***  
 Add a token to a user.  
 The type decides which arguments and options **add** takes, so OTPme
 reads **--type** before the rest of the line. It may stand anywhere on
@@ -147,11 +147,10 @@ added all the same.
 What each type adds to the line:
 
 **link**  
-**add ***user***/***name*** ***dest_user***/***dest_name* — the token it
-points at.
+**add *user*/*name* *dest_user*/*dest_name*** — the token it points at.
 
 **ssh**  
-**add ***user***/***name* \[*public_key*\] — without a key the token is
+**add *user*/*name*** \[*public_key*\] — without a key the token is
 added and the key set later.
 
 **password**  
@@ -176,11 +175,11 @@ require redeployment.
 --no-qrcode  
 Do not display the QR code on token creation.
 
-**del \[**--no-trash**\] *token***  
+**del** \[**--no-trash**\] *token*  
 Delete a token. It goes to the trash, from where **otpme-trash**(1) can
 bring it back; **--no-trash** deletes it right away.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--role-limit** *N*\] \[**--scope-limit** *N*\] \[*token*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--role-limit** *N*\] \[**--scope-limit** *N*\] \[*token*\]  
 Show the tokens, with their roles, scopes and policies.  
 Without a token you get your own, i.e. the tokens of the user you are
 signed in as.
@@ -211,7 +210,7 @@ The same for one of the three, where the others should stay as they are.
 
 <!-- -->
 
-**show_oid \[**--full**\] *token***  
+**show_oid** \[**--full**\] *token*  
 Show the OID of the token: **token\|\<realm\>/\<user\>/\<name\>**. With
 **--full** the full OID, which names the site as well:
 **token\|\<realm\>/\<site\>/\<user\>/\<name\>**.  
@@ -223,14 +222,14 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[*pattern*\]**  
+**list** \[**-a**\] \[*pattern*\]  
 List the token paths, and with a pattern only those that match it, e.g.
 **alice/\*** for the tokens of one user, see **SELECTING OBJECTS** in
 **otpme**(1).  
 You get the tokens you may change; **-a** adds those you may only look
 at.
 
-**enable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *token***  
+**enable** \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *token*  
 Enable a disabled token.
 
 **--share-notify**  
@@ -242,7 +241,7 @@ Do not send notification to all online hosts on new share permissions.
 **--no-persist-mount**  
 Do not persist new share mounts on hosts.
 
-**disable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *token***  
+**disable** \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *token*  
 Disable a token without deleting it.
 
 **--share-notify**  
@@ -260,7 +259,7 @@ Rename a token.
 The default token of a user is only renamed where the config parameter
 **allow_default_token_rename** says so, see **otpme**(7).
 
-**move \[**-r**\] \[**--keep-acls**\] *token* *dst_user*\[**/***name*\]**  
+**move** \[**-r**\] \[**--keep-acls**\] *token* *dst_user*\[**/*name***\]  
 Move a token to another user. The user has to be on the same site;
 moving a token to another site does not work.  
 **-r** replaces a token of that name at the destination and keeps its
@@ -274,7 +273,7 @@ token: the ACLs on the old user and those of its default token go, and
 the policy of the new user gives its own, see **otpme-policy**(1). The
 ACLs of whoever created the token stay.  
 Moving into the **TOKENSTORE** gives the token a name of its own,
-*old_owner***:***name*, with a number appended where that is taken
+***old_owner*:*name***, with a number appended where that is taken
 already. A name of your own is refused there. Moving it back out again
 takes the part behind the **:** as the name, unless you give one.
 
@@ -283,7 +282,7 @@ Re-index the object to fix potential index problems.
 
 ## Token Configuration
 
-**config \[**-d**\] \[**-a**\] *token* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *token* *parameter* \[*value*\]  
 Set a configuration parameter on the token. **-a** appends the value to
 a parameter that holds a list.  
 **-d** removes the parameter from the token, or with a value only that
@@ -299,7 +298,7 @@ Show the value of one parameter the way OTPme reads it, i.e. after
 looking at the token, the user, the unit and the site. So this answers
 what applies, while **show_config** answers what was set here.
 
-**auto_disable \[**-u**\] *token* *time***  
+**auto_disable** \[**-u**\] *token* *time*  
 Set auto-disable time. It is either a relative time with a leading
 **+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
 The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
@@ -321,14 +320,14 @@ The SSO portal asks the user for it when they add a token there and
 shows it in the list, so that somebody with three security keys can tell
 them apart.
 
-**info \[**--language** *LANG*\] *token* \[*info*\]**  
+**info** \[**--language** *LANG*\] *token* \[*info*\]  
 Set the info text of the token. Without a text OTPme opens the current
 one in the editor named by **EDITOR**.  
 An info text is kept per language. **--language** says which one;
 without it the text is stored under **info**, which is the note of the
 administrator.
 
-**dump_info \[**--language** *LANG*\] *token***  
+**dump_info** \[**--language** *LANG*\] *token*  
 Write the info text of that language to stdout.
 
 **test *token***  
@@ -340,7 +339,7 @@ Almost every type has it. **passkey** and **tiqr** do not: both need a
 browser and a device that answers it, which a command line cannot stand
 in for.
 
-**temp_password \[**--generate**\] \[**--duration** *time*\] \[**--remove**\] \[**--weak-password**\] *token* \[*password*\]**  
+**temp_password** \[**--generate**\] \[**--duration** *time*\] \[**--remove**\] \[**--weak-password**\] *token* \[*password*\]  
 Give the token a second password that works for a while, next to the one
 it has. It is meant for an administrator or the IT support who has to
 work as that user for a time, e.g. to set up a notebook.  
@@ -461,7 +460,7 @@ above for the token type each one creates.
 
 ## Deploy - FIDO2
 
-**deploy \[**-d**\] \[**-r**\] \[**--no-pin**\] \[**--uv** *uv*\] *token***  
+**deploy** \[**-d**\] \[**-r**\] \[**--no-pin**\] \[**--uv** *uv*\] *token*  
 Register a FIDO2 key. The key must be plugged in and asks for a touch.
 
 **--no-pin**  
@@ -483,7 +482,7 @@ Enable debug output.
 
 ## Deploy - U2F
 
-**deploy \[**-d**\] \[**-r**\] *token***  
+**deploy** \[**-d**\] \[**-r**\] *token*  
 Register a U2F key. The key must be plugged in and asks for a touch. U2F
 knows no PIN and no user verification, so **--no-pin** and **--uv** do
 not exist here.
@@ -496,7 +495,7 @@ Enable debug output.
 
 ## Deploy - YubiKey HMAC-SHA1
 
-**deploy \[**-d**\] \[**-r**\] \[**-n**\] \[**-s** *slot*\] *token***  
+**deploy** \[**-d**\] \[**-r**\] \[**-n**\] \[**-s** *slot*\] *token*  
 Write an HMAC-SHA1 secret to a YubiKey slot. Deploy asks for a token
 password. The token secret is the card's answer to a challenge, so the
 secret of the card itself never leaves it. Whatever was in the slot is
@@ -519,7 +518,7 @@ Enable debug output.
 
 ## Deploy - YubiKey OATH HOTP
 
-**deploy \[**-d**\] \[**-r**\] \[**-s** *slot*\] *token***  
+**deploy** \[**-d**\] \[**-r**\] \[**-s** *slot*\] *token*  
 Write an OATH HOTP secret to a YubiKey slot. Deploy asks for a token
 PIN. The PIN and a server secret together make the secret on the card,
 so the user types the PIN before the OTP. Whatever was in the slot is
@@ -540,7 +539,7 @@ so OTPme can only register a card it wrote itself.
 
 ## Deploy - YubiKey GPG Applet
 
-**deploy \[**-d**\] \[**-r**\] \[**-n**\] \[**--key-len** *bits*\] \[**--backup** *file*\] \[**--restore** *file*\] *token***  
+**deploy** \[**-d**\] \[**-r**\] \[**-n**\] \[**--key-len** *bits*\] \[**--backup** *file*\] \[**--restore** *file*\] *token*  
 Set up the GPG applet of a YubiKey and create an **ssh** token from it.
 This resets the applet, so every GPG key on the card is lost.
 
@@ -588,7 +587,7 @@ Enable debug output.
 
 ## Deploy - YubiKey PIV Applet
 
-**deploy \[**-d**\] \[**-r**\] \[**-n**\] \[**--key-len** *bits*\] \[**--sign-algo** *algo*\] \[**--encrypt-algo** *algo*\] \[**--backup** *file*\] \[**--restore** *file*\] \[**--restore-from-server**\] \[**--backup-key-file** *file*\] \[**--add-user-key**\] *token***  
+**deploy** \[**-d**\] \[**-r**\] \[**-n**\] \[**--key-len** *bits*\] \[**--sign-algo** *algo*\] \[**--encrypt-algo** *algo*\] \[**--backup** *file*\] \[**--restore** *file*\] \[**--restore-from-server**\] \[**--backup-key-file** *file*\] \[**--add-user-key**\] *token*  
 Set up the PIV applet of a YubiKey. Deploy creates two keys: a sign key
 in slot 9A and an encrypt key in slot 9D. It asks for a smartcard
 password of at least 8 characters.
@@ -667,7 +666,7 @@ the global **-f** skips the question.
 Remove a dynamic group from the token. Needs the ACL
 **remove:dynamic_group**.
 
-**list_dynamic_groups \[**--include-roles**\] *token***  
+**list_dynamic_groups** \[**--include-roles**\] *token*  
 List the dynamic groups of the token. Needs the ACL
 **view:dynamic_groups**.
 
@@ -690,33 +689,33 @@ A token reaches most of what it has through its roles. These commands
 show what the token itself is assigned to. Where there is a
 **--include-roles**, that is how you ask for the rest.
 
-**find_roles \[**--return-type** *TYPE*\] \[**-r**\] *token***  
+**find_roles** \[**--return-type** *TYPE*\] \[**-r**\] *token*  
 Find the roles of the token. With **-r** also the roles those roles are
 in. Needs the ACL **find:roles**.
 
-**find_groups \[**--return-type** *TYPE*\] \[**--include-roles**\] *token***  
+**find_groups** \[**--return-type** *TYPE*\] \[**--include-roles**\] *token*  
 Find the groups of the token. With **--include-roles** also the groups
 the token is in through its roles. Needs the ACL **find:groups**.
 
-**find_accessgroups \[**--return-type** *TYPE*\] \[**--include-roles**\] *token***  
+**find_accessgroups** \[**--return-type** *TYPE*\] \[**--include-roles**\] *token*  
 Find the access groups of the token. With **--include-roles** also the
 ones it reaches through its roles. Needs the ACL **find:accessgroups**.
 
-**find_scopes \[**--return-type** *TYPE*\] \[**--include-roles**\] *token***  
+**find_scopes** \[**--return-type** *TYPE*\] \[**--include-roles**\] *token*  
 Find the OIDC scopes of the token. With **--include-roles** also the
 ones it reaches through its roles. Needs the ACL **find:scopes**.
 
-**find_shares \[**--return-type** *TYPE*\] *token***  
+**find_shares** \[**--return-type** *TYPE*\] *token*  
 Find the shares the token may use. The roles of the token are always
 included here, there is nothing to switch. **--return-type** also takes
 **path**, which is the share name with its site in front. Needs the ACL
 **find:shares**.
 
-**find_hosts \[**--return-type** *TYPE*\] *token***  
+**find_hosts** \[**--return-type** *TYPE*\] *token*  
 Find the hosts the token is assigned to. Only direct assignments, the
 roles are not followed. Needs the ACL **find:hosts**.
 
-**find_nodes \[**--return-type** *TYPE*\] *token***  
+**find_nodes** \[**--return-type** *TYPE*\] *token*  
 Find the nodes the token is assigned to. Only direct assignments, the
 roles are not followed. Needs the ACL **find:nodes**.
 
@@ -785,7 +784,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *token***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *token*  
 List the policies attached to the token, the disabled ones too, marked
 **(disabled)**. Use **--return-type** to select the attribute returned
 (**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
@@ -798,7 +797,7 @@ Needs the ACL **view:policies**.
 An ACL says what somebody may do with this token. The somebody is a role
 or a token, never a user.
 
-What the three forms *acl*, **+***acl* and **++***acl* mean, and which
+What the three forms *acl*, **+*acl*** and **++*acl*** mean, and which
 ACLs exist, is under **ACLs** in **otpme**(7).
 
 A command that changes something asks first; the global option **-f**
@@ -858,7 +857,7 @@ this page: reading an export back in is **otpme-tool** **import**, see
 **set_token_data** and **remove_orphans** ask before they change
 anything; the global option **-f** skips the question.
 
-**export \[**--password** *PASS*\] *token***  
+**export** \[**--password** *PASS*\] *token*  
 Write the whole object of the token to stdout, as JSON.  
 Without **--password** it is written as it is, in clear. With one, a key
 is derived from that password and the object is encrypted with it; the
@@ -943,7 +942,7 @@ apps read.
 Show that secret. In **mode2** it asks for the PIN first, because the
 secret cannot be read without it.
 
-**pin \[**--generate**\] *token* \[*pin*\]**  
+**pin** \[**--generate**\] *token* \[*pin*\]  
 Set the PIN the user types in front of the OTP. **--generate** makes
 one.
 
@@ -1010,7 +1009,7 @@ Allow this token for MSCHAP, or stop allowing it.
 
 ## Password Token
 
-**password \[**--generate**\] \[**--weak-password**\] *token* \[*password*\]**  
+**password** \[**--generate**\] \[**--weak-password**\] *token* \[*password*\]  
 Set the password. **--generate** makes one.  
 With **--weak-password** a password the password policy rejects is taken
 anyway. That needs the **force_password** ACL, and it is not what **-f**
@@ -1062,11 +1061,11 @@ the GPG applet of a YubiKey.
 **key_type *token* *key_type***  
 The kind of key: **rsa**, **ed25519** or **ecdsa**.
 
-**password \[**--generate**\] \[**--weak-password**\] *token* \[*password*\]**  
+**password** \[**--generate**\] \[**--weak-password**\] *token* \[*password*\]  
 Set the password of the token. See the password token above for
 **--weak-password**.
 
-**get_sign_data \[**--tags** *tag1,tag2*\] *token***  
+**get_sign_data** \[**--tags** *tag1,tag2*\] *token*  
 The bytes that have to be signed, for signing somewhere else.
 
 An SSH token can be signed, so it also takes **sign**, **resign**,
@@ -1076,7 +1075,7 @@ An SSH token can be signed, so it also takes **sign**, **resign**,
 ## Link Token
 
 **add *token* *destination_token***  
-Make the link and say which token it points at, as *user***/***name*.
+Make the link and say which token it points at, as ***user*/*name***.
 Whoever signs in with the link uses the credential of that token.
 
 A link can be signed when the token it points at can, e.g. an SSH token.
@@ -1129,7 +1128,7 @@ This is a value on the token, not the phone number of the user — see
 The script that delivers it. Without one the default of the realm is
 used, **default_otp_push_script** in **otpme**(7).
 
-**password \[**--generate**\] \[**--weak-password**\] *token* \[*password*\]**  
+**password** \[**--generate**\] \[**--weak-password**\] *token* \[*password*\]  
 Set the password of the token. See the password token above for
 **--weak-password**.
 
@@ -1198,21 +1197,21 @@ with no signature at all is skipped. Which host wants that is set with
 
 **ssh** and **yubikey_piv** tokens take these:
 
-**sign \[**--tags** *tag1,tag2*\] *token***  
+**sign** \[**--tags** *tag1,tag2*\] *token*  
 Sign the token. You have to be logged in with a key of your own, and
 that key makes the signature.
 
-**resign \[**--tags** *tag1,tag2*\] *token***  
+**resign** \[**--tags** *tag1,tag2*\] *token*  
 Sign it again, over the data as it is now. For after something a
 signature covers has changed.
 
-**verify_sign \[*options*\] *token***  
+**verify_sign** \[*options*\] *token*  
 Check the signatures of the token.
 
 **get_sign *token***  
 Show them.
 
-**get_sign_data \[**--tags** *tag1,tag2*\] *token***  
+**get_sign_data** \[**--tags** *tag1,tag2*\] *token*  
 The bytes that have to be signed, for signing somewhere else.
 
 **add_sign *token* *signature***  
@@ -1250,7 +1249,7 @@ set on, is in **otpme**(7).
 
 # EXAMPLES
 
-A token is named *user***/***name*, and the name is yours to pick. The
+A token is named ***user*/*name***, and the name is yours to pick. The
 examples below use the user **alice**.
 
 ## Giving somebody a token

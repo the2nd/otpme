@@ -2749,16 +2749,16 @@ class OTPmeMgmtP1(OTPmeServer1):
         if trash_command == "empty":
             full = False
             auth_token = None
-            if config.auth_token:
-                if config.auth_token.is_admin():
-                    full = True
-                else:
-                    allow_trash_empty = config.auth_token.get_config_parameter("allow_non_admin_trash_empty")
-                    if not allow_trash_empty:
-                        status = False
-                        response = _("You need to be admin to run this command.")
-                        return self.build_response(status, response)
-                    auth_token = config.auth_token.rel_path
+            # self.is_admin also holds in API mode, where there is no token.
+            if self.is_admin:
+                full = True
+            elif config.auth_token:
+                allow_trash_empty = config.auth_token.get_config_parameter("allow_non_admin_trash_empty")
+                if not allow_trash_empty:
+                    status = False
+                    response = _("You need to be admin to run this command.")
+                    return self.build_response(status, response)
+                auth_token = config.auth_token.rel_path
             # We have to override client command args to prevent client from
             # setting "full" and "auth_token".
             command_args['full'] = full

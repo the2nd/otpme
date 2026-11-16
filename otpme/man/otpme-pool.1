@@ -38,7 +38,7 @@ A new pool has no nodes, see \fBadd_node\fR.
 .br
 Needs \fBadd:pool\fR on the unit.
 .TP
-.B del \fR[\fB\-\-no\-trash\fR] \fIpool\fR
+\fBdel\fR [\fB\-\-no\-trash\fR] \fIpool\fR
 Delete the pool.
 It goes to the trash, see
 .BR otpme\-trash (1);
@@ -51,7 +51,7 @@ A share keeps the pool that is gone until its \fBremove_orphans\fR, and gets no 
 .br
 Needs \fBdelete:object\fR on the pool or \fBdelete:pool\fR on the unit.
 .TP
-.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-node\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIpool\fR]
+\fBshow\fR [\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-node\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIpool\fR]
 Without a pool: a table of all of them, with their unit, status, nodes, policies, ACL inheritance and description.
 .RS
 .TP
@@ -80,13 +80,13 @@ Which column to sort by, and the other way round.
 .IP
 A column you may not see says \fB\-\fR.
 With a pool named, this prints the object itself instead of a table row, one value per line; its nodes need \fBview:nodes\fR.
-\fBshow\fR \fIpool\fB$\fR prints that one pool as a table row.
+\fBshow\fR \f(BIpool\fB$\fR prints that one pool as a table row.
 A name that is no pool is a pattern with \fB*\fR, not a regex, see
 .B SELECTING OBJECTS
 in
 .BR otpme (1).
 .TP
-.B show_oid \fR[\fB\-\-full\fR] \fIpool\fR
+\fBshow_oid\fR [\fB\-\-full\fR] \fIpool\fR
 Show the OID of the pool: \fB\%pool|<realm>/<site>/<name>\fR.
 With \fB\-\-full\fR the full OID, which names the unit as well: \fB\%pool|<realm>/<site>/<unit_path>/<name>\fR.
 .br
@@ -97,7 +97,7 @@ Show the UUID of the pool.
 .br
 Needs the ACL \fBview_public:object\fR.
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+\fBlist\fR [\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
 List the pool names, and with a pattern only those that match it, see
 .B SELECTING OBJECTS
 in
@@ -121,7 +121,7 @@ The shares keep it: they name it by its UUID.
 .br
 Needs \fBrename:object\fR.
 .TP
-.B move \fR[\fB\-\-keep\-acls\fR] \fIpool\fR \fIunit\fR
+\fBmove\fR [\fB\-\-keep\-acls\fR] \fIpool\fR \fIunit\fR
 Move the pool into another unit of its site.
 The pool keeps its ACLs; where ACL inheritance is on for it (off for pools by default, see \fBenable_acl_inheritance\fR), the default ACLs of the old unit are taken away and those of the new one given.
 \fB\-\-keep\-acls\fR keeps all ACLs as they are.
@@ -163,7 +163,7 @@ A node that was deleted has no name to be given here: it stays in the pool, serv
 .br
 Needs the ACL \fBremove:node\fR.
 .TP
-.B list_nodes \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIpool\fR
+\fBlist_nodes\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fIpool\fR
 List the nodes of the pool, by name.
 Disabled nodes are not listed.
 \fB\-\-return\-type\fR selects what to print instead (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
@@ -195,7 +195,7 @@ Remove a policy from the pool.
 Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
-.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIpool\fR
+\fBlist_policies\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIpool\fR
 List the policies attached to the pool, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR); without it the names.
 Only the names are marked.
@@ -260,7 +260,7 @@ Needs the ACL \fBdisable:acl_inheritance\fR.
 A pool has two config parameters: \fBchangelog\fR and \fBallow_changelog_clearing\fR, see \fBCONFIG PARAMETERS\fR.
 A parameter is looked up at the pool, then at each unit above it, then at the site.
 .TP
-.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIpool\fR \fIparameter\fR \fR[\fIvalue\fR]
+\fBconfig\fR [\fB\-d\fR] [\fB\-a\fR] \fIpool\fR \fIparameter\fR \fR[\fIvalue\fR]
 Set a parameter on the pool.
 .RS
 .TP
@@ -292,7 +292,7 @@ Set the description.
 Without one OTPme asks and offers the current text for editing.
 Needs \fBedit:description\fR.
 .TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIpool\fR \fR[\fIinfo\fR]
+\fBinfo\fR [\fB\-\-language\fR \fILANG\fR] \fIpool\fR \fR[\fIinfo\fR]
 Set free-form info text.
 If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
 Needs \fBedit:info\fR.
@@ -300,7 +300,7 @@ Needs \fBedit:info\fR.
 Without \fB\-\-language\fR the text is the administrator's own note.
 Nothing shows the info of a pool to a user, so a text for a language stays a note as well.
 .TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIpool\fR
+\fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fIpool\fR
 Write one of those texts to stdout.
 \fB\-\-language\fR picks which one; without it you get the note of the administrator.
 Needs \fBview:info\fR.
@@ -348,7 +348,7 @@ A \%value set on the token you are signed in with counts first.
 Without one, the value of the pool counts, read along its cascade.
 .SS Export and Cleanup
 .TP
-.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIpool\fR
+\fBexport\fR [\fB\-\-password\fR \fIpassword\fR] \fIpool\fR
 Write the whole object of the pool to stdout, as JSON: its nodes, ACLs, policies, config parameters and the rest.
 \fBotpme\-tool import\fR reads it back.
 .br

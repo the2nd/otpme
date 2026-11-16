@@ -26,7 +26,7 @@ or **empty**.
 An admin sees and handles every entry of the trash. Anyone else only the
 entries of what their own token deleted; there is no ACL for it.
 
-**show \[**-z** *n*\] \[**--fields** *field1,field2*\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\]**  
+**show** \[**-z** *n*\] \[**--fields** *field1,field2*\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\]  
 List the entries, newest first: the trash ID, the objects in it, who
 deleted them and when. One deletion is one entry, with every object it
 deleted, e.g. a user and its tokens. **-z** shows that many entries
@@ -36,7 +36,7 @@ deleted, e.g. a user and its tokens. **-z** shows that many entries
 row per line with **;** between the columns and the trash ID in every
 row, and **--csv-sep** uses another separator.
 
-**restore \[**--keep**\] \[**--objects** *oid1,oid2*\] *trash_id***  
+**restore** \[**--keep**\] \[**--objects** *oid1,oid2*\] *trash_id*  
 Put the objects of the entry back, units before what is in them. A token
 comes back into the roles, groups and access groups it was in. An object
 with the UUID of one that exists is refused, and one with the name of

@@ -46,7 +46,7 @@ There is no **rename**. A node is found by the name it joined with,
 which is also the name in its certificate, so a machine that is renamed
 leaves the realm and joins again.
 
-**del \[**--no-trash**\] *node***  
+**del** \[**--no-trash**\] *node*  
 Delete a node. It goes to the trash, from where **otpme-trash**(1) can
 bring it back; **--no-trash** deletes it right away.
 
@@ -62,7 +62,7 @@ or run **remove_orphans** on those objects afterwards.
 The machine itself is not asked anything. A node that is still joined
 should leave the realm first, with **otpme-tool leave**.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--token-limit** *N*\] \[**--role-limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*node*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--token-limit** *N*\] \[**--role-limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*node*\]  
 Show the nodes, with their tokens, roles and policies. Without a node
 you get all of them.
 
@@ -92,7 +92,7 @@ between the columns, and **--csv-sep** uses another separator.
 
 <!-- -->
 
-**show_oid \[**--full**\] *node***  
+**show_oid** \[**--full**\] *node*  
 Show the OID of the node: **node\|\<realm\>/\<name\>**. With **--full**
 the full OID, which names the site and unit as well:
 **node\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
@@ -104,7 +104,7 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the node names, and with a pattern only those that match it, see
 **SELECTING OBJECTS** in **otpme**(1). You get the nodes you may change;
 **-a** adds those you may only look at.  
@@ -113,7 +113,7 @@ the name: **list --attribute enabled True** lists the nodes that are
 enabled. A value that is not text has to be spelled out — **\*** matches
 none of it.
 
-**enable \[**--offline**\] *node***  
+**enable** \[**--offline**\] *node*  
 Enable a disabled node.  
 Nothing is asked of the node itself: while it was disabled it asked the
 master once a second whether it still is, and it starts its own services
@@ -122,7 +122,7 @@ enabled the way it is disabled, and it changes nothing.
 The node then syncs like one that has just joined, which includes the
 deletions it missed while it was away.
 
-**disable \[**--offline**\] *node***  
+**disable** \[**--offline**\] *node*  
 Disable a node without deleting it.
 
 This asks first, and then tells the node to stop answering requests
@@ -140,7 +140,7 @@ enabled nodes.
 
 The node that holds the master role is refused.
 
-**move \[**--keep-acls**\] *node* *unit***  
+**move** \[**--keep-acls**\] *node* *unit*  
 Move the node into another unit. Its ACLs move with it: the default ACLs
 of the old unit are taken away and those of the new one are applied.
 **--keep-acls** leaves the ACLs of the node as they are.
@@ -148,7 +148,7 @@ of the old unit are taken away and those of the new one are applied.
 **touch *node***  
 Re-index the object to fix potential index problems.
 
-**auto_disable \[**-u**\] *node* *time***  
+**auto_disable** \[**-u**\] *node* *time*  
 Set auto-disable time. It is either a relative time with a leading
 **+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
 The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
@@ -161,11 +161,11 @@ used counts from when this was set.
 
 ## Token and Role Assignment
 
-A token is named by its path, *user***/***token*. A role is named by its
+A token is named by its path, ***user*/*token***. A role is named by its
 name, which is looked for in the site of the node, or as
-*site***/***role* to take one from another site of the realm.
+***site*/*role*** to take one from another site of the realm.
 
-**add_token \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign** **--tags** *tag1,tag2*\] *node* *token_path* \[*token_options*\]**  
+**add_token** \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign** **--tags** *tag1,tag2*\] *node* *token_path* \[*token_options*\]  
 Let this token log in to the node.
 
 **-i *interfaces***  
@@ -195,11 +195,11 @@ setting of your own user says.
 A token that is already assigned, with other interfaces or options, is
 not added twice: OTPme asks whether to change what it has.
 
-**remove_token \[**--keep-sign**\] *node* *token_path***  
+**remove_token** \[**--keep-sign**\] *node* *token_path*  
 Take the token away from the node. The signature for this assignment is
 removed with it; **--keep-sign** leaves it in place.
 
-**list_tokens \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *node***  
+**list_tokens** \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *node*  
 List the tokens assigned to the node. Use **--return-type** to select
 the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**)
 and **--token-types** to limit the listing to the given token types.
@@ -246,7 +246,7 @@ checked for an interactive login and for an SSH key, see
 **--return-type** picks what these print: **name** (the default),
 **read_oid**, **full_oid** or **uuid**.
 
-**list_users \[**--return-type** *TYPE*\] *node***  
+**list_users** \[**--return-type** *TYPE*\] *node*  
 The users who own a token assigned to the node. Only the tokens the node
 holds itself count here, not the ones it gets through a role.
 
@@ -260,17 +260,17 @@ that starts with **find\_** answers the other question: where the node
 itself is named.
 
 **--return-type** works as above, and a name from another site is
-printed as *site***/***name*. Disabled objects are listed as well, so
+printed as ***site*/*name***. Disabled objects are listed as well, so
 something that is only switched off is not mistaken for something that
 is gone. Each of these needs its own ACL, **find:shares** for
 **find_shares** and **find:pools** for **find_pools**.
 
-**find_shares \[**--return-type** *TYPE*\] *node***  
+**find_shares** \[**--return-type** *TYPE*\] *node*  
 The shares this node serves. A share that names no node at all is served
 by every node of its site, so an empty answer does not mean the node
 serves nothing. See **otpme-share**(1).
 
-**find_pools \[**--return-type** *TYPE*\] *node***  
+**find_pools** \[**--return-type** *TYPE*\] *node*  
 The pools this node serves. A pool hands out shares of its own, and it
 names its nodes the same way a share does, see **otpme-pool**(1).
 
@@ -280,7 +280,7 @@ Passwords can belong to the node, for example the password of its iDRAC,
 see **otpme-pass**(1). Each password decides itself whether you may see
 it.
 
-**find_passwords \[**--return-type** *TYPE*\] *node***  
+**find_passwords** \[**--return-type** *TYPE*\] *node*  
 The password objects that belong to the node.
 
 **show_password *node* \[*entry*\]**  
@@ -565,7 +565,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *node***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *node*  
 List the policies attached to the node, the disabled ones too, marked
 **(disabled)**. Use **--return-type** to select the attribute returned
 (**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
@@ -633,7 +633,7 @@ over the node and its units (see **otpme**(7)).
 
 Which parameters a node takes is in **CONFIG PARAMETERS** below.
 
-**config \[**-d**\] \[**-a**\] *node* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *node* *parameter* \[*value*\]  
 Set a parameter on the node.
 
 **-d**  
@@ -645,7 +645,7 @@ whatever the unit or the site says.
 Append the value to a parameter that holds a list, instead of replacing
 what is there.
 
-The ACL is per parameter, **set:config:***parameter*. Removing a
+The ACL is per parameter, **set:config:*parameter***. Removing a
 parameter that is not registered any more, which is what a rename or a
 dropped feature leaves behind, is for admins only.
 
@@ -662,7 +662,7 @@ its site have been looked at. So this answers what applies, where
 Set the description. Without one OTPme asks and offers the current text
 for editing.
 
-**info \[**--language** *LANG*\] *node* \[*info*\]**  
+**info** \[**--language** *LANG*\] *node* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor named by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note, which
@@ -670,7 +670,7 @@ no user is ever shown. A text can be written for a language as well, for
 the places that show such a text to a user; nothing shows the info of a
 node, so for a node it stays a note either way.
 
-**dump_info \[**--language** *LANG*\] *node***  
+**dump_info** \[**--language** *LANG*\] *node*  
 Write one of those texts to stdout, for reading it with something other
 than the editor.  
 **--language** picks which one; without it you get the note of the
@@ -685,7 +685,7 @@ back in is **otpme-tool import,** see **otpme-tool**(1).
 **remove_orphans** asks before it changes anything; the global option
 **-f** skips the question.
 
-**export \[**--password** *password*\] *node***  
+**export** \[**--password** *password*\] *node*  
 Write the whole object of the node to stdout, as JSON.
 
 Without **--password** it is written as it is, in clear. With one, a key
@@ -743,7 +743,7 @@ Then the settings the daemons of the node read: **authd_workers**,
 **ldapd_processes**, **ldap_cache**, **ldap_shared_cache**,
 **ldap_shared_cache_time**, **httpd_workers**, **httpd_ssl_workers**,
 **httpd_socket_uri**, **httpd_ssl_socket_uri**, **socket_backlog**,
-**max_decompressed_size** and one **\***\_max_conn**** per daemon:
+**max_decompressed_size** and one \***\_max_conn** per daemon:
 **mgmtd_max_conn**, **syncd_max_conn**, **joind_max_conn**,
 **clusterd_max_conn**, **fsd_max_conn**, **racd_max_conn**,
 **idled_max_conn**, **ssod_max_conn** and **backupd_max_conn**.

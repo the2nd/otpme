@@ -20,7 +20,6 @@ floating cluster IP `192.168.1.100`:
 ```
 $ORIGIN _tcp.munich.otpme.org.
 _otpme-join    SRV 10 1 2024 login.munich.otpme.org.
-_otpme-login   SRV 10 1 2020 login.munich.otpme.org.
 _otpme-realm   TXT "otpme.org"
 _otpme-site    TXT "munich"
 
@@ -922,6 +921,78 @@ otpme-role add_host testshare-hosts <yourhostname>
 otpme-share add_role testshare testshare-hosts
 ```
 
+### Choosing the Nodes That Serve a Share
+
+By default a share is served by all nodes of its site. When a host mounts
+a share it picks one of these nodes at random. If the node cannot be
+reached, refuses the share or does not have the share root directory, the
+host tries the next one. That is why every node of a share must hold the
+same files under the share root (see the start of this chapter): OTPme does
+not copy files from node to node.
+
+If only some nodes should serve a share, for example only the nodes that
+have the storage mounted, add them to the share. The first node you add
+ends the "all nodes of the site" rule: from then on only the listed nodes
+serve the share, and any other node refuses to mount it.
+
+```bash
+# Only node1 serves testshare now.
+otpme-share add_node testshare node1
+
+# Show the nodes of the share.
+otpme-share list_nodes testshare
+
+# Take the node off again. With no node left, all nodes serve the share.
+otpme-share remove_node testshare node1
+```
+
+#### Pools
+
+If many shares are served by the same nodes, add the nodes to a *pool*
+instead of adding them to every share. A pool is a named list of nodes of
+one site, and shares are the only thing pools are for. Add the pool to the
+shares: its nodes serve them, and a node that you add to the pool later
+serves all of these shares too.
+
+```bash
+# Add a pool. By default it goes into the unit "pools".
+otpme-pool add storage
+
+# Put nodes into the pool.
+otpme-pool add_node storage node1
+otpme-pool add_node storage node2
+
+# Let the nodes of the pool serve the share.
+otpme-share add_pool testshare storage
+
+# Show the pools of the share.
+otpme-share list_pools testshare
+```
+
+A share can have own nodes and pools at the same time. It is then served by
+its own nodes and by the nodes of all its pools. `otpme-share list_nodes`
+shows only the share's own nodes, not those of its pools; use
+`otpme-pool list_nodes <pool>` for these.
+
+A disabled pool gives no nodes to its shares, and a disabled node serves no
+share. A share whose only pool is disabled, and that has no own nodes,
+cannot be mounted until the pool is enabled again:
+
+```bash
+otpme-pool disable storage
+otpme-pool enable storage
+```
+
+A host gets the list of nodes of a share when the user logs in, and again
+with every mount. Hosts are not told when the nodes change. A mount on a
+node that was taken off the share ends there, and the host switches to
+another node from the list it has. So keep at least one node of the old
+list on the share when you change its nodes or pools. If none is left,
+users have to log in again to reach the share.
+
+See `otpme-pool(1)` and the section "Pool and Node Management" in
+`otpme-share(1)` for all commands.
+
 ### Encrypted Shares
 
 OTPme supports encrypted shares where file content and path names are
@@ -1319,7 +1390,587 @@ nmcli connection add type ethernet con-name "dot1x-lan" ifname enp0s25 \
     802-1x.password "pass"
 ```
 
-## 30. Trash
+## 30. SSO Portal
+
+OTPme comes with an SSO web portal. Users sign in there, see and manage
+their own tokens and sessions, and web applications such as Nextcloud or
+SOGo sign their users in through it — the portal is also the OpenID
+Connect provider of the site.
+
+The portal runs on every node of the site. Users reach it by the SSO FQDN
+you set in chapter 4. That name points to the floating IP, so in practice
+the master node answers.
+
+### Who May Sign In: the SSO Access Group and the SSO Token
+
+Who may sign in to the portal is decided by the access group `SSO`, like
+every other login is decided by an access group. Every site has it, and the
+role `SSO_USER` is in it. So a token in `SSO_USER` may sign in.
+
+The token a user signs in with is the *SSO token*. Its name is the site
+config parameter `default_sso_token_name`; the default is
+`sso-<realm>-<site>`, here `sso-otpme.org-munich`. The name is what makes
+a token the SSO token:
+
+- the portal deploys and recovers this token,
+- the tokens a user adds in the portal — passkeys, authenticator apps,
+  tiqr phones — get its roles and access groups,
+- `add_token` and `remove_token` of a role or access group ask whether
+  the tokens the portal manages for the user should go along.
+
+The SSO token has a name of its own, not the name of the default token
+`login`. That keeps the realm login and the portal login apart: the user
+can have a FIDO2 key for the portal and an OTP token for the hosts. With
+several sites, each site has its own SSO token name, so one security key
+can be registered at every portal.
+
+There are two ways to give a user an SSO token.
+
+#### You Add the SSO Token
+
+Add a password token with the name of the SSO token. It is what gets the
+user in the first time. With `enable_sso_deploy` the portal asks the user
+at the first login to set up a real token — here a FIDO2 key. The new
+token replaces the password token: it takes over its name and all its
+roles and access groups.
+
+```bash
+# The password is printed. Hand it to the user.
+otpme-token --type password add alice/sso-otpme.org-munich
+
+# At the first login alice registers a FIDO2 key for herself.
+otpme-token enable_sso_deploy alice/sso-otpme.org-munich fido2
+
+# Allow the token to sign in to the portal.
+otpme-role add_token SSO_USER alice/sso-otpme.org-munich
+```
+
+Because the token is the SSO token, `add_token` offers to add the tokens
+the portal manages for alice as well: her security keys, passkeys,
+authenticator apps and tiqr phones. This is the same for every role and
+access group, and for `remove_token`. Answer yes, so all her portal
+tokens get the same access. `--skip-portal-token` adds or removes the SSO
+token alone. A token alice adds in the portal later gets the roles and
+access groups of the SSO token by itself.
+
+Without a type at `enable_sso_deploy` the user chooses one. Which types
+are offered is decided by `sso_allow_fido2_deploy`, `sso_allow_totp_deploy`
+(both on by default), `sso_allow_password_deploy` and
+`sso_allow_tiqr_deploy` (both off by default).
+
+#### The User Gets the SSO Token by the Account Recovery
+
+You do not have to add the SSO token yourself. The login page of the
+portal has a link "Can't sign in?". There a user asks for a mail, and the
+link in the mail sets up a new SSO token. The same link helps a user who
+lost their SSO token.
+
+For a user who has no SSO token yet, the portal creates one only where
+`sso_token_deploy_roles` or `sso_token_deploy_accessgroups` is set. These
+say which roles or access groups the new token is added to — `SSO_USER`,
+so the user can sign in with it:
+
+```bash
+# Show the link on the login page.
+otpme-site config <site> sso_show_recover_link True
+
+# Allow the recovery, and the token types the user may choose.
+otpme-site config <site> allow_sso_account_recovery True
+otpme-site config <site> allow_sso_token_recovery fido2,totp
+
+# Add the new token to the role SSO_USER.
+otpme-site config <site> sso_token_deploy_roles SSO_USER
+```
+
+The mail is sent by the home site of the user, over the SMTP relay of the
+site. Without a sender no mail is sent:
+
+```bash
+otpme-site config <site> sso_recovery_mail_from otpme@example.org
+otpme-site config <site> smtp_relay_server mail.example.org
+```
+
+`smtp_relay_port`, `smtp_relay_starttls`, `smtp_relay_auth`,
+`smtp_relay_username` and `smtp_relay_password` set the rest of the
+connection. The text of the mail is the info text of the access group
+`SSO`, one per language (`otpme-accessgroup info --language`).
+
+The mail goes to the recovery mail address of the user. Users can set it
+themselves on the settings page of the portal, or you set it:
+
+```bash
+otpme-user add_attribute alice otpmeRecoveryMail=alice@example.org
+```
+
+`allow_sso_account_recovery`, `allow_sso_token_recovery`,
+`sso_token_deploy_roles` and `sso_recovery_mail_from` can also be set on a
+unit or a user, so the recovery can be allowed for some users only. A
+link from the mail works for 15 minutes (`sso_recovery_link_ttl`).
+
+### Applications
+
+A token in `SSO` may sign in to the portal, but that alone gets it into no
+application. Every application has its own access group, and the token has
+to be in it as well. So you decide per application who may use it.
+
+The access group of an application has to be a *child group* of `SSO`. For
+other access groups a child group means "the tokens of the parent get in
+here too". `SSO` is the exception: the portal reads its child groups to
+decide which applications it shows a user, and a token that is only in
+`SSO` is still turned away by the application.
+
+Here we add two applications, Nextcloud and SOGo:
+
+```bash
+# The access groups of the applications, under SSO.
+otpme-accessgroup add nextcloud
+otpme-accessgroup add_child_group SSO nextcloud
+otpme-accessgroup add sogo
+otpme-accessgroup add_child_group SSO sogo
+```
+
+#### Granting Access with Roles
+
+Give access to the access groups of the applications with roles, not with
+single tokens. Then a new user only has to be put into one role, and a
+user who leaves only has to be taken out of it.
+
+**All portal users use the same applications.** Then you need no new role:
+add the role `SSO_USER` to the access groups of the applications. Every
+token that may sign in to the portal may then use them:
+
+```bash
+otpme-accessgroup add_role nextcloud SSO_USER
+otpme-accessgroup add_role sogo SSO_USER
+```
+
+**Users need different applications.** Then add a role for each kind of
+user. Put each role into `SSO_USER`, so its tokens may sign in to the
+portal, and add it to the access groups of its applications. In this
+example management users get Nextcloud and SOGo, marketing users get
+Nextcloud only:
+
+```bash
+# Undo the example above: not every portal user gets every application.
+otpme-accessgroup remove_role nextcloud SSO_USER
+otpme-accessgroup remove_role sogo SSO_USER
+
+# One role for each kind of user, inside SSO_USER.
+otpme-role add management-sso-user
+otpme-role add marketing-sso-user
+otpme-role add_role SSO_USER management-sso-user
+otpme-role add_role SSO_USER marketing-sso-user
+
+# The applications of each role.
+otpme-accessgroup add_role nextcloud management-sso-user
+otpme-accessgroup add_role sogo management-sso-user
+otpme-accessgroup add_role nextcloud marketing-sso-user
+```
+
+`otpme-role add_role SSO_USER management-sso-user` puts
+`management-sso-user` into `SSO_USER`. Its tokens then reach everything
+`SSO_USER` is assigned to — the access group `SSO`, and with it the portal —
+plus what `management-sso-user` itself is assigned to.
+
+Now put the SSO token of a user into the role for that user. It no longer
+has to be in `SSO_USER` itself:
+
+```bash
+otpme-role remove_token SSO_USER alice/sso-otpme.org-munich
+otpme-role add_token management-sso-user alice/sso-otpme.org-munich
+```
+
+When you add the SSO token, OTPme asks whether the tokens the portal
+manages for the user should be added as well. Say yes, or alice cannot use
+her passkey for Nextcloud.
+
+#### Applications for Tokens from the Account Recovery
+
+A new SSO token that the account recovery creates goes into the roles of
+`sso_token_deploy_roles`. With roles per kind of user, set it on the unit
+of those users, so they get the right role and with it the right
+applications:
+
+```bash
+otpme-unit config management sso_token_deploy_roles management-sso-user
+```
+
+If you give access to an application directly, with the access group and
+without a role, add the access group to `sso_token_deploy_accessgroups`
+instead. Then a new SSO token from the recovery also lands in it:
+
+```bash
+otpme-site config <site> sso_token_deploy_accessgroups nextcloud
+```
+
+Both parameters hold a list, e.g. `nextcloud,sogo`, and both can be set on
+the site, a unit or a user.
+
+#### Example: Nextcloud with OpenID Connect
+
+The portal is the OpenID Connect provider of the site. Nextcloud signs in
+its users with the app `user_oidc`. First switch on the OIDC provider of
+the site; this creates the key the tokens are signed with:
+
+```bash
+otpme-site enable_oidc <site>
+```
+
+Add a client for Nextcloud. `--enable-oidc` makes it an OIDC client and
+gives it the default scopes of the site: `openid`, `profile` and `email`.
+The client ID is the name of the client.
+
+```bash
+otpme-client add --enable-oidc nextcloud
+otpme-client access_group nextcloud nextcloud
+```
+
+Register where Nextcloud gets the user back after the login and after the
+logout, and where OTPme tells Nextcloud that the user signed out of the
+portal. `otpme` at the end of the backchannel URL is the identifier you
+give the provider in Nextcloud:
+
+```bash
+otpme-client add_oidc_redirect_uri nextcloud https://cloud.example.org/index.php/apps/user_oidc/code
+otpme-client add_oidc_logout_redirect_uri nextcloud https://cloud.example.org/
+otpme-client oidc_backchannel_logout_uri nextcloud https://cloud.example.org/index.php/apps/user_oidc/backchannel-logout/otpme
+```
+
+`user_oidc` reads the name, the mail address and the photo of the user from
+the ID token and never asks `/userinfo`. By default OTPme puts these claims
+into `/userinfo` only, so switch them on for this client:
+
+```bash
+otpme-client config nextcloud oidc_id_token_user_claims True
+```
+
+Print the client secret:
+
+```bash
+otpme-client show_secret nextcloud
+```
+
+On the Nextcloud server, register OTPme as a provider with the identifier
+`otpme`, the client ID `nextcloud`, the secret and the discovery URL of
+the site. You can do it on the admin page "OpenID Connect" of Nextcloud,
+or with `occ`:
+
+```bash
+sudo -u www-data php occ user_oidc:provider otpme \
+    --clientid=nextcloud \
+    --clientsecret=<secret> \
+    --discoveryuri=https://<sso_fqdn>/oidc/.well-known/openid-configuration \
+    --scope="openid profile email"
+```
+
+Finally give Nextcloud a tile in the portal. The login URL starts the
+login at Nextcloud; the number at the end is the ID Nextcloud gave the
+provider (the first one is 1):
+
+```bash
+otpme-client login_url nextcloud https://cloud.example.org/index.php/apps/user_oidc/login/1
+```
+
+What Nextcloud learns about the user is decided by the scopes. A scope is
+granted only if the application asks for it, the client is in the scope
+and the token of the user (or one of its roles) is in the scope. The three
+default scopes already hold the role `SSO_USER`. For Nextcloud groups, use
+the scope `groups` and add the client, the users and the groups Nextcloud
+may see to it, see `otpme-scope(1)`. The OIDC parameters of a client, like
+the lifetime of the access token or a consent screen, are in the section
+"OIDC Provider" of `otpme(7)`, the commands in `otpme-client(1)`.
+
+### Certificate
+
+A new site makes a certificate for the SSO FQDN with its own CA. No browser
+knows that CA, so for real use set a certificate of your own, together
+with its key:
+
+```bash
+otpme-site sso_cert --key /path/to/key.pem <site> /path/to/fullchain.pem
+```
+
+Pass the full chain, not the certificate alone — with Let's Encrypt that
+is `fullchain.pem`, not `cert.pem`. A browser usually copes with the
+certificate alone, mobile apps do not, and they refuse to connect.
+
+The portal takes the new pair when httpd is reloaded. Do this on every
+node (and every SSO host, see below):
+
+```bash
+otpme-controld reload httpd
+```
+
+If certificate and key do not fit each other, the command says so, and the
+portal keeps the pair it has. When you change the SSO FQDN later with
+`otpme-site sso_fqdn`, a new certificate of the site CA replaces yours, so
+set your own again afterwards.
+
+### Logo
+
+The portal shows the OTPme logo on its login and recovery pages. To show
+your own, set a PNG or JPEG of at most 512 KiB. The tiqr app shows the
+same logo:
+
+```bash
+otpme-site sso_logo <site> /path/to/logo.png
+
+# Back to the OTPme logo.
+otpme-site del_sso_logo <site>
+```
+
+### Running the Portal on a Host
+
+A node has everything of its site and runs the portal as it is. A host
+gets no keys or secrets of the site, so it cannot run the portal until you
+make it an *SSO host*. Then it is synced the certificate and key of the
+portal and the two secrets the portal signs its cookies and protects its
+forms with:
+
+```bash
+otpme-site add_sso_host <site> <yourhostname>
+```
+
+On the host, set `SSO_SERVER` in `/etc/otpme/otpme.conf` and reload
+controld. It then starts `otpme-httpd` on the host:
+
+```bash
+# /etc/otpme/otpme.conf
+SSO_SERVER="True"
+```
+
+```bash
+otpme-controld reload
+```
+
+`otpme-site remove_sso_host` takes the host off the list again.
+
+An SSO host is typically placed in the DMZ, so the nodes do not have to be
+reachable from the internet. That is safe because an SSO host, like any
+host, holds no token secrets: it cannot check a login itself. It hands
+every login to `authd` on the nodes, and everything else the portal needs —
+sessions, OpenID Connect, passkey and tiqr logins — to `ssod`. So the
+firewall has to allow connections from the SSO host to the nodes on these
+ports, besides the ports every host needs:
+
+| Daemon  | Port |
+|---------|------|
+| `authd` | 2020 |
+| `ssod`  | 2029 |
+
+The SSO host connects to the addresses of the auth FQDN of the site (see
+`otpme-site auth_fqdn`), or to the floating IP if none is set.
+
+#### Several SSO Hosts Behind a Load Balancer
+
+You can run the portal on several SSO hosts and put them behind an HTTP or
+TCP load balancer. All of them get the same secrets, so a session cookie
+made by one host is valid on all others, and the state of a login in
+progress is kept by `ssod` on the nodes. No sticky sessions are needed.
+
+With an HTTP load balancer, the portal sees the address of the load
+balancer instead of the client. Add the load balancer's IP to
+`reverse_proxy_ips`. The portal then takes the client address from the
+`X-Forwarded-For` header, for its logs and its rate limits. It trusts that
+header only from the addresses listed there:
+
+```bash
+otpme-site config <site> reverse_proxy_ips 192.168.10.5
+```
+
+The rate limits of the portal are counted on each host, so behind a load
+balancer with several hosts a client gets as many tries as there are
+hosts.
+
+### Device Tokens
+
+Many devices cannot do a login with OTP, for example a phone in the WLAN
+or a mail app. For these, users can add *device tokens* in the portal: a
+separate password for each device. If a device is lost, the user deletes
+its token and the other devices keep working.
+
+The portal adds a device token to a role, and the role decides what the
+token may do. Here we use the role `wlan-user` from chapter 9, which is in
+the access group `wlan`, so a device token in it gets WLAN access.
+
+A role is offered for device tokens only when it has the config parameter
+`device_token_suffix`. The suffix is added to the token name with a `-`:
+the device `iphone` becomes the token `iphone-wlan`.
+
+```bash
+otpme-role config wlan-user device_token_suffix wlan
+```
+
+WLAN with PEAP/MSCHAPv2 needs MSCHAP on the token. It is off by default,
+because MSCHAP keeps the NT hash of the password on the server:
+
+```bash
+otpme-role config wlan-user device_token_mschap True
+```
+
+The portal shows the info text of the role, so users know what the role
+is for. Only a text with a language is shown; the portal picks the one in
+the language of the user. A text without a language is a note for
+administrators and is never shown:
+
+```bash
+otpme-role info --language en wlan-user "A password for each device that uses the company WLAN."
+otpme-role info --language de wlan-user "Ein Passwort pro Gerät für das Firmen-WLAN."
+```
+
+Finally offer the role to the users. Set `device_token_roles` on the site
+for all users, or on a unit or a single user; the most specific value wins:
+
+```bash
+otpme-site config <site> device_token_roles wlan-user
+```
+
+More config parameters of the role:
+
+- `device_token_types` — `password` (the default) and/or `totp`. With
+  both, the user chooses for each token.
+- `max_device_tokens` — how many device tokens a user may have in this
+  role.
+
+### Tokens Users Manage Themselves
+
+On the settings page of the portal users can manage their own login
+tokens of four types: FIDO2 security keys, passkeys, authenticator apps
+(TOTP) and tiqr phones. A token a user adds there gets the roles and
+access groups of their SSO token, so it reaches the same applications.
+
+Each type has three config parameters, on the site, a unit or a user:
+
+| Type | May be used at all | Users manage their own | Limit per user |
+|------|--------------------|------------------------|----------------|
+| FIDO2 security key | `sso_allow_fido2` | `sso_allow_fido2_mgmt` | `sso_max_fido2_token` |
+| Passkey | `sso_allow_passkeys` | `sso_allow_passkey_mgmt` | `sso_max_passkey_token` |
+| Authenticator app | `sso_allow_totp` | `sso_allow_totp_mgmt` | `sso_max_totp_token` |
+| tiqr phone | `sso_allow_tiqr` | `sso_allow_tiqr_mgmt` | `sso_max_tiqr_token` |
+
+- *May be used at all* covers signing in with the type and its card on the
+  settings page. It is on by default; only an explicit `False` switches the
+  type off.
+- *Users manage their own* lets users list, add, enable, disable and
+  delete their tokens of that type. It is off by default: which
+  credentials users may add or remove on their own is your decision.
+  Signing in with a token that exists is not affected.
+- *Limit per user* is unset by default, which means no limit. Tokens an
+  administrator adds are not counted against it.
+
+```bash
+otpme-site config <site> sso_allow_fido2_mgmt True
+otpme-site config <site> sso_allow_passkey_mgmt True
+otpme-site config <site> sso_allow_totp_mgmt True
+otpme-site config <site> sso_allow_tiqr_mgmt True
+
+# At most three security keys per user.
+otpme-site config <site> sso_max_fido2_token 3
+```
+
+Some notes on the types:
+
+- **FIDO2** keys are registered for a Relying Party ID, by default the
+  realm name (`force_fido2_rp realm`). A browser hands out a credential
+  only when the RP ID is the FQDN of the page or a domain above it, so this
+  works only when the SSO FQDN is below the realm name, e.g.
+  `sso.otpme.org` for the realm `otpme.org`. Otherwise register keys for
+  the SSO FQDN. The setting applies to keys registered from then on:
+
+  ```bash
+  otpme-site config <site> force_fido2_rp sso_fqdn
+  ```
+
+- **Passkeys** are always registered for the SSO FQDN of the site.
+- **tiqr** needs the tiqr app on the phone, and the phone has to trust the
+  certificate of the portal — set the full chain, see *Certificate* above.
+  The app shows the account under `tiqr_service_display_name` (default: the
+  realm name) and with the logo of the site. The tiqr secret of the site
+  is made with the site; `otpme-site tiqr_secret` makes a new one.
+
+  ```bash
+  otpme-site config <site> tiqr_service_display_name OTPme
+  ```
+
+The login page shows the buttons *Security Key* and *Sign in with tiqr*.
+If you do not use one of them, hide it with the site parameter
+`sso_show_fido2_button` or `sso_show_tiqr_button`.
+
+For users of other sites the TOTP, passkey and tiqr cards need trust
+entries, see *Users of Other Sites* below.
+
+### What Users May Do in the Portal
+
+Some more functions of the portal are off by default and have to be
+switched on with a config parameter on the site, a unit or a user. For
+example:
+
+```bash
+# Users see their own sessions and can end them.
+otpme-site config <site> sso_allow_session_mgmt True
+
+# Users may change these LDAP attributes on their profile page.
+otpme-site config <site> sso_allow_profile_edit mail,telephoneNumber,mobile
+```
+
+Which token types a user may choose for a new SSO token, at the first
+login and in the recovery, is decided by the `sso_allow_*_deploy`
+parameters, see above. To leave TOTP tokens to the administrator:
+
+```bash
+otpme-site config <site> sso_allow_totp_deploy False
+```
+
+### Users of Other Sites
+
+A user can sign in at the portal of another site of the realm. The portal
+of `munich` then works with a user whose home site is `berlin`. What the
+portal may do for such a user is decided by *trust lists* on the sites.
+Without an entry a user of another site gets nothing there. Users of the
+own site need no entry.
+
+| Parameter | Set on | Allows |
+|-----------|--------|--------|
+| `device_token_roles_trusts` | portal site | device tokens in roles of the portal site |
+| `sso_token_deploy_trusts` | portal site | a new SSO token in roles or access groups of the portal site |
+| `sso_allow_passkeys_trusts` | both sites | passkeys of users of other sites |
+| `sso_allow_totp_trusts` | both sites | authenticator apps of users of other sites |
+| `sso_allow_tiqr_trusts` | both sites | tiqr phones of users of other sites |
+| `admin_access_trusts` | home site | the admin access (temporary password) at the portal of another site |
+
+The first two need an entry for the site and one for each role or access
+group. On `munich`, users of `berlin` get device tokens in the role
+`wlan-user`, and new SSO tokens in the role `SSO_USER`:
+
+```bash
+otpme-site config munich device_token_roles_trusts berlin,berlin:wlan-user
+otpme-site config munich sso_token_deploy_trusts berlin,berlin:role/SSO_USER
+```
+
+The passkey, TOTP and tiqr lists have to be set on both sites, because each
+side protects something of its own. The portal site protects its backend
+and access groups: a token added there gives the user a new way in. The
+home site protects the secrets of its users: they are shown by the portal
+site, so whoever controls that site could capture them. On the portal site
+the list names the home sites of the users, on the home site the portal
+sites:
+
+```bash
+otpme-site config munich sso_allow_totp_trusts berlin
+otpme-site config berlin sso_allow_totp_trusts munich
+```
+
+`admin_access_trusts` is set on the home site of the users and names the
+portal sites where their admin access may be shown and changed:
+
+```bash
+otpme-site config berlin admin_access_trusts munich
+```
+
+The section "SSO Portal" in `otpme(7)` lists all parameters of the portal,
+and the section "SSO Configuration" in `otpme-site(1)` the commands.
+
+## 31. Trash
 
 OTPme includes a trash that keeps deleted objects. Every object deleted via
 a tree command (e.g. `otpme-user del`) is moved to the trash instead of
@@ -1356,7 +2007,7 @@ To permanently remove all objects from the trash:
 otpme-trash empty
 ```
 
-## 31. Backup and Restore
+## 32. Backup and Restore
 
 OTPme includes a backup tool that exports all OTPme data (excluding trash)
 to a given directory. Additionally you must back up `/etc/otpme` to make a
@@ -1380,7 +2031,7 @@ directly:
 otpme-tool restore -f /var/backups/otpme/<snapshot>/user/realm+user1.json
 ```
 
-## 32. Integrated Deduplication Backup Service
+## 33. Integrated Deduplication Backup Service
 
 OTPme includes a built-in deduplication backup service. Any node or host
 can act as the backup server. There are two backup modes:

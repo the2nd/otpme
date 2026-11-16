@@ -1096,6 +1096,9 @@ class Node(OTPmeHost):
                             "OBJECT_CLASSES",
                             "PUBLIC_KEY",
                             "DYNAMIC_GROUPS",
+                            # A node reports its inventory too, see
+                            # inventory_read_allowed().
+                            "CONFIG_PARAMS:allow_inventory",
                             ]
                         },
                     }

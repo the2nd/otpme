@@ -6683,7 +6683,8 @@ class CommandHandler(object):
         table = PrettyTable(["host",
                             "type",
                             "ip",
-                            "connect time"],
+                            "connect time",
+                            "version"],
                             header_style="title",
                             vrules=NONE,
                             hrules=HEADER)
@@ -6711,7 +6712,8 @@ class CommandHandler(object):
             table.add_row([entry.get("host", "-"),
                         entry.get("type", "-"),
                         entry.get("client_ip", "-"),
-                        connect_time_str])
+                        connect_time_str,
+                        entry.get("version") or "-"])
 
         return table.get_string()
 

@@ -52,7 +52,7 @@ A share of this site, backed up from its root directory.
 A restore share cannot be backed up.
 .RE
 .TP
-.B start \fR[\fB\-\-dry\-run\fR] [\fB\-\-skip\-special\fR] [\fB\-\-exclude\fR \fIpattern\fR] [\fB\-\-include\fR \fIpattern\fR] [\fB\-\-apply\-retention\fR] \fIbackup_object\fR
+\fBstart\fR [\fB\-\-dry\-run\fR] [\fB\-\-skip\-special\fR] [\fB\-\-exclude\fR \fIpattern\fR] [\fB\-\-include\fR \fIpattern\fR] [\fB\-\-apply\-retention\fR] \fIbackup_object\fR
 Back up the object now, into a new snapshot named after the time it started, for example \fB2026\-03\-29T02\-00\-00\fR.
 With \fBbackup_enabled\fR off it is refused; the global option \fB\-f\fR starts it all the same.
 Only one backup of a repository runs at a time, a second one says \fBAlready running.\fR
@@ -69,7 +69,7 @@ A backup started by the schedule always does.
 .br
 \fB\-\-dry\-run\fR shows what would be backed up and stores nothing.
 .TP
-.B restore \fR[\fB\-\-dry\-run\fR] [\fB\-\-snapshot\fR \fIsnapshot\fR] [\fB\-\-path\fR \fIpath\fR] \fB\-\-destination\fR \fIdirectory\fR \fIbackup_object\fR
+\fBrestore\fR [\fB\-\-dry\-run\fR] [\fB\-\-snapshot\fR \fIsnapshot\fR] [\fB\-\-path\fR \fIpath\fR] \fB\-\-destination\fR \fIdirectory\fR \fIbackup_object\fR
 Restore a snapshot into \fIdirectory\fR on this machine.
 Without \fB\-\-snapshot\fR it is the newest one.
 \fB\-\-path\fR restores only that file or directory, as a path below what was backed up; \fB/etc/otpme\fR and \fBetc/otpme\fR are the same.
@@ -78,7 +78,7 @@ Without \fB\-\-snapshot\fR it is the newest one.
 .B list \fIbackup_object\fR
 List the snapshots of the object: their name, the number of files, the data and what was stored for it, when they ran and how long, and whether they are complete.
 .TP
-.B ls \fR[\fB\-\-full\-path\fR] [\fB\-\-recursive\fR] \fIbackup_object\fR \fIsnapshot\fR [\fIpath\fR]
+\fBls\fR [\fB\-\-full\-path\fR] [\fB\-\-recursive\fR] \fIbackup_object\fR \fIsnapshot\fR [\fIpath\fR]
 List what a snapshot holds below \fIpath\fR, or below what was backed up; \fB/etc\fR and \fBetc\fR are the same.
 Without \fB\-\-recursive\fR only what is directly in it.
 \fB\-\-full\-path\fR shows each entry with its whole path.
@@ -124,7 +124,7 @@ The password the backup server asks for.
 \fBpack\fR or \fBtree\fR; unset a share is backed up as \fBtree\fR, which a restore share needs, and a node as \fBpack\fR.
 Object types: node, share.
 .TP
-.B backup_excludes\fR, \fBbackup_includes \fR(list)
+\fBbackup_excludes\fR, \fBbackup_includes\fR (list)
 The patterns \fBstart\fR uses when it gets no \fB\-\-exclude\fR or \fB\-\-include\fR, see there.
 Object types: node, share.
 .TP
@@ -141,7 +141,7 @@ Without it no backup is scheduled.
 .B backup_interval \fR(time)
 How long after the last backup the next one may start, for example \fB1D\fR (default: 23h).
 .TP
-.B backup_retry_interval \fR(time, default: 5m), \fBbackup_retry_count \fR(int, default: 12)
+\fBbackup_retry_interval\fR (time, default: 5m), \fBbackup_retry_count\fR (int, default: 12)
 How long and how often a backup waits when another backup, a restore or a repack holds the repository.
 .TP
 .B backup_script \fR(str)
@@ -151,7 +151,7 @@ The OTPme script run before and after a scheduled backup, see
 .B backup_pre_script_fail \fR(str, default: report)
 What a failed pre hook of \fBbackup_script\fR does: \fBabort\fR starts no backup and reports it as failed, \fBreport\fR backs up all the same and puts the failure into the log and into the report mail.
 .TP
-.B backup_report_enabled\fR, \fBbackup_report_mode\fR, \fBbackup_report_mail_from\fR, \fBbackup_report_mail_to
+\fBbackup_report_enabled\fR, \fBbackup_report_mode\fR, \fBbackup_report_mail_from\fR, \fBbackup_report_mail_to
 Whether, which and to whom a mail is sent about a scheduled backup, over the \fBsmtp_relay_*\fR parameters.
 .PP
 Each of them applies to the site, units, nodes and shares, where it does not say otherwise.

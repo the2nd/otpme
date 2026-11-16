@@ -55,19 +55,19 @@ For \fBbackup\fR: store the files without compressing them first.
 .na
 .nh
 .TP
-.B backup \fR[\fB\-\-name\fR \fIname\fR] [\fB\-\-special\-files\fR] [\fB\-\-exclude\fR \fIpattern\fR] [\fB\-\-include\fR \fIpattern\fR] [\fB\-\-mode\fR \fBtree\fR|\fBpack\fR] [\fB\-\-dry\-run\fR] \fIsource\fR
+\fBbackup\fR [\fB\-\-name\fR \fIname\fR] [\fB\-\-special\-files\fR] [\fB\-\-exclude\fR \fIpattern\fR] [\fB\-\-include\fR \fIpattern\fR] [\fB\-\-mode\fR \fBtree\fR|\fBpack\fR] [\fB\-\-dry\-run\fR] \fIsource\fR
 Back up the directory \fIsource\fR into a new snapshot, named after the time it started unless \fB\-\-name\fR says otherwise.
 The patterns work as with \fBotpme\-backup start\fR.
 Device files, FIFOs and sockets are left out unless \fB\-\-special\-files\fR is given.
 \fB\-\-mode\fR is taken by a new repository only (default: pack); an existing one keeps its mode.
 .TP
-.B restore \fR[\fB\-\-path\fR \fIpath\fR] [\fB\-\-dry\-run\fR] \fIsnapshot\fR \fIdestination\fR
+\fBrestore\fR [\fB\-\-path\fR \fIpath\fR] [\fB\-\-dry\-run\fR] \fIsnapshot\fR \fIdestination\fR
 Restore a snapshot into \fIdestination\fR, or with \fB\-\-path\fR only that file or directory.
 .TP
 .B list
 List the snapshots, as \fBotpme\-backup list\fR does.
 .TP
-.B ls \fR[\fB\-\-full\-path\fR] [\fB\-R\fR] \fIsnapshot\fR [\fIpath\fR]
+\fBls\fR [\fB\-\-full\-path\fR] [\fB\-R\fR] \fIsnapshot\fR [\fIpath\fR]
 List what a snapshot holds, as \fBotpme\-backup ls\fR does.
 .TP
 .B verify \fIsnapshot\fR
@@ -77,7 +77,7 @@ The exit code is 1 when one is not.
 .B delete \fIsnapshot\fR
 Delete the snapshot, and the blocks no other snapshot uses.
 .TP
-.B retention \fR[\fB\-\-daily\fR \fIn\fR] [\fB\-\-weekly\fR \fIn\fR] [\fB\-\-monthly\fR \fIn\fR] [\fB\-\-dry\-run\fR]
+\fBretention\fR [\fB\-\-daily\fR \fIn\fR] [\fB\-\-weekly\fR \fIn\fR] [\fB\-\-monthly\fR \fIn\fR] [\fB\-\-dry\-run\fR]
 Apply the retention, see
 .BR otpme\-backup (1).
 A number given here counts instead of the one in \fI.daily\fR, \fI.weekly\fR or \fI.monthly\fR.

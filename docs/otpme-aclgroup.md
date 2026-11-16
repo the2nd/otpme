@@ -17,7 +17,7 @@ the group grants the entries for the type of that object, and nothing
 else. On a user it grants the **user:** entries, on a token the
 **token:** entries.
 
-A group is given with **add_acl** of the object, as **@***group*, in
+A group is given with **add_acl** of the object, as **@*group***, in
 place of an ACL:
 
 > **@*group***  
@@ -30,14 +30,14 @@ place of an ACL:
 > On the whole tree below the unit: its sub units, the objects in them,
 > and the tokens of the users in it.
 
-**+@***group* and **++@***group* are default ACLs and are handed down
+**+@*group*** and **++@*group*** are default ACLs and are handed down
 like them: to what is added to the unit or user, or moved there, from
 then on. To hand them to what is there already, give them with **add_acl
 -a**, and **-r** for the tree below, see **otpme-unit**(1). They do not
-count on the unit or user itself. Give **@***group* as well for that,
+count on the unit or user itself. Give **@*group*** as well for that,
 for example **@USERMANAGER,++@USERMANAGER**.
 
-A group of another site is written as **@***site***/***group*.
+A group of another site is written as **@*site*/*group***.
 
 Change a group, and the change counts at once on every object the group
 is given on. Nothing has to be written to those objects again.
@@ -104,7 +104,7 @@ Groups**. It is unique in the site, whatever unit it is in, and may be
 **max_aclgroup_name_len** long (64 by default).  
 Needs **add:aclgroup** on the unit.
 
-**del \[**--no-trash**\] *aclgroup***  
+**del** \[**--no-trash**\] *aclgroup*  
 Delete the ACL group. It goes to the trash, see **otpme-trash**(1);
 **--no-trash** deletes it right away. A base group cannot be deleted.  
 The question says how many ACL groups have it as a member, which then no
@@ -115,7 +115,7 @@ of.
 Needs **delete:object** on the ACL group or **delete:aclgroup** on the
 unit.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*aclgroup*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*aclgroup*\]  
 Without an ACL group: a table of all of them, with their unit, status,
 entries, member groups, policies, ACL inheritance and description. A
 disabled member group has **(D)** after it.
@@ -152,7 +152,7 @@ prints the ACL group itself, one value per line: **ENTRIES** and
 **ACLGROUPS**; one you may not see is empty. That needs
 **view_public:object**.
 
-**show_oid \[**--full**\] *aclgroup***  
+**show_oid** \[**--full**\] *aclgroup*  
 Show the OID of the ACL group:
 **aclgroup\|\<realm\>/\<site\>/\<name\>**. With **--full** the full OID,
 which names the unit as well:
@@ -163,7 +163,7 @@ Needs **view_public:object**.
 Show the UUID of the ACL group.  
 Needs **view_public:object**.
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the ACL group names, and with a pattern only those that match it,
 see **SELECTING OBJECTS** in **otpme**(1). You get the ACL groups you
 may change; **-a** adds those you may only look at. **--attribute**
@@ -182,7 +182,7 @@ in use in the site. The objects it is given on keep it: they name it by
 its UUID. A base group cannot be renamed.  
 Needs **rename:object**.
 
-**move \[**--keep-acls**\] *aclgroup* *unit***  
+**move** \[**--keep-acls**\] *aclgroup* *unit*  
 Move the ACL group into another unit. It keeps its ACLs; where ACL
 inheritance is on for it (off for ACL groups by default, see
 **enable_acl_inheritance**), the default ACLs of the old unit are taken
@@ -226,7 +226,7 @@ them is not in the group, none is removed. A base group cannot be
 changed.  
 Needs **remove:entry**.
 
-**get_acls \[**-r**\] *aclgroup***  
+**get_acls** \[**-r**\] *aclgroup*  
 Show the entries of the ACL group, one per line.  
 With **-r** also the entries it gets from its members, and from their
 members, each with the group in brackets. A disabled group passes
@@ -253,7 +253,7 @@ UUID is taken as well, for a member that is gone; **remove_orphans**
 takes them all out. A base group cannot be changed.  
 Needs **remove:aclgroup**.
 
-**list_aclgroups \[**-r**\] *aclgroup***  
+**list_aclgroups** \[**-r**\] *aclgroup*  
 List the members of the ACL group, one per line; one that is gone shows
 its UUID. With **-r** also their members, and so on.  
 Needs **view:aclgroups**.
@@ -359,7 +359,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *aclgroup***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *aclgroup*  
 List the policies attached to the ACL group, the disabled ones too,
 marked **(disabled)**. Use **--return-type** to select the attribute
 returned (**name**, **read_oid**, **full_oid**, **uuid**); without it
@@ -381,10 +381,10 @@ ACLs an ACL group knows. An ACL group has no default ACLs, **+acl** and
 
 Besides the ACLs every object has, these matter for an ACL group:
 
-> **add:entry, **remove:entry**, **view:entries****  
+> **add:entry**, **remove:entry**, **view:entries**  
 > Change and see the entries, see **Entries**.
 >
-> **add:aclgroup, **remove:aclgroup**, **view:aclgroups****  
+> **add:aclgroup**, **remove:aclgroup**, **view:aclgroups**  
 > Change and see the members, see **Members**.
 
 A change of the entries or members counts on every object the group is
@@ -442,7 +442,7 @@ Needs the ACL **disable:acl_inheritance**.
 
 An ACL group has two config parameters, see **CONFIG PARAMETERS**.
 
-**config \[**-d**\] \[**-a**\] *aclgroup* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *aclgroup* *parameter* \[*value*\]  
 Set a parameter on the ACL group.
 
 **-d**  
@@ -473,7 +473,7 @@ Set the description. Without one OTPme asks and offers the current text
 for editing.  
 Needs the ACL **edit:description**.
 
-**info \[**--language** *LANG*\] *aclgroup* \[*info*\]**  
+**info** \[**--language** *LANG*\] *aclgroup* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor named by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note. Nothing
@@ -481,14 +481,14 @@ shows the info of an ACL group to a user, so a text for a language stays
 a note as well.  
 Needs the ACL **edit:info**.
 
-**dump_info \[**--language** *LANG*\] *aclgroup***  
+**dump_info** \[**--language** *LANG*\] *aclgroup*  
 Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator.  
 Needs the ACL **view:info**.
 
 ## Export and Cleanup
 
-**export \[**--password** *password*\] *aclgroup***  
+**export** \[**--password** *password*\] *aclgroup*  
 Write the whole object of the ACL group to stdout, as JSON: its entries,
 members, ACLs, policies, config parameters and the rest. **otpme-tool
 import** reads it back.  

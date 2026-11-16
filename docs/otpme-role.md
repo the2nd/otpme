@@ -29,12 +29,12 @@ to one site.
 
 ## Role Management
 
-**add \[**--groups** *group1,group2*\] \[**--roles** *role1,role2*\] *role***  
+**add** \[**--groups** *group1,group2*\] \[**--roles** *role1,role2*\] *role*  
 Create a role.  
 **--groups** puts it into those groups and **--roles** into those roles,
 which saves an **add_role** per role afterwards.
 
-**del \[**--no-trash**\] *role***  
+**del** \[**--no-trash**\] *role*  
 Delete a role. It goes to the trash, from where **otpme-trash**(1) can
 bring it back; **--no-trash** deletes it right away.  
 A role that still holds tokens or other roles is not deleted — take them
@@ -44,7 +44,7 @@ to something that is gone; **remove_orphans** on those objects clears it
 up.  
 A base role of the realm cannot be deleted at all.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--token-limit** *N*\] \[**--role-limit** *N*\] \[**--accessgroup-limit** *N*\] \[**--group-limit** *N*\] \[**--scope-limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*role*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--token-limit** *N*\] \[**--role-limit** *N*\] \[**--accessgroup-limit** *N*\] \[**--group-limit** *N*\] \[**--scope-limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*role*\]  
 Show the roles, with their tokens, access groups, groups, scopes and
 policies. Without a role you get all of them.
 
@@ -75,7 +75,7 @@ between the columns, and **--csv-sep** uses another separator.
 
 <!-- -->
 
-**show_oid \[**--full**\] *role***  
+**show_oid** \[**--full**\] *role*  
 Show the OID of the role: **role\|\<realm\>/\<site\>/\<name\>**. With
 **--full** the full OID, which names the unit as well:
 **role\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
@@ -87,7 +87,7 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the role names, and with a pattern only those that match it, see
 **SELECTING OBJECTS** in **otpme**(1).  
 You get the roles you may change; **-a** adds those you may only look
@@ -97,7 +97,7 @@ the name: **list --attribute enabled True** lists the roles that are
 enabled. A value that is not text has to be spelled out — **\*** matches
 none of it.
 
-**enable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role***  
+**enable** \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role*  
 Enable a disabled role.
 
 **--share-notify**  
@@ -109,7 +109,7 @@ Do not send notification to all online hosts on new share permissions.
 **--no-persist-mount**  
 Do not persist new share mounts on hosts.
 
-**disable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role***  
+**disable** \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role*  
 Disable a role without deleting it.
 
 **--share-notify**  
@@ -125,7 +125,7 @@ Keep persisted share mounts on hosts (transient unmount only).
 **rename *role* *new_name***  
 Rename a role.
 
-**move \[**--keep-acls**\] *role* *unit***  
+**move** \[**--keep-acls**\] *role* *unit*  
 Move the role into another unit.  
 Its ACLs move with it: the default ACLs of the old unit are taken away
 and those of the new one are applied. **--keep-acls** leaves the ACLs of
@@ -165,7 +165,7 @@ Some token types cannot be signed at all. Those are added without a
 signature. A link token can be signed when the token it points at can,
 see **otpme-token**(1).
 
-**add_token \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign**\] \[**--tags** *tag1,tag2*\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] \[**--skip-portal-token**\] *role* *token* \[*token_options*\]**  
+**add_token** \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign**\] \[**--tags** *tag1,tag2*\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] \[**--skip-portal-token**\] *role* *token* \[*token_options*\]  
 Put a token into the role. From then on it reaches everything the role
 is assigned to, and everything the roles above it are assigned to.
 
@@ -203,7 +203,7 @@ Whether the online hosts are told that there are new share permissions.
 **--no-persist-mount**  
 Do not persist new share mounts on hosts.
 
-**remove_token \[**--keep-sign**\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] \[**--skip-portal-token**\] *role* *token***  
+**remove_token** \[**--keep-sign**\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] \[**--skip-portal-token**\] *role* *token*  
 Take the token out of the role. What it reached through the role, it no
 longer reaches.
 
@@ -220,7 +220,7 @@ Whether the online hosts are told that share permissions were revoked.
 **--no-persist-mount**  
 Keep persisted share mounts on hosts (transient unmount only).
 
-**list_tokens \[**--return-type** *type*\] \[**--token-types** *t1,t2*\] *role***  
+**list_tokens** \[**--return-type** *type*\] \[**--token-types** *t1,t2*\] *role*  
 The tokens in this role. Only the ones put in here, not the ones that
 reach it through a nested role.  
 **--return-type** picks what is printed: **name** (default),
@@ -228,7 +228,7 @@ reach it through a nested role.
 those types, for example **hotp,totp**.  
 Disabled tokens are listed as well.
 
-**list_users \[**--return-type** *type*\] *role***  
+**list_users** \[**--return-type** *type*\] *role*  
 The users those tokens belong to. One user with three tokens in the role
 is named once.
 
@@ -238,11 +238,11 @@ A role can hold other roles, and what the outer role is assigned to
 reaches the tokens of the inner ones. See the **DESCRIPTION** above.
 
 A *child_role* is looked for in the site of the role, or written as
-*site***/***role* to take one from another site of the realm.
+***site*/*role*** to take one from another site of the realm.
 **remove_role** takes a UUID as well, which is how a reference to a role
 that is gone is cleared out.
 
-**add_role \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role* *child_role***  
+**add_role** \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role* *child_role*  
 Put *child_role* into *role*. The tokens of *child_role* then reach
 everything *role* is assigned to.
 
@@ -254,7 +254,7 @@ Whether the online hosts are told that there are new share permissions.
 **--no-persist-mount**  
 Do not persist new share mounts on hosts.
 
-**remove_role \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role* *child_role***  
+**remove_role** \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role* *child_role*  
 Take *child_role* out of *role* again.
 
 **--share-notify, **--no-share-notify****  
@@ -263,7 +263,7 @@ Whether the online hosts are told that share permissions were revoked.
 **--no-persist-mount**  
 Keep persisted share mounts on hosts (transient unmount only).
 
-**list_roles \[**-r**\] *role***  
+**list_roles** \[**-r**\] *role*  
 The roles this role holds. **-r** adds the roles those hold, all the way
 down.
 
@@ -275,32 +275,32 @@ is used.
 
 **--return-type** picks what they print: **name** (default),
 **read_oid**, **full_oid** or **uuid**. A name from another site is
-printed as *site***/***name*.
+printed as ***site*/*name***.
 
 Disabled objects are listed as well, so a permission that is only
 switched off is not mistaken for one that is gone.
 
-**find_roles \[**-r**\] \[**--return-type** *type*\] *role***  
+**find_roles** \[**-r**\] \[**--return-type** *type*\] *role*  
 The roles this role is in, which is the other way round from
 **list_roles**. **-r** adds the roles those are in, all the way up.
 
-**find_accessgroups \[**--return-type** *type*\] *role***  
+**find_accessgroups** \[**--return-type** *type*\] *role*  
 The access groups this role is in. Those are what say where a token of
 the role may log in at all.
 
-**find_clients \[**--return-type** *type*\] *role***  
+**find_clients** \[**--return-type** *type*\] *role*  
 The clients this role is assigned to.
 
-**find_groups \[**--return-type** *type*\] *role***  
+**find_groups** \[**--return-type** *type*\] *role*  
 The groups this role is in.
 
-**find_shares \[**-r**\] \[**--return-type** *type*\] *role***  
+**find_shares** \[**-r**\] \[**--return-type** *type*\] *role*  
 The shares this role opens. **-r** adds the shares the roles below it
 open.  
 Here **--return-type** starts at **path**, which is the share name with
 its site in front.
 
-**find_scopes \[**--return-type** *type*\] *role***  
+**find_scopes** \[**--return-type** *type*\] *role*  
 The OIDC scopes this role is assigned to. They decide what a relying
 party learns about the user.
 
@@ -429,7 +429,7 @@ Needs the ACL **add:sync_user**.
 Stop that.  
 Needs the ACL **remove:sync_user**.
 
-**list_sync_users \[**--return-type** *type*\] *role***  
+**list_sync_users** \[**--return-type** *type*\] *role*  
 The sync users of this role.  
 Needs the ACL **view:sync_users**.
 
@@ -469,7 +469,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *role***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *role*  
 List the policies attached to the role, the disabled ones too, marked
 **(disabled)**. Use **--return-type** to select the attribute returned
 (**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
@@ -482,7 +482,7 @@ Needs the ACL **view:policies**.
 An ACL says what somebody may do with this role. The somebody is a role
 or a token, never a user.
 
-What the three forms *acl*, **+***acl* and **++***acl* mean, and which
+What the three forms *acl*, **+*acl*** and **++*acl*** mean, and which
 ACLs exist, is under **ACLs** in **otpme**(7).
 
 A command that changes something asks first; the global option **-f**
@@ -565,14 +565,14 @@ Only an attribute one of its extensions allows: there is no setting an
 attribute OTPme knows nothing about. An attribute can hold more than one
 value, so this adds one and leaves the others.
 
-The ACL is per attribute, **add:attribute:***attribute*, and a plain
+The ACL is per attribute, **add:attribute:*attribute***, and a plain
 **add:attribute** covers all of them.
 
 **del_attribute *role* *attribute***=**\[*value*\]**  
 Remove that value, or the whole attribute where no value is given.  
 A mandatory attribute of a class the role is of cannot be removed, and
 neither can a read-only one. The ACL is
-**delete:attribute:***attribute*.
+**delete:attribute:*attribute***.
 
 **add_object_class *role* *class***  
 Add an LDAP object class to the role, beyond the ones its extensions
@@ -581,7 +581,7 @@ brought.
 **del_object_class *role* *class***  
 Remove one again.
 
-**show_ldif *role* \[**-a** *attribute1,attribute2*\]**  
+**show_ldif *role*** \[**-a** *attribute1,attribute2*\]  
 The role as LDAP sees it. **-a** prints only those attributes.
 
 ## Configuration
@@ -608,7 +608,7 @@ realm holds none. A site can take that away for single parameters with
 **force_site_config_parameters**: those are read from the site and
 nowhere else, whatever the role says.
 
-**config \[**-d**\] \[**-a**\] *role* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *role* *parameter* \[*value*\]  
 Set a parameter on the role itself.
 
 **-a** appends to a parameter that holds a list instead of replacing it.
@@ -618,7 +618,7 @@ one value from a list. What the role gets afterwards is whatever the
 units above it or the site say — **-d** is not the same as setting the
 parameter to its default.
 
-The ACL is per parameter, **set:config:***parameter*.
+The ACL is per parameter, **set:config:*parameter***.
 
 **show_config *role* \[*parameter*\]**  
 The parameters set on the role itself, or only the one named. Nothing is
@@ -635,7 +635,7 @@ for editing.
 It is an LDAP attribute of the role as well (**description**, from the
 **base** extension), so it is what an LDAP client sees.
 
-**info \[**--language** *LANG*\] *role* \[*info*\]**  
+**info** \[**--language** *LANG*\] *role* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor specified by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note about
@@ -644,7 +644,7 @@ is one for the users of that language: a role named in
 **device_token_roles** shows it on the SSO portal, in the language of
 whoever is looking, see **otpme**(7).
 
-**dump_info \[**--language** *LANG*\] *role***  
+**dump_info** \[**--language** *LANG*\] *role*  
 Write one of those texts to stdout, for reading it with something other
 than the editor.  
 **--language** picks which one, the same way as for **info**; without it
@@ -703,7 +703,7 @@ back in is **otpme-tool import,** see **otpme-tool**(1).
 **remove_orphans** asks before it changes anything; the global option
 **-f** skips the question.
 
-**export \[**--password** *password*\] *role***  
+**export** \[**--password** *password*\] *role*  
 Write the whole object of the role to stdout, as JSON.
 
 Without **--password** it is written as it is, in clear. With one, a key

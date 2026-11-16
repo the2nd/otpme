@@ -55,7 +55,7 @@ with **add_role**.
 Needs the ACL **add:scope** on the unit it is created in, not on the
 scope — there is none yet.
 
-**del \[**--no-trash**\] *scope***  
+**del** \[**--no-trash**\] *scope*  
 Delete a scope. It goes to the trash, from where **otpme-trash**(1) can
 bring it back; **--no-trash** deletes it right away.  
 Needs the ACL **delete:object** on the scope, or **delete:scope** on the
@@ -63,7 +63,7 @@ unit it sits in.
 A scope a site brings with it cannot be deleted. Switch it off with
 **disable** instead.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*scope*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*scope*\]  
 Without a scope: a table of all of them, with their unit, their roles,
 tokens, clients and groups, their scope ID and their policies.
 
@@ -99,7 +99,7 @@ UUID, which is how **remove_orphans** has something to find.
 
 <!-- -->
 
-**show_oid \[**--full**\] *scope***  
+**show_oid** \[**--full**\] *scope*  
 Show the OID of the scope: **scope\|\<realm\>/\<site\>/\<name\>**. With
 **--full** the full OID, which names the unit as well:
 **scope\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
@@ -111,7 +111,7 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the scope names, and with a pattern only those that match it, see
 **SELECTING OBJECTS** in **otpme**(1). You get the scopes you may
 change; **-a** adds those you may only look at.  
@@ -140,7 +140,7 @@ rename leaves it alone. A scope a site brings with it cannot be
 renamed.  
 Needs the ACL **rename:object**.
 
-**move \[**--keep-acls**\] *scope* *unit***  
+**move** \[**--keep-acls**\] *scope* *unit*  
 Move the scope into another unit. Its ACLs stay as they are, unless
 **enable_acl_inheritance** (below) was switched on for it: then the
 default ACLs of the old unit are taken away and those of the new one are
@@ -168,9 +168,9 @@ Needs the ACL **edit:auto_disable**.
 
 ## Who May Hand the Scope Out
 
-A token is named by its path, *user***/***token*. A role is named by its
+A token is named by its path, ***user*/*token***. A role is named by its
 name, which is looked for in the site of the scope, or as
-*site***/***role* to take one from another site of the realm.
+***site*/*role*** to take one from another site of the realm.
 
 **add_token *scope* *token_path***  
 Let this token hand the scope out.  
@@ -183,7 +183,7 @@ Take the token out of the scope. A UUID is taken as well, which is how a
 reference to a token that is gone is cleared out.  
 Needs the ACL **remove:token**.
 
-**list_tokens \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] \[*scope*\]**  
+**list_tokens** \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] \[*scope*\]  
 List the tokens in the scope, disabled ones included.  
 **--return-type** selects what is printed per token; the default is the
 path. **--token-types** lists only tokens of the given types, for
@@ -194,7 +194,7 @@ Needs the ACL **view:tokens**.
 Let every token of this role hand the scope out.  
 This is the way to do it for more than one user: a role holds the
 tokens, the scope holds the role. A role from another site is named
-*site***/***role*.  
+***site*/*role***.  
 Needs the ACL **add:role**.
 
 **remove_role *scope* *role***  
@@ -302,7 +302,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *scope***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *scope*  
 List the policies attached to the scope, the disabled ones too, marked
 **(disabled)**. Use **--return-type** to select the attribute returned
 (**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
@@ -367,7 +367,7 @@ names in **force_site_config_parameters,** and then its own value wins
 
 Which parameters a scope takes is in **CONFIG PARAMETERS** below.
 
-**config \[**-d**\] \[**-a**\] *scope* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *scope* *parameter* \[*value*\]  
 Set a parameter on the scope.
 
 **-d**  
@@ -382,12 +382,12 @@ what is there.
 Without a *value* the parameter is set to its default, which is not the
 same as leaving it unset: the value then stands on the scope and nothing
 above it is read any more.  
-The ACL is per parameter, **set:config:***parameter*.
+The ACL is per parameter, **set:config:*parameter***.
 
 **show_config *scope* \[*parameter*\]**  
 The config parameters set on the scope itself, or only the one named.  
 Nothing is shown for a parameter that the scope gets from a unit or from
-the site, and nothing for one whose ACL **view:config:***parameter* you
+the site, and nothing for one whose ACL **view:config:*parameter*** you
 do not hold. The scope ID and the members of the scope are not config
 parameters: **show** and **export** are where those are.
 
@@ -395,7 +395,7 @@ parameters: **show** and **export** are where those are.
 What the parameter comes to for this scope, once the scope, its units
 and its site have been looked at. So this answers what applies, where
 **show_config** answers what was set here.  
-Needs the ACL **view:config:***parameter*, the same one that opens it in
+Needs the ACL **view:config:*parameter***, the same one that opens it in
 **show_config**.
 
 **description *scope* \[*description*\]**  
@@ -403,7 +403,7 @@ Set the description. Without one OTPme asks and offers the current text
 for editing.  
 Needs the ACL **edit:description**.
 
-**info \[**--language** *LANG*\] *scope* \[*info*\]**  
+**info** \[**--language** *LANG*\] *scope* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current text is
 opened in the editor named by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note about
@@ -413,13 +413,13 @@ nothing shows the info of a scope, so for a scope it stays a note either
 way.  
 Needs the ACL **edit:info**.
 
-**dump_info \[**--language** *LANG*\] *scope***  
+**dump_info** \[**--language** *LANG*\] *scope*  
 Print the info text, of that language or the administrator's own.  
 Needs the ACL **view:info**.
 
 ## Export and Cleanup
 
-**export \[**--password** *password*\] *scope***  
+**export** \[**--password** *password*\] *scope*  
 Write the whole object of the scope to stdout, as JSON.  
 Without **--password** it is written as it is, in clear. With one, a key
 is derived from that password and the object is encrypted with it; the

@@ -359,7 +359,7 @@ on every page.
 **show *name***  
 The name of an object prints that object, one value per line.
 
-**show *name***$****  
+**show *name*$**  
 The same object as a row of the table, as without a name. The **$**
 makes it no name of an object, and it is dropped before the search.
 
@@ -368,7 +368,7 @@ Anything else is a pattern: **\*** stands for any text, everything else
 for itself, and upper and lower case differ. **ber\*** finds **berlin**
 and **bern**. It is no regex: a **.** is a dot. **list** takes no **$**.
 
-**show *unit***/**, **list** *unit***/****  
+**show *unit*/**, **list *unit*/**  
 A unit path that ends with **/**, e.g. **devices/** or
 **/example.org/berlin/devices/**, asks for the objects of that unit; its
 sub units are not part of it.

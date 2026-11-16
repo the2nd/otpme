@@ -485,10 +485,6 @@ msgstr ""
 msgid "Admin access enabled"
 msgstr "Accesso amministrativo abilitato"
 
-#: templates/base.html:35
-msgid "Logged in user"
-msgstr "Utente connesso"
-
 #: templates/base.html:39
 msgid "Logout"
 msgstr "Disconnetti"
@@ -1341,10 +1337,6 @@ msgstr "Salva"
 msgid "Device Tokens"
 msgstr "Token dispositivo"
 
-#: templates/settings.html:210
-msgid "e.g. my-phone"
-msgstr "es. mio-telefono"
-
 #: templates/settings.html:211
 msgid "Add Device Token"
 msgstr "Aggiungi token dispositivo"
@@ -1387,10 +1379,6 @@ msgstr ""
 msgid "Passkey Name"
 msgstr "Nome passkey"
 
-#: templates/settings.html:228
-msgid "e.g. iphone, laptop, work-pc"
-msgstr "es. iphone, laptop, pc-lavoro"
-
 #: templates/settings.html:229
 msgid "Add Passkey"
 msgstr "Aggiungi passkey"
@@ -1398,11 +1386,6 @@ msgstr "Aggiungi passkey"
 #: templates/settings.html:233
 msgid "Existing Passkeys"
 msgstr "Passkey esistenti"
-
-#. AI-generated
-#: templates/settings.html:242
-msgid "Security Keys"
-msgstr "Chiavi di sicurezza"
 
 #. AI-generated
 #: templates/settings.html:243
@@ -1418,11 +1401,6 @@ msgstr ""
 #: templates/settings.html:245
 msgid "Key Name"
 msgstr "Nome della chiave"
-
-#. AI-generated
-#: templates/settings.html:246
-msgid "e.g. yubikey, backup key"
-msgstr "es. yubikey, chiave di backup"
 
 #. AI-generated
 #: templates/settings.html:247
@@ -1604,6 +1582,21 @@ msgstr ""
 #~ msgid "Scan this code with the tiqr app. Waiting for your phone..."
 #~ msgstr "Scansiona questo codice con l'app tiqr. In attesa del tuo telefono..."
 
+#~ msgid "Logged in user"
+#~ msgstr "Utente connesso"
+
+#~ msgid "e.g. my-phone"
+#~ msgstr "es. mio-telefono"
+
+#~ msgid "e.g. iphone, laptop, work-pc"
+#~ msgstr "es. iphone, laptop, pc-lavoro"
+
+#~ msgid "Security Keys"
+#~ msgstr "Chiavi di sicurezza"
+
+#~ msgid "e.g. yubikey, backup key"
+#~ msgstr "es. yubikey, chiave di backup"
+
 #: views.py templates/base.html
 msgid ""
 "This site is in maintenance. Nothing can be changed right now. Please try "
@@ -1638,3 +1631,524 @@ msgid ""
 "If the link from your mail has expired by then, please request a new one."
 msgstr ""
 "Se nel frattempo il link della sua e-mail è scaduto, ne richieda uno nuovo."
+
+#: views.py
+msgid "Failed to list authenticator apps."
+msgstr "Impossibile elencare le app di autenticazione."
+
+#: views.py
+msgid "Failed to load login token options."
+msgstr "Impossibile caricare le opzioni del token di accesso."
+
+#: templates/settings.html views.py
+msgid "Failed to start authenticator app setup."
+msgstr "Impossibile avviare la configurazione dell'app di autenticazione."
+
+#: views.py
+msgid "No authenticator app setup in progress."
+msgstr "Nessuna configurazione di app di autenticazione in corso."
+
+#: views.py
+msgid "Code is required."
+msgstr "Il codice è obbligatorio."
+
+#: templates/settings.html views.py
+msgid "Failed to verify the code."
+msgstr "Impossibile verificare il codice."
+
+#: views.py
+msgid "Invalid code. Please try again."
+msgstr "Codice non valido. Riprova."
+
+#: templates/settings.html views.py
+msgid "Failed to delete authenticator app."
+msgstr "Impossibile eliminare l'app di autenticazione."
+
+#: templates/settings.html views.py
+msgid "Failed to update authenticator app."
+msgstr "Impossibile aggiornare l'app di autenticazione."
+
+#: views.py
+msgid "New PIN is required."
+msgstr "Il nuovo PIN è obbligatorio."
+
+#: views.py
+msgid "Failed to load settings."
+msgstr "Impossibile caricare le impostazioni."
+
+#: views.py
+msgid "Full name"
+msgstr "Nome completo"
+
+#: views.py
+msgid "First name"
+msgstr "Nome"
+
+#: views.py
+msgid "Last name"
+msgstr "Cognome"
+
+#: views.py
+msgid "Display name"
+msgstr "Nome visualizzato"
+
+#: views.py
+msgid "Initials"
+msgstr "Iniziali"
+
+#: views.py
+msgid "E-mail"
+msgstr "E-mail"
+
+#: views.py
+msgid "Phone"
+msgstr "Telefono"
+
+#: views.py
+msgid "Mobile phone"
+msgstr "Cellulare"
+
+#: views.py
+msgid "Home phone"
+msgstr "Telefono di casa"
+
+#: views.py
+msgid "Fax"
+msgstr "Fax"
+
+#: views.py
+msgid "Title"
+msgstr "Qualifica"
+
+#: views.py
+msgid "Organization"
+msgstr "Organizzazione"
+
+#: views.py
+msgid "Organizational unit"
+msgstr "Unità organizzativa"
+
+#: views.py
+msgid "Department"
+msgstr "Reparto"
+
+#: views.py
+msgid "Employee number"
+msgstr "Matricola"
+
+#: views.py
+msgid "Manager"
+msgstr "Responsabile"
+
+#: views.py
+msgid "Room"
+msgstr "Stanza"
+
+#: views.py
+msgid "Street"
+msgstr "Via"
+
+#: views.py
+msgid "Postal code"
+msgstr "CAP"
+
+#: views.py
+msgid "Location"
+msgstr "Località"
+
+#: views.py
+msgid "State"
+msgstr "Provincia"
+
+#: views.py
+msgid "Website"
+msgstr "Sito web"
+
+#: views.py
+msgid "Preferred language"
+msgstr "Lingua preferita"
+
+#: views.py
+msgid "Description"
+msgstr "Descrizione"
+
+#: views.py
+msgid "User ID"
+msgstr "ID utente"
+
+#: views.py
+msgid "Group ID"
+msgstr "ID gruppo"
+
+#: views.py
+msgid "Home directory"
+msgstr "Directory home"
+
+#: views.py
+msgid "Login shell"
+msgstr "Shell di accesso"
+
+#: views.py
+msgid "UUID"
+msgstr "UUID"
+
+#: views.py
+msgid "Created"
+msgstr "Creato"
+
+#: views.py
+msgid "Last modified"
+msgstr "Ultima modifica"
+
+#: views.py
+msgid "You are not allowed to change this."
+msgstr "Non sei autorizzato a modificarlo."
+
+#: views.py
+msgid "A value is too long."
+msgstr "Un valore è troppo lungo."
+
+#: views.py
+msgid "Too many values."
+msgstr "Troppi valori."
+
+#: templates/profile.html views.py
+msgid "The photo must be a JPEG image."
+msgstr "La foto deve essere un'immagine JPEG."
+
+#: templates/profile.html views.py
+msgid "The photo is too large."
+msgstr "La foto è troppo grande."
+
+#: templates/profile.html views.py
+msgid "Profile"
+msgstr "Profilo"
+
+#: templates/profile.html views.py
+msgid "Failed to load profile."
+msgstr "Impossibile caricare il profilo."
+
+#: views.py
+msgid "Missing 'attribute' field."
+msgstr "Campo 'attribute' mancante."
+
+#: views.py
+msgid "Missing 'values' field."
+msgstr "Campo 'values' mancante."
+
+#: templates/profile.html views.py
+msgid "Failed to save profile."
+msgstr "Impossibile salvare il profilo."
+
+#: views.py
+msgid "Missing 'photo' field."
+msgstr "Campo 'photo' mancante."
+
+#: templates/profile.html views.py
+msgid "Failed to save photo."
+msgstr "Impossibile salvare la foto."
+
+#: views.py
+msgid "Failed to list sessions."
+msgstr "Impossibile elencare le sessioni."
+
+#: views.py
+msgid "session_uuid is required."
+msgstr "session_uuid è obbligatorio."
+
+#: templates/settings.html views.py
+msgid "Failed to end session."
+msgstr "Impossibile terminare la sessione."
+
+#: templates/settings.html views.py
+msgid "Session ended."
+msgstr "Sessione terminata."
+
+#: views.py
+msgid "Re-deploying your login token is not allowed."
+msgstr "La ridistribuzione del tuo token di accesso non è consentita."
+
+#: templates/base.html
+msgid "Your profile"
+msgstr "Il tuo profilo"
+
+#: templates/deploy.html templates/recover_complete.html
+msgid "Please enter a name for your security key."
+msgstr "Inserisci un nome per la tua chiave di sicurezza."
+
+#: templates/deploy.html templates/recover_complete.html
+msgid "e.g. my security key"
+msgstr "es. la mia chiave di sicurezza"
+
+#: templates/login.html templates/recover.html templates/recover_invalid.html
+msgid "Logo"
+msgstr "Logo"
+
+#: templates/profile.html
+msgid "Not set"
+msgstr "Non impostato"
+
+#: templates/profile.html
+msgid "Add value"
+msgstr "Aggiungi valore"
+
+#: templates/profile.html
+msgid "Saved."
+msgstr "Salvato."
+
+#: templates/profile.html
+msgid "Photo saved."
+msgstr "Foto salvata."
+
+#: templates/profile.html
+msgid "Photo removed."
+msgstr "Foto rimossa."
+
+#: templates/profile.html
+msgid "Please choose a photo first."
+msgstr "Scegli prima una foto."
+
+#: templates/profile.html
+msgid "Remove your photo?"
+msgstr "Rimuovere la tua foto?"
+
+#: templates/profile.html
+#, python-brace-format
+msgid "The photo is {photo_dimensions}, photos here are {dimensions}. Resize it?"
+msgstr ""
+"La foto è {photo_dimensions}, qui le foto sono {dimensions}. "
+"Ridimensionarla?"
+
+#: templates/profile.html
+#, python-brace-format
+msgid "The photo must be {dimensions}."
+msgstr "La foto deve essere {dimensions}."
+
+#: templates/profile.html
+msgid "Photo"
+msgstr "Foto"
+
+#: templates/profile.html
+msgid "Your photo"
+msgstr "La tua foto"
+
+#: templates/profile.html
+msgid "No photo"
+msgstr "Nessuna foto"
+
+#: templates/profile.html
+msgid "Change photo"
+msgstr "Cambia foto"
+
+#: templates/profile.html
+msgid "Upload"
+msgstr "Carica"
+
+#: templates/profile.html
+msgid "Your Data"
+msgstr "I tuoi dati"
+
+#: templates/profile.html
+msgid ""
+"The details stored for your account, as applications that use the "
+"directory (LDAP) see them."
+msgstr ""
+"I dati salvati per il tuo account, così come li vedono le applicazioni "
+"che usano la directory (LDAP)."
+
+#: templates/settings.html
+msgid ""
+"Your new token was created. It can take up to a minute before you can "
+"sign in with it."
+msgstr ""
+"Il tuo nuovo token è stato creato. Può volerci fino a un minuto prima che"
+" tu possa accedere con esso."
+
+#: templates/settings.html
+msgid "Failed to load authenticator apps."
+msgstr "Impossibile caricare le app di autenticazione."
+
+#: templates/settings.html
+msgid "No authenticator apps set up yet."
+msgstr "Nessuna app di autenticazione ancora configurata."
+
+#: templates/settings.html
+msgid "Preparing setup..."
+msgstr "Preparazione della configurazione..."
+
+#: templates/settings.html
+msgid "Verifying code..."
+msgstr "Verifica del codice in corso..."
+
+#: templates/settings.html
+msgid "Authenticator app added."
+msgstr "App di autenticazione aggiunta."
+
+#: templates/settings.html
+#, python-brace-format
+msgid "Remove authenticator app \"{name}\"?"
+msgstr "Rimuovere l'app di autenticazione \"{name}\"?"
+
+#: templates/settings.html
+msgid "Authenticator app removed."
+msgstr "App di autenticazione rimossa."
+
+#: templates/settings.html
+#, python-brace-format
+msgid "You have the maximum number of tokens of this type ({max})."
+msgstr "Hai già il numero massimo di token di questo tipo ({max})."
+
+#: templates/settings.html
+#, python-brace-format
+msgid ""
+"New PIN for \"{name}\". The app keeps working, sign in with the new PIN "
+"followed by its code."
+msgstr ""
+"Nuovo PIN per \"{name}\". L'app continua a funzionare, accedi con il "
+"nuovo PIN seguito dal suo codice."
+
+#: templates/settings.html
+msgid "Confirmed. Press the button again to continue."
+msgstr "Confermato. Premi di nuovo il pulsante per continuare."
+
+#: templates/settings.html
+msgid "Failed to load sessions."
+msgstr "Impossibile caricare le sessioni."
+
+#: templates/settings.html
+msgid "No active sessions."
+msgstr "Nessuna sessione attiva."
+
+#: templates/settings.html
+msgid "This session"
+msgstr "Questa sessione"
+
+#: templates/settings.html
+msgid "End session"
+msgstr "Termina sessione"
+
+#: templates/settings.html
+msgid ""
+"End this session? Applications you signed in to with it will be signed "
+"out."
+msgstr ""
+"Terminare questa sessione? Verrai disconnesso dalle applicazioni a cui "
+"hai effettuato l'accesso con essa."
+
+#: templates/settings.html
+msgid "Login:"
+msgstr "Accesso:"
+
+#: templates/settings.html
+msgid "Expires:"
+msgstr "Scade:"
+
+#: templates/settings.html
+msgid "Client:"
+msgstr "Client:"
+
+#: templates/settings.html
+msgid "Token:"
+msgstr "Token:"
+
+#: templates/settings.html
+msgid "Loading your settings..."
+msgstr "Caricamento delle impostazioni..."
+
+#: templates/settings.html
+msgid "e.g. my phone, work laptop"
+msgstr "es. il mio telefono, portatile di lavoro"
+
+#: templates/settings.html
+msgid "Token Type"
+msgstr "Tipo di token"
+
+#: templates/settings.html
+msgid "Authenticator app (TOTP)"
+msgstr "App di autenticazione (TOTP)"
+
+#: templates/settings.html
+msgid "TOTP"
+msgstr "TOTP"
+
+#: templates/settings.html
+msgid "Scan this code with your authenticator app:"
+msgstr "Scansiona questo codice con la tua app di autenticazione:"
+
+#: templates/settings.html
+msgid "TOTP code"
+msgstr "Codice TOTP"
+
+#: templates/settings.html
+msgid "This code is shown only once. Scan it now."
+msgstr "Questo codice viene mostrato una sola volta. Scansionalo ora."
+
+#: templates/settings.html
+#, python-brace-format
+msgid "You have the maximum number of device tokens for this role ({max})."
+msgstr ""
+"Hai già il numero massimo di token del dispositivo per questo ruolo "
+"({max})."
+
+#: templates/settings.html
+msgid "e.g. my iPhone, work laptop"
+msgstr "es. il mio iPhone, portatile di lavoro"
+
+#: templates/settings.html
+msgid "Security Keys (FIDO2)"
+msgstr "Chiavi di sicurezza (FIDO2)"
+
+#: templates/settings.html
+msgid "e.g. my YubiKey, backup key"
+msgstr "es. la mia YubiKey, chiave di riserva"
+
+#: templates/settings.html
+msgid ""
+"Sign in with your PIN followed by the six-digit code from an "
+"authenticator app (e.g. FreeOTP, Aegis, Google Authenticator)."
+msgstr ""
+"Accedi con il tuo PIN seguito dal codice a sei cifre di un'app di "
+"autenticazione (es. FreeOTP, Aegis, Google Authenticator)."
+
+#: templates/settings.html
+msgid "Add Authenticator App"
+msgstr "Aggiungi app di autenticazione"
+
+#: templates/settings.html
+msgid "Scan this code with your authenticator app, or enter the secret by hand."
+msgstr ""
+"Scansiona questo codice con la tua app di autenticazione o inserisci il "
+"segreto a mano."
+
+#: templates/settings.html
+msgid ""
+"Remember the PIN: you sign in with the PIN followed by the code from the "
+"app. Both are shown only once."
+msgstr ""
+"Ricorda il PIN: accedi con il PIN seguito dal codice dell'app. Entrambi "
+"vengono mostrati una sola volta."
+
+#: templates/settings.html
+msgid "Code from the app"
+msgstr "Codice dell'app"
+
+#: templates/settings.html
+msgid "Verify"
+msgstr "Verifica"
+
+#: templates/settings.html
+msgid "Authenticator Apps"
+msgstr "App di autenticazione"
+
+#: templates/settings.html
+msgid "Active Sessions"
+msgstr "Sessioni attive"
+
+#: templates/settings.html
+msgid ""
+"Where your account is currently logged in on this site. Ending a session "
+"also ends what it opened (applications you signed in to with it)."
+msgstr ""
+"Dove il tuo account ha attualmente effettuato l'accesso su questo sito. "
+"Terminare una sessione termina anche ciò che ha aperto (le applicazioni a"
+" cui hai effettuato l'accesso con essa)."

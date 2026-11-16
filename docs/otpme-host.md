@@ -31,7 +31,7 @@ join itself, which adds the host when it is not there yet (see
 
 ## Host Management
 
-**add \[**--template** *template*\] \[**--no-template**\] *host***  
+**add** \[**--template ***template*\] \[**--no-template**\] *host*  
 Create a host. The machine itself need not exist yet: this is the object
 a join with a JOTP looks for. The name has to be unique in the realm: no
 host and no node of any site may have it already. Where an
@@ -43,14 +43,14 @@ There is no **rename**. A host is found by the name it joined with,
 which is also the name in its certificate, so a machine that is renamed
 leaves the realm and joins again.
 
-**del \[**--no-trash**\] *host***  
+**del** \[**--no-trash**\] *host*  
 Delete a host. It goes to the trash, from where **otpme-trash**(1) can
 bring it back; **--no-trash** deletes it right away.  
 The certificate of the host is revoked, and the roles and access groups
 that name the host let it go first, so nothing is left pointing at it.
 The passwords of the host stay; the question says how many there are.
 
-**show \[**-a**\] \[**-t**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--token-limit** *N*\] \[**--role-limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*host*\]**  
+**show** \[**-a**\] \[**-t**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--token-limit** *N*\] \[**--role-limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*host*\]  
 Show the hosts, with their tokens, roles and policies. Without a host
 you get all of them.
 
@@ -85,7 +85,7 @@ between the columns, and **--csv-sep** uses another separator.
 
 <!-- -->
 
-**show_oid \[**--full**\] *host***  
+**show_oid** \[**--full**\] *host*  
 Show the OID of the host: **host\|\<realm\>/\<name\>**. With **--full**
 the full OID, which names the site and unit as well:
 **host\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
@@ -97,7 +97,7 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**-t**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**-t**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the host names, and with a pattern only those that match it, see
 **SELECTING OBJECTS** in **otpme**(1). You get the hosts you may change;
 **-a** adds those you may only look at. **-t** lists the host templates
@@ -115,7 +115,7 @@ Enable a disabled host.
 Disable a host without deleting it. A disabled host is turned away by
 the daemons it talks to, so it neither syncs nor logs anybody in.
 
-**move \[**--keep-acls**\] *host* *unit***  
+**move** \[**--keep-acls**\] *host* *unit*  
 Move the host into another unit. Its ACLs move with it: the default ACLs
 of the old unit are taken away and those of the new one are applied.
 **--keep-acls** leaves the ACLs of the host as they are.
@@ -123,7 +123,7 @@ of the old unit are taken away and those of the new one are applied.
 **touch *host***  
 Re-index the object to fix potential index problems.
 
-**auto_disable \[**-u**\] *host* *time***  
+**auto_disable** \[**-u**\] *host* *time*  
 Set auto-disable time. It is either a relative time with a leading
 **+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
 The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
@@ -150,11 +150,11 @@ Needs **edit:mac_address**. Seeing it, with **show**, needs
 
 ## Token and Role Assignment
 
-A token is named by its path, *user***/***token*. A role is named by its
+A token is named by its path, ***user*/*token***. A role is named by its
 name, which is looked for in the site of the host, or as
-*site***/***role* to take one from another site of the realm.
+***site*/*role*** to take one from another site of the realm.
 
-**add_token \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign** **--tags** *tag1,tag2*\] *host* *token_path* \[*token_options*\]**  
+**add_token** \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign** **--tags** *tag1,tag2*\] *host* *token_path* \[*token_options*\]  
 Let this token log in to the host.
 
 **-i *interfaces***  
@@ -187,11 +187,11 @@ setting of your own user says.
 A token that is already assigned, with other interfaces or options, is
 not added twice: OTPme asks whether to change what it has.
 
-**remove_token \[**--keep-sign**\] *host* *token_path***  
+**remove_token** \[**--keep-sign**\] *host* *token_path*  
 Take the token away from the host. The signature for this assignment is
 removed with it; **--keep-sign** leaves it in place.
 
-**list_tokens \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *host***  
+**list_tokens** \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *host*  
 List the tokens assigned to the host. Use **--return-type** to select
 the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**)
 and **--token-types** to limit the listing to the given token types.
@@ -329,16 +329,16 @@ WLAN or an offline login. See **pam_otpme**(8).
 **--return-type** picks what these print: **name** (the default),
 **read_oid**, **full_oid** or **uuid**.
 
-**list_users \[**--return-type** *TYPE*\] *host***  
+**list_users** \[**--return-type** *TYPE*\] *host*  
 The users who own a token assigned to the host. Only the tokens the host
 holds itself count here, not the ones it gets through a role.
 
-**list_sync_users \[**--return-type** *TYPE*\] *host***  
+**list_sync_users** \[**--return-type** *TYPE*\] *host*  
 The sync users of the host, as **add_sync_user** set them. The ones that
 come with a role are not in it, see **Sync Configuration** below.  
 Needs the ACL **view:sync_users**.
 
-**list_sync_groups \[**--return-type** *TYPE*\] *host***  
+**list_sync_groups** \[**--return-type** *TYPE*\] *host*  
 The sync groups of the host.
 
 **list_dynamic_groups *host***  
@@ -351,26 +351,26 @@ that starts with **find\_** answers the other question: where the host
 itself is named.
 
 **--return-type** works as above, and a name from another site is
-printed as *site***/***name*. Disabled objects are listed as well, so a
+printed as ***site*/*name***. Disabled objects are listed as well, so a
 permission that is only switched off is not mistaken for one that is
 gone. Each of these needs its own ACL, **find:roles** for **find_roles**
 and so on.
 
-**find_roles \[**--return-type** *TYPE*\] *host***  
+**find_roles** \[**--return-type** *TYPE*\] *host*  
 The roles the host is in. They decide which VLAN it gets and which
 shares it may reach, see **otpme-role**(1) **add_host**.
 
-**find_accessgroups \[**--return-type** *TYPE*\] *host***  
+**find_accessgroups** \[**--return-type** *TYPE*\] *host*  
 The access groups the host is in. This is what carries it through MAB:
 the host authenticates with its MAC address as the password, and the
 access group the request is answered for has to hold the host, see
 **Port Authentication** above.
 
-**find_groups \[**--return-type** *TYPE*\] *host***  
+**find_groups** \[**--return-type** *TYPE*\] *host*  
 The groups the host is in. A group matters for the shares of that group
 that are limited to hosts.
 
-**find_shares \[**--return-type** *TYPE*\] *host***  
+**find_shares** \[**--return-type** *TYPE*\] *host*  
 The shares the host is named in, so the ones it may mount without a role
 bringing it.
 
@@ -381,7 +381,7 @@ password is given to it with **otpme-pass add --host** or **otpme-pass
 add_host**, see **otpme-pass**(1). Each password decides itself whether
 you may see it; the host has no ACL for that.
 
-**find_passwords \[**--return-type** *TYPE*\] *host***  
+**find_passwords** \[**--return-type** *TYPE*\] *host*  
 List the passwords that belong to the host and that you may look at, by
 **view_public**, **view** or **view:entries** on the password. *TYPE* is
 **name** (the default), **read_oid**, **full_oid** or **uuid**. A name
@@ -667,7 +667,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *host***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *host*  
 List the policies attached to the host, the disabled ones too, marked
 **(disabled)**. Use **--return-type** to select the attribute returned
 (**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
@@ -735,7 +735,7 @@ over the host and its units (see **otpme**(7)).
 
 Which parameters a host takes is in **CONFIG PARAMETERS** below.
 
-**config \[**-d**\] \[**-a**\] *host* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *host* *parameter* \[*value*\]  
 Set a parameter on the host.
 
 **-d**  
@@ -747,7 +747,7 @@ whatever the unit or the site says.
 Append the value to a parameter that holds a list, instead of replacing
 what is there.
 
-The ACL is per parameter, **set:config:***parameter*. Removing a
+The ACL is per parameter, **set:config:*parameter***. Removing a
 parameter that is not registered any more, which is what a rename or a
 dropped feature leaves behind, is for admins only.
 
@@ -764,7 +764,7 @@ its site have been looked at. So this answers what applies, where
 Set the description. Without one OTPme asks and offers the current text
 for editing.
 
-**info \[**--language** *LANG*\] *host* \[*info*\]**  
+**info** \[**--language** *LANG*\] *host* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor named by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note, which
@@ -772,7 +772,7 @@ no user is ever shown. A text can be written for a language as well, for
 the places that show such a text to a user; nothing shows the info of a
 host, so for a host it stays a note either way.
 
-**dump_info \[**--language** *LANG*\] *host***  
+**dump_info** \[**--language** *LANG*\] *host*  
 Write one of those texts to stdout, for reading it with something other
 than the editor.  
 **--language** picks which one; without it you get the note of the
@@ -787,7 +787,7 @@ back in is **otpme-tool import,** see **otpme-tool**(1).
 **remove_orphans** asks before it changes anything; the global option
 **-f** skips the question.
 
-**export \[**--password** *password*\] *host***  
+**export** \[**--password** *password*\] *host*  
 Write the whole object of the host to stdout, as JSON.
 
 Without **--password** it is written as it is, in clear. With one, a key

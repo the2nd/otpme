@@ -326,7 +326,7 @@ there shows it like any other login:
 
 The origin names the job, and the job names the rest: who asked for the
 shell, which key got in and when it was signed (**otpme-deploy show
-***uuid*).
+*uuid***).
 
 While it runs **last** says **still logged in**, because the record
 names the process of the shell and that one is still there. A session

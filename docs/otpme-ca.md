@@ -40,7 +40,7 @@ the master site, and **SITE_CA** in every site, both in the unit
 **cas**. They are made with the realm and the site, and no command adds,
 deletes, disables or renames one.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*ca*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*ca*\]  
 Without a CA: a table of them, with their unit, the fields of their
 certificate (country, state, locality, organization, ou, email),
 policies and description.
@@ -68,7 +68,7 @@ another separator.
 A column you may not see says **-**. With a CA named, this prints the
 object itself instead of a table row, one value per line.
 
-**show_oid \[**--full**\] *ca***  
+**show_oid** \[**--full**\] *ca*  
 Show the OID of the CA: **ca\|\<realm\>/\<site\>/\<name\>**. With
 **--full** the full OID, which names the unit as well:
 **ca\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
@@ -78,7 +78,7 @@ Needs the ACL **view_public:object**.
 Show the UUID of the CA.  
 Needs the ACL **view_public:object**.
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the CA names, and with a pattern only those that match it, see
 **SELECTING OBJECTS** in **otpme**(1). You get the CAs you may change;
 **-a** adds those you may only look at. **--attribute** matches the
@@ -94,7 +94,7 @@ Needs **touch**.
 The certificate of the CA, in PEM, to stdout. A certificate is public,
 so this needs no ACL.
 
-**dump_key \[**-p** *passphrase*\] *ca***  
+**dump_key** \[**-p** *passphrase*\] *ca*  
 The private key of the CA to stdout. With **-p** it is encrypted with
 that passphrase. Every call goes to the audit log.  
 Needs the ACL **view:key**, or **view_all**. A plain **view** does not
@@ -106,7 +106,7 @@ those of the CAs that issued it, up to **REALM_CA**. For a **SITE_CA**
 that is the certificate of **REALM_CA**, and that of the CA of the
 parent site where there is one; for **REALM_CA** its own.
 
-**create_client_cert \[**--csr** *csr_file*\] \[**--valid** *days*\] \[**--key-len** *bits*\] \[**--country** *cc*\] \[**--state** *state*\] \[**--locality** *locality*\] \[**--organization** *org*\] \[**--ou** *ou*\] \[**--email** *email*\] *ca* *cn* *cert_out_file* \[*key_out_file*\]**  
+**create_client_cert** \[**--csr** *csr_file*\] \[**--valid** *days*\] \[**--key-len** *bits*\] \[**--country** *cc*\] \[**--state** *state*\] \[**--locality** *locality*\] \[**--organization** *org*\] \[**--ou** *ou*\] \[**--email** *email*\] *ca* *cn* *cert_out_file* \[*key_out_file*\]  
 A client certificate signed by the CA, with the common name *cn*. It is
 for a machine outside of OTPme that sends its backups to **backupd**,
 see **BACKUP_CLIENT_CERT** in **otpme.conf**(5). The certificate goes to
@@ -176,7 +176,7 @@ A CA has these config parameters: **cert_key_len**, **cert_sign_algo**,
 **CONFIG PARAMETERS**. A parameter is looked up at the CA, then at the
 unit **cas**, then at the site.
 
-**config \[**-d**\] \[**-a**\] *ca* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *ca* *parameter* \[*value*\]  
 Set a parameter on the CA.
 
 **-d**  
@@ -203,7 +203,7 @@ site have been looked at. So this answers what applies, where
 Set the description. Without one OTPme asks and offers the current text
 for editing. Needs **edit:description**.
 
-**info \[**--language** *LANG*\] *ca* \[*info*\]**  
+**info** \[**--language** *LANG*\] *ca* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor named by the **EDITOR** environment variable. Needs
 **edit:info**.  
@@ -211,7 +211,7 @@ Without **--language** the text is the administrator's own note. Nothing
 shows the info of a CA to a user, so a text for a language stays a note
 as well.
 
-**dump_info \[**--language** *LANG*\] *ca***  
+**dump_info** \[**--language** *LANG*\] *ca*  
 Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator. Needs **view:info**.
 
@@ -285,7 +285,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *ca***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *ca*  
 List the policies attached to the CA, the disabled ones too, marked
 **(disabled)**. Use **--return-type** to select the attribute returned
 (**name**, **read_oid**, **full_oid**, **uuid**); without it the names.
@@ -328,7 +328,7 @@ Needs the ACL **view:acl**.
 
 ## Export and Cleanup
 
-**export \[**--password** *password*\] *ca***  
+**export** \[**--password** *password*\] *ca*  
 Write the whole object of the CA to stdout, as JSON: its certificate,
 its private key, its CRL and the certificates it has revoked, its ACLs,
 policies, config parameters and the rest. **otpme-tool import** reads it

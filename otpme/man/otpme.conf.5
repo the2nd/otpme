@@ -56,7 +56,7 @@ A user can set it in \fI~/.otpme/otpme.conf\fR as well.
 .B LOG_LANGUAGE
 The language of the log messages (default: \fBen\fR).
 .TP
-.B USER\fR, \fBGROUP
+\fBUSER\fR, \fBGROUP
 The system user and group that own the files of OTPme and that the daemons run as (default: \fBotpme\fR and \fBotpme\fR).
 .TP
 .B HANDLE_FILES_DIRS
@@ -113,7 +113,7 @@ How often SQLite waits for the disk: \fBOFF\fR, \fBNORMAL\fR, \fBFULL\fR or \fBE
 With \fBOFF\fR a crash of the machine can damage the index; \fBotpme\-tool index rebuild\fR builds it again.
 .SS PostgreSQL
 .TP
-.B POSTGRES_PG_CTL_BIN\fR, \fBPOSTGRES_PSQL_BIN\fR, \fBPOSTGRES_CREATEDB_BIN\fR, \fBPOSTGRES_CREATEUSER_BIN\fR, \fBPOSTGRES_PG_ISREADY_BIN
+\fBPOSTGRES_PG_CTL_BIN\fR, \fBPOSTGRES_PSQL_BIN\fR, \fBPOSTGRES_CREATEDB_BIN\fR, \fBPOSTGRES_CREATEUSER_BIN\fR, \fBPOSTGRES_PG_ISREADY_BIN
 The PostgreSQL programs (default: \fBpg_ctl\fR, \fBpsql\fR, \fBcreatedb\fR, \fBcreateuser\fR and \fBpg_isready\fR, found in \fBPATH\fR).
 On Debian \fBpg_ctl\fR is not in \fBPATH\fR: give the full path, e.g. \fI/usr/lib/postgresql/15/bin/pg_ctl\fR.
 .TP
@@ -151,7 +151,7 @@ A file \fI/etc/otpme/postgresql.conf\fR is used instead of the one OTPme writes.
 Then none of the settings above apply.
 .SS MySQL
 .TP
-.B MYSQLD_BIN\fR, \fBMYSQL_BIN\fR, \fBMYSQL_ADMIN_BIN\fR, \fBMYSQL_INSTALL_DB
+\fBMYSQLD_BIN\fR, \fBMYSQL_BIN\fR, \fBMYSQL_ADMIN_BIN\fR, \fBMYSQL_INSTALL_DB
 The MySQL programs (default: \fI/usr/sbin/mysqld\fR, then \fBmysql\fR, \fBmysqladmin\fR and \fBmysql_install_db\fR, found in \fBPATH\fR).
 .TP
 .B MYSQL_DBAPI
@@ -204,13 +204,13 @@ Whether \fBotpme\-controld\fR empties the cache when it starts (default: \fBTrue
 With \fBFalse\fR the global option \fB\-\-cache\-flush\fR does it for one start.
 .TP
 .B OBJECT_CACHES
-How many objects of a type each process keeps in its own memory, as \fItype\fR\fB:\fR\fIcount\fR pairs separated by commas, e.g. \fBuser:2048,group:512\fR.
+How many objects of a type each process keeps in its own memory, as \f(BItype\fB:\f(BIcount\fR pairs separated by commas, e.g. \fBuser:2048,group:512\fR.
 When a type is full, the quarter used longest ago goes.
 The defaults: \fBuser\fR and \fBtoken\fR 10240, \fBscript\fR 512, \fBdictionary\fR 128, every other type 1024.
 A type not named keeps its default.
 .SS Redis
 .TP
-.B REDIS_SERVER_BIN\fR, \fBREDIS_CLI_BIN
+\fBREDIS_SERVER_BIN\fR, \fBREDIS_CLI_BIN
 The Redis programs (default: \fBredis\-server\fR and \fBredis\-cli\fR, found in \fBPATH\fR).
 \fBotpme\-tool cache cli\fR opens \fBredis\-cli\fR.
 .TP
@@ -227,7 +227,7 @@ What goes when that is full: \fBlru\fR, the entries used longest ago (Redis \fBv
 .B REDIS_MAXMEMORY_SAMPLES
 With \fBlru\fR: how many entries Redis looks at to pick one (default: \fB5\fR).
 .TP
-.B REDIS_LFU_LOG_FACTOR\fR, \fBREDIS_LFU_DECAY_TIME
+\fBREDIS_LFU_LOG_FACTOR\fR, \fBREDIS_LFU_DECAY_TIME
 With \fBlfu\fR: Redis \fBlfu\-log\-factor\fR and \fBlfu\-decay\-time\fR (default: \fB10\fR and \fB1\fR).
 .TP
 .B REDIS_LOGLEVEL
@@ -270,7 +270,7 @@ Once the limit is reached memcached turns new connections away, which reaches th
 The largest entry memcached takes (default: \fB8m\fR).
 Make it larger if roles or groups with many members grow beyond it.
 .TP
-.B MEMCACHED_SOCKET\fR, \fBMEMCACHED_PIDFILE
+\fBMEMCACHED_SOCKET\fR, \fBMEMCACHED_PIDFILE
 The socket and the PID file (default: \fI/var/run/otpme/sockets/memcached.sock\fR and \fI/var/run/otpme/pidfiles/memcached.pid\fR).
 Memcached listens on no TCP or UDP port.
 .TP
@@ -298,7 +298,7 @@ Whether the node runs FreeRADIUS (default: \fBTrue\fR).
 .B FREERADIUS_BIN
 The FreeRADIUS program (default: \fI/usr/sbin/freeradius\fR).
 .TP
-.B FREERADIUS_USER\fR, \fBFREERADIUS_GROUP
+\fBFREERADIUS_USER\fR, \fBFREERADIUS_GROUP
 The user and group FreeRADIUS runs as with the module (default: \fBfreerad\fR and \fBfreerad\fR).
 .TP
 .B FREERADIUS_LOG_DIR
@@ -314,7 +314,7 @@ With \fBFalse\fR every request starts \fBotpme\-auth verify\fR, which is slower,
 Either way an answer comes from the cache only where the client has its auth cache enabled, for its \fBauth_cache_timeout\fR, see \fBTHE AUTH CACHE\fR in
 .BR otpme\-client (1).
 .TP
-.B RADIUS_START_SERVERS\fR, \fBRADIUS_MAX_SERVERS\fR, \fBRADIUS_MIN_SPARE_SERVERS\fR, \fBRADIUS_MAX_SPARE_SERVERS
+\fBRADIUS_START_SERVERS\fR, \fBRADIUS_MAX_SERVERS\fR, \fBRADIUS_MIN_SPARE_SERVERS\fR, \fBRADIUS_MAX_SPARE_SERVERS
 The thread pool of FreeRADIUS: \fBstart_servers\fR, \fBmax_servers\fR, \fBmin_spare_servers\fR and \fBmax_spare_servers\fR (default: \fB32\fR, \fB64\fR, \fB8\fR and \fB16\fR).
 .PP
 A file \fI/etc/otpme/freeradius/radiusd.conf\fR is used instead of the one OTPme writes.
@@ -329,7 +329,7 @@ An haproxy on the floating IP of the site spreads LDAP connections over the ldap
 It runs on the node that holds the floating IP, started and stopped by \fBotpme\-controld\fR along with it, so it follows the master to another node.
 When a member node comes or goes it is reloaded without dropping a connection.
 .PP
-It passes the connections on as they are, LDAPS with the site certificate, so the \fBdc=\fIclient\fR of a bind DN still picks the access group.
+It passes the connections on as they are, LDAPS with the site certificate, so the \fBdc=\f(BIclient\fR of a bind DN still picks the access group.
 ldapd sees the address of haproxy, not that of the client.
 Clients can still reach every ldapd directly on its own port, 2026.
 .PP
@@ -357,7 +357,7 @@ A node is out after 3 failed checks and back after 2 good ones.
 .B HAPROXY_CONNECT_TIMEOUT
 How long haproxy waits for a connection to an ldapd (default: \fB5s\fR).
 .TP
-.B HAPROXY_CLIENT_TIMEOUT\fR, \fBHAPROXY_SERVER_TIMEOUT
+\fBHAPROXY_CLIENT_TIMEOUT\fR, \fBHAPROXY_SERVER_TIMEOUT
 How long an idle connection to the client and to the ldapd is kept (default: \fB1h\fR and \fB1h\fR).
 Generous on purpose: dovecot keeps its LDAP connection open between logins, and cutting an idle one only makes it reconnect.
 .PP
@@ -410,7 +410,7 @@ The hash types are \fBArgon2_i\fR, \fBArgon2_id\fR, \fBArgon2_d\fR and \fBPBKDF2
 The files a host or node gets when it joins the realm, and that hostd keeps up to date.
 OTPme writes them; change the paths only to have them somewhere else.
 .TP
-.B SSL_CERT_FILE\fR, \fBSSL_KEY_FILE
+\fBSSL_CERT_FILE\fR, \fBSSL_KEY_FILE
 The certificate of this host or node, issued by the CA of its site, and its private key (default: \fI/etc/otpme/ssl/cert.pem\fR and \fI/etc/otpme/ssl/key.pem\fR).
 Daemons answer with them, and commands connect with them, also the ones a user starts: so both are owned by \fBotpme\fR and readable by the group \fBrealmusers\fR, mode 0640.
 .TP
@@ -484,20 +484,20 @@ That lets a notebook of one site log in at another.
 A node never asks.
 The global options \fB\-\-login\-use\-dns\fR and \fB\-\-login\-no\-dns\fR override it for one command.
 .PP
-\fBotpme\-tool join\fR always asks DNS, in the domain it is given, else in \fIsite\fB.\fIrealm\fR, else in the domain of the host: the SRV record for joind (unless \fB\-\-joind\-uri\fR names it), else the address of the domain itself with port 2024, and the TXT records for the realm and site it is not given.
+\fBotpme\-tool join\fR always asks DNS, in the domain it is given, else in \f(BIsite\fB.\f(BIrealm\fR, else in the domain of the host: the SRV record for joind (unless \fB\-\-joind\-uri\fR names it), else the address of the domain itself with port 2024, and the TXT records for the realm and site it is not given.
 .hy
 .ad
 .SH LOGIN
 .na
 .nh
 .TP
-.B VALID_LOGIN_USERS\fR, \fBDENY_LOGIN_USERS
+\fBVALID_LOGIN_USERS\fR, \fBDENY_LOGIN_USERS
 Which users may log in on this host, as names separated by commas (default: empty, everybody).
-An entry \fIname\fB:\fIuuid\fR also matches the user with that UUID, so a renamed user stays matched.
+An entry \f(BIname\fB:\f(BIuuid\fR also matches the user with that UUID, so a renamed user stays matched.
 A user in \fBDENY_LOGIN_USERS\fR is refused, also when \fBVALID_LOGIN_USERS\fR names them; with \fBVALID_LOGIN_USERS\fR set, everybody else is refused.
 It counts for a login through pam_otpme, and the SSH keys of a refused user are not written to their \fIauthorized_keys\fR.
 .TP
-.B ALLOW_DYNAMIC_GROUPS\fR, \fBDENY_DYNAMIC_GROUPS
+\fBALLOW_DYNAMIC_GROUPS\fR, \fBDENY_DYNAMIC_GROUPS
 Which dynamic groups a user gets at login, as names separated by commas (default: empty, all).
 A dynamic group is a group of this host that pam_otpme adds the user to: those of the host and those of the login token and its roles, see \fBadd_dynamic_group\fR in
 .BR otpme\-role (1).
@@ -516,7 +516,7 @@ A user can have private signers of their own for these three, in \fI~/.otpme/sig
 These parameters say whether those count.
 A disabled signer never counts.
 .TP
-.B FORCE_TOKEN_SIGNERS\fR, \fBFORCE_KEY_SCRIPT_SIGNERS\fR, \fBFORCE_AGENT_SCRIPT_SIGNERS
+\fBFORCE_TOKEN_SIGNERS\fR, \fBFORCE_KEY_SCRIPT_SIGNERS\fR, \fBFORCE_AGENT_SCRIPT_SIGNERS
 For token signatures, the key script and the agent script (default: \fBTrue\fR):
 .RS
 .TP
@@ -526,7 +526,7 @@ Only the signers of the host count; private signers are ignored.
 .B False
 A user who has private signers gets them instead of those of the host.
 .TP
-.I user\fR[\fB,\fIuser\fR]...
+\fIuser\fR[\fB,\f(BIuser\fR]...
 Only the signers of the host count for these users; every other user gets their private signers, where they have any.
 .RE
 .hy
@@ -540,7 +540,7 @@ An authorization script, the script of a \fBscript_otp\fR or \fBscript_static\fR
 The authorization script of a user and a push script also get the other groups of the user.
 A share script and the vote script run as the user and group below.
 .TP
-.B ROOT_SCRIPT_USER\fR, \fBROOT_SCRIPT_GROUP
+\fBROOT_SCRIPT_USER\fR, \fBROOT_SCRIPT_GROUP
 The user and group a script runs as instead of root or \fBUSER\fR/\fBGROUP\fR (default: \fBnobody\fR and \fBnogroup\fR).
 .hy
 .ad
@@ -586,7 +586,7 @@ An entry the server does not get is kept in \fIaudit_log/\fR in \fBSPOOL_DIR\fR,
 Send the audit log to \fBAUDIT_LOG_SERVER\fR (default: \fBFalse\fR).
 .TP
 .B AUDIT_LOG_SERVER
-The syslog server, as \fIhost\fB:\fIport\fR for TCP, or as \fIhost\fR for UDP on port 514 (default: none).
+The syslog server, as \f(BIhost\fB:\f(BIport\fR for TCP, or as \fIhost\fR for UDP on port 514 (default: none).
 TLS and RELP need the port.
 .TP
 .B AUDIT_LOG_PROTOCOL
@@ -624,7 +624,7 @@ The parameters work like those of \fBAUDIT LOG\fR:
 Send the log to \fBSYSLOG_SERVER\fR (default: \fBFalse\fR).
 .TP
 .B SYSLOG_SERVER
-\fIhost\fB:\fIport\fR for TCP, or \fIhost\fR for UDP on port 514 (default: none).
+\f(BIhost\fB:\f(BIport\fR for TCP, or \fIhost\fR for UDP on port 514 (default: none).
 TLS and RELP need the port.
 .TP
 .B SYSLOG_PROTOCOL

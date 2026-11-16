@@ -36,7 +36,7 @@ The groups the realm and the sites come with (\fBroot\fR, \fBrealmusers\fR and t
 .na
 .nh
 .TP
-.B add \fR[\fB\-\-attributes\fR \fIattr=value,...\fR] \fIgroup\fR
+\fBadd\fR [\fB\-\-attributes\fR \fIattr=value,...\fR] \fIgroup\fR
 Add a group.
 With a path, e.g. \fBlinux/staff\fR, it goes into that unit; else into the unit a \fBdefaultunits\fR policy names, see
 .BR otpme\-policy (1),
@@ -49,7 +49,7 @@ Without \fBgidNumber\fR the group gets the next free one, see \fBidrange\fR in
 .br
 Needs \fBadd:group\fR on the unit.
 .TP
-.B del \fR[\fB\-\-no\-trash\fR] \fIgroup\fR
+\fBdel\fR [\fB\-\-no\-trash\fR] \fIgroup\fR
 Delete the group.
 It goes to the trash, see
 .BR otpme\-trash (1);
@@ -61,7 +61,7 @@ The groups the realm and the sites come with (\fBroot\fR, \fBrealmusers\fR and t
 .br
 Needs \fBdelete:object\fR on the group or \fBdelete:group\fR on the unit.
 .TP
-.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-token\-limit\fR \fIN\fR] [\fB\-\-host\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIgroup\fR]
+\fBshow\fR [\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-token\-limit\fR \fIN\fR] [\fB\-\-host\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIgroup\fR]
 Without a group: a table of all of them, with their unit, status, roles, tokens, hosts, sync users, policies, ACL inheritance and description.
 .RS
 .TP
@@ -90,13 +90,13 @@ Which column to sort by, and the other way round.
 .IP
 A column you may not see says \fB\-\fR.
 With a group named, this prints the object itself instead of a table row, one value per line.
-\fBshow\fR \fIgroup\fB$\fR prints that one group as a table row.
+\fBshow\fR \f(BIgroup\fB$\fR prints that one group as a table row.
 A name that is no group is a pattern with \fB*\fR, not a regex, see
 .B SELECTING OBJECTS
 in
 .BR otpme (1).
 .TP
-.B show_oid \fR[\fB\-\-full\fR] \fIgroup\fR
+\fBshow_oid\fR [\fB\-\-full\fR] \fIgroup\fR
 Show the OID of the group: \fB\%group|<realm>/<name>\fR.
 With \fB\-\-full\fR the full OID, which names the site and unit as well: \fB\%group|<realm>/<site>/<unit_path>/<name>\fR.
 .br
@@ -107,7 +107,7 @@ Show the UUID of the group.
 .br
 Needs the ACL \fBview_public:object\fR.
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+\fBlist\fR [\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
 List the group names, and with a pattern only those that match it, see
 .B SELECTING OBJECTS
 in
@@ -115,9 +115,9 @@ in
 You get the groups you may change; \fB\-a\fR adds those you may only look at.
 \fB\-\-attribute\fR matches the pattern against that attribute instead of the name.
 .TP
-.B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIgroup\fR
+\fBenable\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIgroup\fR
 .TQ
-.B disable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIgroup\fR
+\fBdisable\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIgroup\fR
 Only an enabled group counts for the shares it is on: its hosts are hosts of a share that is limited to hosts.
 Disabling it takes them away from there.
 Logins and the group on the hosts stay as they are.
@@ -141,7 +141,7 @@ The groups the realm and the sites come with cannot be renamed.
 .br
 Needs \fBrename:object\fR.
 .TP
-.B move \fR[\fB\-\-keep\-acls\fR] \fIgroup\fR \fIunit\fR
+\fBmove\fR [\fB\-\-keep\-acls\fR] \fIgroup\fR \fIunit\fR
 Move the group into another unit.
 The group keeps its ACLs; where ACL inheritance is on for it (off for groups by default, see \fBenable_acl_inheritance\fR), the default ACLs of the old unit are taken away and those of the new one given.
 \fB\-\-keep\-acls\fR keeps all ACLs as they are.
@@ -176,7 +176,7 @@ A role in the group counts with its tokens, and with those of the roles it holds
 The users whose default group it is are members as well.
 A disabled token or role counts for nothing.
 .TP
-.B add_token \fR[\fB\-\-sign\fR] [\fB\-\-tags\fR \fItag1,tag2\fR] [\fB\-\-no\-auto\-sign\fR] \fIgroup\fR \fItoken\fR
+\fBadd_token\fR [\fB\-\-sign\fR] [\fB\-\-tags\fR \fItag1,tag2\fR] [\fB\-\-no\-auto\-sign\fR] \fIgroup\fR \fItoken\fR
 Put a token (\fI<user>/<token>\fR) into the group.
 .br
 It is signed when you ask for it, or when auto_sign is on: for you, or as config parameter of the group.
@@ -198,14 +198,14 @@ Put more tags into the signature.
 Do not sign this time.
 .RE
 .TP
-.B remove_token \fR[\fB\-\-keep\-sign\fR] \fIgroup\fR \fItoken\fR
+\fBremove_token\fR [\fB\-\-keep\-sign\fR] \fIgroup\fR \fItoken\fR
 Take the token out of the group.
 The signatures made for this group go with it, each after a question; \fB\-\-keep\-sign\fR leaves them.
 A token that is gone is taken out by its UUID.
 .br
 Needs \fBremove:token\fR.
 .TP
-.B list_tokens \fR[\fB\-\-return\-type\fR \fItype\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIgroup\fR
+\fBlist_tokens\fR [\fB\-\-return\-type\fR \fItype\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIgroup\fR
 The tokens put into the group, disabled ones too; not those of its roles.
 \fB\-\-return\-type\fR picks what is printed: \fBrel_path\fR (default, \fI<user>/<token>\fR), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
 \fB\-\-token\-types\fR narrows it to those types, e.g. \fBhotp,totp\fR.
@@ -224,7 +224,7 @@ A role that is gone is taken out by its UUID.
 .br
 Needs \fBremove:role\fR.
 .TP
-.B list_roles \fR[\fB\-\-return\-type\fR \fItype\fR] \fIgroup\fR
+\fBlist_roles\fR [\fB\-\-return\-type\fR \fItype\fR] \fIgroup\fR
 The roles in the group, disabled ones too; one of another site as \fI<site>/<role>\fR.
 \fB\-\-return\-type\fR picks what is printed: \fBname\fR (default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
 .br
@@ -237,14 +237,14 @@ Needs \fBview:roles\fR.
 Who is a member of the group on the hosts is in its attribute \fBmemberUid\fR: \fBshow_ldif\fR \fIgroup\fR \fB\-a memberUid\fR, see \fBToken and Role Assignment\fR.
 The two lists here are parts of it, and they list disabled ones too.
 .TP
-.B list_users \fR[\fB\-\-return\-type\fR \fItype\fR] \fIgroup\fR
+\fBlist_users\fR [\fB\-\-return\-type\fR \fItype\fR] \fIgroup\fR
 The users the tokens put into the group belong to; one user with three tokens is named once.
 Not those that come through a role.
 \fB\-\-return\-type\fR picks what is printed: \fBname\fR (default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
 .br
 Needs \fBview:tokens\fR.
 .TP
-.B list_default_group_users \fR[\fB\-\-return\-type\fR \fItype\fR] \fIgroup\fR
+\fBlist_default_group_users\fR [\fB\-\-return\-type\fR \fItype\fR] \fIgroup\fR
 The users whose default group this is.
 \fB\-\-return\-type\fR as above.
 .br
@@ -257,7 +257,7 @@ Needs \fBview:default_group_users\fR.
 The hosts of a group count for one thing: on a share that is limited to hosts and has the group (\fBotpme\-share add_group\fR), they are hosts of the share, as long as the group is enabled.
 Logins and the group on the hosts do not depend on them.
 .TP
-.B add_host \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIgroup\fR \fIhost\fR
+\fBadd_host\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIgroup\fR \fIhost\fR
 Put a host into the group.
 Host names are unique in the realm, so the host is given by its name alone, whatever site it is in.
 A node cannot be put in.
@@ -273,7 +273,7 @@ Without either the share decides (\fBshare_notifications\fR).
 Mount now, but an offline login does not mount the share.
 .RE
 .TP
-.B remove_host \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIgroup\fR \fIhost\fR
+\fBremove_host\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIgroup\fR \fIhost\fR
 Take the host out again.
 On the shares it loses, it is told to unmount, unless it is still on the share some other way.
 A host that is gone is taken out by its UUID.
@@ -288,7 +288,7 @@ As above, for the unmount.
 Unmount now, but an offline login still mounts the share.
 .RE
 .TP
-.B list_hosts \fR[\fB\-\-return\-type\fR \fItype\fR] \fIgroup\fR
+\fBlist_hosts\fR [\fB\-\-return\-type\fR \fItype\fR] \fIgroup\fR
 The hosts in the group, disabled ones too.
 \fB\-\-return\-type\fR picks what is printed: \fBname\fR (default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
 .br
@@ -314,7 +314,7 @@ A user who is gone is taken out by the UUID.
 .br
 Needs \fBremove:sync_user\fR.
 .TP
-.B list_sync_users \fR[\fB\-\-return\-type\fR \fItype\fR] \fIgroup\fR
+\fBlist_sync_users\fR [\fB\-\-return\-type\fR \fItype\fR] \fIgroup\fR
 The sync users of the group, disabled ones too; not those of its roles.
 \fB\-\-return\-type\fR picks what is printed: \fBname\fR (default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
 .br
@@ -387,7 +387,7 @@ Remove a policy from the group.
 Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
-.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIgroup\fR
+\fBlist_policies\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIgroup\fR
 List the policies attached to the group, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR); without it the names.
 Only the names are marked.
@@ -455,7 +455,7 @@ Needs the ACL \fBdisable:acl_inheritance\fR.
 A group has three config parameters: \fBchangelog\fR, \fBallow_changelog_clearing\fR and \fBauto_sign\fR, see \fBCONFIG PARAMETERS\fR.
 A parameter is looked up at the group, then at each unit above it, then at the site.
 .TP
-.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIgroup\fR \fIparameter\fR \fR[\fIvalue\fR]
+\fBconfig\fR [\fB\-d\fR] [\fB\-a\fR] \fIgroup\fR \fIparameter\fR \fR[\fIvalue\fR]
 Set a parameter on the group.
 .RS
 .TP
@@ -482,7 +482,7 @@ Set the description.
 Without one OTPme asks and offers the current text for editing.
 Needs \fBedit:description\fR.
 .TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIgroup\fR \fR[\fIinfo\fR]
+\fBinfo\fR [\fB\-\-language\fR \fILANG\fR] \fIgroup\fR \fR[\fIinfo\fR]
 Set free-form info text.
 If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
 Needs \fBedit:info\fR.
@@ -490,14 +490,14 @@ Needs \fBedit:info\fR.
 Without \fB\-\-language\fR the text is the administrator's own note.
 Nothing shows the info of a group to a user, so a text for a language stays a note as well.
 .TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIgroup\fR
+\fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fIgroup\fR
 Write one of those texts to stdout.
 \fB\-\-language\fR picks which one; without it you get the note of the administrator.
 Needs \fBview:info\fR.
 .hy
 .ad
 .SS Extensions and LDAP Attributes
-A group is also an LDAP entry, \fBcn=\fIgroup\fR under its unit, for example \fBcn=developers,ou=groups,ou=berlin,dc=example,dc=org\fR.
+A group is also an LDAP entry, \fBcn=\f(BIgroup\fR under its unit, for example \fBcn=developers,ou=groups,ou=berlin,dc=example,dc=org\fR.
 An extension is what gives it one: the object classes it is of, and the attributes those classes allow.
 What \fBldapd\fR serves and what \fBshow_ldif\fR prints comes from them.
 On a host, the members of a group are in the NSS files as well.
@@ -549,7 +549,7 @@ An attribute can hold more than one value, so this adds one and leaves the other
 Everything after the first \fB=\fR is the value.
 Without a value OTPme fills in its own where it has one: for \fBdescription\fR, the description of the group.
 .PP
-The ACL is per attribute, \fBadd:attribute:\fIattribute\fR, and a plain \fBadd:attribute\fR covers all of them.
+The ACL is per attribute, \fBadd:attribute:\f(BIattribute\fR, and a plain \fBadd:attribute\fR covers all of them.
 .RE
 .TP
 .B modify_attribute \fIgroup\fR \fIattribute\fR \fIold_value\fR \fInew_value\fR
@@ -557,13 +557,13 @@ Put \fInew_value\fR in the place of \fIold_value\fR, and leave the other values 
 An \fIold_value\fR the group does not have is an error.
 This is the way to give a group another \fBgidNumber\fR.
 .br
-The ACL is \fBedit:attribute:\fIattribute\fR.
+The ACL is \fBedit:attribute:\f(BIattribute\fR.
 .TP
 .B del_attribute \fIgroup\fR \fIattribute\fR\fB=\fR[\fIvalue\fR]
 Remove that value, or the whole attribute where no value is given.
 \fBcn\fR and \fBmemberUid\fR cannot be removed.
 .br
-The ACL is \fBdelete:attribute:\fIattribute\fR.
+The ACL is \fBdelete:attribute:\f(BIattribute\fR.
 .TP
 .B add_object_class \fIgroup\fR \fIclass\fR
 Add an LDAP object class.
@@ -577,13 +577,13 @@ The class that allows the attribute naming the entry stays, and for a group that
 .br
 Needs the ACL \fBdelete:object_class\fR.
 .TP
-.B show_ldif \fIgroup\fR \fR[\fB\-a\fR \fIattribute1,attribute2\fR]
+\fBshow_ldif \f(BIgroup\fR [\fB\-a\fR \fIattribute1,attribute2\fR]
 The group as LDAP sees it.
 .B \-a
 prints only those attributes.
 .SS Export and Cleanup
 .TP
-.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIgroup\fR
+\fBexport\fR [\fB\-\-password\fR \fIpassword\fR] \fIgroup\fR
 Write the whole object of the group to stdout, as JSON: its tokens, roles, ACLs, policies, config parameters, LDAP attributes and the rest.
 \fBotpme\-tool import\fR reads it back.
 .br

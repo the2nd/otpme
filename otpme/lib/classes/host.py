@@ -1241,6 +1241,9 @@ class Host(OTPmeHost, OTPmeDevice):
                             "CONFIG_PARAMS:backupd_max_conn",
                             "CONFIG_PARAMS:socket_backlog",
                             "CONFIG_PARAMS:max_decompressed_size",
+                            # Read by confd on the host, see
+                            # get_inventory_site().
+                            "CONFIG_PARAMS:inventory_site",
                             ],
                         'sso_host'  : [
                                 "CONFIG_PARAMS:httpd_workers",
@@ -1264,6 +1267,8 @@ class Host(OTPmeHost, OTPmeDevice):
                             "DYNAMIC_GROUPS",
                             "MAC_ADDRESS",
                             "CONFIG_PARAMS:vlans",
+                            # See inventory_read_allowed().
+                            "CONFIG_PARAMS:allow_inventory",
                             ]
                         },
                     }

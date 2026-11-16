@@ -29,7 +29,7 @@ The mount script is set, but off;
 switches it on.
 .PP
 scriptd runs both scripts as \fBROOT_SCRIPT_USER\fR and \fBROOT_SCRIPT_GROUP\fR (\fBnobody\fR and \fBnogroup\fR by default, see \fBotpme.conf\fR(5)), never as root and never as the OTPme user.
-They get \fB$share_name\fR and \fB$share_root\fR, the directory of the share (\fIshare_root\fB/\fIshare\fR), and \fB$force_group\fR, \fB$force_create_mode\fR and \fB$force_directory_mode\fR where the share has them.
+They get \fB$share_name\fR and \fB$share_root\fR, the directory of the share (\f(BIshare_root\fB/\f(BIshare\fR), and \fB$force_group\fR, \fB$force_create_mode\fR and \fB$force_directory_mode\fR where the share has them.
 .PP
 The add script has to create \fB$share_root\fR.
 .B add
@@ -107,7 +107,7 @@ Only the hosts are told on which a user is logged in with a token the change is 
 The user \fBroot\fR is never told.
 .SS Share Management
 .TP
-.B add \fR[\fB\-\-home\-share\fR] [\fB\-\-home\-share\-uid\fR] [\fB\-\-force\-group\fR \fIgroup\fR] [\fB\-\-force\-directory\-mode\fR \fImode\fR] [\fB\-\-force\-create\-mode\fR \fImode\fR] [\fB\-\-crypt\fR] [\fB\-\-no\-key\-gen\fR] [\fB\-\-block\-size\fR \fIsize\fR] [\fB\-\-restore\fR \fIrestore_share\fR] [\fB\-\-restore\-token\fR \fItoken\fR] [\fB\-\-no\-mount\-token\fR] \fIshare\fR
+\fBadd\fR [\fB\-\-home\-share\fR] [\fB\-\-home\-share\-uid\fR] [\fB\-\-force\-group\fR \fIgroup\fR] [\fB\-\-force\-directory\-mode\fR \fImode\fR] [\fB\-\-force\-create\-mode\fR \fImode\fR] [\fB\-\-crypt\fR] [\fB\-\-no\-key\-gen\fR] [\fB\-\-block\-size\fR \fIsize\fR] [\fB\-\-restore\fR \fIrestore_share\fR] [\fB\-\-restore\-token\fR \fItoken\fR] [\fB\-\-no\-mount\-token\fR] \fIshare\fR
 Create a share.
 .br
 It is created in the \fBshares\fR unit of your site; a path puts it into another unit, and
@@ -137,7 +137,7 @@ Create a home share (see \fBHOME SHARES\fR above). Each user gets their own subd
 Create a home share whose subdirectories are named after the user name (uid) instead of the user UUID. Implies \fB\-\-home\-share\fR.
 .RE
 .TP
-.B del \fR[\fB\-\-no\-trash\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
+\fBdel\fR [\fB\-\-no\-trash\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
 Delete a share.
 It goes to the trash, from where
 .BR otpme\-trash (1)
@@ -152,7 +152,7 @@ The hosts are told to unmount the share, see \fBTelling the hosts\fR above, for 
 .br
 Needs the ACL \fBdelete:object\fR on the share, or \fBdelete:share\fR on the unit it sits in.
 .TP
-.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-token\-limit\fR \fIN\fR] [\fB\-\-host\-limit\fR \fIN\fR] [\fB\-\-group\-limit\fR \fIN\fR] [\fB\-\-node\-limit\fR \fIN\fR] [\fB\-\-pool\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIshare\fR]
+\fBshow\fR [\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-token\-limit\fR \fIN\fR] [\fB\-\-host\-limit\fR \fIN\fR] [\fB\-\-group\-limit\fR \fIN\fR] [\fB\-\-node\-limit\fR \fIN\fR] [\fB\-\-pool\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIshare\fR]
 Without a share: a table of all of them, with their unit, whether they are enabled, their root directory, whether they are encrypted, read\-only and ask for a signed SOTP, the mount timeout, the block size, the forced group and modes, their roles and tokens, whether they are limited to hosts, their hosts, host groups, nodes and pools, and their policies.
 .RS
 .TP
@@ -187,7 +187,7 @@ That is where the home share settings, the scripts, and the master password, roo
 .na
 .nh
 .TP
-.B show_oid \fR[\fB\-\-full\fR] \fIshare\fR
+\fBshow_oid\fR [\fB\-\-full\fR] \fIshare\fR
 Show the OID of the share: \fB\%share|<realm>/<site>/<name>\fR.
 With \fB\-\-full\fR the full OID, which names the unit as well: \fB\%share|<realm>/<site>/<unit_path>/<name>\fR.
 .br
@@ -200,7 +200,7 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+\fBlist\fR [\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
 List the share names, and with a pattern only those that match it, see
 .B SELECTING OBJECTS
 in
@@ -210,7 +210,7 @@ You get the shares you may change; \fB\-a\fR adds those you may only look at.
 \fB\-\-attribute\fR matches the pattern against that attribute instead of the name: \fBlist \-\-attribute encrypted True\fR lists the encrypted shares.
 A value that is not text has to be spelled out \(em \fB*\fR matches none of it.
 .TP
-.B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
+\fBenable\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
 Enable a disabled share.
 .br
 The hosts are told to mount it, see \fBTelling the hosts\fR above.
@@ -218,7 +218,7 @@ A no mount token is left out, a root mount token is told as well.
 .br
 Needs the ACL \fBenable:object\fR.
 .TP
-.B disable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
+\fBdisable\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
 Switch a share off without deleting it.
 A disabled share cannot be mounted.
 .br
@@ -242,7 +242,7 @@ With \fB\-\-share\-notify\fR, or with \fBsend_share_notifications\fR set, that t
 .br
 Needs the ACL \fBrename:object\fR.
 .TP
-.B move \fR[\fB\-\-keep\-acls\fR] \fIshare\fR \fIunit\fR
+\fBmove\fR [\fB\-\-keep\-acls\fR] \fIshare\fR \fIunit\fR
 Move the share into another unit of the same site.
 \fB\-\-keep\-acls\fR leaves the ACLs of the share as they are.
 .br
@@ -257,7 +257,7 @@ Re-index the object to fix potential index problems.
 .br
 Needs the ACL \fBtouch\fR.
 .TP
-.B auto_disable \fR[\fB\-u\fR] \fIshare\fR \fItime\fR
+\fBauto_disable\fR [\fB\-u\fR] \fIshare\fR \fItime\fR
 Set auto\-disable time.
 It is either a relative time with a leading \fB+\fR, e.g. \fB+30D\fR, or an absolute one, e.g. \fB"09:53 13.06.2023"\fR.
 The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
@@ -351,7 +351,7 @@ Without one OTPme asks and offers the current text for editing.
 .br
 Needs the ACL \fBedit:description\fR.
 .TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIshare\fR \fR[\fIinfo\fR]
+\fBinfo\fR [\fB\-\-language\fR \fILANG\fR] \fIshare\fR \fR[\fIinfo\fR]
 Set free-form info text.
 If \fIinfo\fR is omitted, the current text is opened in the editor named by the \fBEDITOR\fR environment variable.
 .br
@@ -362,7 +362,7 @@ A text can be written for a language as well, for the places that show such a te
 .br
 Needs the ACL \fBedit:info\fR.
 .TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIshare\fR
+\fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fIshare\fR
 Print the info text, of that language or the administrator's own.
 .br
 Needs the ACL \fBview:info\fR.
@@ -373,7 +373,7 @@ If it fails, the mount fails with it, and the host tries the next node of the sh
 .PP
 What the script gets, as whom it runs and which script a new share gets is said in \fBDESCRIPTION\fR.
 .TP
-.B mount_script \fIshare\fR \fImount_script\fR \fR[\fB\-\-\fR \fIscript_options\fR]
+\fBmount_script \f(BIshare\fR \fImount_script\fR [\fB\-\-\fR \fIscript_options\fR]
 Set the mount script of the share.
 .br
 The script is written as its path inside the site, e.g. \fBscripts/mount_share.sh\fR, and it has to be a script of the site of the share.
@@ -466,12 +466,12 @@ Needs the ACL \fBedit:sign_public_keys\fR.
 Who may mount a share is said with tokens, not with users: a user mounts the share when they are logged in with a token that is on it, or that is in a role that is on it.
 The share is then mounted for them at login.
 .PP
-A \fItoken_path\fR is written as \fIuser\fB/\fItoken\fR.
+A \fItoken_path\fR is written as \f(BIuser\fB/\f(BItoken\fR.
 The token can be one of any site of the realm.
 .PP
 The four options that tell the hosts are described under \fBTelling the hosts\fR above.
 .TP
-.B add_token \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
+\fBadd_token\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
 Let this token mount the share.
 The hosts are told to mount it, unless the share is disabled.
 .br
@@ -487,7 +487,7 @@ With SOTP signing the sign public key of the user is copied into the share, and 
 Needs the ACL \fBadd:token\fR.
 On an encrypted share that is no home share it needs \fBview:share_key\fR as well when a key has to be copied, on the share the key is read from.
 .TP
-.B remove_token \fR[\fB\-\-keep\-share\-key\fR|\fB\-\-remove\-share\-key\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
+\fBremove_token\fR [\fB\-\-keep\-share\-key\fR|\fB\-\-remove\-share\-key\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
 Take the token off the share.
 The hosts are told to unmount it, unless the token still reaches the share through a role.
 .br
@@ -499,7 +499,7 @@ With SOTP signing the sign public key of the user goes with their last token as 
 .br
 Needs the ACL \fBremove:token\fR.
 .TP
-.B list_tokens \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIshare\fR
+\fBlist_tokens\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIshare\fR
 List the tokens assigned to the share, by their path.
 Disabled tokens are listed too.
 .br
@@ -511,18 +511,18 @@ The tokens of the roles are not in this list, and neither are the master passwor
 .br
 Needs the ACL \fBview:tokens\fR.
 .TP
-.B add_role \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIrole\fR
+\fBadd_role\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIrole\fR
 Add a role to the share.
 Every token of the role, and of the roles inside it, may then mount it, and the hosts are told so.
 .br
-The role is looked for in the site of the share, or written as \fIsite\fB/\fIrole\fR to take one from another site of the realm.
+The role is looked for in the site of the share, or written as \f(BIsite\fB/\f(BIrole\fR to take one from another site of the realm.
 .br
 An encrypted share takes no role, because a role would bring in users who have no share key.
 A share with SOTP signing takes none either, see \fBSOTP Signing\fR above.
 .br
 Needs the ACL \fBadd:role\fR.
 .TP
-.B remove_role \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIrole\fR
+\fBremove_role\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIrole\fR
 Remove a role from the share.
 The hosts are told to unmount it for the tokens of the role that do not reach the share another way.
 .br
@@ -533,11 +533,11 @@ Needs the ACL \fBremove:role\fR.
 .B list_roles \fIshare\fR
 List the names of the roles assigned to the share.
 Disabled roles are listed too.
-A role of another site is written as \fIsite\fB/\fIrole\fR.
+A role of another site is written as \f(BIsite\fB/\f(BIrole\fR.
 .br
 Needs the ACL \fBview:roles\fR.
 .TP
-.B list_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIshare\fR
+\fBlist_users\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fIshare\fR
 The users the tokens of the share belong to.
 One user with three tokens on the share is named once.
 .br
@@ -567,7 +567,7 @@ As long as the share is not limited these commands tell no host: nothing changes
 A host of another site is told as well, but only while it has a share of this site mounted, because only then it listens to this site.
 Otherwise the change reaches it with the next login.
 .TP
-.B limit_hosts \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
+\fBlimit_hosts\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
 Limit the share to its hosts.
 The hosts that are not on the list are told to unmount it.
 .br
@@ -576,33 +576,33 @@ A limited share with no host, no host group and no role with hosts can be mounte
 .br
 Needs the ACL \fBlimit_hosts\fR.
 .TP
-.B unlimit_hosts \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
+\fBunlimit_hosts\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
 Take the limit away again.
 The lists stay as they are.
 The hosts are told to mount the share, unless it is disabled.
 .br
 Needs the ACL \fBunlimit_hosts\fR.
 .TP
-.B add_host \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIhost\fR
+\fBadd_host\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIhost\fR
 Put a host on the share.
 On a limited share the host is told to mount it, unless the share is disabled.
 .br
 Needs the ACL \fBadd:host\fR.
 .TP
-.B remove_host \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIhost\fR
+\fBremove_host\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIhost\fR
 Take a host off the share.
 On a limited share the host is told to unmount it, unless it still is on the list through a host group or a role.
 .br
 Needs the ACL \fBremove:host\fR.
 .TP
-.B list_hosts \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIshare\fR
+\fBlist_hosts\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fIshare\fR
 List the hosts that are on the share itself, by name.
 The hosts of its host groups and roles are not in this list.
 \fB\-\-return\-type\fR selects what to print instead (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .br
 Needs the ACL \fBview:hosts\fR.
 .TP
-.B add_group \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIgroup\fR
+\fBadd_group\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIgroup\fR
 Put a host group on the share.
 A group is a host group by the hosts it holds, see
 .BR otpme\-group (1);
@@ -611,13 +611,13 @@ On a limited share the hosts of the group are told to mount it, unless the share
 .br
 Needs the ACL \fBadd:group\fR.
 .TP
-.B remove_group \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIgroup\fR
+\fBremove_group\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIgroup\fR
 Take a host group off the share.
 On a limited share the hosts that are on the list no more are told to unmount it.
 .br
 Needs the ACL \fBremove:group\fR.
 .TP
-.B list_groups \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIshare\fR
+\fBlist_groups\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fIshare\fR
 List the names of the host groups that are on the share.
 \fB\-\-return\-type\fR selects what to print instead (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 Disabled groups are listed too, though their hosts do not count.
@@ -654,7 +654,7 @@ It is made for places like a university: the students each see only their own ho
 Only a home share that is not encrypted takes one: on an encrypted home share every home dir has a key of its own, so a mount of the root could read none of them.
 The token needs no other assignment to the share.
 .TP
-.B add_root_mount_token \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
+\fBadd_root_mount_token\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
 Let the token mount the root directory of the home share.
 What the token gets from the share changes, so the hosts are told to unmount it for the token and to mount it again, see \fBTelling the hosts\fR above.
 A mount the token has already then shows the root directory instead of the home dir; without being told, it would keep the home dir until it connects to a node again, and then switch under the same paths.
@@ -663,7 +663,7 @@ With SOTP signing the sign public key of the user is copied into the share, and 
 .br
 Needs the ACL \fBadd:root_mount_token\fR.
 .TP
-.B remove_root_mount_token \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
+\fBremove_root_mount_token\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
 Take that away again.
 The hosts are told to unmount the share for the token, like with \fBremove_token\fR.
 A token that is on the share as well, itself or through a role, is told to mount it again then, and gets its home dir; a no mount token is not.
@@ -672,7 +672,7 @@ Needs the ACL \fBremove:root_mount_token\fR.
 .SS No Mount Token
 A no mount token is on the share like a normal token \(em its user gets a share key, and it may mount the share \(em but the share is not mounted for it by itself.
 It is left out when the shares are mounted at login, and the hosts are not told to mount for it.
-Mounting by hand with \fBotpme\-mount\fR \fIshare_site\fB/\fIshare_name\fR works.
+Mounting by hand with \fBotpme\-mount\fR \f(BIshare_site\fB/\f(BIshare_name\fR works.
 .PP
 When a share is disabled or deleted the hosts are told to unmount for these tokens too: they may have mounted it by hand.
 .TP
@@ -684,7 +684,7 @@ No host is told, there is nothing to mount.
 .br
 Needs the ACL \fBadd:no_mount_token\fR, and \fBview:share_key\fR where \fBadd_token\fR needs it.
 .TP
-.B remove_no_mount_token \fR[\fB\-\-keep\-share\-key\fR|\fB\-\-remove\-share\-key\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
+\fBremove_no_mount_token\fR [\fB\-\-keep\-share\-key\fR|\fB\-\-remove\-share\-key\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
 Take the token off the share.
 The share key and the sign public key of the user go with their last token, as with \fBremove_token\fR, and the two key options do the same.
 .br
@@ -729,7 +729,7 @@ Take a node off the share.
 .br
 Needs the ACL \fBremove:node\fR.
 .TP
-.B list_nodes \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIshare\fR
+\fBlist_nodes\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fIshare\fR
 List the nodes that are on the share itself, by name.
 The nodes of its pools are not in this list.
 On a share with no node and no pool it lists all nodes of the site, which is what serves it.
@@ -750,7 +750,7 @@ Take a pool off the share.
 .br
 Needs the ACL \fBremove:pool\fR.
 .TP
-.B list_pools \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIshare\fR
+\fBlist_pools\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fIshare\fR
 List the names of the pools that are on the share.
 Disabled pools are listed too.
 .br
@@ -779,7 +779,7 @@ Remove a policy from the share.
 Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
-.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIshare\fR
+\fBlist_policies\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIshare\fR
 List the policies attached to the share, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
@@ -880,7 +880,7 @@ see
 .B remove_orphans
 asks before it changes anything; the global option \fB\-f\fR skips the question.
 .TP
-.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIshare\fR
+\fBexport\fR [\fB\-\-password\fR \fIpassword\fR] \fIshare\fR
 Write the whole object of the share to stdout, as JSON.
 .br
 Without \fB\-\-password\fR it is written as it is, in clear.

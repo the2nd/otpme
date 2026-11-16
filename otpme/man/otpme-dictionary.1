@@ -49,7 +49,7 @@ With a path, e.g. \fBwordlists/german\fR, it goes into that unit; else into the 
 .br
 Needs \fBadd:dictionary\fR on the unit.
 .TP
-.B del \fR[\fB\-\-no\-trash\fR] \fIdictionary\fR
+\fBdel\fR [\fB\-\-no\-trash\fR] \fIdictionary\fR
 Delete the dictionary.
 It goes to the trash, see
 .BR otpme\-trash (1);
@@ -59,7 +59,7 @@ A password policy that names it skips it from then on, and \fBremove_orphans\fR 
 .br
 Needs \fBdelete:object\fR on the dictionary or \fBdelete:dictionary\fR on the unit.
 .TP
-.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIdictionary\fR]
+\fBshow\fR [\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIdictionary\fR]
 Without a dictionary: a table of them, with their unit, type, status, size, policies, ACL inheritance and description.
 The size is the memory its words take.
 .RS
@@ -86,7 +86,7 @@ Which column to sort by, and the other way round.
 A column you may not see says \fB\-\fR.
 With a dictionary named, this prints the object itself instead of a table row, one value per line, its type and size among them.
 .TP
-.B show_oid \fR[\fB\-\-full\fR] \fIdictionary\fR
+\fBshow_oid\fR [\fB\-\-full\fR] \fIdictionary\fR
 Show the OID of the dictionary: \fB\%dictionary|<realm>/<site>/<name>\fR.
 With \fB\-\-full\fR the full OID, which names the unit as well: \fB\%dictionary|<realm>/<site>/<unit_path>/<name>\fR.
 .br
@@ -97,7 +97,7 @@ Show the UUID of the dictionary.
 .br
 Needs the ACL \fBview_public:object\fR.
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+\fBlist\fR [\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
 List the dictionary names, and with a pattern only those that match it, see
 .B SELECTING OBJECTS
 in
@@ -118,7 +118,7 @@ A password policy knows it by its UUID, so it keeps it.
 .br
 Needs \fBrename\fR.
 .TP
-.B move \fR[\fB\-\-keep\-acls\fR] \fIdictionary\fR \fIunit\fR
+\fBmove\fR [\fB\-\-keep\-acls\fR] \fIdictionary\fR \fIunit\fR
 Move the dictionary into another unit of the same site.
 It keeps its ACLs; where ACL inheritance is on for it, the default ACLs of the old unit are taken away and those of the new one given.
 \fB\-\-keep\-acls\fR keeps all ACLs as they are.
@@ -252,7 +252,7 @@ Remove a policy from the dictionary.
 Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
-.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIdictionary\fR
+\fBlist_policies\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIdictionary\fR
 List the policies attached to the dictionary, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR); without it the names.
 Only the names are marked.
@@ -318,7 +318,7 @@ A dictionary has two config parameters: \fBchangelog\fR and \fBallow_changelog_c
 .BR otpme (7).
 A parameter is looked up at the dictionary, then at its unit and the units above it, then at the site.
 .TP
-.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIdictionary\fR \fIparameter\fR \fR[\fIvalue\fR]
+\fBconfig\fR [\fB\-d\fR] [\fB\-a\fR] \fIdictionary\fR \fIparameter\fR \fR[\fIvalue\fR]
 Set a parameter on the dictionary.
 .RS
 .TP
@@ -345,7 +345,7 @@ Set the description.
 Without one OTPme asks and offers the current text for editing.
 Needs \fBedit:description\fR.
 .TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIdictionary\fR \fR[\fIinfo\fR]
+\fBinfo\fR [\fB\-\-language\fR \fILANG\fR] \fIdictionary\fR \fR[\fIinfo\fR]
 Set free-form info text.
 If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
 Needs \fBedit:info\fR.
@@ -353,7 +353,7 @@ Needs \fBedit:info\fR.
 Without \fB\-\-language\fR the text is the administrator's own note.
 Nothing shows the info of a dictionary to a user, so a text for a language stays a note as well.
 .TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIdictionary\fR
+\fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fIdictionary\fR
 Write one of those texts to stdout.
 \fB\-\-language\fR picks which one; without it you get the note of the administrator.
 Needs \fBview:info\fR.
@@ -361,7 +361,7 @@ Needs \fBview:info\fR.
 .ad
 .SS Export and Cleanup
 .TP
-.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIdictionary\fR
+\fBexport\fR [\fB\-\-password\fR \fIpassword\fR] \fIdictionary\fR
 Write the whole object of the dictionary to stdout, as JSON: its type, its entries (compressed), ACLs, policies, config parameters and the rest.
 \fBotpme\-tool import\fR reads it back.
 .br

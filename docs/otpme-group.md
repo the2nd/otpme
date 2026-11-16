@@ -38,7 +38,7 @@ deleted, moved or renamed.
 
 ## Group Management
 
-**add \[**--attributes** *attr=value,...*\] *group***  
+**add** \[**--attributes** *attr=value,...*\] *group*  
 Add a group. With a path, e.g. **linux/staff**, it goes into that unit;
 else into the unit a **defaultunits** policy names, see
 **otpme-policy**(1), or into **groups**. The name is unique in the
@@ -49,7 +49,7 @@ realm, over all sites.
 **otpme-policy**(1).  
 Needs **add:group** on the unit.
 
-**del \[**--no-trash**\] *group***  
+**del** \[**--no-trash**\] *group*  
 Delete the group. It goes to the trash, see **otpme-trash**(1);
 **--no-trash** deletes it right away.  
 A group that still has tokens or roles, or is the default group of a
@@ -60,7 +60,7 @@ with (**root**, **realmusers** and the group named like each site)
 cannot be deleted.  
 Needs **delete:object** on the group or **delete:group** on the unit.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--role-limit** *N*\] \[**--token-limit** *N*\] \[**--host-limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*group*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--role-limit** *N*\] \[**--token-limit** *N*\] \[**--host-limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*group*\]  
 Without a group: a table of all of them, with their unit, status, roles,
 tokens, hosts, sync users, policies, ACL inheritance and description.
 
@@ -92,11 +92,11 @@ another separator.
 
 A column you may not see says **-**. With a group named, this prints the
 object itself instead of a table row, one value per line. **show**
-*group***$** prints that one group as a table row. A name that is no
+***group*$** prints that one group as a table row. A name that is no
 group is a pattern with **\***, not a regex, see **SELECTING OBJECTS**
 in **otpme**(1).
 
-**show_oid \[**--full**\] *group***  
+**show_oid** \[**--full**\] *group*  
 Show the OID of the group: **group\|\<realm\>/\<name\>**. With
 **--full** the full OID, which names the site and unit as well:
 **group\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
@@ -106,14 +106,14 @@ Needs the ACL **view_public:object**.
 Show the UUID of the group.  
 Needs the ACL **view_public:object**.
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the group names, and with a pattern only those that match it, see
 **SELECTING OBJECTS** in **otpme**(1). You get the groups you may
 change; **-a** adds those you may only look at. **--attribute** matches
 the pattern against that attribute instead of the name.
 
-**enable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *group***  
-**disable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *group***  
+**enable** \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *group*  
+**disable** \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *group*  
 Only an enabled group counts for the shares it is on: its hosts are
 hosts of a share that is limited to hosts. Disabling it takes them away
 from there. Logins and the group on the hosts stay as they are. Tables
@@ -134,7 +134,7 @@ Rename the group. The new name must not be in use anywhere in the realm.
 The groups the realm and the sites come with cannot be renamed.  
 Needs **rename:object**.
 
-**move \[**--keep-acls**\] *group* *unit***  
+**move** \[**--keep-acls**\] *group* *unit*  
 Move the group into another unit. The group keeps its ACLs; where ACL
 inheritance is on for it (off for groups by default, see
 **enable_acl_inheritance**), the default ACLs of the old unit are taken
@@ -167,7 +167,7 @@ its tokens, and with those of the roles it holds. The users whose
 default group it is are members as well. A disabled token or role counts
 for nothing.
 
-**add_token \[**--sign**\] \[**--tags** *tag1,tag2*\] \[**--no-auto-sign**\] *group* *token***  
+**add_token** \[**--sign**\] \[**--tags** *tag1,tag2*\] \[**--no-auto-sign**\] *group* *token*  
 Put a token (*\<user\>/\<token\>*) into the group.  
 It is signed when you ask for it, or when auto_sign is on: for you, or
 as config parameter of the group. The signature is made with your login
@@ -186,13 +186,13 @@ Put more tags into the signature.
 **--no-auto-sign**  
 Do not sign this time.
 
-**remove_token \[**--keep-sign**\] *group* *token***  
+**remove_token** \[**--keep-sign**\] *group* *token*  
 Take the token out of the group. The signatures made for this group go
 with it, each after a question; **--keep-sign** leaves them. A token
 that is gone is taken out by its UUID.  
 Needs **remove:token**.
 
-**list_tokens \[**--return-type** *type*\] \[**--token-types** *t1,t2*\] *group***  
+**list_tokens** \[**--return-type** *type*\] \[**--token-types** *t1,t2*\] *group*  
 The tokens put into the group, disabled ones too; not those of its
 roles. **--return-type** picks what is printed: **rel_path** (default,
 *\<user\>/\<token\>*), **read_oid**, **full_oid** or **uuid**.
@@ -208,7 +208,7 @@ Needs **add:role**.
 Take the role out again. A role that is gone is taken out by its UUID.  
 Needs **remove:role**.
 
-**list_roles \[**--return-type** *type*\] *group***  
+**list_roles** \[**--return-type** *type*\] *group*  
 The roles in the group, disabled ones too; one of another site as
 *\<site\>/\<role\>*. **--return-type** picks what is printed: **name**
 (default), **read_oid**, **full_oid** or **uuid**.  
@@ -221,14 +221,14 @@ Who is a member of the group on the hosts is in its attribute
 Role Assignment**. The two lists here are parts of it, and they list
 disabled ones too.
 
-**list_users \[**--return-type** *type*\] *group***  
+**list_users** \[**--return-type** *type*\] *group*  
 The users the tokens put into the group belong to; one user with three
 tokens is named once. Not those that come through a role.
 **--return-type** picks what is printed: **name** (default),
 **read_oid**, **full_oid** or **uuid**.  
 Needs **view:tokens**.
 
-**list_default_group_users \[**--return-type** *type*\] *group***  
+**list_default_group_users** \[**--return-type** *type*\] *group*  
 The users whose default group this is. **--return-type** as above.  
 Needs **view:default_group_users**.
 
@@ -239,7 +239,7 @@ hosts and has the group (**otpme-share add_group**), they are hosts of
 the share, as long as the group is enabled. Logins and the group on the
 hosts do not depend on them.
 
-**add_host \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *group* *host***  
+**add_host** \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *group* *host*  
 Put a host into the group. Host names are unique in the realm, so the
 host is given by its name alone, whatever site it is in. A node cannot
 be put in.  
@@ -252,7 +252,7 @@ share. Without either the share decides (**share_notifications**).
 **--no-persist-mount**  
 Mount now, but an offline login does not mount the share.
 
-**remove_host \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *group* *host***  
+**remove_host** \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *group* *host*  
 Take the host out again. On the shares it loses, it is told to unmount,
 unless it is still on the share some other way. A host that is gone is
 taken out by its UUID.  
@@ -264,7 +264,7 @@ As above, for the unmount.
 **--no-persist-mount**  
 Unmount now, but an offline login still mounts the share.
 
-**list_hosts \[**--return-type** *type*\] *group***  
+**list_hosts** \[**--return-type** *type*\] *group*  
 The hosts in the group, disabled ones too. **--return-type** picks what
 is printed: **name** (default), **read_oid**, **full_oid** or
 **uuid**.  
@@ -288,7 +288,7 @@ Needs **add:sync_user**.
 Stop that. A user who is gone is taken out by the UUID.  
 Needs **remove:sync_user**.
 
-**list_sync_users \[**--return-type** *type*\] *group***  
+**list_sync_users** \[**--return-type** *type*\] *group*  
 The sync users of the group, disabled ones too; not those of its roles.
 **--return-type** picks what is printed: **name** (default),
 **read_oid**, **full_oid** or **uuid**.  
@@ -364,7 +364,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *group***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *group*  
 List the policies attached to the group, the disabled ones too, marked
 **(disabled)**. Use **--return-type** to select the attribute returned
 (**name**, **read_oid**, **full_oid**, **uuid**); without it the names.
@@ -434,7 +434,7 @@ A group has three config parameters: **changelog**,
 PARAMETERS**. A parameter is looked up at the group, then at each unit
 above it, then at the site.
 
-**config \[**-d**\] \[**-a**\] *group* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *group* *parameter* \[*value*\]  
 Set a parameter on the group.
 
 **-d**  
@@ -462,7 +462,7 @@ where **show_config** answers what was set here.
 Set the description. Without one OTPme asks and offers the current text
 for editing. Needs **edit:description**.
 
-**info \[**--language** *LANG*\] *group* \[*info*\]**  
+**info** \[**--language** *LANG*\] *group* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor named by the **EDITOR** environment variable. Needs
 **edit:info**.  
@@ -470,13 +470,13 @@ Without **--language** the text is the administrator's own note. Nothing
 shows the info of a group to a user, so a text for a language stays a
 note as well.
 
-**dump_info \[**--language** *LANG*\] *group***  
+**dump_info** \[**--language** *LANG*\] *group*  
 Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator. Needs **view:info**.
 
 ## Extensions and LDAP Attributes
 
-A group is also an LDAP entry, **cn=***group* under its unit, for
+A group is also an LDAP entry, **cn=*group*** under its unit, for
 example **cn=developers,ou=groups,ou=berlin,dc=example,dc=org**. An
 extension is what gives it one: the object classes it is of, and the
 attributes those classes allow. What **ldapd** serves and what
@@ -531,19 +531,19 @@ Everything after the first **=** is the value. Without a value OTPme
 fills in its own where it has one: for **description**, the description
 of the group.
 
-The ACL is per attribute, **add:attribute:***attribute*, and a plain
+The ACL is per attribute, **add:attribute:*attribute***, and a plain
 **add:attribute** covers all of them.
 
 **modify_attribute *group* *attribute* *old_value* *new_value***  
 Put *new_value* in the place of *old_value*, and leave the other values
 of the attribute alone. An *old_value* the group does not have is an
 error. This is the way to give a group another **gidNumber**.  
-The ACL is **edit:attribute:***attribute*.
+The ACL is **edit:attribute:*attribute***.
 
 **del_attribute *group* *attribute***=**\[*value*\]**  
 Remove that value, or the whole attribute where no value is given.
 **cn** and **memberUid** cannot be removed.  
-The ACL is **delete:attribute:***attribute*.
+The ACL is **delete:attribute:*attribute***.
 
 **add_object_class *group* *class***  
 Add an LDAP object class. Only a class an extension of the group knows
@@ -557,12 +557,12 @@ class that allows the attribute naming the entry stays, and for a group
 that is **posixGroup**, its only class.  
 Needs the ACL **delete:object_class**.
 
-**show_ldif *group* \[**-a** *attribute1,attribute2*\]**  
+**show_ldif *group*** \[**-a** *attribute1,attribute2*\]  
 The group as LDAP sees it. **-a** prints only those attributes.
 
 ## Export and Cleanup
 
-**export \[**--password** *password*\] *group***  
+**export** \[**--password** *password*\] *group*  
 Write the whole object of the group to stdout, as JSON: its tokens,
 roles, ACLs, policies, config parameters, LDAP attributes and the rest.
 **otpme-tool import** reads it back.  

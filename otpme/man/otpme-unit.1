@@ -44,7 +44,7 @@ Needs \fBadd:unit\fR on the unit above, or on the site for a unit at the top, an
 The new unit takes the ACLs of the unit above that belong to your token or its roles, inherits ACLs, and gets the policies that \fBdefault_policies\fR names for units, see
 .BR otpme\-policy (1).
 .TP
-.B del \fR[\fB\-\-no\-trash\fR] \fIunit\fR
+\fBdel\fR [\fB\-\-no\-trash\fR] \fIunit\fR
 Delete the unit with everything in it, the units below included.
 The question names what is in it; \fB\-f\fR does not ask.
 All of it goes to the trash as one entry, see
@@ -55,7 +55,7 @@ If you may not delete one of the objects, nothing is deleted.
 Needs \fBdelete:unit\fR on the unit above, or \fBdelete:object\fR on the unit.
 The units a site comes with cannot be deleted.
 .TP
-.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIunit\fR]
+\fBshow\fR [\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIunit\fR]
 Without a unit: a table of the units, with \fBunitname\fR, \fBstatus\fR, \fBpolicies\fR, \fBinherit\fR (ACL inheritance) and \fBdescription\fR.
 .RS
 .TP
@@ -84,7 +84,7 @@ That needs \fBview_public:object\fR on the unit.
 .na
 .nh
 .TP
-.B show_oid \fR[\fB\-\-full\fR] \fIunit\fR
+\fBshow_oid\fR [\fB\-\-full\fR] \fIunit\fR
 Show the OID of the unit: \fB\%unit|<realm>/<site>/<unit_path>\fR.
 \fB\-\-full\fR is accepted and shows the same.
 .br
@@ -97,7 +97,7 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+\fBlist\fR [\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
 List the unit names, and with a pattern only those that match it, see
 .B SELECTING OBJECTS
 in
@@ -115,7 +115,7 @@ Tables show a disabled unit with \fB(D)\fR.
 .B rename \fIunit\fR \fInew_name\fR
 Not possible; use \fBmove\fR with the full new path, e.g. \fBotpme\-unit move linux/users linux/staff\fR.
 .TP
-.B move \fR[\fB\-m\fR] [\fB\-k\fR] [\fB\-o\fR \fItypes\fR] [\fB\-\-keep\-acls\fR] [\fB\-\-skip\-ca\fR] \fIunit\fR \fInew_unit\fR
+\fBmove\fR [\fB\-m\fR] [\fB\-k\fR] [\fB\-o\fR \fItypes\fR] [\fB\-\-keep\-acls\fR] [\fB\-\-skip\-ca\fR] \fIunit\fR \fInew_unit\fR
 Move the unit with everything in it.
 \fInew_unit\fR is a path below the site, not below the unit above.
 A new unit is made there and takes over what this one has: ACLs, policies, description, info texts, config parameters, ACL inheritance, extensions, object classes and attributes.
@@ -166,7 +166,7 @@ It is looked up at the object, then at each unit above it, then at the site; a p
 Which parameters there are is in
 .BR otpme (7).
 .TP
-.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIunit\fR \fIparameter\fR \fR[\fIvalue\fR]
+\fBconfig\fR [\fB\-d\fR] [\fB\-a\fR] \fIunit\fR \fIparameter\fR \fR[\fIvalue\fR]
 Set a parameter on the unit.
 .RS
 .TP
@@ -193,7 +193,7 @@ Set the description.
 Without one OTPme asks and offers the current text for editing.
 Needs \fBedit:description\fR.
 .TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIunit\fR \fR[\fIinfo\fR]
+\fBinfo\fR [\fB\-\-language\fR \fILANG\fR] \fIunit\fR \fR[\fIinfo\fR]
 Set free-form info text.
 If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
 Needs \fBedit:info\fR.
@@ -201,7 +201,7 @@ Needs \fBedit:info\fR.
 Without \fB\-\-language\fR the text is the administrator's own note.
 Nothing shows the info of a unit to a user, so a text for a language stays a note as well.
 .TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIunit\fR
+\fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fIunit\fR
 Write one of those texts to stdout.
 \fB\-\-language\fR picks which one; without it you get the note of the administrator.
 Needs \fBview:info\fR.
@@ -237,7 +237,7 @@ A signature is up to date, or out of date with the users it lacks
 .br
 Needs the ACL \fBview:config:password_store_members\fR.
 .TP
-.B unsign_password_members \fR[\fB\-\-signer\fR \fIuser\fR] \fIunit\fR
+\fBunsign_password_members\fR [\fB\-\-signer\fR \fIuser\fR] \fIunit\fR
 Remove your signature.
 With \fB\-\-signer\fR the one of that user.
 For a user that is gone, give the UUID that \fBshow_password_members\fR
@@ -316,7 +316,7 @@ Remove a policy from the unit.
 Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
-.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIunit\fR
+\fBlist_policies\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIunit\fR
 List the policies attached to the unit, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR); without it the names.
 Only the names are marked.
@@ -335,7 +335,7 @@ Tab completion after \fBadd_acl\fR offers the ACLs a unit knows.
 .PP
 Adding and removing ask first, once for the whole command; the global option \fB\-f\fR skips the question.
 .TP
-.B add_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] [\fB\-\-procs\fR \fInum\fR] \fIunit\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
+\fBadd_acl\fR [\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] [\fB\-\-procs\fR \fInum\fR] \fIunit\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
 Give a role or a token one or more ACLs on this unit.
 .br
 \fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
@@ -373,7 +373,7 @@ Without it a quarter of the cores of the node, which leaves the rest for the dae
 .br
 Needs the ACL \fBadd:acl\fR.
 .TP
-.B del_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] [\fB\-\-procs\fR \fInum\fR] \fIunit\fR \fIacl\fR[,\fIacl\fR]
+\fBdel_acl\fR [\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] [\fB\-\-procs\fR \fInum\fR] \fIunit\fR \fIacl\fR[,\fIacl\fR]
 Take those ACLs away again.
 .br
 Here an \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fB\%role:berlin/helpdesk:+user:edit\fR.
@@ -431,7 +431,7 @@ A move leaves all ACLs as they are again.
 .br
 Needs the ACL \fBdisable:acl_inheritance\fR.
 .SS Extensions and LDAP Attributes
-A unit is also an LDAP entry, \fBou=\fIunit\fR under its parent unit or the site, for example \fBou=users,ou=linux,ou=berlin,dc=example,dc=org\fR.
+A unit is also an LDAP entry, \fBou=\f(BIunit\fR under its parent unit or the site, for example \fBou=users,ou=linux,ou=berlin,dc=example,dc=org\fR.
 An extension is what gives it one: the object classes it is of, and the attributes those classes allow.
 What \fBldapd\fR serves and what \fBshow_ldif\fR prints comes from them.
 .PP
@@ -465,20 +465,20 @@ Everything after the first \fB=\fR is the value, so a DN works:
 \fB\%seeAlso=cn=printers,ou=berlin,dc=example,dc=org\fR.
 Without a value OTPme fills in its own where it has one: for \fBdescription\fR, the description of the unit.
 .PP
-The ACL is per attribute, \fBadd:attribute:\fIattribute\fR, and a plain \fBadd:attribute\fR covers all of them.
+The ACL is per attribute, \fBadd:attribute:\f(BIattribute\fR, and a plain \fBadd:attribute\fR covers all of them.
 .RE
 .TP
 .B modify_attribute \fIunit\fR \fIattribute\fR \fIold_value\fR \fInew_value\fR
 Put \fInew_value\fR in the place of \fIold_value\fR, and leave the other values of the attribute alone.
 An \fIold_value\fR the unit does not have is an error.
 .br
-The ACL is \fBedit:attribute:\fIattribute\fR.
+The ACL is \fBedit:attribute:\f(BIattribute\fR.
 .TP
 .B del_attribute \fIunit\fR \fIattribute\fR\fB=\fR[\fIvalue\fR]
 Remove that value, or the whole attribute where no value is given.
 \fBou\fR cannot be removed.
 .br
-The ACL is \fBdelete:attribute:\fIattribute\fR.
+The ACL is \fBdelete:attribute:\f(BIattribute\fR.
 .TP
 .B add_object_class \fIunit\fR \fIclass\fR
 Add an LDAP object class.
@@ -493,13 +493,13 @@ For a unit that is \fBorganizationalUnit\fR, its only class.
 .br
 Needs the ACL \fBdelete:object_class\fR.
 .TP
-.B show_ldif \fIunit\fR \fR[\fB\-a\fR \fIattribute1,attribute2\fR]
+\fBshow_ldif \f(BIunit\fR [\fB\-a\fR \fIattribute1,attribute2\fR]
 The unit as LDAP sees it.
 .B \-a
 prints only those attributes.
 .SS Export and Cleanup
 .TP
-.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIunit\fR
+\fBexport\fR [\fB\-\-password\fR \fIpassword\fR] \fIunit\fR
 Write the whole object of the unit to stdout, as JSON: its ACLs, policies, config parameters, LDAP attributes and the rest, but not the objects in it.
 \fBotpme\-tool import\fR reads it back.
 .br
@@ -507,7 +507,7 @@ A unit holds no key and no secret, so \fB\-\-password\fR has nothing to encrypt:
 .br
 Needs the ACL \fBexport\fR.
 .TP
-.B remove_orphans \fR[\fB\-r\fR] \fIunit\fR
+\fBremove_orphans\fR [\fB\-r\fR] \fIunit\fR
 Remove references to objects that are gone: orphan ACLs and policies of the unit.
 Config parameters set on the unit that keep other objects lose the ones that are gone, e.g. a deleted VLAN in \fBvlans\fR, the way \fBconfig \-d\fR does.
 \fBpassword_store_members\fR is only named, not changed: its signatures would no longer fit, so change it with \fBconfig \-d\fR and sign the members again, see

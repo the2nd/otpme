@@ -27,7 +27,7 @@ scriptd runs both scripts as **ROOT_SCRIPT_USER** and
 **ROOT_SCRIPT_GROUP** (**nobody** and **nogroup** by default, see
 **otpme.conf**(5)), never as root and never as the OTPme user. They get
 **$share_name** and **$share_root**, the directory of the share
-(*share_root***/***share*), and **$force_group**, **$force_create_mode**
+(***share_root*/*share***), and **$force_group**, **$force_create_mode**
 and **$force_directory_mode** where the share has them.
 
 The add script has to create **$share_root**. **add** fails if that
@@ -129,7 +129,7 @@ of them. The user **root** is never told.
 
 ## Share Management
 
-**add \[**--home-share**\] \[**--home-share-uid**\] \[**--force-group** *group*\] \[**--force-directory-mode** *mode*\] \[**--force-create-mode** *mode*\] \[**--crypt**\] \[**--no-key-gen**\] \[**--block-size** *size*\] \[**--restore** *restore_share*\] \[**--restore-token** *token*\] \[**--no-mount-token**\] *share***  
+**add** \[**--home-share**\] \[**--home-share-uid**\] \[**--force-group** *group*\] \[**--force-directory-mode** *mode*\] \[**--force-create-mode** *mode*\] \[**--crypt**\] \[**--no-key-gen**\] \[**--block-size** *size*\] \[**--restore** *restore_share*\] \[**--restore-token** *token*\] \[**--no-mount-token**\] *share*  
 Create a share.  
 It is created in the **shares** unit of your site; a path puts it into
 another unit, and **move** takes it there afterwards. The name is turned
@@ -157,7 +157,7 @@ own subdirectory, named after the user UUID.
 Create a home share whose subdirectories are named after the user name
 (uid) instead of the user UUID. Implies **--home-share**.
 
-**del \[**--no-trash**\] \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share***  
+**del** \[**--no-trash**\] \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share*  
 Delete a share. It goes to the trash, from where **otpme-trash**(1) can
 bring it back; **--no-trash** deletes it right away. The directory of
 the share and the data in it stay where they are.  
@@ -172,7 +172,7 @@ well.
 Needs the ACL **delete:object** on the share, or **delete:share** on the
 unit it sits in.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--role-limit** *N*\] \[**--token-limit** *N*\] \[**--host-limit** *N*\] \[**--group-limit** *N*\] \[**--node-limit** *N*\] \[**--pool-limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*share*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--role-limit** *N*\] \[**--token-limit** *N*\] \[**--host-limit** *N*\] \[**--group-limit** *N*\] \[**--node-limit** *N*\] \[**--pool-limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*share*\]  
 Without a share: a table of all of them, with their unit, whether they
 are enabled, their root directory, whether they are encrypted, read-only
 and ask for a signed SOTP, the mount timeout, the block size, the forced
@@ -214,7 +214,7 @@ which the table does not show.
 
 <!-- -->
 
-**show_oid \[**--full**\] *share***  
+**show_oid** \[**--full**\] *share*  
 Show the OID of the share: **share\|\<realm\>/\<site\>/\<name\>**. With
 **--full** the full OID, which names the unit as well:
 **share\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
@@ -226,7 +226,7 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the share names, and with a pattern only those that match it, see
 **SELECTING OBJECTS** in **otpme**(1). You get the shares you may
 change; **-a** adds those you may only look at.  
@@ -235,13 +235,13 @@ the name: **list --attribute encrypted True** lists the encrypted
 shares. A value that is not text has to be spelled out — **\*** matches
 none of it.
 
-**enable \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share***  
+**enable** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share*  
 Enable a disabled share.  
 The hosts are told to mount it, see **Telling the hosts** above. A no
 mount token is left out, a root mount token is told as well.  
 Needs the ACL **enable:object**.
 
-**disable \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share***  
+**disable** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share*  
 Switch a share off without deleting it. A disabled share cannot be
 mounted.  
 The hosts are told to unmount it, see **Telling the hosts** above. That
@@ -260,7 +260,7 @@ after the rename. With **--share-notify**, or with
 old name and to mount the new one.  
 Needs the ACL **rename:object**.
 
-**move \[**--keep-acls**\] *share* *unit***  
+**move** \[**--keep-acls**\] *share* *unit*  
 Move the share into another unit of the same site. **--keep-acls**
 leaves the ACLs of the share as they are.  
 A share does not inherit ACLs by default, see **enable_acl_inheritance**
@@ -271,7 +271,7 @@ Needs the ACL **move** on the share and **add:share** on the new unit.
 Re-index the object to fix potential index problems.  
 Needs the ACL **touch**.
 
-**auto_disable \[**-u**\] *share* *time***  
+**auto_disable** \[**-u**\] *share* *time*  
 Set auto-disable time. It is either a relative time with a leading
 **+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
 The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
@@ -355,7 +355,7 @@ Set the description. Without one OTPme asks and offers the current text
 for editing.  
 Needs the ACL **edit:description**.
 
-**info \[**--language** *LANG*\] *share* \[*info*\]**  
+**info** \[**--language** *LANG*\] *share* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current text is
 opened in the editor named by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note about
@@ -365,7 +365,7 @@ nothing shows the info of a share, so for a share it stays a note either
 way.  
 Needs the ACL **edit:info**.
 
-**dump_info \[**--language** *LANG*\] *share***  
+**dump_info** \[**--language** *LANG*\] *share*  
 Print the info text, of that language or the administrator's own.  
 Needs the ACL **view:info**.
 
@@ -379,7 +379,7 @@ it, and the host tries the next node of the share.
 What the script gets, as whom it runs and which script a new share gets
 is said in **DESCRIPTION**.
 
-**mount_script *share* *mount_script* \[**--** *script_options*\]**  
+**mount_script *share*** *mount_script* \[**--** *script_options*\]  
 Set the mount script of the share.  
 The script is written as its path inside the site, e.g.
 **scripts/mount_share.sh**, and it has to be a script of the site of the
@@ -482,13 +482,13 @@ Who may mount a share is said with tokens, not with users: a user mounts
 the share when they are logged in with a token that is on it, or that is
 in a role that is on it. The share is then mounted for them at login.
 
-A *token_path* is written as *user***/***token*. The token can be one of
+A *token_path* is written as ***user*/*token***. The token can be one of
 any site of the realm.
 
 The four options that tell the hosts are described under **Telling the
 hosts** above.
 
-**add_token \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path***  
+**add_token** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path*  
 Let this token mount the share. The hosts are told to mount it, unless
 the share is disabled.  
 On an encrypted share the user of the token needs a copy of the share
@@ -507,7 +507,7 @@ Needs the ACL **add:token**. On an encrypted share that is no home share
 it needs **view:share_key** as well when a key has to be copied, on the
 share the key is read from.
 
-**remove_token \[**--keep-share-key**\|**--remove-share-key**\] \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path***  
+**remove_token** \[**--keep-share-key**\|**--remove-share-key**\] \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path*  
 Take the token off the share. The hosts are told to unmount it, unless
 the token still reaches the share through a role.  
 On an encrypted share the share key of the user goes with their last
@@ -520,7 +520,7 @@ With SOTP signing the sign public key of the user goes with their last
 token as well.  
 Needs the ACL **remove:token**.
 
-**list_tokens \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *share***  
+**list_tokens** \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *share*  
 List the tokens assigned to the share, by their path. Disabled tokens
 are listed too.  
 **--return-type** selects what to print instead (**name**, **read_oid**,
@@ -531,17 +531,17 @@ password, root mount and no mount tokens; **show** *share* prints
 those.  
 Needs the ACL **view:tokens**.
 
-**add_role \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *role***  
+**add_role** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *role*  
 Add a role to the share. Every token of the role, and of the roles
 inside it, may then mount it, and the hosts are told so.  
 The role is looked for in the site of the share, or written as
-*site***/***role* to take one from another site of the realm.  
+***site*/*role*** to take one from another site of the realm.  
 An encrypted share takes no role, because a role would bring in users
 who have no share key. A share with SOTP signing takes none either, see
 **SOTP Signing** above.  
 Needs the ACL **add:role**.
 
-**remove_role \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *role***  
+**remove_role** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *role*  
 Remove a role from the share. The hosts are told to unmount it for the
 tokens of the role that do not reach the share another way.  
 A UUID is taken as well, which is how a reference to a role that is gone
@@ -550,10 +550,10 @@ Needs the ACL **remove:role**.
 
 **list_roles *share***  
 List the names of the roles assigned to the share. Disabled roles are
-listed too. A role of another site is written as *site***/***role*.  
+listed too. A role of another site is written as ***site*/*role***.  
 Needs the ACL **view:roles**.
 
-**list_users \[**--return-type** *TYPE*\] *share***  
+**list_users** \[**--return-type** *TYPE*\] *share*  
 The users the tokens of the share belong to. One user with three tokens
 on the share is named once.  
 Needs the ACL **view:tokens**.
@@ -592,49 +592,49 @@ as well, but only while it has a share of this site mounted, because
 only then it listens to this site. Otherwise the change reaches it with
 the next login.
 
-**limit_hosts \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share***  
+**limit_hosts** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share*  
 Limit the share to its hosts. The hosts that are not on the list are
 told to unmount it.  
 Fill the list first. A limited share with no host, no host group and no
 role with hosts can be mounted nowhere.  
 Needs the ACL **limit_hosts**.
 
-**unlimit_hosts \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share***  
+**unlimit_hosts** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share*  
 Take the limit away again. The lists stay as they are. The hosts are
 told to mount the share, unless it is disabled.  
 Needs the ACL **unlimit_hosts**.
 
-**add_host \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *host***  
+**add_host** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *host*  
 Put a host on the share. On a limited share the host is told to mount
 it, unless the share is disabled.  
 Needs the ACL **add:host**.
 
-**remove_host \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *host***  
+**remove_host** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *host*  
 Take a host off the share. On a limited share the host is told to
 unmount it, unless it still is on the list through a host group or a
 role.  
 Needs the ACL **remove:host**.
 
-**list_hosts \[**--return-type** *TYPE*\] *share***  
+**list_hosts** \[**--return-type** *TYPE*\] *share*  
 List the hosts that are on the share itself, by name. The hosts of its
 host groups and roles are not in this list. **--return-type** selects
 what to print instead (**name**, **read_oid**, **full_oid**,
 **uuid**).  
 Needs the ACL **view:hosts**.
 
-**add_group \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *group***  
+**add_group** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *group*  
 Put a host group on the share. A group is a host group by the hosts it
 holds, see **otpme-group**(1); its tokens and users play no part here.
 On a limited share the hosts of the group are told to mount it, unless
 the share is disabled.  
 Needs the ACL **add:group**.
 
-**remove_group \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *group***  
+**remove_group** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *group*  
 Take a host group off the share. On a limited share the hosts that are
 on the list no more are told to unmount it.  
 Needs the ACL **remove:group**.
 
-**list_groups \[**--return-type** *TYPE*\] *share***  
+**list_groups** \[**--return-type** *TYPE*\] *share*  
 List the names of the host groups that are on the share.
 **--return-type** selects what to print instead (**name**, **read_oid**,
 **full_oid**, **uuid**). Disabled groups are listed too, though their
@@ -679,7 +679,7 @@ Only a home share that is not encrypted takes one: on an encrypted home
 share every home dir has a key of its own, so a mount of the root could
 read none of them. The token needs no other assignment to the share.
 
-**add_root_mount_token \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path***  
+**add_root_mount_token** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path*  
 Let the token mount the root directory of the home share. What the token
 gets from the share changes, so the hosts are told to unmount it for the
 token and to mount it again, see **Telling the hosts** above. A mount
@@ -690,7 +690,7 @@ With SOTP signing the sign public key of the user is copied into the
 share, and a user without one is refused.  
 Needs the ACL **add:root_mount_token**.
 
-**remove_root_mount_token \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path***  
+**remove_root_mount_token** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path*  
 Take that away again. The hosts are told to unmount the share for the
 token, like with **remove_token**. A token that is on the share as well,
 itself or through a role, is told to mount it again then, and gets its
@@ -703,7 +703,7 @@ A no mount token is on the share like a normal token — its user gets a
 share key, and it may mount the share — but the share is not mounted for
 it by itself. It is left out when the shares are mounted at login, and
 the hosts are not told to mount for it. Mounting by hand with
-**otpme-mount** *share_site***/***share_name* works.
+**otpme-mount** ***share_site*/*share_name*** works.
 
 When a share is disabled or deleted the hosts are told to unmount for
 these tokens too: they may have mounted it by hand.
@@ -715,7 +715,7 @@ with **add_token**. No host is told, there is nothing to mount.
 Needs the ACL **add:no_mount_token**, and **view:share_key** where
 **add_token** needs it.
 
-**remove_no_mount_token \[**--keep-share-key**\|**--remove-share-key**\] \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path***  
+**remove_no_mount_token** \[**--keep-share-key**\|**--remove-share-key**\] \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path*  
 Take the token off the share. The share key and the sign public key of
 the user go with their last token, as with **remove_token**, and the two
 key options do the same.  
@@ -763,7 +763,7 @@ Needs the ACL **add:node**.
 Take a node off the share.  
 Needs the ACL **remove:node**.
 
-**list_nodes \[**--return-type** *TYPE*\] *share***  
+**list_nodes** \[**--return-type** *TYPE*\] *share*  
 List the nodes that are on the share itself, by name. The nodes of its
 pools are not in this list. On a share with no node and no pool it lists
 all nodes of the site, which is what serves it. Disabled nodes are not
@@ -781,7 +781,7 @@ Needs the ACL **add:pool**.
 Take a pool off the share.  
 Needs the ACL **remove:pool**.
 
-**list_pools \[**--return-type** *TYPE*\] *share***  
+**list_pools** \[**--return-type** *TYPE*\] *share*  
 List the names of the pools that are on the share. Disabled pools are
 listed too.  
 **--return-type** selects what to print instead (**name**, **read_oid**,
@@ -810,7 +810,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *share***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *share*  
 List the policies attached to the share, the disabled ones too, marked
 **(disabled)**. Use **--return-type** to select the attribute returned
 (**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
@@ -915,7 +915,7 @@ back in is **otpme-tool import,** see **otpme-tool**(1).
 **remove_orphans** asks before it changes anything; the global option
 **-f** skips the question.
 
-**export \[**--password** *password*\] *share***  
+**export** \[**--password** *password*\] *share*  
 Write the whole object of the share to stdout, as JSON.  
 Without **--password** it is written as it is, in clear. With one, a key
 is derived from that password and the object is encrypted with it; the

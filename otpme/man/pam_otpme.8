@@ -111,18 +111,18 @@ Without either of them, pam_otpme asks for the password itself.
 .B nullok
 Allow an empty password, e.g. for a \fBfido2\fR token that needs none.
 .TP
-.BI send_password= auto|false
+\fBsend_password=\f(BIauto|false\fR
 Whether the password goes to the nodes.
 \fBauto\fR (default): if the token of the user needs it there.
 \fBfalse\fR: never, e.g. for a token that is checked with an SSH key, so the password does not leave the host.
 .TP
-.BI use_smartcard= auto|true|false
+\fBuse_smartcard=\f(BIauto|true|false\fR
 Use a smartcard, e.g. the HMAC\-SHA1 slot of a YubiKey.
 \fBauto\fR (default): if one is plugged in.
 \fBtrue\fR: always; without one the login fails.
 \fBfalse\fR: never.
 .TP
-.BI use_ssh_agent= auto|true|false
+\fBuse_ssh_agent=\f(BIauto|true|false\fR
 Log in with an SSH key from an SSH agent, e.g. a YubiKey with the GPG applet for an
 .B ssh
 token of OTPme.
@@ -130,7 +130,7 @@ token of OTPme.
 \fBtrue\fR: always, and start the agent; without a key the login fails.
 \fBfalse\fR: never, and do not start the agent.
 .TP
-.BI start_ssh_agent= auto|true|false
+\fBstart_ssh_agent=\f(BIauto|true|false\fR
 Start an SSH agent at login.
 \fBauto\fR (default): if the nodes send SSH keys of the user.
 \fBtrue\fR: always.
@@ -140,7 +140,7 @@ When it is not set, \fBuse_ssh_agent=true\fR and \fBfalse\fR set it to the same.
 .B unlock_via_offline_token
 On a screen unlock, check the password against the offline copy of the login token, if this host has one, and ask no node.
 .TP
-.BI do_dot1x= auto|force|false
+\fBdo_dot1x=\f(BIauto|force|false\fR
 Log the network port in with 802.1X at login, through a NetworkManager connection (default: \fBfalse\fR).
 pam_otpme writes the user name and the password or OTP into that connection, see \fBdot1x_token_types\fR, and brings it up.
 Nothing happens when the interface of the connection has no link, e.g. on WLAN.
@@ -169,21 +169,21 @@ nmcli connection add type ethernet con\-name "dot1x\-lan" ifname enp0s25 \\
 .fi
 .RE
 .TP
-.BI dot1x_connection= name
+\fBdot1x_connection=\f(BIname\fR
 The NetworkManager connection (default: \fBdot1x\-lan\fR).
 .TP
-.BI dot1x_token_types= type[,type...]
+\fBdot1x_token_types=\f(BItype[,type...]\fR
 What the password of the connection is made from; without it, \fBdo_dot1x\fR does nothing and says so in the log.
 \fByubikey_piv\fR: an OTP derived by the YubiKey, which asks for its PIN; used when one is plugged in.
 \fBpassword\fR: the password of the login.
 .TP
-.BI dot1x_timeout= seconds
+\fBdot1x_timeout=\f(BIseconds\fR
 How long to wait for the connection to come up (default: \fB10\fR).
 .TP
-.BI offline_key_func= func[;opt:val,...]
+\fBoffline_key_func=\f(BIfunc[;opt:val,...]\fR
 How the key that encrypts the offline copy of the login token is made from the password, see \fBcache_login_tokens\fR (default: \fBArgon2_i\fR).
 \fBArgon2_i\fR, \fBArgon2_d\fR and \fBArgon2_id\fR work; another function gives a warning in the log and the default stays.
-After \fB;\fR come options as \fIopt\fB:\fIval\fR, separated by \fB,\fR; an option not given keeps its default:
+After \fB;\fR come options as \f(BIopt\fB:\f(BIval\fR, separated by \fB,\fR; an option not given keeps its default:
 .RS
 .TP
 .B iterations
@@ -206,7 +206,7 @@ In KiB (default: \fB262144\fR).
 offline_key_func=Argon2_id;max_mem:524288,threads:2
 .fi
 .TP
-.BI check_offline_pass_strength[= policy[;score:iterations,...]]
+\fBcheck_offline_pass_strength[=\f(BIpolicy[;score:iterations,...]]\fR
 A weak password gets more \fBiterations\fR of \fBoffline_key_func\fR, so its offline copy takes longer to guess.
 A password policy gives the password a score from 0 (weak) to 10 (strong), and the score picks the iterations.
 \fBiterations\fR given to \fBoffline_key_func\fR is then not used.
@@ -245,20 +245,20 @@ After a login with the offline copy of the token, show "You are logged in offlin
 When the login fails, show why, e.g. "Login failed: Host disabled".
 Without it, the reason is only in the log.
 .TP
-.BI message_timeout= seconds
+\fBmessage_timeout=\f(BIseconds\fR
 How long to wait after each message pam_otpme shows, so it can be read (default: \fB2\fR).
 .TP
-.BI connect_timeout= seconds
+\fBconnect_timeout=\f(BIseconds\fR
 How long to wait for the connection to the nodes at login (default: \fB3\fR).
 .TP
-.BI connection_timeout= seconds
+\fBconnection_timeout=\f(BIseconds\fR
 How long to wait for an answer of the nodes at login (default: \fB30\fR).
 .TP
 .B create_home
 Create the home directory of the user if it does not exist, with mode 0700.
 That happens before the password is checked, because the OTPme agent that the login starts keeps its files there.
 .TP
-.BI home_skel= path
+\fBhome_skel=\f(BIpath\fR
 Copy the new home directory from this directory, e.g. \fI/etc/skel\fR.
 Without \fBcreate_home\fR it does nothing.
 .TP

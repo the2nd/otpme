@@ -40,7 +40,7 @@ says so and stops. It also needs the node install (**pip install
 
 # COMMANDS
 
-**status \[**--diff**\] \[**--full**\] \[**--full-index**\]**  
+**status** \[**--diff**\] \[**--full**\] \[**--full-index**\]  
 Ask every enabled node of this site where it stands.
 
 One line per node: whether it has a quorum, which node it thinks is
@@ -52,7 +52,7 @@ Every node is asked at the same time, and a node that does not answer is
 **Offline**. Nothing is written, and nothing is decided here: the
 command reads.
 
-**master_failover \[**--to** *node*\] \[**--random**\] \[**--wait**\]**  
+**master_failover** \[**--to** *node*\] \[**--random**\] \[**--wait**\]  
 Hand the master role to another node.
 
 Without an option the node you run it on takes the role. With **--to**
@@ -158,11 +158,11 @@ warning, because it is a number that does not follow the site.
 
 Then one line per node:
 
-**(Quorum: *n***)****  
+**(Quorum: *n*)**  
 The votes that node counted, itself included. **False** means that node
 has no quorum.
 
-**(Master: *node***)****  
+**(Master: *node*)**  
 Who that node thinks holds the master role. All lines should say the
 same name.
 

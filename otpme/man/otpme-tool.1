@@ -19,14 +19,14 @@ Each command says who may run it; many need root.
 .SH COMMANDS
 .SS Realm
 .TP
-.B join \fR[\fB\-\-jotp\fR \fIjotp\fR] [\fB\-\-hostname\fR \fIhostname\fR] [\fB\-\-host\-type\fR \fBhost\fR|\fBnode\fR] [\fB\-\-unit\fR \fIunit\fR] [\fB\-\-host\-key\-len\fR \fIbits\fR] [\fB\-\-ca\-key\-len\fR \fIbits\fR] [\fB\-\-ca\-valid\fR \fIdays\fR] [\fB\-\-site\-key\-len\fR \fIbits\fR] [\fB\-\-site\-valid\fR \fIdays\fR] [\fB\-\-trust\-site\-cert\fR|\fB\-\-check\-site\-cert\fR \fIfingerprint\fR] [\fB\-\-joind\-uri\fR \fIuri\fR] [\fB\-\-no\-daemon\-start\fR] [\fIdomain\fR]
+\fBjoin\fR [\fB\-\-jotp\fR \fIjotp\fR] [\fB\-\-hostname\fR \fIhostname\fR] [\fB\-\-host\-type\fR \fBhost\fR|\fBnode\fR] [\fB\-\-unit\fR \fIunit\fR] [\fB\-\-host\-key\-len\fR \fIbits\fR] [\fB\-\-ca\-key\-len\fR \fIbits\fR] [\fB\-\-ca\-valid\fR \fIdays\fR] [\fB\-\-site\-key\-len\fR \fIbits\fR] [\fB\-\-site\-valid\fR \fIdays\fR] [\fB\-\-trust\-site\-cert\fR|\fB\-\-check\-site\-cert\fR \fIfingerprint\fR] [\fB\-\-joind\-uri\fR \fIuri\fR] [\fB\-\-no\-daemon\-start\fR] [\fIdomain\fR]
 Make this machine a host or a node of a realm.
 You must be root, and the machine must not be in a realm yet.
 .RS
 .PP
 \fBFinding the realm.\fR
-The joind of the realm is looked up in DNS, as the SRV record \fB_otpme\-join._tcp.\fR\fIdomain\fR.
-Realm and site come from the TXT records \fB_otpme\-realm._tcp.\fR\fIdomain\fR and \fB_otpme\-site._tcp.\fR\fIdomain\fR, or from the global options \fB\-r\fR and \fB\-s\fR.
+The joind of the realm is looked up in DNS, as the SRV record \fB_otpme\-join._tcp.\f(BIdomain\fR.
+Realm and site come from the TXT records \fB_otpme\-realm._tcp.\f(BIdomain\fR and \fB_otpme\-site._tcp.\f(BIdomain\fR, or from the global options \fB\-r\fR and \fB\-s\fR.
 Without \fIdomain\fR it is \fIsite\fR.\fIrealm\fR when \fB\-r\fR and \fB\-s\fR are given, else the domain of the FQDN of this machine.
 .br
 \fB\-\-joind\-uri\fR names the joind instead of the SRV record, e.g. \fBtcp://node1.berlin.example.org:2024\fR; 2024 is the port of joind.
@@ -69,7 +69,7 @@ Any other join leaves these four alone.
 .PP
 \fBThe site certificate.\fR
 join shows the fingerprint of the certificate of the site it connects to and asks whether to trust it.
-\fB\-\-check\-site\-cert\fR compares it instead, given as \fBsha256:\fR\fIhex\fR, \fBsha1:\fR\fIhex\fR or the sha256 hex alone; the colons and capitals of
+\fB\-\-check\-site\-cert\fR compares it instead, given as \fBsha256:\f(BIhex\fR, \fBsha1:\f(BIhex\fR or the sha256 hex alone; the colons and capitals of
 .B openssl x509 \-fingerprint
 are fine.
 \fB\-\-trust\-site\-cert\fR trusts any certificate.
@@ -80,7 +80,7 @@ It prints the LOTP that \fBleave\fR takes, where the host or node has LOTPs enab
 An object that has joined already is refused; the global option \fB\-f\fR joins it again.
 .RE
 .TP
-.B leave \fR[\fB\-\-lotp\fR \fIlotp\fR] [\fB\-\-offline\fR] [\fB\-\-keep\-host\fR|\fB\-\-no\-keep\-host\fR] [\fB\-\-keep\-data\fR] [\fB\-\-keep\-cache\fR] [\fB\-\-keep\-cert\fR]
+\fBleave\fR [\fB\-\-lotp\fR \fIlotp\fR] [\fB\-\-offline\fR] [\fB\-\-keep\-host\fR|\fB\-\-no\-keep\-host\fR] [\fB\-\-keep\-data\fR] [\fB\-\-keep\-cache\fR] [\fB\-\-keep\-cert\fR]
 Take this machine out of its realm.
 You must be root.
 The master node cannot leave.
@@ -134,7 +134,7 @@ A login to the realm is kept by
 one per system user.
 These commands ask the agent of the user who runs them, for the session of the login they run in.
 .TP
-.B login \fR[\fB\-\-node\fR \fInode\fR] [\fB\-\-no\-authorize\-host\fR] [\fIusername\fR]
+\fBlogin\fR [\fB\-\-node\fR \fInode\fR] [\fB\-\-no\-authorize\-host\fR] [\fIusername\fR]
 Log in to the realm.
 It starts
 .B otpme\-agent
@@ -180,14 +180,14 @@ see
 That is decided for the host: every user who may read its certificate key may run it there.
 .TP
 .B host_who
-Print the hosts and nodes that wait to be told of a job: host, type, IP address and when they connected.
+Print the hosts and nodes that wait to be told of a job: host, type, IP address, when they connected and the version of OTPme.
 A host that is listed hears of a new job at once, for example of
 .BR otpme\-shell ;
 one that is not picks it up at its next sync.
 .br
 Who may run it is the same as for \fBwho\fR.
 .TP
-.B message \fR[\fB\-\-user\fR \fIusername\fR] [\fB\-\-host\fR \fIhostname\fR] [\fB\-\-all\fR] [\fB\-\-title\fR \fItitle\fR] \fItext\fR
+\fBmessage\fR [\fB\-\-user\fR \fIusername\fR] [\fB\-\-host\fR \fIhostname\fR] [\fB\-\-all\fR] [\fB\-\-title\fR \fItitle\fR] \fItext\fR
 Show a message box to users that are logged in.
 .RS
 .PP
@@ -220,7 +220,7 @@ see
 Only users of your own site can be reached, because the message goes through the idled of that site.
 .RE
 .TP
-.B show_sessions \fR[\fIpid\fR]
+\fBshow_sessions\fR [\fIpid\fR]
 List the sessions of the agent you may see: the PID of the login, the token, the pass type, realm and site, whether it is a login or the passphrase of an SSH key, who else may use it, and the sites it is logged in to.
 With the \fIpid\fR of a login: its sessions on each site, with login time, last and next renegotiation, timeouts, whether it may go offline, and the session UUID.
 .TP
@@ -244,7 +244,7 @@ Print the TTY the login was made on.
 .B get_display
 Print the \fBDISPLAY\fR PAM gave the login.
 .TP
-.B get_sotp \fR[\fB\-\-site\fR \fIsite\fR]
+\fBget_sotp\fR [\fB\-\-site\fR \fIsite\fR]
 Print an SOTP, a one-time password made from the session: it is how the tools of a logged-in user, e.g. the mount of a share, authenticate as that session.
 It is valid for about a minute.
 .br
@@ -275,7 +275,7 @@ Actions it protects do not ask again until its \fBreauth_timeout\fR has passed.
 Both are kept by the mgmtd of the node you are connected to, not for the realm.
 .SS Synchronization
 .TP
-.B sync \fR[\fB\-\-realm\fR \fIrealm\fR] [\fB\-\-site\fR \fIsite\fR] [\fB\-\-request\-site\-cert\fR] [\fIsync_type\fR]
+\fBsync\fR [\fB\-\-realm\fR \fIrealm\fR] [\fB\-\-site\fR \fIsite\fR] [\fB\-\-request\-site\-cert\fR] [\fIsync_type\fR]
 Tell hostd to start a sync now and not when it is due.
 The sync runs in the background: the command prints \(lqCommand queued\(rq and does not wait for it.
 Use \fBsync_status\fR to see how it went.
@@ -316,19 +316,19 @@ After a \fBrenew_cert\fR of a site, run \fBsync \-\-request\-site\-cert sites\fR
 The cert is taken only if it is the cert of that site and the CA of the site issued it and did not revoke it.
 It works with the sync type sites only.
 .TP
-.B resync \fR[\fB\-\-realm\fR \fIrealm\fR] [\fB\-\-site\fR \fIsite\fR] \fBobjects\fR|\fBnsscache\fR
+\fBresync\fR [\fB\-\-realm\fR \fIrealm\fR] [\fB\-\-site\fR \fIsite\fR] \fBobjects\fR|\fBnsscache\fR
 Like \fBsync\fR, but full: \fBobjects\fR compares every object with the site, not only the ones that changed since the last sync, and then builds the NSS cache new.
 \fBnsscache\fR builds the NSS cache new from scratch.
 Nothing is removed before.
 \fB\-\-realm\fR and \fB\-\-site\fR work as with \fBsync\fR.
 .TP
-.B sync_status \fR[\fIsync_type\fR]
+\fBsync_status\fR [\fIsync_type\fR]
 Show for each site and sync type when the last sync run started, and how it went: how long ago that was, how far a running one is, or when it last failed.
 \(lqNever synced\(rq means no run started yet.
 Every user may run it.
 On a node the objects of its own site are not listed, see \fBsync\fR.
 .TP
-.B do_sync \fR[\fB\-\-realm\fR \fIrealm\fR] [\fB\-\-site\fR \fIsite\fR] [\fB\-\-resync\fR] [\fB\-\-offline\fR] [\fB\-\-sync\-older\-objects\fR] [\fB\-\-ignore\-changed\-objects\fR] [\fB\-\-remove\-orphan\-objects\fR] \fIsync_type\fR
+\fBdo_sync\fR [\fB\-\-realm\fR \fIrealm\fR] [\fB\-\-site\fR \fIsite\fR] [\fB\-\-resync\fR] [\fB\-\-offline\fR] [\fB\-\-sync\-older\-objects\fR] [\fB\-\-ignore\-changed\-objects\fR] [\fB\-\-remove\-orphan\-objects\fR] \fIsync_type\fR
 Do a sync here and now, without hostd: it connects to syncd itself and waits until the sync is done.
 It works when hostd does not run.
 If it cannot connect, it uses what an earlier sync left in the sync cache on disk.
@@ -373,7 +373,7 @@ It fails while the site is in maintenance.
 You need to be admin.
 .SS Cryptographic Operations
 .TP
-.B sign \fR[\fB\-\-stdin\-pass\fR] \fIfile\fR \fIsig_file\fR
+\fBsign\fR [\fB\-\-stdin\-pass\fR] \fIfile\fR \fIsig_file\fR
 Sign \fIfile\fR with the sign key of your user (RSA or Ed25519) and write the signature to \fIsig_file\fR, \fB\-\fR for stdout.
 The signature file says who signed it.
 The key is used where it is: on the server, through otpme-agent, or on a YubiKey (PIV).
@@ -386,7 +386,7 @@ Check the signature of \fIfile\fR.
 The signer is read from \fIsig_file\fR, and their public sign key is fetched from the realm, so you can check the signatures of any user.
 Prints what openssl says, for example \fBVerified OK\fR, and fails when the signature does not match.
 .TP
-.B encrypt \fR[\fB\-u\fR \fIuser\fR] [\fB\-\-rsa\fR] [\fB\-\-no\-rsa\fR] [\fB\-\-force\-pass\fR] [\fB\-\-pass\fR \fIpassword\fR] [\fB\-\-stdin\-pass\fR] \fIfile\fR \fIoutfile\fR
+\fBencrypt\fR [\fB\-u\fR \fIuser\fR] [\fB\-\-rsa\fR] [\fB\-\-no\-rsa\fR] [\fB\-\-force\-pass\fR] [\fB\-\-pass\fR \fIpassword\fR] [\fB\-\-stdin\-pass\fR] \fIfile\fR \fIoutfile\fR
 Encrypt \fIfile\fR and write it to \fIoutfile\fR, \fB\-\fR for stdout.
 By default the file is encrypted with a random AES key, and that key with your encrypt key (RSA or X25519), so only you can decrypt it.
 The output decrypts itself: run it, and it calls \fBotpme\-tool decrypt\fR.
@@ -410,7 +410,7 @@ Without them you are asked.
 \fB\-\-pass\fR shows in the process list, so prefer \fB\-\-stdin\-pass\fR.
 .RE
 .TP
-.B decrypt \fR[\fB\-\-pass\fR \fIpassword\fR] [\fB\-\-stdin\-pass\fR] \fIfile\fR \fIoutfile\fR
+\fBdecrypt\fR [\fB\-\-pass\fR \fIpassword\fR] [\fB\-\-stdin\-pass\fR] \fIfile\fR \fIoutfile\fR
 Decrypt a file made by \fBencrypt\fR and write it to \fIoutfile\fR, \fB\-\fR for stdout.
 What it needs is read from the file: your key, or the passphrase.
 The passphrase, or the one of your private key, is given with \fB\-\-pass\fR or \fB\-\-stdin\-pass\fR, or asked for.
@@ -471,7 +471,7 @@ A user that is not root always works on their own.
 Only \fBtoken\fR, \fBkey_script\fR and \fBagent_script\fR signers can be private.
 The host asks them only where \fBFORCE_TOKEN_SIGNERS\fR, \fBFORCE_KEY_SCRIPT_SIGNERS\fR or \fBFORCE_AGENT_SCRIPT_SIGNERS\fR in \fIotpme.conf\fR allow it, and by default it does not.
 .TP
-.B add_signer \fR[\fB\-\-private\fR] [\fB\-\-no\-pin\fR] [\fB\-\-no\-verify\-token\-opts\fR] [\fB\-\-allow\-throwaway\-key\fR] [\fB\-\-tag\fR \fItag\fR]... \fB\-\-signer\-type\fR \fItype\fR \fIobject_id\fR
+\fBadd_signer\fR [\fB\-\-private\fR] [\fB\-\-no\-pin\fR] [\fB\-\-no\-verify\-token\-opts\fR] [\fB\-\-allow\-throwaway\-key\fR] [\fB\-\-tag\fR \fItag\fR]... \fB\-\-signer\-type\fR \fItype\fR \fIobject_id\fR
 Trust the signatures of \fIobject_id\fR for \fItype\fR.
 \fIobject_id\fR is a user or a role, given as OID, for example \fB'user|example.org/alice'\fR or \fB'role|example.org/berlin/admins'\fR.
 .RS
@@ -522,16 +522,16 @@ See
 .BR otpme\-pass (1).
 .RE
 .TP
-.B del_signer \fR[\fB\-\-private\fR] \fIsigner_uuid\fR
+\fBdel_signer\fR [\fB\-\-private\fR] \fIsigner_uuid\fR
 Remove the signer.
 .TP
-.B enable_signer \fR[\fB\-\-private\fR] [\fB\-\-signer\-type\fR \fItype\fR] [\fIsigner_uuid\fR]
+\fBenable_signer\fR [\fB\-\-private\fR] [\fB\-\-signer\-type\fR \fItype\fR] [\fIsigner_uuid\fR]
 .TQ
-.B disable_signer \fR[\fB\-\-private\fR] [\fB\-\-signer\-type\fR \fItype\fR] [\fIsigner_uuid\fR]
+\fBdisable_signer\fR [\fB\-\-private\fR] [\fB\-\-signer\-type\fR \fItype\fR] [\fIsigner_uuid\fR]
 Switch one signer on or off, or with \fB\-\-signer\-type\fR alone every signer of that type.
 A signer that is off is not asked.
 .TP
-.B update_signer \fR[\fB\-\-private\fR] [\fB\-\-remove\-gone\fR] [\fB\-\-verify\-token\-opts\fR|\fB\-\-no\-verify\-token\-opts\fR] [\fB\-\-allow\-throwaway\-key\fR|\fB\-\-no\-throwaway\-key\fR] [\fB\-\-signer\-type\fR \fItype\fR] [\fIsigner_uuid\fR]
+\fBupdate_signer\fR [\fB\-\-private\fR] [\fB\-\-remove\-gone\fR] [\fB\-\-verify\-token\-opts\fR|\fB\-\-no\-verify\-token\-opts\fR] [\fB\-\-allow\-throwaway\-key\fR|\fB\-\-no\-throwaway\-key\fR] [\fB\-\-signer\-type\fR \fItype\fR] [\fIsigner_uuid\fR]
 Pin the keys the user or the members of the role have now, for example after a key change or a new member.
 One signer, or with \fB\-\-signer\-type\fR alone every signer of that type.
 A signer that cannot be updated is named at the end, and the others are updated all the same.
@@ -546,12 +546,12 @@ Name neither of a pair and it is left as it is: an update is usually about the p
 This is the only way to change one of them without removing the signer and adding it again.
 .RE
 .TP
-.B show_signer \fR[\fB\-\-private\fR] [\fB\-\-signer\-type\fR \fItype\fR] [\fIsigner_uuid\fR]
+\fBshow_signer\fR [\fB\-\-private\fR] [\fB\-\-signer\-type\fR \fItype\fR] [\fIsigner_uuid\fR]
 List the signers: the UUID (with \fB*\fR when its keys are pinned), whether it is on, its type, whether the token options are checked, whether it may bring its own key for a remote access session, the user or role, the pinned keys and the tags.
 A signer or key is marked \fBdeleted\fR when its user or role was deleted, \fBremoved\fR when the member left the role, \fBoutdated\fR when the key changed, and \fBno key\fR when the user has no sign key.
 .SS Host Keys
 .TP
-.B update_host_keys \fR[\fB\-\-list\fR] [\fIhost\fR]
+\fBupdate_host_keys\fR [\fB\-\-list\fR] [\fIhost\fR]
 Take over the public keys of hosts whose key changed.
 Only on a host, and only with \fBPIN_HOST_KEYS\fR, see
 .BR otpme.conf (5).
@@ -577,7 +577,7 @@ Nothing else does: the sync never takes a key away.
 .RE
 .SS User Keys
 .TP
-.B update_user_keys \fR[\fB\-\-list\fR] [\fIuser\fR]
+\fBupdate_user_keys\fR [\fB\-\-list\fR] [\fIuser\fR]
 Take over the encrypt public keys of users whose key changed.
 Only with \fBPIN_USER_KEYS\fR, see
 .BR otpme.conf (5).
@@ -604,7 +604,7 @@ After a login a host keeps a copy of the login token, and of its second factor t
 .BR pam_otpme (8).
 These commands work on that cache of the user who runs them.
 .TP
-.B show_offline_token \fR[\fB\-\-show\-secret\fR] [\fItoken_id\fR]
+\fBshow_offline_token\fR [\fB\-\-show\-secret\fR] [\fItoken_id\fR]
 List the cached tokens: \fBlogin_token\fR and the UUIDs of the others, with their path, and whether the cache is pinned.
 .IP
 With \fItoken_id\fR, \fBlogin_token\fR or a UUID, show what the token keeps for an offline login: the secret of an HOTP token, the password hash of a password token.
@@ -622,7 +622,7 @@ All but \fBdump\fR go to mgmtd and need an admin.
 An admin that is not the superuser does not get the realm, the sites, the nodes, the admin user and its token, and the objects of \fBsite_admin_blacklist\fR, with \fBdump_object\fR, \fBdump_index\fR and \fBdelete_object\fR.
 \fIobject_id\fR is an OID, for example \fB'user|example.org/alice'\fR.
 .TP
-.B dump acl_cache\fR|\fBsync_map \fR[\fIobject_id\fR]
+\fBdump acl_cache\fR|\fBsync_map\fR [\fIobject_id\fR]
 Print a cache of hostd on this host.
 Only root.
 With \fBacl_cache\fR, \fIobject_id\fR limits it to one object, given as full OID, or to the OIDs a pattern with \fB*\fR matches.
@@ -638,11 +638,11 @@ Delete an object as it is stored, after asking (the global \fB\-f\fR does not as
 This is not the delete of the object's own command: it skips ACLs, the trash, policies, and what belongs to the object, the tokens of a user for example.
 Use it for what that command cannot remove, like an index entry without a file.
 .TP
-.B check_duplicate_ids user\fR|\fBgroup
+\fBcheck_duplicate_ids user\fR|\fBgroup
 Look for uidNumbers (\fBuser\fR) or gidNumbers (\fBgroup\fR) used twice, in all sites.
 Prints each number with the two names, or \(lqNo duplicate IDs found.\(rq
 .TP
-.B search attribute=\fIattr\fB value=\fIvalue\fR [\fBobject_type=\fItype\fR] [\fBreturn_type=\fItype\fR]
+\fBsearch attribute=\f(BIattr\fB value=\f(BIvalue\fR [\fBobject_type=\f(BItype\fR] [\fBreturn_type=\f(BItype\fR]
 Search the index of this site.
 \fIvalue\fR may hold \fB*\fR as wildcard.
 Without \fBobject_type\fR every type is searched.
@@ -653,13 +653,13 @@ A user that is not an admin needs \fBview_public\fR on the attribute searched fo
 .SS Import
 Both need an admin and go to mgmtd.
 .TP
-.B import \fR[\fB\-\-password\fR \fIpassword\fR] \fIfile\fR
+\fBimport\fR [\fB\-\-password\fR \fIpassword\fR] \fIfile\fR
 Import an object from \fIfile\fR, as \fBotpme\-\fItype\fB export\fR wrote it, with \fB\-\-password\fR when it was exported with one.
 The object is written as it is in the file, with its UUID; ACLs and policies are not asked.
 If it exists, import asks before it writes over it.
 Only objects of this realm and site, and the realm and its sites themselves.
 .TP
-.B mass_object_add \fR[\fB\-\-verify\-only\fR] [\fB\-\-procs\fR \fIn\fR] \fIcsv_file\fR
+\fBmass_object_add\fR [\fB\-\-verify\-only\fR] [\fB\-\-procs\fR \fIn\fR] \fIcsv_file\fR
 Add users, groups and roles from a CSV file: one object per line, \fB;\fR between the columns, no header line.
 A column that holds a list separates its items with commas.
 .RS
@@ -670,7 +670,7 @@ group;name;unit;ldif_attributes
 role;name;unit;groups;roles
 .fi
 .PP
-\fBldif_attributes\fR is \fIattr\fB=\fIvalue\fB,\fIattr\fB=\fIvalue\fR.
+\fBldif_attributes\fR is \f(BIattr\fB=\f(BIvalue\fB,\f(BIattr\fB=\f(BIvalue\fR.
 Without \fBuidNumber\fR or \fBgidNumber\fR there, the IDRange policy of the unit, else of the site, gives the number.
 An empty unit is the default unit.
 .PP
@@ -692,7 +692,7 @@ Run the search index: the database next to the object files, PostgreSQL, MySQL o
 The commands:
 .RS
 .TP
-.B start\fR, \fBstop\fR, \fBrestart\fR, \fBstatus
+\fBstart\fR, \fBstop\fR, \fBrestart\fR, \fBstatus
 The database server.
 \fBstop\fR and \fBrestart\fR need OTPme stopped.
 .TP
@@ -710,7 +710,7 @@ Needs OTPme stopped.
 Delete the index, without asking.
 Needs OTPme stopped.
 .TP
-.B rebuild \fR[\fIobject_dir\fR]
+\fBrebuild\fR [\fIobject_dir\fR]
 Throw the index away and build it again from the object files, keeping the last used times.
 Needs OTPme stopped.
 With \fIobject_dir\fR only that object, while OTPme runs.
@@ -725,7 +725,7 @@ Write every entry as JSON to stdout.
 Put a backup back into an empty index.
 Needs OTPme stopped.
 .TP
-.B create_db_indices\fR, \fBdrop_db_indices
+\fBcreate_db_indices\fR, \fBdrop_db_indices
 Create or remove the indices of the database itself.
 Ones that are there already are left alone.
 .RE
@@ -742,7 +742,7 @@ Run freeradius on this node: \fBstart\fR, \fBstop\fR, \fBrestart\fR, \fBstatus\f
 \fBreload\fR restarts it on every node of the site, through hostd.
 .RS
 .TP
-.B test \fR[\fB\-\-mschap\fR] \fIusername password nas_id secret\fR
+\fBtest\fR [\fB\-\-mschap\fR] \fIusername password nas_id secret\fR
 Send a request to freeradius here and say whether it was accepted; with \fB\-\-mschap\fR as EAP-MSCHAPv2.
 The password shows in the process list.
 .RE
@@ -756,12 +756,12 @@ Both are only handed to the login session they belong to.
 See \fBenable_key_caching\fR in
 .BR otpme\-user (1).
 .TP
-.B get_private_key \fB\-\-role\fR \fIsign\fR|\fIencrypt\fR \fR[\fB\-\-decrypted\fR]
+\fBget_private_key \-\-role\fR \fIsign\fR|\fIencrypt\fR [\fB\-\-decrypted\fR]
 Write a private key of the logged in user to stdout.
 Without \fB\-\-decrypted\fR the wrapped one, with it the unwrapped one.
 It fails when the agent holds none, which is the normal answer before the key script has been asked to use the key, and after the cache time ran out.
 .TP
-.B add_private_key \fB\-\-role\fR \fIsign\fR|\fIencrypt\fR \fR[\fB\-\-decrypted\fR]
+\fBadd_private_key \-\-role\fR \fIsign\fR|\fIencrypt\fR [\fB\-\-decrypted\fR]
 Give the agent a private key, read from stdin.
 \fB\-\-decrypted\fR for the unwrapped one, which is then kept for the cache time.
 .br
@@ -816,7 +816,7 @@ Print the agent variables like \fBstart_ssh_agent\fR.
 Print "Running", or "Stopped" with exit code 1.
 .SS Backup and Restore
 .TP
-.B backup \fB\-d\fR \fIbackup_dir\fR \fR[\fB\-\-remove\-older\-than\fR \fItime\fR] [\fB\-\-dry\-run\fR]
+\fBbackup \-d\fR \fIbackup_dir\fR [\fB\-\-remove\-older\-than\fR \fItime\fR] [\fB\-\-dry\-run\fR]
 Write all objects of this node into a new directory \fIbackup_dir\fR/YYYY\-mm\-dd_HH:MM:SS.
 There is one JSON file per object, in one directory per object type.
 The object configs stay encrypted, as they are on disk.
@@ -827,7 +827,7 @@ At the end, failed objects are listed and the exit code is 1.
 Needs root.
 .RS
 .TP
-.BI \-\-remove\-older\-than " time"
+\fB\-\-remove\-older\-than\fR \fItime\fR
 Write no backup.
 Remove the backup directories in \fIbackup_dir\fR that are older than \fItime\fR.
 \fItime\fR is a number with m (minutes), h (hours), d (days), w (weeks), M (months of 30 days) or Y (years of 365 days), e.g. 30d.
@@ -836,11 +836,11 @@ Remove the backup directories in \fIbackup_dir\fR that are older than \fItime\fR
 With \fB\-\-remove\-older\-than\fR: remove nothing, only print what would be removed.
 .RE
 .TP
-.B restore \fR{\fB\-d\fR \fIrestore_dir\fR | \fB\-f\fR \fIrestore_file\fR}
+\fBrestore\fR {\fB\-d\fR \fIrestore_dir\fR | \fB\-f\fR \fIrestore_file\fR}
 Restore from a backup.
 .RS
 .TP
-.BI \-d " restore_dir"
+\fB\-d\fR \fIrestore_dir\fR
 Restore all objects of one backup directory, e.g. \fIbackup_dir\fR/2026\-10\-24_03:00:00.
 This also restores the objects of the other sites.
 It is meant to set up a node from scratch.
@@ -851,7 +851,7 @@ Object types that are missing in the backup are skipped.
 At the end, failed objects are listed and the exit code is 1.
 Needs root.
 .TP
-.BI \-f " restore_file"
+\fB\-f\fR \fIrestore_file\fR
 Restore one object from its backup file, through the management daemon.
 Only an object of this realm and site, and the realm and its sites themselves; the objects of another site are restored on that site, or all at once with \fB\-d\fR.
 If the object exists, you are asked before it is written over.
@@ -859,7 +859,7 @@ Needs admin rights.
 .RE
 .SS Benchmark
 .TP
-.B login_benchmark \fR[\fB\-\-procs\fR \fIN\fR] [\fB\-\-node\fR \fInode\fR]... [\fB\-\-logout\fR] \fIcsv_file\fR
+\fBlogin_benchmark\fR [\fB\-\-procs\fR \fIN\fR] [\fB\-\-node\fR \fInode\fR]... [\fB\-\-logout\fR] \fIcsv_file\fR
 Log in many users at the same time and measure the speed.
 \fIcsv_file\fR has one line per login: username,password.
 There is no header line.
@@ -872,11 +872,11 @@ At the end, the number of logins, the failed logins and the requests per second 
 If logins or logouts failed, the exit code is 1.
 .RS
 .TP
-.BI \-\-procs " N"
+\fB\-\-procs\fR \fIN\fR
 Run \fIN\fR logins at the same time.
 The default is half the number of CPUs.
 .TP
-.BI \-\-node " node"
+\fB\-\-node\fR \fInode\fR
 Send the logins to this node.
 Can be given more than once; the logins then go to the nodes in turn.
 Without it, the node is found the normal way.
@@ -887,7 +887,7 @@ The logouts are not part of the measured time.
 .RE
 .SS Smartcard
 .TP
-.B detect_smartcard \fR[\fB\-t\fR \fItype\fR[,\fItype\fR...]]
+\fBdetect_smartcard\fR [\fB\-t\fR \fItype\fR[,\fItype\fR...]]
 Search for connected smartcards and print what is found.
 This is the same search that login does.
 For each type, "Searching for smartcard: \fItype\fR" is printed, then the devices found.
@@ -899,7 +899,7 @@ yubikey_piv finds a YubiKey with a key in the PIV slot AUTHENTICATION.
 u2f and fido2 also search through PC/SC (e.g. NFC readers) if pcscd runs.
 .RS
 .TP
-.BI \-t " type\fR[,\fItype\fR...]"
+\fB\-t\fR \fItype\fR[,\fItype\fR...]
 Search only for these types.
 .RE
 .SH OPTIONS

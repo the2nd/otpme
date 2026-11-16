@@ -53,21 +53,21 @@ For **backup**: store the files without compressing them first.
 
 # COMMANDS
 
-**backup \[**--name** *name*\] \[**--special-files**\] \[**--exclude** *pattern*\] \[**--include** *pattern*\] \[**--mode** **tree**\|**pack**\] \[**--dry-run**\] *source***  
+**backup** \[**--name** *name*\] \[**--special-files**\] \[**--exclude** *pattern*\] \[**--include** *pattern*\] \[**--mode** **tree**\|**pack**\] \[**--dry-run**\] *source*  
 Back up the directory *source* into a new snapshot, named after the time
 it started unless **--name** says otherwise. The patterns work as with
 **otpme-backup start**. Device files, FIFOs and sockets are left out
 unless **--special-files** is given. **--mode** is taken by a new
 repository only (default: pack); an existing one keeps its mode.
 
-**restore \[**--path** *path*\] \[**--dry-run**\] *snapshot* *destination***  
+**restore** \[**--path** *path*\] \[**--dry-run**\] *snapshot* *destination*  
 Restore a snapshot into *destination*, or with **--path** only that file
 or directory.
 
 **list**  
 List the snapshots, as **otpme-backup list** does.
 
-**ls \[**--full-path**\] \[**-R**\] *snapshot* \[*path*\]**  
+**ls** \[**--full-path**\] \[**-R**\] *snapshot* \[*path*\]  
 List what a snapshot holds, as **otpme-backup ls** does.
 
 **verify *snapshot***  
@@ -77,7 +77,7 @@ should be. The exit code is 1 when one is not.
 **delete *snapshot***  
 Delete the snapshot, and the blocks no other snapshot uses.
 
-**retention \[**--daily** *n*\] \[**--weekly** *n*\] \[**--monthly** *n*\] \[**--dry-run**\]**  
+**retention** \[**--daily** *n*\] \[**--weekly** *n*\] \[**--monthly** *n*\] \[**--dry-run**\]  
 Apply the retention, see **otpme-backup**(1). A number given here counts
 instead of the one in *.daily*, *.weekly* or *.monthly*. **--dry-run**
 names the snapshots it would delete.

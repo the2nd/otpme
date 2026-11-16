@@ -84,7 +84,7 @@ ACLs decide what a user may do with a password object. The key decides
 whether the user can read it. Both are needed.
 
 **view:entries** allows **show_password** and **list_entries**.
-**add:entry, **edit:entry**** and **delete:entry** allow changes to
+**add:entry**, **edit:entry** and **delete:entry** allow changes to
 entries. **edit:keys** allows **update_keys**. Tab completion after
 **add_acl** offers all ACLs of a password object.
 
@@ -155,7 +155,7 @@ Devices, Clients and Description.
 
 ## Password Management
 
-**add \[**--node** *node*\] \[**--host** *host*\] \[**--device** *device*\] \[**--client** *client*\] \[**--username** *username*\] \[**--url** *url*\] \[**--notes** *notes*\] *password* \[*entry*\]**  
+**add** \[**--node** *node*\] \[**--host** *host*\] \[**--device** *device*\] \[**--client** *client*\] \[**--username** *username*\] \[**--url** *url*\] \[**--notes** *notes*\] *password* \[*entry*\]  
 Add a password object. With a path, e.g. **passwords/servers/server1**,
 it goes into that unit; else into the unit a **defaultunits** policy
 names, see **otpme-policy**(1), or into **passwords**. The name is
@@ -172,13 +172,13 @@ already exists". **--node** and the others are refused then: use
 **add_node** and the others, see **Objects**.  
 Needs **add:pass** on the unit.
 
-**del \[**--no-trash**\] *password***  
+**del** \[**--no-trash**\] *password*  
 Delete the password object. It goes to the trash, see
 **otpme-trash**(1); **--no-trash** deletes it right away. The hosts that
 keep it are told, and drop it.  
 Needs **delete:object** on the password or **delete:pass** on the unit.
 
-**show \[**--offline**\] \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*password*\]**  
+**show** \[**--offline**\] \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*password*\]  
 Without a password: a table of all of them, with their unit, the nodes,
 hosts, devices and clients they belong to, policies, ACL inheritance and
 description. The entries are not in it, see **show_password**.
@@ -216,13 +216,13 @@ another separator.
 
 A column you may not see says **-**. With a password named, this prints
 the object itself instead of a table row, one value per line, e.g.
-**NODES**; that needs **view_public:object**. **show** *password***$**
+**NODES**; that needs **view_public:object**. **show** ***password*$**
 prints that one password as a table row. A name that is no password is a
 pattern with **\***, not a regex, and a unit path that ends with **/**
 shows the passwords of that unit, see **SELECTING OBJECTS** in
 **otpme**(1).
 
-**show_oid \[**--full**\] *password***  
+**show_oid** \[**--full**\] *password*  
 Show the OID of the password: **pass\|\<realm\>/\<site\>/\<name\>**.
 With **--full** the full OID, which names the unit as well:
 **pass\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
@@ -232,7 +232,7 @@ Needs the ACL **view_public:object**.
 Show the UUID of the password.  
 Needs the ACL **view_public:object**.
 
-**list \[**--offline**\] \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**--offline**\] \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the password names, and with a pattern only those that match it,
 e.g. **server\***. You get the passwords you may change; **-a** adds
 those you may only look at. **--attribute** matches the pattern against
@@ -244,7 +244,7 @@ Rename the password object. The new name must not be in use in the site,
 and is taken in lower case.  
 Needs **rename:object**.
 
-**move \[**--keep-acls**\] *password* *unit***  
+**move** \[**--keep-acls**\] *password* *unit*  
 Move the password object into another unit. ACL inheritance is on for
 passwords, see **enable_acl_inheritance**: the default ACLs of the old
 unit are taken away and those of the new one given. **--keep-acls**
@@ -269,7 +269,7 @@ valid signature, see **Who gets a key** above. Members that have no key
 yet get one with the change; one who left keeps it until
 **update_keys**.
 
-**show_password \[**--offline**\] *password* \[*entry*\]**  
+**show_password** \[**--offline**\] *password* \[*entry*\]  
 Print the entries with their passwords, or only *entry*:
 
     server1/idrac
@@ -282,11 +282,11 @@ Print the entries with their passwords, or only *entry*:
 Online, each call is written to the audit log.  
 Needs **view:entries** and a key.
 
-**list_entries \[**--offline**\] *password***  
+**list_entries** \[**--offline**\] *password*  
 The same without the passwords.  
 Needs **view:entries** and a key.
 
-**change_entry \[**--username** *username*\] \[**--url** *url*\] \[**--notes** *notes*\] \[**--password**\] *password* *entry***  
+**change_entry** \[**--username** *username*\] \[**--url** *url*\] \[**--notes** *notes*\] \[**--password**\] *password* *entry*  
 Change the fields given; an empty value, e.g. **--notes ""**, clears
 one. **--password** asks for a new password, twice. Without any of them,
 nothing is changed and it says so.  
@@ -298,7 +298,7 @@ Needs **delete:entry** and a key.
 
 ## Keys
 
-**update_keys *password* \| **--all** \[**--unit** *unit*\]**  
+**update_keys *password*** \| **--all** \[**--unit** *unit*\]  
 Bring the keys of the password in line with its members, see **Who gets
 a key** above: members that have no key get one, and users that are no
 longer members lose it. Run it after the members were signed again,
@@ -426,7 +426,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *password***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *password*  
 List the policies attached to the password object, the disabled ones
 too, marked **(disabled)**. Use **--return-type** to select the
 attribute returned (**name**, **read_oid**, **full_oid**, **uuid**). Use
@@ -503,7 +503,7 @@ Changelog**.
 A command that changes something asks first; the global option **-f**
 skips the question.
 
-**config \[**-a**\] \[**-d**\] *password* *parameter* \[*value*\]**  
+**config** \[**-a**\] \[**-d**\] *password* *parameter* \[*value*\]  
 Set a parameter on the password object.
 
 **-d**  
@@ -536,7 +536,7 @@ for editing. It is not encrypted: **show** lists it, and a host keeps it
 for **--offline**.  
 Needs the ACL **edit:description**.
 
-**info \[**--language** *LANG*\] *password* \[*info*\]**  
+**info** \[**--language** *LANG*\] *password* \[*info*\]  
 Set free-form info text. It is not encrypted. If *info* is omitted, the
 current info text is opened in the editor named by the **EDITOR**
 environment variable (default: vim).  
@@ -545,7 +545,7 @@ Without **--language** the text is the administrator's own note. Nothing
 shows the info of a password to a user, so a text for a language stays a
 note as well.
 
-**dump_info \[**--language** *LANG*\] *password***  
+**dump_info** \[**--language** *LANG*\] *password*  
 Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator.  
 Needs the ACL **view:info**.
@@ -558,7 +558,7 @@ There is no import on this page: reading an export back in is
 **remove_orphans** asks before it changes anything; the global option
 **-f** skips the question.
 
-**export \[**--password** *passphrase*\] *password***  
+**export** \[**--password** *passphrase*\] *password*  
 Write the whole password object to stdout, as JSON.
 
 Without **--password** it is written as it is, in clear. With one, a key

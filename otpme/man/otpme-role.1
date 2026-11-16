@@ -22,7 +22,7 @@ A role lives in a unit, which is where its ACLs come from, and belongs to one si
 .SH COMMANDS
 .SS Role Management
 .TP
-.B add \fR[\fB\-\-groups\fR \fIgroup1,group2\fR] [\fB\-\-roles\fR \fIrole1,role2\fR] \fIrole\fR
+\fBadd\fR [\fB\-\-groups\fR \fIgroup1,group2\fR] [\fB\-\-roles\fR \fIrole1,role2\fR] \fIrole\fR
 Create a role.
 .br
 .B \-\-groups
@@ -32,7 +32,7 @@ into those roles, which saves an
 .B add_role
 per role afterwards.
 .TP
-.B del \fR[\fB\-\-no\-trash\fR] \fIrole\fR
+\fBdel\fR [\fB\-\-no\-trash\fR] \fIrole\fR
 Delete a role.
 It goes to the trash, from where
 .BR otpme\-trash (1)
@@ -46,7 +46,7 @@ on those objects clears it up.
 .br
 A base role of the realm cannot be deleted at all.
 .TP
-.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-token\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-accessgroup\-limit\fR \fIN\fR] [\fB\-\-group\-limit\fR \fIN\fR] [\fB\-\-scope\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIrole\fR]
+\fBshow\fR [\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-token\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-accessgroup\-limit\fR \fIN\fR] [\fB\-\-group\-limit\fR \fIN\fR] [\fB\-\-scope\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIrole\fR]
 Show the roles, with their tokens, access groups, groups, scopes and policies.
 Without a role you get all of them.
 .RS
@@ -82,7 +82,7 @@ uses another separator.
 .na
 .nh
 .TP
-.B show_oid \fR[\fB\-\-full\fR] \fIrole\fR
+\fBshow_oid\fR [\fB\-\-full\fR] \fIrole\fR
 Show the OID of the role: \fB\%role|<realm>/<site>/<name>\fR.
 With \fB\-\-full\fR the full OID, which names the unit as well: \fB\%role|<realm>/<site>/<unit_path>/<name>\fR.
 .br
@@ -95,7 +95,7 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+\fBlist\fR [\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
 List the role names, and with a pattern only those that match it, see
 .B SELECTING OBJECTS
 in
@@ -107,7 +107,7 @@ You get the roles you may change; \fB\-a\fR adds those you may only look at.
 matches the pattern against that attribute instead of the name: \fBlist \-\-attribute enabled True\fR lists the roles that are enabled.
 A value that is not text has to be spelled out \(em \fB*\fR matches none of it.
 .TP
-.B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIrole\fR
+\fBenable\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIrole\fR
 Enable a disabled role.
 .RS
 .TP
@@ -121,7 +121,7 @@ Do not send notification to all online hosts on new share permissions.
 Do not persist new share mounts on hosts.
 .RE
 .TP
-.B disable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIrole\fR
+\fBdisable\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIrole\fR
 Disable a role without deleting it.
 .RS
 .TP
@@ -138,7 +138,7 @@ Keep persisted share mounts on hosts (transient unmount only).
 .B rename \fIrole\fR \fInew_name\fR
 Rename a role.
 .TP
-.B move \fR[\fB\-\-keep\-acls\fR] \fIrole\fR \fIunit\fR
+\fBmove\fR [\fB\-\-keep\-acls\fR] \fIrole\fR \fIunit\fR
 Move the role into another unit.
 .br
 Its ACLs move with it: the default ACLs of the old unit are taken away and those of the new one are applied.
@@ -177,7 +177,7 @@ Those are added without a signature.
 A link token can be signed when the token it points at can, see
 .BR otpme\-token (1).
 .TP
-.B add_token \fR[\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR] [\fB\-\-tags\fR \fItag1,tag2\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] [\fB\-\-skip\-portal\-token\fR] \fIrole\fR \fItoken\fR \fR[\fItoken_options\fR]
+\fBadd_token\fR [\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR] [\fB\-\-tags\fR \fItag1,tag2\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] [\fB\-\-skip\-portal\-token\fR] \fIrole\fR \fItoken\fR \fR[\fItoken_options\fR]
 Put a token into the role.
 From then on it reaches everything the role is assigned to, and everything the roles above it are assigned to.
 .RS
@@ -212,7 +212,7 @@ Whether the online hosts are told that there are new share permissions.
 Do not persist new share mounts on hosts.
 .RE
 .TP
-.B remove_token \fR[\fB\-\-keep\-sign\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] [\fB\-\-skip\-portal\-token\fR] \fIrole\fR \fItoken\fR
+\fBremove_token\fR [\fB\-\-keep\-sign\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] [\fB\-\-skip\-portal\-token\fR] \fIrole\fR \fItoken\fR
 Take the token out of the role.
 What it reached through the role, it no longer reaches.
 .RS
@@ -233,7 +233,7 @@ Whether the online hosts are told that share permissions were revoked.
 Keep persisted share mounts on hosts (transient unmount only).
 .RE
 .TP
-.B list_tokens \fR[\fB\-\-return\-type\fR \fItype\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIrole\fR
+\fBlist_tokens\fR [\fB\-\-return\-type\fR \fItype\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIrole\fR
 The tokens in this role.
 Only the ones put in here, not the ones that reach it through a nested role.
 .br
@@ -244,17 +244,17 @@ narrows it to those types, for example \fBhotp,totp\fR.
 .br
 Disabled tokens are listed as well.
 .TP
-.B list_users \fR[\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
+\fBlist_users\fR [\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
 The users those tokens belong to.
 One user with three tokens in the role is named once.
 .SS Role Nesting
 A role can hold other roles, and what the outer role is assigned to reaches the tokens of the inner ones.
 See the \fBDESCRIPTION\fR above.
 .PP
-A \fIchild_role\fR is looked for in the site of the role, or written as \fIsite\fB/\fIrole\fR to take one from another site of the realm.
+A \fIchild_role\fR is looked for in the site of the role, or written as \f(BIsite\fB/\f(BIrole\fR to take one from another site of the realm.
 \fBremove_role\fR takes a UUID as well, which is how a reference to a role that is gone is cleared out.
 .TP
-.B add_role \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIrole\fR \fIchild_role\fR
+\fBadd_role\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIrole\fR \fIchild_role\fR
 Put \fIchild_role\fR into \fIrole\fR.
 The tokens of \fIchild_role\fR then reach everything \fIrole\fR is assigned to.
 .RS
@@ -268,7 +268,7 @@ Whether the online hosts are told that there are new share permissions.
 Do not persist new share mounts on hosts.
 .RE
 .TP
-.B remove_role \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIrole\fR \fIchild_role\fR
+\fBremove_role\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIrole\fR \fIchild_role\fR
 Take \fIchild_role\fR out of \fIrole\fR again.
 .RS
 .TP
@@ -279,7 +279,7 @@ Whether the online hosts are told that share permissions were revoked.
 Keep persisted share mounts on hosts (transient unmount only).
 .RE
 .TP
-.B list_roles \fR[\fB\-r\fR] \fIrole\fR
+\fBlist_roles\fR [\fB\-r\fR] \fIrole\fR
 The roles this role holds.
 .B \-r
 adds the roles those hold, all the way down.
@@ -289,34 +289,34 @@ One that starts with \fBfind_\fR answers the other question: where the role is u
 .PP
 .B \-\-return\-type
 picks what they print: \fBname\fR (default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
-A name from another site is printed as \fIsite\fB/\fIname\fR.
+A name from another site is printed as \f(BIsite\fB/\f(BIname\fR.
 .PP
 Disabled objects are listed as well, so a permission that is only switched off is not mistaken for one that is gone.
 .TP
-.B find_roles \fR[\fB\-r\fR] [\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
+\fBfind_roles\fR [\fB\-r\fR] [\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
 The roles this role is in, which is the other way round from
 .BR list_roles .
 .B \-r
 adds the roles those are in, all the way up.
 .TP
-.B find_accessgroups \fR[\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
+\fBfind_accessgroups\fR [\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
 The access groups this role is in.
 Those are what say where a token of the role may log in at all.
 .TP
-.B find_clients \fR[\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
+\fBfind_clients\fR [\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
 The clients this role is assigned to.
 .TP
-.B find_groups \fR[\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
+\fBfind_groups\fR [\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
 The groups this role is in.
 .TP
-.B find_shares \fR[\fB\-r\fR] [\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
+\fBfind_shares\fR [\fB\-r\fR] [\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
 The shares this role opens.
 .B \-r
 adds the shares the roles below it open.
 .br
 Here \fB\-\-return\-type\fR starts at \fBpath\fR, which is the share name with its site in front.
 .TP
-.B find_scopes \fR[\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
+\fBfind_scopes\fR [\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
 The OIDC scopes this role is assigned to.
 They decide what a relying party learns about the user.
 .TP
@@ -441,7 +441,7 @@ Stop that.
 .br
 Needs the ACL \fBremove:sync_user\fR.
 .TP
-.B list_sync_users \fR[\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
+\fBlist_sync_users\fR [\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
 The sync users of this role.
 .br
 Needs the ACL \fBview:sync_users\fR.
@@ -477,7 +477,7 @@ Remove a policy from the role.
 Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
-.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIrole\fR
+\fBlist_policies\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIrole\fR
 List the policies attached to the role, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
@@ -487,7 +487,7 @@ Needs the ACL \fBview:policies\fR.
 An ACL says what somebody may do with this role.
 The somebody is a role or a token, never a user.
 .PP
-What the three forms \fIacl\fR, \fB+\fIacl\fR and \fB++\fIacl\fR mean, and which ACLs exist, is under \fBACLs\fR in
+What the three forms \fIacl\fR, \fB+\f(BIacl\fR and \fB++\f(BIacl\fR mean, and which ACLs exist, is under \fBACLs\fR in
 .BR otpme (7).
 .PP
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
@@ -562,14 +562,14 @@ Set an LDAP attribute of the role.
 Only an attribute one of its extensions allows: there is no setting an attribute OTPme knows nothing about.
 An attribute can hold more than one value, so this adds one and leaves the others.
 .PP
-The ACL is per attribute, \fBadd:attribute:\fIattribute\fR, and a plain \fBadd:attribute\fR covers all of them.
+The ACL is per attribute, \fBadd:attribute:\f(BIattribute\fR, and a plain \fBadd:attribute\fR covers all of them.
 .RE
 .TP
 .B del_attribute \fIrole\fR \fIattribute\fR\fB=\fR[\fIvalue\fR]
 Remove that value, or the whole attribute where no value is given.
 .br
 A mandatory attribute of a class the role is of cannot be removed, and neither can a read-only one.
-The ACL is \fBdelete:attribute:\fIattribute\fR.
+The ACL is \fBdelete:attribute:\f(BIattribute\fR.
 .TP
 .B add_object_class \fIrole\fR \fIclass\fR
 Add an LDAP object class to the role, beyond the ones its extensions brought.
@@ -577,7 +577,7 @@ Add an LDAP object class to the role, beyond the ones its extensions brought.
 .B del_object_class \fIrole\fR \fIclass\fR
 Remove one again.
 .TP
-.B show_ldif \fIrole\fR \fR[\fB\-a\fR \fIattribute1,attribute2\fR]
+\fBshow_ldif \f(BIrole\fR [\fB\-a\fR \fIattribute1,attribute2\fR]
 The role as LDAP sees it.
 .B \-a
 prints only those attributes.
@@ -601,7 +601,7 @@ A value is looked for on the role, then on the unit above it, then on the unit a
 The nearest one wins, and the realm holds none.
 A site can take that away for single parameters with \fBforce_site_config_parameters\fR: those are read from the site and nowhere else, whatever the role says.
 .TP
-.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIrole\fR \fIparameter\fR \fR[\fIvalue\fR]
+\fBconfig\fR [\fB\-d\fR] [\fB\-a\fR] \fIrole\fR \fIparameter\fR \fR[\fIvalue\fR]
 Set a parameter on the role itself.
 .RS
 .PP
@@ -612,7 +612,7 @@ appends to a parameter that holds a list instead of replacing it.
 removes the parameter from the role, or with a value only that one value from a list.
 What the role gets afterwards is whatever the units above it or the site say \(em \fB\-d\fR is not the same as setting the parameter to its default.
 .PP
-The ACL is per parameter, \fBset:config:\fIparameter\fR.
+The ACL is per parameter, \fBset:config:\f(BIparameter\fR.
 .RE
 .TP
 .B show_config \fIrole\fR \fR[\fIparameter\fR]
@@ -629,7 +629,7 @@ Without one OTPme asks and offers the current text for editing.
 .br
 It is an LDAP attribute of the role as well (\fBdescription\fR, from the \fBbase\fR extension), so it is what an LDAP client sees.
 .TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIrole\fR \fR[\fIinfo\fR]
+\fBinfo\fR [\fB\-\-language\fR \fILANG\fR] \fIrole\fR \fR[\fIinfo\fR]
 Set free-form info text. If \fIinfo\fR is omitted, the current info text is
 opened in the editor specified by the \fBEDITOR\fR environment variable.
 .br
@@ -639,7 +639,7 @@ the text is the administrator's own note about the object, which no user is ever
 .B device_token_roles
 shows it on the SSO portal, in the language of whoever is looking, see \fBotpme\fR(7).
 .TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIrole\fR
+\fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fIrole\fR
 Write one of those texts to stdout, for reading it with something other than the editor.
 .br
 \fB\-\-language\fR picks which one, the same way as for \fBinfo\fR; without it you get the note of the administrator.
@@ -694,7 +694,7 @@ see
 .B remove_orphans
 asks before it changes anything; the global option \fB\-f\fR skips the question.
 .TP
-.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIrole\fR
+\fBexport\fR [\fB\-\-password\fR \fIpassword\fR] \fIrole\fR
 Write the whole object of the role to stdout, as JSON.
 .RS
 .PP

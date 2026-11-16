@@ -22,7 +22,7 @@ before the machine joins, or by the join itself, which adds the host when it is 
 .SH COMMANDS
 .SS Host Management
 .TP
-.B add \fR[\fB\-\-template \fItemplate\fR] [\fB\-\-no\-template\fR] \fIhost\fR
+\fBadd\fR [\fB\-\-template \fItemplate\fR] [\fB\-\-no\-template\fR] \fIhost\fR
 Create a host.
 The machine itself need not exist yet: this is the object a join with a JOTP looks for.
 The name has to be unique in the realm: no host and no node of any site may have it already.
@@ -33,14 +33,14 @@ Where an \fBobjecttemplates\fR policy names a host template, the new host is bui
 There is no \fBrename\fR.
 A host is found by the name it joined with, which is also the name in its certificate, so a machine that is renamed leaves the realm and joins again.
 .TP
-.B del \fR[\fB\-\-no\-trash\fR] \fIhost\fR
+\fBdel\fR [\fB\-\-no\-trash\fR] \fIhost\fR
 Delete a host.
 It goes to the trash, from where \fBotpme-trash\fR(1) can bring it back; \fB\-\-no\-trash\fR deletes it right away.
 .br
 The certificate of the host is revoked, and the roles and access groups that name the host let it go first, so nothing is left pointing at it.
 The passwords of the host stay; the question says how many there are.
 .TP
-.B show \fR[\fB\-a\fR] [\fB\-t\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-token\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] [\fIhost\fR]
+\fBshow\fR [\fB\-a\fR] [\fB\-t\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-token\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] [\fIhost\fR]
 Show the hosts, with their tokens, roles and policies.
 Without a host you get all of them.
 .RS
@@ -74,7 +74,7 @@ For reading with something other than your eyes: \fB\-\-raw\fR leaves the header
 .na
 .nh
 .TP
-.B show_oid \fR[\fB\-\-full\fR] \fIhost\fR
+\fBshow_oid\fR [\fB\-\-full\fR] \fIhost\fR
 Show the OID of the host: \fB\%host|<realm>/<name>\fR.
 With \fB\-\-full\fR the full OID, which names the site and unit as well: \fB\%host|<realm>/<site>/<unit_path>/<name>\fR.
 .br
@@ -87,7 +87,7 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-t\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+\fBlist\fR [\fB\-a\fR] [\fB\-t\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
 List the host names, and with a pattern only those that match it, see
 .B SELECTING OBJECTS
 in
@@ -106,7 +106,7 @@ Enable a disabled host.
 Disable a host without deleting it.
 A disabled host is turned away by the daemons it talks to, so it neither syncs nor logs anybody in.
 .TP
-.B move \fR[\fB\-\-keep\-acls\fR] \fIhost\fR \fIunit\fR
+\fBmove\fR [\fB\-\-keep\-acls\fR] \fIhost\fR \fIunit\fR
 Move the host into another unit.
 Its ACLs move with it: the default ACLs of the old unit are taken away and those of the new one are applied.
 \fB\-\-keep\-acls\fR leaves the ACLs of the host as they are.
@@ -114,7 +114,7 @@ Its ACLs move with it: the default ACLs of the old unit are taken away and those
 .B touch \fIhost\fR
 Re-index the object to fix potential index problems.
 .TP
-.B auto_disable \fR[\fB\-u\fR] \fIhost\fR \fItime\fR
+\fBauto_disable\fR [\fB\-u\fR] \fIhost\fR \fItime\fR
 Set auto\-disable time.
 It is either a relative time with a leading \fB+\fR, e.g. \fB+30D\fR, or an absolute one, e.g. \fB"09:53 13.06.2023"\fR.
 The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
@@ -139,10 +139,10 @@ An empty \fImac_address\fR, \fB""\fR, removes it.
 Needs \fBedit:mac_address\fR.
 Seeing it, with \fBshow\fR, needs \fBview:mac_address\fR.
 .SS Token and Role Assignment
-A token is named by its path, \fIuser\fB/\fItoken\fR.
-A role is named by its name, which is looked for in the site of the host, or as \fIsite\fB/\fIrole\fR to take one from another site of the realm.
+A token is named by its path, \f(BIuser\fB/\f(BItoken\fR.
+A role is named by its name, which is looked for in the site of the host, or as \f(BIsite\fB/\f(BIrole\fR to take one from another site of the realm.
 .TP
-.B add_token \fR[\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] \fIhost\fR \fItoken_path\fR \fR[\fItoken_options\fR]
+\fBadd_token\fR [\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] \fIhost\fR \fItoken_path\fR \fR[\fItoken_options\fR]
 Let this token log in to the host.
 .RS
 .TP
@@ -169,11 +169,11 @@ Do not sign, whatever the \fBauto_sign\fR of the host or the \fBautosign\fR sett
 .IP
 A token that is already assigned, with other interfaces or options, is not added twice: OTPme asks whether to change what it has.
 .TP
-.B remove_token \fR[\fB\-\-keep\-sign\fR] \fIhost\fR \fItoken_path\fR
+\fBremove_token\fR [\fB\-\-keep\-sign\fR] \fIhost\fR \fItoken_path\fR
 Take the token away from the host.
 The signature for this assignment is removed with it; \fB\-\-keep\-sign\fR leaves it in place.
 .TP
-.B list_tokens \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIhost\fR
+\fBlist_tokens\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIhost\fR
 List the tokens assigned to the host.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-token\-types\fR to limit the listing to the given token types.
 .TP
@@ -329,17 +329,17 @@ See
 .SS User and Group Listing
 \fB\-\-return\-type\fR picks what these print: \fBname\fR (the default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
 .TP
-.B list_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
+\fBlist_users\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
 The users who own a token assigned to the host.
 Only the tokens the host holds itself count here, not the ones it gets through a role.
 .TP
-.B list_sync_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
+\fBlist_sync_users\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
 The sync users of the host, as \fBadd_sync_user\fR set them.
 The ones that come with a role are not in it, see \fBSync Configuration\fR below.
 .br
 Needs the ACL \fBview:sync_users\fR.
 .TP
-.B list_sync_groups \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
+\fBlist_sync_groups\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
 The sync groups of the host.
 .TP
 .B list_dynamic_groups \fIhost\fR
@@ -348,23 +348,23 @@ The dynamic groups of the host, with those of the roles it is in.
 A command that starts with \fBlist_\fR answers what the host holds.
 One that starts with \fBfind_\fR answers the other question: where the host itself is named.
 .PP
-\fB\-\-return\-type\fR works as above, and a name from another site is printed as \fIsite\fB/\fIname\fR.
+\fB\-\-return\-type\fR works as above, and a name from another site is printed as \f(BIsite\fB/\f(BIname\fR.
 Disabled objects are listed as well, so a permission that is only switched off is not mistaken for one that is gone.
 Each of these needs its own ACL, \fBfind:roles\fR for \fBfind_roles\fR and so on.
 .TP
-.B find_roles \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
+\fBfind_roles\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
 The roles the host is in.
 They decide which VLAN it gets and which shares it may reach, see \fBotpme-role\fR(1) \fBadd_host\fR.
 .TP
-.B find_accessgroups \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
+\fBfind_accessgroups\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
 The access groups the host is in.
 This is what carries it through MAB: the host authenticates with its MAC address as the password, and the access group the request is answered for has to hold the host, see \fBPort Authentication\fR above.
 .TP
-.B find_groups \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
+\fBfind_groups\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
 The groups the host is in.
 A group matters for the shares of that group that are limited to hosts.
 .TP
-.B find_shares \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
+\fBfind_shares\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
 The shares the host is named in, so the ones it may mount without a role bringing it.
 .SS Passwords
 Passwords can belong to the host, for example its root password.
@@ -372,7 +372,7 @@ A password is given to it with \fBotpme\-pass add \-\-host\fR or \fBotpme\-pass 
 .BR otpme\-pass (1).
 Each password decides itself whether you may see it; the host has no ACL for that.
 .TP
-.B find_passwords \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
+\fBfind_passwords\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fIhost\fR
 List the passwords that belong to the host and that you may look at, by \fBview_public\fR, \fBview\fR or \fBview:entries\fR on the password.
 \fITYPE\fR is \fBname\fR (the default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
 A name of another site is shown as \fI<site>/<password>\fR.
@@ -651,7 +651,7 @@ Remove a policy from the host.
 Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
-.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIhost\fR
+\fBlist_policies\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIhost\fR
 List the policies attached to the host, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
@@ -717,7 +717,7 @@ Which parameters a host takes is in
 .B CONFIG PARAMETERS
 below.
 .TP
-.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIhost\fR \fIparameter\fR \fR[\fIvalue\fR]
+\fBconfig\fR [\fB\-d\fR] [\fB\-a\fR] \fIhost\fR \fIparameter\fR \fR[\fIvalue\fR]
 Set a parameter on the host.
 .RS
 .TP
@@ -729,7 +729,7 @@ It is not set back to a default: what applies afterwards is whatever the unit or
 Append the value to a parameter that holds a list, instead of replacing what is there.
 .RE
 .IP
-The ACL is per parameter, \fBset:config:\fIparameter\fR.
+The ACL is per parameter, \fBset:config:\f(BIparameter\fR.
 Removing a parameter that is not registered any more, which is what a rename or a dropped feature leaves behind, is for admins only.
 .TP
 .B show_config \fIhost\fR \fR[\fIparameter\fR]
@@ -744,7 +744,7 @@ So this answers what applies, where \fBshow_config\fR answers what was set here.
 Set the description.
 Without one OTPme asks and offers the current text for editing.
 .TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIhost\fR \fR[\fIinfo\fR]
+\fBinfo\fR [\fB\-\-language\fR \fILANG\fR] \fIhost\fR \fR[\fIinfo\fR]
 Set free-form info text.
 If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
 .br
@@ -753,7 +753,7 @@ Without
 the text is the administrator's own note, which no user is ever shown.
 A text can be written for a language as well, for the places that show such a text to a user; nothing shows the info of a host, so for a host it stays a note either way.
 .TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIhost\fR
+\fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fIhost\fR
 Write one of those texts to stdout, for reading it with something other than the editor.
 .br
 \fB\-\-language\fR picks which one; without it you get the note of the administrator.
@@ -768,7 +768,7 @@ see
 .B remove_orphans
 asks before it changes anything; the global option \fB\-f\fR skips the question.
 .TP
-.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIhost\fR
+\fBexport\fR [\fB\-\-password\fR \fIpassword\fR] \fIhost\fR
 Write the whole object of the host to stdout, as JSON.
 .RS
 .PP

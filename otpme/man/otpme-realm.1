@@ -29,7 +29,7 @@ For the bigger picture \(em realms, sites, how a login runs across them \(em see
 .SH COMMANDS
 .SS Realm Initialization
 .TP
-.B init \fR[\fIoptions\fR] \fIrealm\fR \fIsite\fR \fIfqdn\fR [\fIaddress\fR]
+\fBinit\fR [\fIoptions\fR] \fIrealm\fR \fIsite\fR \fIfqdn\fR [\fIaddress\fR]
 Create a new realm on the machine you run it on.
 This is the first command of a new OTPme installation.
 .br
@@ -63,7 +63,7 @@ init runs on the machine itself, not through a daemon, and needs no ACL: there i
 The options are under \fBINIT OPTIONS\fR.
 .SS Display
 .TP
-.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIrealm\fR]
+\fBshow\fR [\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIrealm\fR]
 Without a realm: a table of the realms, with their type, whether authentication and synchronization with them are on, their policies and their description.
 .br
 The type is \fBLocal\fR for your own realm and \fBRemote\fR for any other.
@@ -105,7 +105,7 @@ init gives it to the site admin role and to the realm user role of the first sit
 .na
 .nh
 .TP
-.B show_oid \fR[\fB\-\-full\fR] \fIrealm\fR
+\fBshow_oid\fR [\fB\-\-full\fR] \fIrealm\fR
 Show the OID of the realm: \fB\%realm|<realm>\fR.
 \fB\-\-full\fR is accepted and shows the same.
 .br
@@ -118,7 +118,7 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+\fBlist\fR [\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
 List the realm names, and with a pattern only those that match it, see
 .B SELECTING OBJECTS
 in
@@ -216,7 +216,7 @@ Remove a policy from the realm.
 Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
-.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIrealm\fR
+\fBlist_policies\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIrealm\fR
 List the policies attached to the realm, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
@@ -298,19 +298,19 @@ Only an attribute one of its classes allows.
 One that only \fBorganization\fR allows gives the realm that class; set \fBo\fR first, the class needs it.
 An attribute can hold more than one value, so this adds one and leaves the others.
 .PP
-The ACL is per attribute, \fBadd:attribute:\fIattribute\fR, and a plain \fBadd:attribute\fR covers all of them.
+The ACL is per attribute, \fBadd:attribute:\f(BIattribute\fR, and a plain \fBadd:attribute\fR covers all of them.
 .RE
 .TP
 .B modify_attribute \fIrealm\fR \fIattribute\fR \fIold_value\fR \fInew_value\fR
 Put \fInew_value\fR in the place of \fIold_value\fR, and leave the other values of the attribute alone.
 .br
-The ACL is \fBedit:attribute:\fIattribute\fR.
+The ACL is \fBedit:attribute:\f(BIattribute\fR.
 .TP
 .B del_attribute \fIrealm\fR \fIattribute\fR\fB=\fR[\fIvalue\fR]
 Remove that value, or the whole attribute where no value is given.
 .br
 A mandatory attribute of a class the realm is of cannot be removed, \fBo\fR while it has \fBorganization\fR for example, and neither can \fBdc\fR.
-The ACL is \fBdelete:attribute:\fIattribute\fR.
+The ACL is \fBdelete:attribute:\f(BIattribute\fR.
 .TP
 .B add_object_class \fIrealm\fR \fIclass\fR
 Add an LDAP object class.
@@ -326,14 +326,14 @@ It says which ones before it asks, and changes nothing before the answer.
 .br
 Needs the ACL \fBdelete:object_class\fR.
 .TP
-.B show_ldif \fIrealm\fR \fR[\fB\-a\fR \fIattribute1,attribute2\fR]
+\fBshow_ldif \f(BIrealm\fR [\fB\-a\fR \fIattribute1,attribute2\fR]
 The realm as LDAP sees it.
 .B \-a
 prints only those attributes.
 .br
 It shows the attributes in \fBldif_whitelist_attributes\fR, see
 .BR otpme (7),
-and the ones you have \fBview:attribute:\fIattribute\fR for; the others are left out.
+and the ones you have \fBview:attribute:\f(BIattribute\fR for; the others are left out.
 By default that leaves \fBdn\fR, \fBobjectClass\fR and \fBentryUUID\fR of a realm.
 .SS Configuration and Attributes
 .TP
@@ -344,7 +344,7 @@ Each site keeps its own description of the realm: it can be set on any site, and
 .br
 Needs the ACL \fBedit:description\fR.
 .TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIrealm\fR \fR[\fIinfo\fR]
+\fBinfo\fR [\fB\-\-language\fR \fILANG\fR] \fIrealm\fR \fR[\fIinfo\fR]
 Set free-form info text.
 If \fIinfo\fR is omitted, the current text is opened in the editor named by the \fBEDITOR\fR environment variable, or in vim; that reads the text first and needs \fBview:info\fR as well.
 Without \fB\-\-language\fR the text is the administrator's own note.
@@ -353,7 +353,7 @@ The info is set on the master site and comes to the other sites with the sync; \
 .br
 Needs the ACL \fBedit:info\fR.
 .TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIrealm\fR
+\fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fIrealm\fR
 Write one of those texts to stdout.
 \fB\-\-language\fR picks which one; without it you get the note of the administrator.
 .br
@@ -414,7 +414,7 @@ For a realm only the value set on the token you are signed in with counts: the r
 So clearing needs that token to have \fB\%allow_changelog_clearing\fR set to true, see \fBotpme\-token\fR(1).
 .SS Export and Cleanup
 .TP
-.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIrealm\fR
+\fBexport\fR [\fB\-\-password\fR \fIpassword\fR] \fIrealm\fR
 Write the whole object of the realm to stdout, as JSON: its ACLs, policies, LDAP attributes, the certificates and CRLs of the CA and the rest, but not the sites in it.
 \fBotpme\-tool import\fR reads it back.
 .br
@@ -494,7 +494,7 @@ for the names, and
 to add more later.
 .TP
 .B \-\-id\-ranges \fIrange1,range2\fR
-The ranges the master site takes the numbers of new users and groups from, each written as \fIattribute\fB:\fItype\fB:\fIfirst\fB\-\fIlast\fR.
+The ranges the master site takes the numbers of new users and groups from, each written as \f(BIattribute\fB:\f(BItype\fB:\f(BIfirst\fB\-\f(BIlast\fR.
 They go into its ID range policy, see
 .BR otpme\-policy (1).
 .br

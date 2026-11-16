@@ -684,7 +684,8 @@ OTPme has two kinds of access control:
 An ACL says what a token or a role may do with an object. Add one with
 **add_acl**, for example:
 
-> **otpme-token add_acl *alice/pass* role *helpdesk* edit:password **
+> **otpme-token add_acl** *alice/pass* **role** *helpdesk*
+> **"edit:password"**
 
 Every token in the role *helpdesk* may now change the password of the
 token *alice/pass*. Use **list_acls** to see the ACLs of an object and
@@ -716,7 +717,7 @@ through all units below, and every object there gets it.
 
 An example: with
 
-> **otpme-unit add_acl *hosts* role *helpdesk* ++host:edit **
+> **otpme-unit add_acl** *hosts* **role** *helpdesk* **"++host:edit"**
 
 every host in the unit *hosts* and in all units below it can be changed
 by the role *helpdesk*, also the hosts you add later.
@@ -741,7 +742,7 @@ knows, the tab completion offers after **add_acl**.
 
 An ACL group is a set of ACLs, each for an object type, for example
 **user:edit:attribute**. Give the group in place of an ACL, as
-**@***group*, **+@***group* or **++@***group*:
+**@*group***, **+@*group*** or **++@*group***:
 
 > **otpme-unit add_acl *linux/users* role *helpdesk*
 > @USERMANAGER,++@USERMANAGER**
@@ -934,7 +935,7 @@ the realm
 **ldap_verify_acls (bool, default: true)**  
 Whether **otpme-ldapd** checks the ACLs of the objects it hands out.
 With the check, an attribute only goes to a token that holds the ACL
-**view:attribute:***attr* on the object, or that is in
+**view:attribute:*attr*** on the object, or that is in
 **ldif_whitelist_attributes**. Switch it off to let a token read every
 attribute of every object it can find, for example for a service account
 that syncs the directory.  
@@ -965,7 +966,7 @@ Object types: site, unit, user, token
 
 **ldif_whitelist_attributes (list, default: dn, objectClass, uid, cn, displayName, entryUUID, l, mail, mailLocalAddress)**  
 LDIF attributes that are handed out without the ACL
-**view:attribute:***attr*. Every other attribute only goes to a token
+**view:attribute:*attr***. Every other attribute only goes to a token
 that holds this ACL on the object.  
 A value on the token that asks wins, so one token can see more or less
 than the rest of the site. Without such a value the list comes from the
@@ -1042,7 +1043,7 @@ There are three forms:
 > **\[***NAME***\]**  
 > The value goes into the environment of the script, under this name.
 >
-> **%***name*  
+> **%*name***  
 > The value becomes a command line argument (**$1**, **$2**, ... in the
 > order of the options).
 >
@@ -1072,7 +1073,7 @@ password, **auth_otp** with a one-time password, and the challenge and
 response values with MSCHAP and SSH.
 
 The script allows the login with exit code 0 and denies it with every
-other code. For an MSCHAP login it also has to write **NT_KEY: ***key*
+other code. For an MSCHAP login it also has to write **NT_KEY: *key***
 to stdout.
 
 **default_key_script (str, default: scripts/key_script.sh)**  
@@ -1249,7 +1250,7 @@ The recovery creates that token when the user has none yet (see
 **allow_sso_token_recovery**). Without this parameter and
 **sso_token_deploy_accessgroups** it creates none, and a user without an
 SSO token gets no recovery mail.  
-A value is a role of the current site, or *site***/***role* for a role
+A value is a role of the current site, or ***site*/*role*** for a role
 of another site. To set it you need the right to add tokens to the role
 (**add:token**). The value is looked up at the user, then at the unit,
 then at the site, on the home site of the user.  
@@ -1370,7 +1371,7 @@ Object types: site, unit
 
 **share_root (str, default: /otpme-mounts/)**  
 The directory that holds the shares of this site. A new share gets
-*share_root***/***share name* as its own directory, so with the default
+***share_root*/*share name*** as its own directory, so with the default
 a share named *projects* gets */otpme-mounts/projects*.  
 It is also the boundary for the directory of a share: a share can only
 have a directory below **share_root**. That is why only an admin can
@@ -1465,7 +1466,7 @@ Object types: site, unit
 **hosts_role (str)**  
 The role that every new host is added to. The value is the name of a
 role that exists, and it must be a role of the same site. You can also
-write it as *site***/***role*, which is how a role is shown.  
+write it as ***site*/*role***, which is how a role is shown.  
 You need the **add:host** ACL on that role to set this parameter,
 because the hosts are added to it later without another check.  
 Object types: site, unit
@@ -1493,7 +1494,7 @@ Object types: site, unit
 **devices_role (str)**  
 The role that every new device is added to. The value is the name of a
 role that exists, and it must be a role of the same site. You can also
-write it as *site***/***role*, which is how a role is shown.  
+write it as ***site*/*role***, which is how a role is shown.  
 You need the **add:device** ACL on that role to set this parameter,
 because the devices are added to it later without another check.  
 Object types: site, unit
@@ -1524,7 +1525,7 @@ or device, then at the unit, then at the site. The first one found wins,
 so a VLAN on a token beats the one on the user or the site.  
 To assign a VLAN you need the **assign** ACL on the VLAN object. So you
 can give somebody the right to hand out one VLAN, and no other.  
-A VLAN of another site is written as *site***/***vlan*. This is needed
+A VLAN of another site is written as ***site*/*vlan***. This is needed
 when all users live on the master site while each site has its own
 VLANs. Whether such an assignment counts is decided by the site that
 answers the RADIUS request, through its **vlan_trusts**.  
@@ -1545,8 +1546,8 @@ where that is decided. Without a matching entry the assignment is
 ignored.  
 An entry is needed as soon as the object or the VLAN belongs to another
 site. Only an own VLAN for an own object works without one.  
-An entry looks like *site*\[**:***vlan_site*\[**/***vlan*\]\]. *site* is
-the site of the object the VLAN is assigned to, *vlan_site***/***vlan*
+An entry looks like *site*\[**:*vlan_site***\[**/*vlan***\]\]. *site* is
+the site of the object the VLAN is assigned to, ***vlan_site*/*vlan***
 is the VLAN itself. What you leave out means "all".  
 So the entries on site *berlin* mean:
 
@@ -1578,7 +1579,7 @@ Object types: site
 
 **device_token_roles (list)**  
 Comma separated list of roles the SSO portal adds device tokens to. A
-value is a role of the current site, or *site***/***role* for a role of
+value is a role of the current site, or ***site*/*role*** for a role of
 another site. The value is looked up on the user, then on the user's
 unit and the units above it, then on the site. The first one found
 wins.  
@@ -1598,7 +1599,7 @@ sites. Naming a role in the user's **device_token_roles** is the home
 site's half of the decision, this parameter is the portal's half. This
 parameter is the only place where that is decided. Users of this site
 need no entry, and an entry for this site is refused.  
-An entry is *site* or *site***:***role*. *site* is the home site of the
+An entry is *site* or ***site*:*role***. *site* is the home site of the
 user, *role* is a role of *this* site. No other role is ever offered
 here. Both kinds of entry are needed.  
 So the entries on site *munich* mean:
@@ -3008,7 +3009,7 @@ node or host that does not exist is refused.
 Object types: site, unit, node, share
 
 **backup_time (str)**  
-The time of day a backup may run, as *HH:MM***-***HH:MM*, e.g.
+The time of day a backup may run, as ***HH:MM*-*HH:MM***, e.g.
 **02:00-03:00**. Both times are checked when the value is set.  
 Object types: site, unit, node, share
 

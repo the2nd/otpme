@@ -45,7 +45,7 @@ It is put into the access group of \fBdevices_accessgroup\fR and into the role o
 .br
 Needs \fBadd:device\fR on the unit.
 .TP
-.B del \fR[\fB\-\-no\-trash\fR] \fIdevice\fR
+\fBdel\fR [\fB\-\-no\-trash\fR] \fIdevice\fR
 Delete the device.
 It goes to the trash, see
 .BR otpme\-trash (1);
@@ -58,7 +58,7 @@ the question says how many there are.
 .br
 Needs \fBdelete:object\fR on the device or \fBdelete:device\fR on the unit.
 .TP
-.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIdevice\fR]
+\fBshow\fR [\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIdevice\fR]
 Without a device: a table of all of them, with their unit, status, MAC address, roles, access groups, policies, ACL inheritance and description.
 The access groups are those the device is in and, in brackets, those it gets through a role.
 .RS
@@ -88,13 +88,13 @@ Which column to sort by, and the other way round.
 .IP
 A column you may not see says \fB\-\fR.
 With a device named, this prints the object itself instead of a table row, one value per line.
-\fBshow\fR \fIdevice\fB$\fR prints that one device as a table row.
+\fBshow\fR \f(BIdevice\fB$\fR prints that one device as a table row.
 A name that is no device is a pattern with \fB*\fR, not a regex, see
 .B SELECTING OBJECTS
 in
 .BR otpme (1).
 .TP
-.B show_oid \fR[\fB\-\-full\fR] \fIdevice\fR
+\fBshow_oid\fR [\fB\-\-full\fR] \fIdevice\fR
 Show the OID of the device: \fB\%device|<realm>/<name>\fR.
 With \fB\-\-full\fR the full OID, which names the unit as well: \fB\%device|<realm>/<site>/<unit_path>/<name>\fR.
 .br
@@ -105,7 +105,7 @@ Show the UUID of the device.
 .br
 Needs the ACL \fBview_public:object\fR.
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+\fBlist\fR [\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
 List the device names, and with a pattern only those that match it, e.g. \fBberlin\-*\fR.
 You get the devices you may change; \fB\-a\fR adds those you may only look at.
 \fB\-\-attribute\fR matches the pattern against that attribute instead of the name, e.g. \fBmac_address\fR.
@@ -124,7 +124,7 @@ The new name must not be in use in the realm, and is taken in lower case.
 .br
 Needs \fBrename:object\fR.
 .TP
-.B move \fR[\fB\-\-keep\-acls\fR] \fIdevice\fR \fIunit\fR
+\fBmove\fR [\fB\-\-keep\-acls\fR] \fIdevice\fR \fIunit\fR
 Move the device into another unit.
 The device keeps its ACLs; where ACL inheritance is on for it (off for devices by default, see \fBenable_acl_inheritance\fR), the default ACLs of the old unit are taken away and those of the new one given.
 \fB\-\-keep\-acls\fR keeps all ACLs as they are.
@@ -136,7 +136,7 @@ Write the index entries of the device again.
 .br
 Needs \fBtouch\fR.
 .TP
-.B auto_disable \fR[\fB\-u\fR] \fIdevice\fR \fItime\fR
+\fBauto_disable\fR [\fB\-u\fR] \fIdevice\fR \fItime\fR
 Set auto\-disable time.
 It is either a relative time with a leading \fB+\fR, e.g. \fB+30D\fR, or an absolute one, e.g. \fB"09:53 13.06.2023"\fR.
 The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
@@ -204,7 +204,7 @@ A password is given to it with \fBotpme\-pass add \-\-device\fR or \fBotpme\-pas
 .BR otpme\-pass (1).
 Each password decides itself whether you may see it; the device has no ACL for that.
 .TP
-.B find_passwords \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIdevice\fR
+\fBfind_passwords\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fIdevice\fR
 List the passwords that belong to the device and that you may look at, by \fBview_public\fR, \fBview\fR or \fBview:entries\fR on the password.
 \fITYPE\fR is \fBname\fR (the default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
 A name of another site is shown as \fI<site>/<password>\fR.
@@ -226,7 +226,7 @@ Which parameters a device takes is in
 .B CONFIG PARAMETERS
 below.
 .TP
-.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIdevice\fR \fIparameter\fR \fR[\fIvalue\fR]
+\fBconfig\fR [\fB\-d\fR] [\fB\-a\fR] \fIdevice\fR \fIparameter\fR \fR[\fIvalue\fR]
 Set a parameter on the device.
 .RS
 .TP
@@ -239,20 +239,20 @@ Append the value to a parameter that holds a list, instead of replacing what is 
 .RE
 .IP
 A parameter that devices do not take is refused.
-The ACL is per parameter, \fBset:config:\fIparameter\fR.
+The ACL is per parameter, \fBset:config:\f(BIparameter\fR.
 Removing a parameter that is not registered any more, which is what a rename or a dropped feature leaves behind, is for admins only.
 .TP
 .B show_config \fIdevice\fR \fR[\fIparameter\fR]
 The parameters set on the device itself, or only the one named.
 Nothing is shown for a parameter that the device gets from a unit or from the site.
 .br
-Each parameter needs \fBview:config:\fIparameter\fR.
+Each parameter needs \fBview:config:\f(BIparameter\fR.
 .TP
 .B get_config \fIdevice\fR \fIparameter\fR
 What the parameter comes to for this device, once the device, its units and its site have been looked at.
 So this answers what applies, where \fBshow_config\fR answers what was set here.
 .br
-Needs \fBview:config:\fIparameter\fR.
+Needs \fBview:config:\f(BIparameter\fR.
 .TP
 .B description \fIdevice\fR \fR[\fIdescription\fR]
 Set the description.
@@ -260,7 +260,7 @@ Without one OTPme asks and offers the current text for editing.
 .br
 Needs \fBedit:description\fR.
 .TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIdevice\fR \fR[\fIinfo\fR]
+\fBinfo\fR [\fB\-\-language\fR \fILANG\fR] \fIdevice\fR \fR[\fIinfo\fR]
 Set free-form info text.
 If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
 .br
@@ -271,7 +271,7 @@ Nothing shows the info of a device to a user, so a text for a language stays a n
 .br
 Needs \fBedit:info\fR.
 .TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIdevice\fR
+\fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fIdevice\fR
 Write one of those texts to stdout, for reading it with something other than the editor.
 .br
 Needs \fBview:info\fR.
@@ -344,7 +344,7 @@ Remove a policy from the device.
 Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
-.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIdevice\fR
+\fBlist_policies\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIdevice\fR
 List the policies attached to the device, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
@@ -410,7 +410,7 @@ see
 .B remove_orphans
 asks before it changes anything; the global option \fB\-f\fR skips the question.
 .TP
-.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIdevice\fR
+\fBexport\fR [\fB\-\-password\fR \fIpassword\fR] \fIdevice\fR
 Write the whole object of the device to stdout, as JSON.
 .RS
 .PP

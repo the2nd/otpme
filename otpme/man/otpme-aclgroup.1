@@ -17,7 +17,7 @@ Each entry of a group names an object type and an ACL, for example \fBuser:edit:
 On an object the group grants the entries for the type of that object, and nothing else.
 On a user it grants the \fBuser:\fR entries, on a token the \fBtoken:\fR entries.
 .PP
-A group is given with \fBadd_acl\fR of the object, as \fB@\fIgroup\fR, in place of an ACL:
+A group is given with \fBadd_acl\fR of the object, as \fB@\f(BIgroup\fR, in place of an ACL:
 .RS
 .TP
 .B @\fIgroup\fR
@@ -30,13 +30,13 @@ On the objects in the unit, or on the tokens of the user.
 On the whole tree below the unit: its sub units, the objects in them, and the tokens of the users in it.
 .RE
 .PP
-\fB+@\fIgroup\fR and \fB++@\fIgroup\fR are default ACLs and are handed down like them: to what is added to the unit or user, or moved there, from then on.
+\fB+@\f(BIgroup\fR and \fB++@\f(BIgroup\fR are default ACLs and are handed down like them: to what is added to the unit or user, or moved there, from then on.
 To hand them to what is there already, give them with \fBadd_acl \-a\fR, and \fB\-r\fR for the tree below, see
 .BR otpme\-unit (1).
 They do not count on the unit or user itself.
-Give \fB@\fIgroup\fR as well for that, for example \fB@USERMANAGER,++@USERMANAGER\fR.
+Give \fB@\f(BIgroup\fR as well for that, for example \fB@USERMANAGER,++@USERMANAGER\fR.
 .PP
-A group of another site is written as \fB@\fIsite\fB/\fIgroup\fR.
+A group of another site is written as \fB@\f(BIsite\fB/\f(BIgroup\fR.
 .PP
 Change a group, and the change counts at once on every object the group is given on.
 Nothing has to be written to those objects again.
@@ -97,7 +97,7 @@ It is unique in the site, whatever unit it is in, and may be \fBmax_aclgroup_nam
 .br
 Needs \fBadd:aclgroup\fR on the unit.
 .TP
-.B del \fR[\fB\-\-no\-trash\fR] \fIaclgroup\fR
+\fBdel\fR [\fB\-\-no\-trash\fR] \fIaclgroup\fR
 Delete the ACL group.
 It goes to the trash, see
 .BR otpme\-trash (1);
@@ -110,7 +110,7 @@ It is taken out of the ACL groups it is a member of.
 .br
 Needs \fBdelete:object\fR on the ACL group or \fBdelete:aclgroup\fR on the unit.
 .TP
-.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] [\fIaclgroup\fR]
+\fBshow\fR [\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] [\fIaclgroup\fR]
 Without an ACL group: a table of all of them, with their unit, status, entries, member groups, policies, ACL inheritance and description.
 A disabled member group has \fB(D)\fR after it.
 .RS
@@ -143,7 +143,7 @@ A column you may not see says \fB\-\fR.
 With an ACL group named, this prints the ACL group itself, one value per line: \fBENTRIES\fR and \fBACLGROUPS\fR; one you may not see is empty.
 That needs \fBview_public:object\fR.
 .TP
-.B show_oid \fR[\fB\-\-full\fR] \fIaclgroup\fR
+\fBshow_oid\fR [\fB\-\-full\fR] \fIaclgroup\fR
 Show the OID of the ACL group: \fB\%aclgroup|<realm>/<site>/<name>\fR.
 With \fB\-\-full\fR the full OID, which names the unit as well: \fB\%aclgroup|<realm>/<site>/<unit_path>/<name>\fR.
 .br
@@ -154,7 +154,7 @@ Show the UUID of the ACL group.
 .br
 Needs \fBview_public:object\fR.
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] [\fIpattern\fR]
+\fBlist\fR [\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] [\fIpattern\fR]
 List the ACL group names, and with a pattern only those that match it, see
 .B SELECTING OBJECTS
 in
@@ -179,7 +179,7 @@ A base group cannot be renamed.
 .br
 Needs \fBrename:object\fR.
 .TP
-.B move \fR[\fB\-\-keep\-acls\fR] \fIaclgroup\fR \fIunit\fR
+\fBmove\fR [\fB\-\-keep\-acls\fR] \fIaclgroup\fR \fIunit\fR
 Move the ACL group into another unit.
 It keeps its ACLs; where ACL inheritance is on for it (off for ACL groups by default, see \fBenable_acl_inheritance\fR), the default ACLs of the old unit are taken away and those of the new one given.
 \fB\-\-keep\-acls\fR keeps all ACLs as they are.
@@ -228,7 +228,7 @@ A base group cannot be changed.
 .br
 Needs \fBremove:entry\fR.
 .TP
-.B get_acls \fR[\fB\-r\fR] \fIaclgroup\fR
+\fBget_acls\fR [\fB\-r\fR] \fIaclgroup\fR
 Show the entries of the ACL group, one per line.
 .br
 With \fB\-r\fR also the entries it gets from its members, and from their members, each with the group in brackets.
@@ -258,7 +258,7 @@ A base group cannot be changed.
 .br
 Needs \fBremove:aclgroup\fR.
 .TP
-.B list_aclgroups \fR[\fB\-r\fR] \fIaclgroup\fR
+\fBlist_aclgroups\fR [\fB\-r\fR] \fIaclgroup\fR
 List the members of the ACL group, one per line; one that is gone shows its UUID.
 With \fB\-r\fR also their members, and so on.
 .br
@@ -368,7 +368,7 @@ Remove a policy from the ACL group.
 Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
-.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIaclgroup\fR
+\fBlist_policies\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIaclgroup\fR
 List the policies attached to the ACL group, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR); without it the names.
 Only the names are marked.
@@ -389,10 +389,10 @@ An ACL group has no default ACLs, \fB+acl\fR and \fB++acl\fR are refused: nothin
 Besides the ACLs every object has, these matter for an ACL group:
 .RS
 .TP
-.B add:entry\fR, \fBremove:entry\fR, \fBview:entries
+\fBadd:entry\fR, \fBremove:entry\fR, \fBview:entries
 Change and see the entries, see \fBEntries\fR.
 .TP
-.B add:aclgroup\fR, \fBremove:aclgroup\fR, \fBview:aclgroups
+\fBadd:aclgroup\fR, \fBremove:aclgroup\fR, \fBview:aclgroups
 Change and see the members, see \fBMembers\fR.
 .RE
 .PP
@@ -452,7 +452,7 @@ Needs the ACL \fBdisable:acl_inheritance\fR.
 .nh
 An ACL group has two config parameters, see \fBCONFIG PARAMETERS\fR.
 .TP
-.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIaclgroup\fR \fIparameter\fR \fR[\fIvalue\fR]
+\fBconfig\fR [\fB\-d\fR] [\fB\-a\fR] \fIaclgroup\fR \fIparameter\fR \fR[\fIvalue\fR]
 Set a parameter on the ACL group.
 .RS
 .TP
@@ -484,7 +484,7 @@ Without one OTPme asks and offers the current text for editing.
 .br
 Needs the ACL \fBedit:description\fR.
 .TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIaclgroup\fR \fR[\fIinfo\fR]
+\fBinfo\fR [\fB\-\-language\fR \fILANG\fR] \fIaclgroup\fR \fR[\fIinfo\fR]
 Set free-form info text.
 If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
 .br
@@ -493,7 +493,7 @@ Nothing shows the info of an ACL group to a user, so a text for a language stays
 .br
 Needs the ACL \fBedit:info\fR.
 .TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIaclgroup\fR
+\fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fIaclgroup\fR
 Write one of those texts to stdout.
 \fB\-\-language\fR picks which one; without it you get the note of the administrator.
 .br
@@ -502,7 +502,7 @@ Needs the ACL \fBview:info\fR.
 .ad
 .SS Export and Cleanup
 .TP
-.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIaclgroup\fR
+\fBexport\fR [\fB\-\-password\fR \fIpassword\fR] \fIaclgroup\fR
 Write the whole object of the ACL group to stdout, as JSON: its entries, members, ACLs, policies, config parameters and the rest.
 \fBotpme\-tool import\fR reads it back.
 .br

@@ -51,7 +51,7 @@ and the roles whose users hand it out, with
 .br
 Needs the ACL \fBadd:scope\fR on the unit it is created in, not on the scope \(em there is none yet.
 .TP
-.B del \fR[\fB\-\-no\-trash\fR] \fIscope\fR
+\fBdel\fR [\fB\-\-no\-trash\fR] \fIscope\fR
 Delete a scope.
 It goes to the trash, from where
 .BR otpme\-trash (1)
@@ -64,7 +64,7 @@ Switch it off with
 .B disable
 instead.
 .TP
-.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIscope\fR]
+\fBshow\fR [\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] \fR[\fIscope\fR]
 Without a scope: a table of all of them, with their unit, their roles, tokens, clients and groups, their scope ID and their policies.
 .RS
 .TP
@@ -98,7 +98,7 @@ has something to find.
 .na
 .nh
 .TP
-.B show_oid \fR[\fB\-\-full\fR] \fIscope\fR
+\fBshow_oid\fR [\fB\-\-full\fR] \fIscope\fR
 Show the OID of the scope: \fB\%scope|<realm>/<site>/<name>\fR.
 With \fB\-\-full\fR the full OID, which names the unit as well: \fB\%scope|<realm>/<site>/<unit_path>/<name>\fR.
 .br
@@ -111,7 +111,7 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+\fBlist\fR [\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
 List the scope names, and with a pattern only those that match it, see
 .B SELECTING OBJECTS
 in
@@ -143,7 +143,7 @@ A scope a site brings with it cannot be renamed.
 .br
 Needs the ACL \fBrename:object\fR.
 .TP
-.B move \fR[\fB\-\-keep\-acls\fR] \fIscope\fR \fIunit\fR
+\fBmove\fR [\fB\-\-keep\-acls\fR] \fIscope\fR \fIunit\fR
 Move the scope into another unit.
 Its ACLs stay as they are, unless
 .B enable_acl_inheritance
@@ -171,8 +171,8 @@ It is refused for an object the realm or a site comes with, e.g. the admin user;
 .br
 Needs the ACL \fBedit:auto_disable\fR.
 .SS Who May Hand the Scope Out
-A token is named by its path, \fIuser\fB/\fItoken\fR.
-A role is named by its name, which is looked for in the site of the scope, or as \fIsite\fB/\fIrole\fR to take one from another site of the realm.
+A token is named by its path, \f(BIuser\fB/\f(BItoken\fR.
+A role is named by its name, which is looked for in the site of the scope, or as \f(BIsite\fB/\f(BIrole\fR to take one from another site of the realm.
 .TP
 .B add_token \fIscope\fR \fItoken_path\fR
 Let this token hand the scope out.
@@ -187,7 +187,7 @@ A UUID is taken as well, which is how a reference to a token that is gone is cle
 .br
 Needs the ACL \fBremove:token\fR.
 .TP
-.B list_tokens \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fR[\fIscope\fR]
+\fBlist_tokens\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fR[\fIscope\fR]
 List the tokens in the scope, disabled ones included.
 .br
 \fB\-\-return\-type\fR selects what is printed per token; the default is the path.
@@ -199,7 +199,7 @@ Needs the ACL \fBview:tokens\fR.
 Let every token of this role hand the scope out.
 .br
 This is the way to do it for more than one user: a role holds the tokens, the scope holds the role.
-A role from another site is named \fIsite\fB/\fIrole\fR.
+A role from another site is named \f(BIsite\fB/\f(BIrole\fR.
 .br
 Needs the ACL \fBadd:role\fR.
 .TP
@@ -310,7 +310,7 @@ Remove a policy from the scope.
 Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
-.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIscope\fR
+\fBlist_policies\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIscope\fR
 List the policies attached to the scope, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
@@ -374,7 +374,7 @@ Which parameters a scope takes is in
 .B CONFIG PARAMETERS
 below.
 .TP
-.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIscope\fR \fIparameter\fR \fR[\fIvalue\fR]
+\fBconfig\fR [\fB\-d\fR] [\fB\-a\fR] \fIscope\fR \fIparameter\fR \fR[\fIvalue\fR]
 Set a parameter on the scope.
 .RS
 .TP
@@ -388,19 +388,19 @@ Append the value to a parameter that holds a list, instead of replacing what is 
 .IP
 Without a \fIvalue\fR the parameter is set to its default, which is not the same as leaving it unset: the value then stands on the scope and nothing above it is read any more.
 .br
-The ACL is per parameter, \fBset:config:\fIparameter\fR.
+The ACL is per parameter, \fBset:config:\f(BIparameter\fR.
 .TP
 .B show_config \fIscope\fR \fR[\fIparameter\fR]
 The config parameters set on the scope itself, or only the one named.
 .br
-Nothing is shown for a parameter that the scope gets from a unit or from the site, and nothing for one whose ACL \fBview:config:\fIparameter\fR you do not hold.
+Nothing is shown for a parameter that the scope gets from a unit or from the site, and nothing for one whose ACL \fBview:config:\f(BIparameter\fR you do not hold.
 The scope ID and the members of the scope are not config parameters: \fBshow\fR and \fBexport\fR are where those are.
 .TP
 .B get_config \fIscope\fR \fIparameter\fR
 What the parameter comes to for this scope, once the scope, its units and its site have been looked at.
 So this answers what applies, where \fBshow_config\fR answers what was set here.
 .br
-Needs the ACL \fBview:config:\fIparameter\fR, the same one that opens it in \fBshow_config\fR.
+Needs the ACL \fBview:config:\f(BIparameter\fR, the same one that opens it in \fBshow_config\fR.
 .TP
 .B description \fIscope\fR \fR[\fIdescription\fR]
 Set the description.
@@ -408,7 +408,7 @@ Without one OTPme asks and offers the current text for editing.
 .br
 Needs the ACL \fBedit:description\fR.
 .TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIscope\fR \fR[\fIinfo\fR]
+\fBinfo\fR [\fB\-\-language\fR \fILANG\fR] \fIscope\fR \fR[\fIinfo\fR]
 Set free-form info text.
 If \fIinfo\fR is omitted, the current text is opened in the editor named by the \fBEDITOR\fR environment variable.
 .br
@@ -419,13 +419,13 @@ A text can be written for a language as well, for the places that show such a te
 .br
 Needs the ACL \fBedit:info\fR.
 .TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIscope\fR
+\fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fIscope\fR
 Print the info text, of that language or the administrator's own.
 .br
 Needs the ACL \fBview:info\fR.
 .SS Export and Cleanup
 .TP
-.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIscope\fR
+\fBexport\fR [\fB\-\-password\fR \fIpassword\fR] \fIscope\fR
 Write the whole object of the scope to stdout, as JSON.
 .br
 Without \fB\-\-password\fR it is written as it is, in clear.

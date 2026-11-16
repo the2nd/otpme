@@ -123,14 +123,14 @@ Needs \fBadd:policy\fR, or \fBadd:policy:<type>\fR, on that unit.
 .br
 A new policy does nothing until it is assigned to an object, see \fBPolicy Assignment\fR.
 .TP
-.B del \fR[\fB\-\-no\-trash\fR] \fIpolicy\fR
+\fBdel\fR [\fB\-\-no\-trash\fR] \fIpolicy\fR
 Delete a policy.
 It goes to the trash, from where \fBotpme-trash\fR(1) can bring it back with its assignments; \fB\-\-no\-trash\fR deletes it right away.
 .br
 The question names every object the policy is assigned to; \fB\-f\fR deletes without asking.
 Needs \fBdelete:object\fR on the policy, or \fBdelete:policy\fR (or \fBdelete:policy:<type>\fR) on its unit.
 .TP
-.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fIpolicy\fR]
+\fBshow\fR [\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fIpolicy\fR]
 Without a policy, a table of all of them with their unit, type and status; the options below are for that table.
 With a policy, its settings: what the commands of its type set, see \fBPOLICY TYPE DETAILS\fR.
 .RS
@@ -152,7 +152,7 @@ How many entries to print in the column \fBpolicies\fR, the policies assigned to
 .na
 .nh
 .TP
-.B show_oid \fR[\fB\-\-full\fR] \fIpolicy\fR
+\fBshow_oid\fR [\fB\-\-full\fR] \fIpolicy\fR
 Show the OID of the policy: \fB\%policy|<realm>/<site>/<name>\fR.
 With \fB\-\-full\fR the full OID, which names the unit as well: \fB\%policy|<realm>/<site>/<unit_path>/<name>\fR.
 .br
@@ -165,7 +165,7 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fIpattern\fR]
+\fBlist\fR [\fIpattern\fR]
 List the policy names, and with a pattern only those that match it, see
 .B SELECTING OBJECTS
 in
@@ -185,7 +185,7 @@ Rename a policy.
 It asks first; \fB\-f\fR does not.
 The assignments stay, they hold the UUID.
 .TP
-.B move \fR[\fB\-\-keep\-acls\fR] \fIpolicy\fR \fIunit\fR
+\fBmove\fR [\fB\-\-keep\-acls\fR] \fIpolicy\fR \fIunit\fR
 Move the policy into another unit.
 Needs \fBadd:policy\fR on the new unit.
 Its ACLs move with it: the default ACLs of the old unit are taken away and those of the new one are applied.
@@ -194,7 +194,7 @@ Its ACLs move with it: the default ACLs of the old unit are taken away and those
 What a policy does is set with the commands of its type, see \fBPOLICY TYPE DETAILS\fR.
 \fBconfig\fR sets the parameters every object has; for a policy these are \fBchangelog\fR and \fBallow_changelog_clearing\fR, see \fBObject Changelog\fR.
 .TP
-.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIpolicy\fR \fIparameter\fR \fR[\fIvalue\fR]
+\fBconfig\fR [\fB\-d\fR] [\fB\-a\fR] \fIpolicy\fR \fIparameter\fR \fR[\fIvalue\fR]
 Set a parameter on the policy.
 .RS
 .TP
@@ -221,7 +221,7 @@ Set the description.
 Without one OTPme asks and offers the current text for editing.
 Needs \fBedit:description\fR.
 .TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIpolicy\fR \fR[\fIinfo\fR]
+\fBinfo\fR [\fB\-\-language\fR \fILANG\fR] \fIpolicy\fR \fR[\fIinfo\fR]
 Set free-form info text.
 If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
 Needs \fBedit:info\fR.
@@ -231,7 +231,7 @@ Without
 the text is the administrator's own note.
 Nothing shows the info of a policy to a user, so a text for a language stays a note as well.
 .TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIpolicy\fR
+\fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fIpolicy\fR
 Write one of those texts to stdout.
 \fB\-\-language\fR picks which one; without it you get the note of the administrator.
 Needs \fBview:info\fR.
@@ -263,7 +263,7 @@ Remove a policy from this policy.
 Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
 Removing a policy takes away what it enforces, so it must not be cheaper than assigning one.
 .TP
-.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIpolicy\fR
+\fBlist_policies\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIpolicy\fR
 List the policies assigned to this policy, disabled ones too, marked \fB(disabled)\fR.
 \fB\-\-return\-type\fR picks what is printed: \fBname\fR (the default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
 \fB\-\-policy\-types\fR lists only policies of these types; they are policy types, not policy names.
@@ -369,7 +369,7 @@ see
 .B remove_orphans
 asks before it changes anything; the global option \fB\-f\fR skips the question.
 .TP
-.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIpolicy\fR
+\fBexport\fR [\fB\-\-password\fR \fIpassword\fR] \fIpolicy\fR
 Write the whole object of the policy to stdout, as JSON.
 .RS
 .PP
@@ -451,7 +451,7 @@ Years in a password that count as easy to guess, counted back and forward from t
 Default 150 and 10.
 .RE
 .TP
-.B test \fR[\fB\-\-password\fR \fIpassword\fR] [\fB\-\-pin\fR \fIpin\fR] \fIpolicy\fR
+\fBtest\fR [\fB\-\-password\fR \fIpassword\fR] [\fB\-\-pin\fR \fIpin\fR] \fIpolicy\fR
 Check a password or a PIN against the policy, without setting it.
 For a password it prints the score and whether it is strong enough.
 .RE
@@ -489,7 +489,7 @@ To enable such an object again takes \fB\-f\fR, and the time starts anew.
 A site has \fBauto_disable_hour\fR, \fB_day\fR, \fB_week\fR, \fB_month\fR and \fB_year\fR (+1h, +1D, +1W, +1M, +1Y), assigned to nothing.
 .RS
 .TP
-.B auto_disable \fR[\fB\-u\fR] \fIpolicy\fR \fItime\fR
+\fBauto_disable\fR [\fB\-u\fR] \fIpolicy\fR \fItime\fR
 After how long, or when.
 A relative time has a leading \fB+\fR, e.g. \fB+30D\fR for 30 days; the units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR (30 days) and \fBY\fR (365 days), see
 .BR otpme (7).

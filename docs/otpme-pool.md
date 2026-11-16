@@ -33,7 +33,7 @@ else into the unit a **defaultunits** policy names, see
 A new pool has no nodes, see **add_node**.  
 Needs **add:pool** on the unit.
 
-**del \[**--no-trash**\] *pool***  
+**del** \[**--no-trash**\] *pool*  
 Delete the pool. It goes to the trash, see **otpme-trash**(1);
 **--no-trash** deletes it right away.  
 You type the name of the pool to confirm; where shares still use it, the
@@ -42,7 +42,7 @@ gone until its **remove_orphans**, and gets no nodes from it, see
 **otpme-share**(1).  
 Needs **delete:object** on the pool or **delete:pool** on the unit.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--node-limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*pool*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--node-limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*pool*\]  
 Without a pool: a table of all of them, with their unit, status, nodes,
 policies, ACL inheritance and description.
 
@@ -73,11 +73,11 @@ another separator.
 
 A column you may not see says **-**. With a pool named, this prints the
 object itself instead of a table row, one value per line; its nodes need
-**view:nodes**. **show** *pool***$** prints that one pool as a table
+**view:nodes**. **show** ***pool*$** prints that one pool as a table
 row. A name that is no pool is a pattern with **\***, not a regex, see
 **SELECTING OBJECTS** in **otpme**(1).
 
-**show_oid \[**--full**\] *pool***  
+**show_oid** \[**--full**\] *pool*  
 Show the OID of the pool: **pool\|\<realm\>/\<site\>/\<name\>**. With
 **--full** the full OID, which names the unit as well:
 **pool\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
@@ -87,7 +87,7 @@ Needs the ACL **view_public:object**.
 Show the UUID of the pool.  
 Needs the ACL **view_public:object**.
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the pool names, and with a pattern only those that match it, see
 **SELECTING OBJECTS** in **otpme**(1). You get the pools you may change;
 **-a** adds those you may only look at. **--attribute** matches the
@@ -105,7 +105,7 @@ Rename the pool. The new name must not be in use in the site. The shares
 keep it: they name it by its UUID.  
 Needs **rename:object**.
 
-**move \[**--keep-acls**\] *pool* *unit***  
+**move** \[**--keep-acls**\] *pool* *unit*  
 Move the pool into another unit of its site. The pool keeps its ACLs;
 where ACL inheritance is on for it (off for pools by default, see
 **enable_acl_inheritance**), the default ACLs of the old unit are taken
@@ -144,7 +144,7 @@ given here: it stays in the pool, serving nothing, until
 **remove_orphans** takes it out.  
 Needs the ACL **remove:node**.
 
-**list_nodes \[**--return-type** *TYPE*\] *pool***  
+**list_nodes** \[**--return-type** *TYPE*\] *pool*  
 List the nodes of the pool, by name. Disabled nodes are not listed.
 **--return-type** selects what to print instead (**name**, **read_oid**,
 **full_oid**, **uuid**).  
@@ -177,7 +177,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *pool***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *pool*  
 List the policies attached to the pool, the disabled ones too, marked
 **(disabled)**. Use **--return-type** to select the attribute returned
 (**name**, **read_oid**, **full_oid**, **uuid**); without it the names.
@@ -243,7 +243,7 @@ A pool has two config parameters: **changelog** and
 **allow_changelog_clearing**, see **CONFIG PARAMETERS**. A parameter is
 looked up at the pool, then at each unit above it, then at the site.
 
-**config \[**-d**\] \[**-a**\] *pool* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *pool* *parameter* \[*value*\]  
 Set a parameter on the pool.
 
 **-d**  
@@ -273,7 +273,7 @@ Needs **view:config:\<parameter\>**.
 Set the description. Without one OTPme asks and offers the current text
 for editing. Needs **edit:description**.
 
-**info \[**--language** *LANG*\] *pool* \[*info*\]**  
+**info** \[**--language** *LANG*\] *pool* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor named by the **EDITOR** environment variable. Needs
 **edit:info**.  
@@ -281,7 +281,7 @@ Without **--language** the text is the administrator's own note. Nothing
 shows the info of a pool to a user, so a text for a language stays a
 note as well.
 
-**dump_info \[**--language** *LANG*\] *pool***  
+**dump_info** \[**--language** *LANG*\] *pool*  
 Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator. Needs **view:info**.
 
@@ -330,7 +330,7 @@ Without one, the value of the pool counts, read along its cascade.
 
 ## Export and Cleanup
 
-**export \[**--password** *password*\] *pool***  
+**export** \[**--password** *password*\] *pool*  
 Write the whole object of the pool to stdout, as JSON: its nodes, ACLs,
 policies, config parameters and the rest. **otpme-tool import** reads it
 back.  

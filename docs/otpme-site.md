@@ -40,7 +40,7 @@ across them — see **otpme**(7).
 
 ## Site Management
 
-**add \[*options*\] *site* *node_name* *site_fqdn* \[*site_address*\]**  
+**add** \[*options*\] *site* *node_name* *site_fqdn* \[*site_address*\]  
 Create a site, and with it its CA, its base objects and the object of
 its first node.  
 The name is stored in lower case. A site is added on the master site of
@@ -66,7 +66,7 @@ The other options are under **ADD OPTIONS**.
 Needs the ACL **add:site** on the realm, not on the site — there is none
 yet.
 
-**del \[**--no-trash**\] *site***  
+**del** \[**--no-trash**\] *site*  
 Delete a site and every object in it. All of it goes to the trash, from
 where **otpme-trash**(1) can bring it back; **--no-trash** deletes it
 right away, the objects as well.  
@@ -75,7 +75,7 @@ on the site it belongs to. Your own site cannot be deleted.
 Asks first; the global option **-f** skips the question.  
 Needs the ACL **delete:object**.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*site*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*site*\]  
 Without a site: a table of all of them, with their status, their
 version, whether authentication and synchronization with them are on,
 the sites they trust, their address, their three FQDNs, their policies
@@ -120,7 +120,7 @@ value you may not see is left empty. That needs the ACL
 
 <!-- -->
 
-**show_oid \[**--full**\] *site***  
+**show_oid** \[**--full**\] *site*  
 Show the OID of the site: **site\|\<realm\>/\<site\>**. **--full** is
 accepted and shows the same.  
 Needs the ACL **view_public:object**.
@@ -131,7 +131,7 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the site names, and with a pattern only those that match it, see
 **SELECTING OBJECTS** in **otpme**(1). You get the sites you may change;
 **-a** adds those you may only look at.  
@@ -199,7 +199,7 @@ Both names start out as the *site_fqdn* of **add**. A host looks the
 name up in DNS, so a name that is changed here has to be there first.
 The third name, the one of the SSO portal, is **sso_fqdn** below.
 
-**config \[**-d**\] \[**-a**\] *site* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *site* *parameter* \[*value*\]  
 Set a parameter on the site.  
 A config parameter is looked for on the object, then on the units above
 it, then on the site, and the first value found applies. So what is set
@@ -219,9 +219,9 @@ Append the value to a parameter that holds a list, instead of replacing
 what is there.
 
 Without a *value* the parameter is set to its default.  
-The ACL is per parameter, **set:config:***parameter*.
+The ACL is per parameter, **set:config:*parameter***.
 
-**upgrade \[**--all**\] \[**--procs** *NUM*\] *site***  
+**upgrade** \[**--all**\] \[**--procs** *NUM*\] *site*  
 Bring the site up to the OTPme version its nodes run. Run it after an
 update, when all nodes of the site run the new version. It does these
 things.
@@ -318,14 +318,14 @@ Needs the ACL **set:config**, for all parameters and not just one.
 
 **show_config *site* \[*parameter*\]**  
 The config parameters set on the site, or only the one named.  
-Nothing is shown for a parameter whose ACL **view:config:***parameter*
+Nothing is shown for a parameter whose ACL **view:config:*parameter***
 you do not hold. The settings of the site — its address, its names, its
 certificates and secrets — are not config parameters: **show** and
 **export** are where those are.
 
 **get_config *site* *parameter***  
 The value of one parameter.  
-Needs the ACL **view:config:***parameter*, the same one that opens it in
+Needs the ACL **view:config:*parameter***, the same one that opens it in
 **show_config**.
 
 **description *site* \[*description*\]**  
@@ -333,7 +333,7 @@ Set the description. Without one OTPme asks and offers the current text
 for editing.  
 Needs the ACL **edit:description**.
 
-**info \[**--language** *LANG*\] *site* \[*info*\]**  
+**info** \[**--language** *LANG*\] *site* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current text is
 opened in the editor named by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note about
@@ -343,7 +343,7 @@ nothing shows the info of a site, so for a site it stays a note either
 way.  
 Needs the ACL **edit:info**.
 
-**dump_info \[**--language** *LANG*\] *site***  
+**dump_info** \[**--language** *LANG*\] *site*  
 Print the info text, of that language or the administrator's own.  
 Needs the ACL **view:info**.
 
@@ -508,7 +508,7 @@ management name; those have sections and commands of their own.
 Print the certificate of the site. A certificate is public, so no ACL of
 its own is asked for.
 
-**dump_key \[**-p** *passphrase*\] *site***  
+**dump_key** \[**-p** *passphrase*\] *site*  
 Print the private key of the site. With **-p** it is encrypted with that
 passphrase, which then stands on the command line for others on the
 machine to see.  
@@ -566,7 +566,7 @@ start of RADIUS would get it.
 All three commands ask first; the global option **-f** skips the
 question.
 
-**radius_cert \[**--key** *key_file*\] \[**--ca-cert** *ca_cert_file*\] *site* \[*cert_file*\]**  
+**radius_cert** \[**--key** *key_file*\] \[**--ca-cert** *ca_cert_file*\] *site* \[*cert_file*\]  
 Set the certificate the RADIUS server shows.  
 **--key** sets the key that belongs to it in the same call, and
 **--ca-cert** the CA certificates.  
@@ -609,7 +609,7 @@ and they **replace** the ones that are set. A certificate of your own
 has to be set again afterwards.  
 Needs the ACL **edit:sso_fqdn**.
 
-**sso_cert \[**--key** *key_file*\] *site* \[*cert_file*\]**  
+**sso_cert** \[**--key** *key_file*\] *site* \[*cert_file*\]  
 Set the certificate the portal shows, from a file in PEM format. The one
 the site makes itself is from a CA no browser knows, so this is where a
 public one goes.  
@@ -764,7 +764,7 @@ Switch the OIDC provider off. The keys and the pairwise secret stay, so
 switching it on again goes on where it stopped.  
 Needs the ACL **disable:oidc**.
 
-**renew_oidc_key \[**--key-type** *preset*\] \[**--kty** *RSA\|EC\|OKP*\] \[**--size** *N*\] \[**--alg** *alg*\] *site***  
+**renew_oidc_key** \[**--key-type** *preset*\] \[**--kty** *RSA\|EC\|OKP*\] \[**--size** *N*\] \[**--alg** *alg*\] *site*  
 Make a new signing key and sign with it from now on. The key that was
 active becomes **retired**: nothing is signed with it any more, but it
 stays published, so what it signed can still be checked.  
@@ -878,7 +878,7 @@ Sign the members with your sign key.
 **show_password_members *site***  
 Show the members, the users they stand for, and each signature.
 
-**unsign_password_members \[**--signer** *user*\] *site***  
+**unsign_password_members** \[**--signer** *user*\] *site*  
 Remove your signature, or with **--signer** the one of that user.
 
 ## Object Changelog
@@ -942,7 +942,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *site***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *site*  
 List the policies attached to the site, the disabled ones too, marked
 **(disabled)**. Use **--return-type** to select the attribute returned
 (**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
@@ -965,7 +965,7 @@ three forms mean is under **ACLs** in **otpme**(7). Tab completion after
 Adding and removing ask first, once for the whole command; the global
 option **-f** skips the question.
 
-**add_acl \[**-r**\] \[**-a**\] \[**--objects** *types*\] \[**--procs** *num*\] *site* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
+**add_acl** \[**-r**\] \[**-a**\] \[**--objects** *types*\] \[**--procs** *num*\] *site* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]  
 Give a role or a token one or more ACLs on this site.  
 *owner_type* is **role** or **token**. *owner* names it the way
 **list_acls** prints it: a role as *site/name*, or by its name alone on
@@ -1001,7 +1001,7 @@ serving logins while this runs.
 
 Needs the ACL **add:acl**.
 
-**del_acl \[**-r**\] \[**-a**\] \[**--objects** *types*\] \[**--procs** *num*\] *site* *acl*\[,*acl*\]**  
+**del_acl** \[**-r**\] \[**-a**\] \[**--objects** *types*\] \[**--procs** *num*\] *site* *acl*\[,*acl*\]  
 Take those ACLs away again.  
 Here an *acl* is the whole entry, owner and all, the way **list_acls**
 prints it: **role:berlin/helpdesk:view**.  
@@ -1033,7 +1033,7 @@ here.
 
 ## Extensions and LDAP Attributes
 
-A site is also an LDAP entry, **ou=***site* under the realm, and an
+A site is also an LDAP entry, **ou=*site*** under the realm, and an
 extension is what gives it one: the object classes it is of, and the
 attributes those classes allow. What **ldapd** serves and what
 **show_ldif** prints comes from them.
@@ -1063,19 +1063,19 @@ Only an attribute one of its classes allows: there is no setting an
 attribute OTPme knows nothing about. An attribute can hold more than one
 value, so this adds one and leaves the others.
 
-The ACL is per attribute, **add:attribute:***attribute*, and a plain
+The ACL is per attribute, **add:attribute:*attribute***, and a plain
 **add:attribute** covers all of them.
 
 **modify_attribute *site* *attribute* *old_value* *new_value***  
 Put *new_value* in the place of *old_value*, and leave the other values
 of the attribute alone.  
-The ACL is **edit:attribute:***attribute*.
+The ACL is **edit:attribute:*attribute***.
 
 **del_attribute *site* *attribute***=**\[*value*\]**  
 Remove that value, or the whole attribute where no value is given.  
 A mandatory attribute of a class the site is of cannot be removed, and
 neither can a read-only one. The ACL is
-**delete:attribute:***attribute*.
+**delete:attribute:*attribute***.
 
 **add_object_class *site* *class***  
 Add an LDAP object class. Only a class an extension of the site knows is
@@ -1090,12 +1090,12 @@ class of the site allows it too. For a site that is
 **organizationalUnit**, its only class.  
 Needs the ACL **delete:object_class**.
 
-**show_ldif *site* \[**-a** *attribute1,attribute2*\]**  
+**show_ldif *site*** \[**-a** *attribute1,attribute2*\]  
 The site as LDAP sees it. **-a** prints only those attributes.
 
 ## Export and Cleanup
 
-**export \[**--password** *password*\] *site***  
+**export** \[**--password** *password*\] *site*  
 Write the whole object of the site to stdout, as JSON.  
 Without **--password** it is written as it is, in clear — **and that is
 every key and every secret the site has**: the key of the site, the keys
@@ -1105,7 +1105,7 @@ password and the object is encrypted with it; the salt goes into the
 output, so the password is all you need to read it back.  
 Needs the ACL **export**.
 
-**remove_orphans \[**-r**\] *site***  
+**remove_orphans** \[**-r**\] *site*  
 Remove references to objects that are gone: orphan ACLs and policies of
 the site, a trusted site that was deleted, and an SSO host that was
 deleted. Config parameters set on the site that keep other objects lose
@@ -1175,8 +1175,8 @@ Without this option the site gets none. More can be added later, see
 
 **--id-ranges *range1,range2***  
 The ranges the site takes the numbers of new users and groups from, each
-written as *attribute***:***type***:***first***-***last*. They go into
-the ID range policy of the site, see **otpme-policy**(1).  
+written as ***attribute*:*type*:*first*-*last***. They go into the ID
+range policy of the site, see **otpme-policy**(1).  
 Without this option the site gets
 **uidNumber:s:70000-80000,gidNumber:s:70000-80000**. Every site gets
 that same default, so give each site a range of its own: a user of one

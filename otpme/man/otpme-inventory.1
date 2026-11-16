@@ -54,7 +54,7 @@ A value the host has not reported shows \fB\-\fR; vendor, model and serial are l
 .br
 Needs \fBallow_inventory\fR for the host.
 .TP
-.B packages \fR[\fB\-\-filter\fR \fIpattern\fR] \fIhost\fR
+\fBpackages\fR [\fB\-\-filter\fR \fIpattern\fR] \fIhost\fR
 List the packages of a host, one per line with name and version.
 \fB\-\-filter\fR lists only the packages whose name matches, with wildcards, for example \fB'python3\-*'\fR.
 .br
@@ -68,9 +68,9 @@ Says so if the host has not reported its hardware yet.
 .br
 Needs \fBallow_inventory\fR for the host.
 .TP
-.B search \fR[\fB\-\-host\fR \fIhost\fR] [\fB\-\-os\-version\fR \fIversion\fR] [\fB\-\-kernel\fR \fIkernel\fR] [\fB\-\-otpme\-version\fR \fIversion\fR] [\fB\-\-reboot\-required\fR] [\fB\-\-hardware\fR \fIexpression\fR] [\fB\-\-upgradable\fR] [\fIpackage\fR]
+\fBsearch\fR [\fB\-\-host\fR \fIhost\fR] [\fB\-\-os\-version\fR \fIversion\fR] [\fB\-\-kernel\fR \fIkernel\fR] [\fB\-\-otpme\-version\fR \fIversion\fR] [\fB\-\-reboot\-required\fR] [\fB\-\-hardware\fR \fIexpression\fR] [\fB\-\-upgradable\fR] [\fIpackage\fR]
 Find hosts by package, by OS version, by kernel, by OTPme version, by a waiting reboot, by hardware, or by packages that can be updated.
-\fIpackage\fR is a package name, or a name and a version in the form \fIname\fB=\fIversion\fR.
+\fIpackage\fR is a package name, or a name and a version in the form \f(BIname\fB=\f(BIversion\fR.
 Both can contain wildcards (\fB*\fR).
 Every option you give has to match, so they narrow the result down.
 You have to give at least one of them.
@@ -92,9 +92,9 @@ A system nobody reports shows \fB\-\fR there.
 Only systems with a host you may see are listed, and only those hosts are counted.
 See \fBREFERENCE HOSTS\fR.
 .TP
-.B available \fR[\fB\-\-host\fR \fIhost\fR] [\fB\-\-os\-version\fR \fIversion\fR] [\fB\-\-arch\fR \fIarch\fR] \fIpackage\fR
+\fBavailable\fR [\fB\-\-host\fR \fIhost\fR] [\fB\-\-os\-version\fR \fIversion\fR] [\fB\-\-arch\fR \fIarch\fR] \fIpackage\fR
 List the packages a system offers: what can be installed on a host that runs it.
-\fIpackage\fR works as with \fBsearch\fR, a name or \fIname\fB=\fIversion\fR, with wildcards.
+\fIpackage\fR works as with \fBsearch\fR, a name or \f(BIname\fB=\f(BIversion\fR, with wildcards.
 The version is the one apt would install.
 .IP
 With \fB\-\-host\fR it is the system of that host.
@@ -141,10 +141,10 @@ Only hosts whose hardware matches.
 The expression is a field, an operator and a value; the fields are in \fBHARDWARE FIELDS\fR.
 .RS
 .IP \(bu 2
-\fIfield\fB=\fIvalue\fR matches the value. Wildcards are allowed, for example \fB'model=PowerEdge*'\fR.
+\f(BIfield\fB=\f(BIvalue\fR matches the value. Wildcards are allowed, for example \fB'model=PowerEdge*'\fR.
 \fBvirtual\fR takes \fByes\fR or \fBno\fR.
 .IP \(bu 2
-\fIfield\fB>\fIvalue\fR, \fIfield\fB<\fIvalue\fR, \fIfield\fB>=\fIvalue\fR and \fIfield\fB<=\fIvalue\fR compare.
+\f(BIfield\fB>\f(BIvalue\fR, \f(BIfield\fB<\f(BIvalue\fR, \f(BIfield\fB>=\f(BIvalue\fR and \f(BIfield\fB<=\f(BIvalue\fR compare.
 Only \fBcpu_count\fR, \fBmemory\fR and \fBdisk_size\fR can be compared.
 A size is written the way it is shown, for example \fB'memory<8G'\fR.
 .PP
@@ -427,7 +427,7 @@ The one thing that is nicer with a package installed is the name of a controller
 Everything a host reports can be searched with \fB\-\-hardware\fR.
 These are the fields:
 .TP
-.B vendor\fR, \fBmodel\fR, \fBserial\fR, \fBasset_tag\fR, \fBsku
+\fBvendor\fR, \fBmodel\fR, \fBserial\fR, \fBasset_tag\fR, \fBsku
 What the machine says about itself, from \fI/sys/class/dmi/id\fR.
 .B serial
 is what Dell calls the Service Tag.
@@ -437,11 +437,11 @@ in a search, it means the same field.
 .B asset_tag
 is the tag your own IT sets, it is a different field.
 .TP
-.B board_vendor\fR, \fBboard_model\fR, \fBboard_serial
+\fBboard_vendor\fR, \fBboard_model\fR, \fBboard_serial
 The same three for the mainboard.
 Useful when a board series turns out to be faulty: the machine can carry the name of the maker who built it, the board carries the name of who made the board.
 .TP
-.B cpu_model\fR, \fBcpu_count
+\fBcpu_model\fR, \fBcpu_count
 The CPU and how many logical CPUs there are, from \fI/proc/cpuinfo\fR.
 .B cpu_count
 can be compared.
@@ -454,7 +454,7 @@ Write it as a size, for example \fB8G\fR.
 It is \fBMemTotal\fR, what the kernel has left after taking its own share, so a little under what is built in: a host with 32 GB shows about \fB31.2G\fR.
 So \fB'memory<8G'\fR finds the hosts with 8 GB as well; ask for \fB'memory<7G'\fR to leave them out.
 .TP
-.B disk\fR, \fBdisk_size\fR, \fBdisk_serial\fR, \fBdisk_vendor\fR, \fBdisk_model
+\fBdisk\fR, \fBdisk_size\fR, \fBdisk_serial\fR, \fBdisk_vendor\fR, \fBdisk_model
 One entry per disk, from \fI/sys/block\fR.
 .B disk
 is the name, for example \fBsda\fR.
@@ -492,7 +492,7 @@ The answer is the disks that hang on the controller, because that is what a cont
 The names come from the PCI ID database of the host (\fI/usr/share/misc/pci.ids\fR or \fI/usr/share/hwdata/pci.ids\fR).
 A host without one reports the IDs and the driver, and then only those can be searched.
 .TP
-.B virtual\fR, \fBvirt_type
+\fBvirtual\fR, \fBvirt_type
 Whether the host is a virtual machine, and on what.
 .B virtual
 is \fByes\fR or \fBno\fR.
@@ -502,7 +502,7 @@ is \fBkvm\fR, \fBvmware\fR, \fBvirtualbox\fR, \fBxen\fR, \fBhyperv\fR and so on.
 It comes from \fI/sys/hypervisor/type\fR, and else from the name a hypervisor writes into the DMI vendor or model.
 A hypervisor that is not known by its name there counts as \fBno\fR.
 .TP
-.B bios_vendor\fR, \fBbios_version\fR, \fBbios_date
+\fBbios_vendor\fR, \fBbios_version\fR, \fBbios_date
 The BIOS.
 .B bios_date
 is written the way the board writes it, usually \fBmm/dd/yyyy\fR, so search it with a wildcard.

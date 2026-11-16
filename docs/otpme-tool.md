@@ -28,14 +28,14 @@ root.
 
 ## Realm
 
-**join \[**--jotp** *jotp*\] \[**--hostname** *hostname*\] \[**--host-type** **host**\|**node**\] \[**--unit** *unit*\] \[**--host-key-len** *bits*\] \[**--ca-key-len** *bits*\] \[**--ca-valid** *days*\] \[**--site-key-len** *bits*\] \[**--site-valid** *days*\] \[**--trust-site-cert**\|**--check-site-cert** *fingerprint*\] \[**--joind-uri** *uri*\] \[**--no-daemon-start**\] \[*domain*\]**  
+**join** \[**--jotp** *jotp*\] \[**--hostname** *hostname*\] \[**--host-type** **host**\|**node**\] \[**--unit** *unit*\] \[**--host-key-len** *bits*\] \[**--ca-key-len** *bits*\] \[**--ca-valid** *days*\] \[**--site-key-len** *bits*\] \[**--site-valid** *days*\] \[**--trust-site-cert**\|**--check-site-cert** *fingerprint*\] \[**--joind-uri** *uri*\] \[**--no-daemon-start**\] \[*domain*\]  
 Make this machine a host or a node of a realm. You must be root, and the
 machine must not be in a realm yet.
 
 **Finding the realm.** The joind of the realm is looked up in DNS, as
-the SRV record **\_otpme-join.\_tcp.***domain*. Realm and site come from
-the TXT records **\_otpme-realm.\_tcp.***domain* and
-**\_otpme-site.\_tcp.***domain*, or from the global options **-r** and
+the SRV record **\_otpme-join.\_tcp.*domain***. Realm and site come from
+the TXT records **\_otpme-realm.\_tcp.*domain*** and
+**\_otpme-site.\_tcp.*domain***, or from the global options **-r** and
 **-s**. Without *domain* it is *site*.*realm* when **-r** and **-s** are
 given, else the domain of the FQDN of this machine.  
 **--joind-uri** names the joind instead of the SRV record, e.g.
@@ -76,8 +76,8 @@ leaves these four alone.
 
 **The site certificate.** join shows the fingerprint of the certificate
 of the site it connects to and asks whether to trust it.
-**--check-site-cert** compares it instead, given as **sha256:***hex*,
-**sha1:***hex* or the sha256 hex alone; the colons and capitals of
+**--check-site-cert** compares it instead, given as **sha256:*hex***,
+**sha1:*hex*** or the sha256 hex alone; the colons and capitals of
 **openssl x509 -fingerprint** are fine. **--trust-site-cert** trusts any
 certificate.
 
@@ -87,7 +87,7 @@ LOTPs enabled.
 An object that has joined already is refused; the global option **-f**
 joins it again.
 
-**leave \[**--lotp** *lotp*\] \[**--offline**\] \[**--keep-host**\|**--no-keep-host**\] \[**--keep-data**\] \[**--keep-cache**\] \[**--keep-cert**\]**  
+**leave** \[**--lotp** *lotp*\] \[**--offline**\] \[**--keep-host**\|**--no-keep-host**\] \[**--keep-data**\] \[**--keep-cache**\] \[**--keep-cert**\]  
 Take this machine out of its realm. You must be root. The master node
 cannot leave.
 
@@ -141,7 +141,7 @@ A login to the realm is kept by **otpme-agent**, one per system user.
 These commands ask the agent of the user who runs them, for the session
 of the login they run in.
 
-**login \[**--node** *node*\] \[**--no-authorize-host**\] \[*username*\]**  
+**login** \[**--node** *node*\] \[**--no-authorize-host**\] \[*username*\]  
 Log in to the realm. It starts **otpme-agent** if it is not running,
 asks for the password or OTP of the user, and leaves the session with
 the agent. The user is *username*, else the one of the global option
@@ -183,12 +183,12 @@ the host: every user who may read its certificate key may run it there.
 
 **host_who**  
 Print the hosts and nodes that wait to be told of a job: host, type, IP
-address and when they connected. A host that is listed hears of a new
-job at once, for example of **otpme-shell**; one that is not picks it up
-at its next sync.  
+address, when they connected and the version of OTPme. A host that is
+listed hears of a new job at once, for example of **otpme-shell**; one
+that is not picks it up at its next sync.  
 Who may run it is the same as for **who**.
 
-**message \[**--user** *username*\] \[**--host** *hostname*\] \[**--all**\] \[**--title** *title*\] *text***  
+**message** \[**--user** *username*\] \[**--host** *hostname*\] \[**--all**\] \[**--title** *title*\] *text*  
 Show a message box to users that are logged in.
 
 The message is shown in a window with an OK button, in the desktop
@@ -210,7 +210,7 @@ Nodes may send messages. A host may send them when the site lists it in
 **allow_user_messages**, see **otpme**(7). Only users of your own site
 can be reached, because the message goes through the idled of that site.
 
-**show_sessions \[*pid*\]**  
+**show_sessions** \[*pid*\]  
 List the sessions of the agent you may see: the PID of the login, the
 token, the pass type, realm and site, whether it is a login or the
 passphrase of an SSH key, who else may use it, and the sites it is
@@ -238,7 +238,7 @@ Print the TTY the login was made on.
 **get_display**  
 Print the **DISPLAY** PAM gave the login.
 
-**get_sotp \[**--site** *site*\]**  
+**get_sotp** \[**--site** *site*\]  
 Print an SOTP, a one-time password made from the session: it is how the
 tools of a logged-in user, e.g. the mount of a share, authenticate as
 that session. It is valid for about a minute.  
@@ -276,7 +276,7 @@ realm.
 
 ## Synchronization
 
-**sync \[**--realm** *realm*\] \[**--site** *site*\] \[**--request-site-cert**\] \[*sync_type*\]**  
+**sync** \[**--realm** *realm*\] \[**--site** *site*\] \[**--request-site-cert**\] \[*sync_type*\]  
 Tell hostd to start a sync now and not when it is due. The sync runs in
 the background: the command prints “Command queued” and does not wait
 for it. Use **sync_status** to see how it went. Only root and the user
@@ -312,20 +312,20 @@ not replace it. After a **renew_cert** of a site, run **sync
 cert is taken only if it is the cert of that site and the CA of the site
 issued it and did not revoke it. It works with the sync type sites only.
 
-**resync \[**--realm** *realm*\] \[**--site** *site*\] **objects**\|**nsscache****  
+**resync** \[**--realm** *realm*\] \[**--site** *site*\] **objects**\|**nsscache**  
 Like **sync**, but full: **objects** compares every object with the
 site, not only the ones that changed since the last sync, and then
 builds the NSS cache new. **nsscache** builds the NSS cache new from
 scratch. Nothing is removed before. **--realm** and **--site** work as
 with **sync**.
 
-**sync_status \[*sync_type*\]**  
+**sync_status** \[*sync_type*\]  
 Show for each site and sync type when the last sync run started, and how
 it went: how long ago that was, how far a running one is, or when it
 last failed. “Never synced” means no run started yet. Every user may run
 it. On a node the objects of its own site are not listed, see **sync**.
 
-**do_sync \[**--realm** *realm*\] \[**--site** *site*\] \[**--resync**\] \[**--offline**\] \[**--sync-older-objects**\] \[**--ignore-changed-objects**\] \[**--remove-orphan-objects**\] *sync_type***  
+**do_sync** \[**--realm** *realm*\] \[**--site** *site*\] \[**--resync**\] \[**--offline**\] \[**--sync-older-objects**\] \[**--ignore-changed-objects**\] \[**--remove-orphan-objects**\] *sync_type*  
 Do a sync here and now, without hostd: it connects to syncd itself and
 waits until the sync is done. It works when hostd does not run. If it
 cannot connect, it uses what an earlier sync left in the sync cache on
@@ -374,7 +374,7 @@ maintenance. You need to be admin.
 
 ## Cryptographic Operations
 
-**sign \[**--stdin-pass**\] *file* *sig_file***  
+**sign** \[**--stdin-pass**\] *file* *sig_file*  
 Sign *file* with the sign key of your user (RSA or Ed25519) and write
 the signature to *sig_file*, **-** for stdout. The signature file says
 who signed it. The key is used where it is: on the server, through
@@ -388,7 +388,7 @@ their public sign key is fetched from the realm, so you can check the
 signatures of any user. Prints what openssl says, for example **Verified
 OK**, and fails when the signature does not match.
 
-**encrypt \[**-u** *user*\] \[**--rsa**\] \[**--no-rsa**\] \[**--force-pass**\] \[**--pass** *password*\] \[**--stdin-pass**\] *file* *outfile***  
+**encrypt** \[**-u** *user*\] \[**--rsa**\] \[**--no-rsa**\] \[**--force-pass**\] \[**--pass** *password*\] \[**--stdin-pass**\] *file* *outfile*  
 Encrypt *file* and write it to *outfile*, **-** for stdout. By default
 the file is encrypted with a random AES key, and that key with your
 encrypt key (RSA or X25519), so only you can decrypt it. The output
@@ -411,7 +411,7 @@ is set to GPG.
 The passphrase. Without them you are asked. **--pass** shows in the
 process list, so prefer **--stdin-pass**.
 
-**decrypt \[**--pass** *password*\] \[**--stdin-pass**\] *file* *outfile***  
+**decrypt** \[**--pass** *password*\] \[**--stdin-pass**\] *file* *outfile*  
 Decrypt a file made by **encrypt** and write it to *outfile*, **-** for
 stdout. What it needs is read from the file: your key, or the
 passphrase. The passphrase, or the one of your private key, is given
@@ -484,7 +484,7 @@ not root always works on their own. Only **token**, **key_script** and
 **FORCE_AGENT_SCRIPT_SIGNERS** in *otpme.conf* allow it, and by default
 it does not.
 
-**add_signer \[**--private**\] \[**--no-pin**\] \[**--no-verify-token-opts**\] \[**--allow-throwaway-key**\] \[**--tag** *tag*\]... **--signer-type** *type* *object_id***  
+**add_signer** \[**--private**\] \[**--no-pin**\] \[**--no-verify-token-opts**\] \[**--allow-throwaway-key**\] \[**--tag** *tag*\]... **--signer-type** *type* *object_id*  
 Trust the signatures of *object_id* for *type*. *object_id* is a user or
 a role, given as OID, for example **'user\|example.org/alice'** or
 **'role\|example.org/berlin/admins'**.
@@ -524,15 +524,15 @@ A signer of type **password** says whose signature of
 **password_store_members** this host trusts. Without one, **otpme-pass**
 encrypts nothing on this host. See **otpme-pass**(1).
 
-**del_signer \[**--private**\] *signer_uuid***  
+**del_signer** \[**--private**\] *signer_uuid*  
 Remove the signer.
 
-**enable_signer \[**--private**\] \[**--signer-type** *type*\] \[*signer_uuid*\]**  
-**disable_signer \[**--private**\] \[**--signer-type** *type*\] \[*signer_uuid*\]**  
+**enable_signer** \[**--private**\] \[**--signer-type** *type*\] \[*signer_uuid*\]  
+**disable_signer** \[**--private**\] \[**--signer-type** *type*\] \[*signer_uuid*\]  
 Switch one signer on or off, or with **--signer-type** alone every
 signer of that type. A signer that is off is not asked.
 
-**update_signer \[**--private**\] \[**--remove-gone**\] \[**--verify-token-opts**\|**--no-verify-token-opts**\] \[**--allow-throwaway-key**\|**--no-throwaway-key**\] \[**--signer-type** *type*\] \[*signer_uuid*\]**  
+**update_signer** \[**--private**\] \[**--remove-gone**\] \[**--verify-token-opts**\|**--no-verify-token-opts**\] \[**--allow-throwaway-key**\|**--no-throwaway-key**\] \[**--signer-type** *type*\] \[*signer_uuid*\]  
 Pin the keys the user or the members of the role have now, for example
 after a key change or a new member. One signer, or with
 **--signer-type** alone every signer of that type. A signer that cannot
@@ -549,7 +549,7 @@ keys, and saying nothing must not take a permission away. This is the
 only way to change one of them without removing the signer and adding it
 again.
 
-**show_signer \[**--private**\] \[**--signer-type** *type*\] \[*signer_uuid*\]**  
+**show_signer** \[**--private**\] \[**--signer-type** *type*\] \[*signer_uuid*\]  
 List the signers: the UUID (with **\*** when its keys are pinned),
 whether it is on, its type, whether the token options are checked,
 whether it may bring its own key for a remote access session, the user
@@ -560,7 +560,7 @@ when the user has no sign key.
 
 ## Host Keys
 
-**update_host_keys \[**--list**\] \[*host*\]**  
+**update_host_keys** \[**--list**\] \[*host*\]  
 Take over the public keys of hosts whose key changed. Only on a host,
 and only with **PIN_HOST_KEYS**, see **otpme.conf**(5). A node holds the
 tree itself, so there is nothing to hold it to.
@@ -587,7 +587,7 @@ Nothing else does: the sync never takes a key away.
 
 ## User Keys
 
-**update_user_keys \[**--list**\] \[*user*\]**  
+**update_user_keys** \[**--list**\] \[*user*\]  
 Take over the encrypt public keys of users whose key changed. Only with
 **PIN_USER_KEYS**, see **otpme.conf**(5).
 
@@ -613,7 +613,7 @@ factor token, so the user can log in again when no node can be reached,
 see **pam_otpme**(8). These commands work on that cache of the user who
 runs them.
 
-**show_offline_token \[**--show-secret**\] \[*token_id*\]**  
+**show_offline_token** \[**--show-secret**\] \[*token_id*\]  
 List the cached tokens: **login_token** and the UUIDs of the others,
 with their path, and whether the cache is pinned.
 
@@ -641,7 +641,7 @@ and its token, and the objects of **site_admin_blacklist**, with
 **dump_object**, **dump_index** and **delete_object**. *object_id* is an
 OID, for example **'user\|example.org/alice'**.
 
-**dump acl_cache\|**sync_map** \[*object_id*\]**  
+**dump acl_cache**\|**sync_map** \[*object_id*\]  
 Print a cache of hostd on this host. Only root. With **acl_cache**,
 *object_id* limits it to one object, given as full OID, or to the OIDs a
 pattern with **\*** matches.
@@ -660,12 +660,12 @@ ACLs, the trash, policies, and what belongs to the object, the tokens of
 a user for example. Use it for what that command cannot remove, like an
 index entry without a file.
 
-**check_duplicate_ids user\|**group****  
+**check_duplicate_ids user**\|**group**  
 Look for uidNumbers (**user**) or gidNumbers (**group**) used twice, in
 all sites. Prints each number with the two names, or “No duplicate IDs
 found.”
 
-**search attribute=*attr* value=*value* \[**object_type=***type*\] \[**return_type=***type*\]**  
+**search attribute=*attr* value=*value*** \[**object_type=*type***\] \[**return_type=*type***\]  
 Search the index of this site. *value* may hold **\*** as wildcard.
 Without **object_type** every type is searched.
 
@@ -679,14 +679,14 @@ needs **view_public** on the attribute searched for.
 
 Both need an admin and go to mgmtd.
 
-**import \[**--password** *password*\] *file***  
+**import** \[**--password** *password*\] *file*  
 Import an object from *file*, as **otpme-***type*** export** wrote it,
 with **--password** when it was exported with one. The object is written
 as it is in the file, with its UUID; ACLs and policies are not asked. If
 it exists, import asks before it writes over it. Only objects of this
 realm and site, and the realm and its sites themselves.
 
-**mass_object_add \[**--verify-only**\] \[**--procs** *n*\] *csv_file***  
+**mass_object_add** \[**--verify-only**\] \[**--procs** *n*\] *csv_file*  
 Add users, groups and roles from a CSV file: one object per line, **;**
 between the columns, no header line. A column that holds a list
 separates its items with commas.
@@ -695,10 +695,9 @@ separates its items with commas.
     group;name;unit;ldif_attributes
     role;name;unit;groups;roles
 
-**ldif_attributes** is *attr***=***value***,***attr***=***value*.
-Without **uidNumber** or **gidNumber** there, the IDRange policy of the
-unit, else of the site, gives the number. An empty unit is the default
-unit.
+**ldif_attributes** is ***attr*=*value*,*attr*=*value***. Without
+**uidNumber** or **gidNumber** there, the IDRange policy of the unit,
+else of the site, gives the number. An empty unit is the default unit.
 
 First every line is checked: that it has its columns, that the name is
 free and not in the file twice, that the unit exists and has an IDRange
@@ -719,7 +718,7 @@ The services under OTPme. Only root.
 Run the search index: the database next to the object files, PostgreSQL,
 MySQL or SQLite (**INDEX** in **otpme.conf**(5)). The commands:
 
-**start, **stop**, **restart**, **status****  
+**start**, **stop**, **restart**, **status**  
 The database server. **stop** and **restart** need OTPme stopped.
 
 **reload**  
@@ -734,7 +733,7 @@ Create a new, empty index. Needs OTPme stopped.
 **drop**  
 Delete the index, without asking. Needs OTPme stopped.
 
-**rebuild \[*object_dir*\]**  
+**rebuild** \[*object_dir*\]  
 Throw the index away and build it again from the object files, keeping
 the last used times. Needs OTPme stopped. With *object_dir* only that
 object, while OTPme runs.
@@ -748,7 +747,7 @@ Write every entry as JSON to stdout.
 **restore *file***  
 Put a backup back into an empty index. Needs OTPme stopped.
 
-**create_db_indices, **drop_db_indices****  
+**create_db_indices**, **drop_db_indices**  
 Create or remove the indices of the database itself. Ones that are there
 already are left alone.
 
@@ -763,7 +762,7 @@ Run freeradius on this node: **start**, **stop**, **restart**,
 **status**. **reload** restarts it on every node of the site, through
 hostd.
 
-**test \[**--mschap**\] *username* password nas_id secret**  
+**test** \[**--mschap**\] *username password nas_id secret*  
 Send a request to freeradius here and say whether it was accepted; with
 **--mschap** as EAP-MSCHAPv2. The password shows in the process list.
 
@@ -779,13 +778,13 @@ use one. The unwrapped one lives for **key_cache_time** of the user.
 Both are only handed to the login session they belong to. See
 **enable_key_caching** in **otpme-user**(1).
 
-**get_private_key **--role** *sign*\|*encrypt* \[**--decrypted**\]**  
+**get_private_key --role** *sign*\|*encrypt* \[**--decrypted**\]  
 Write a private key of the logged in user to stdout. Without
 **--decrypted** the wrapped one, with it the unwrapped one. It fails
 when the agent holds none, which is the normal answer before the key
 script has been asked to use the key, and after the cache time ran out.
 
-**add_private_key **--role** *sign*\|*encrypt* \[**--decrypted**\]**  
+**add_private_key --role** *sign*\|*encrypt* \[**--decrypted**\]  
 Give the agent a private key, read from stdin. **--decrypted** for the
 unwrapped one, which is then kept for the cache time.  
 From stdin, because a private key on a command line is a private key in
@@ -845,7 +844,7 @@ Print "Running", or "Stopped" with exit code 1.
 
 ## Backup and Restore
 
-**backup **-d** *backup_dir* \[**--remove-older-than** *time*\] \[**--dry-run**\]**  
+**backup -d** *backup_dir* \[**--remove-older-than** *time*\] \[**--dry-run**\]  
 Write all objects of this node into a new directory
 *backup_dir*/YYYY-mm-dd_HH:MM:SS. There is one JSON file per object, in
 one directory per object type. The object configs stay encrypted, as
@@ -854,7 +853,7 @@ they are on disk. So a restore needs the same master key (see
 backup. Directories are created with mode 0700. At the end, failed
 objects are listed and the exit code is 1. Needs root.
 
-**--remove-older-than*** time*  
+**--remove-older-than** *time*  
 Write no backup. Remove the backup directories in *backup_dir* that are
 older than *time*. *time* is a number with m (minutes), h (hours), d
 (days), w (weeks), M (months of 30 days) or Y (years of 365 days), e.g.
@@ -864,10 +863,10 @@ older than *time*. *time* is a number with m (minutes), h (hours), d
 With **--remove-older-than**: remove nothing, only print what would be
 removed.
 
-**restore {**-d** *restore_dir* \| **-f** *restore_file*}**  
+**restore** {**-d** *restore_dir* \| **-f** *restore_file*}  
 Restore from a backup.
 
-**-d*** restore_dir*  
+**-d** *restore_dir*  
 Restore all objects of one backup directory, e.g.
 *backup_dir*/2026-10-24_03:00:00. This also restores the objects of the
 other sites. It is meant to set up a node from scratch. The OTPme daemon
@@ -877,7 +876,7 @@ the nsscache. Object types that are missing in the backup are skipped.
 At the end, failed objects are listed and the exit code is 1. Needs
 root.
 
-**-f*** restore_file*  
+**-f** *restore_file*  
 Restore one object from its backup file, through the management daemon.
 Only an object of this realm and site, and the realm and its sites
 themselves; the objects of another site are restored on that site, or
@@ -886,7 +885,7 @@ is written over. Needs admin rights.
 
 ## Benchmark
 
-**login_benchmark \[**--procs** *N*\] \[**--node** *node*\]... \[**--logout**\] *csv_file***  
+**login_benchmark** \[**--procs** *N*\] \[**--node** *node*\]... \[**--logout**\] *csv_file*  
 Log in many users at the same time and measure the speed. *csv_file* has
 one line per login: username,password. There is no header line. Each
 login is a real login with the password, but without otpme-agent, login
@@ -899,10 +898,10 @@ far. At the end, the number of logins, the failed logins and the
 requests per second are printed. If logins or logouts failed, the exit
 code is 1.
 
-**--procs*** N*  
+**--procs** *N*  
 Run *N* logins at the same time. The default is half the number of CPUs.
 
-**--node*** node*  
+**--node** *node*  
 Send the logins to this node. Can be given more than once; the logins
 then go to the nodes in turn. Without it, the node is found the normal
 way.
@@ -913,7 +912,7 @@ logouts are not part of the measured time.
 
 ## Smartcard
 
-**detect_smartcard \[**-t** *type*\[,*type*...\]\]**  
+**detect_smartcard** \[**-t** *type*\[,*type*...\]\]  
 Search for connected smartcards and print what is found. This is the
 same search that login does. For each type, "Searching for smartcard:
 *type*" is printed, then the devices found. If no smartcard is found,
@@ -925,7 +924,7 @@ they do not check that it is set up for this type. yubikey_piv finds a
 YubiKey with a key in the PIV slot AUTHENTICATION. u2f and fido2 also
 search through PC/SC (e.g. NFC readers) if pcscd runs.
 
-**-t*** type\[,*type*...\]*  
+**-t** *type*\[,*type*...\]  
 Search only for these types.
 
 # OPTIONS

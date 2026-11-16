@@ -32,7 +32,7 @@ On a host the command says so and stops.
 It also needs the node install (\fBpip install 'otpme[node]'\fR); without it the command is there but refuses to run.
 .SH COMMANDS
 .TP
-.B status \fR[\fB\-\-diff\fR] [\fB\-\-full\fR] [\fB\-\-full\-index\fR]
+\fBstatus\fR [\fB\-\-diff\fR] [\fB\-\-full\fR] [\fB\-\-full\-index\fR]
 Ask every enabled node of this site where it stands.
 .IP
 One line per node: whether it has a quorum, which node it thinks is master, and three checksums \(em the objects of the tree, the data objects, and the sessions.
@@ -42,7 +42,7 @@ See \fBWHAT STATUS SHOWS\fR.
 Every node is asked at the same time, and a node that does not answer is \fBOffline\fR.
 Nothing is written, and nothing is decided here: the command reads.
 .TP
-.B master_failover \fR[\fB\-\-to\fR \fInode\fR] [\fB\-\-random\fR] [\fB\-\-wait\fR]
+\fBmaster_failover\fR [\fB\-\-to\fR \fInode\fR] [\fB\-\-random\fR] [\fB\-\-wait\fR]
 Hand the master role to another node.
 .IP
 Without an option the node you run it on takes the role.
@@ -149,12 +149,12 @@ is named here as a warning, because it is a number that does not follow the site
 .PP
 Then one line per node:
 .TP
-.B (Quorum: \fIn\fB)
+\fB(Quorum: \f(BIn\fB)\fR
 The votes that node counted, itself included.
 .B False
 means that node has no quorum.
 .TP
-.B (Master: \fInode\fB)
+\fB(Master: \f(BInode\fB)\fR
 Who that node thinks holds the master role.
 All lines should say the same name.
 .TP

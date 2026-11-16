@@ -66,7 +66,7 @@ last update. A value the host has not reported shows **-**; vendor,
 model and serial are left out then.  
 Needs **allow_inventory** for the host.
 
-**packages \[**--filter** *pattern*\] *host***  
+**packages** \[**--filter** *pattern*\] *host*  
 List the packages of a host, one per line with name and version.
 **--filter** lists only the packages whose name matches, with wildcards,
 for example **'python3-\*'**.  
@@ -80,11 +80,11 @@ model, serial and controller. Sizes are shown in human form, for example
 **9.7G**. Says so if the host has not reported its hardware yet.  
 Needs **allow_inventory** for the host.
 
-**search \[**--host** *host*\] \[**--os-version** *version*\] \[**--kernel** *kernel*\] \[**--otpme-version** *version*\] \[**--reboot-required**\] \[**--hardware** *expression*\] \[**--upgradable**\] \[*package*\]**  
+**search** \[**--host** *host*\] \[**--os-version** *version*\] \[**--kernel** *kernel*\] \[**--otpme-version** *version*\] \[**--reboot-required**\] \[**--hardware** *expression*\] \[**--upgradable**\] \[*package*\]  
 Find hosts by package, by OS version, by kernel, by OTPme version, by a
 waiting reboot, by hardware, or by packages that can be updated.
 *package* is a package name, or a name and a version in the form
-*name***=***version*. Both can contain wildcards (**\***). Every option
+***name*=*version***. Both can contain wildcards (**\***). Every option
 you give has to match, so they narrow the result down. You have to give
 at least one of them.
 
@@ -111,10 +111,10 @@ system nobody reports shows **-** there. Only systems with a host you
 may see are listed, and only those hosts are counted. See **REFERENCE
 HOSTS**.
 
-**available \[**--host** *host*\] \[**--os-version** *version*\] \[**--arch** *arch*\] *package***  
+**available** \[**--host** *host*\] \[**--os-version** *version*\] \[**--arch** *arch*\] *package*  
 List the packages a system offers: what can be installed on a host that
 runs it. *package* works as with **search**, a name or
-*name***=***version*, with wildcards. The version is the one apt would
+***name*=*version***, with wildcards. The version is the one apt would
 install.
 
 With **--host** it is the system of that host. **--os-version** and
@@ -162,12 +162,12 @@ left out. See **WHEN A HOST HAS TO BE REBOOTED**.
 Only hosts whose hardware matches. The expression is a field, an
 operator and a value; the fields are in **HARDWARE FIELDS**.
 
--   *field***=***value* matches the value. Wildcards are allowed, for
+-   ***field*=*value*** matches the value. Wildcards are allowed, for
     example **'model=PowerEdge\*'**. **virtual** takes **yes** or
     **no**.
 
--   *field***\>***value*, *field***\<***value*, *field***\>=***value*
-    and *field***\<=***value* compare. Only **cpu_count**, **memory**
+-   ***field*\>*value***, ***field*\<*value***, ***field*\>=*value***
+    and ***field*\<=*value*** compare. Only **cpu_count**, **memory**
     and **disk_size** can be compared. A size is written the way it is
     shown, for example **'memory\<8G'**.
 
@@ -446,18 +446,18 @@ controller: it comes from the PCI ID database (**pciutils** or
 Everything a host reports can be searched with **--hardware**. These are
 the fields:
 
-**vendor, **model**, **serial**, **asset_tag**, **sku****  
+**vendor**, **model**, **serial**, **asset_tag**, **sku**  
 What the machine says about itself, from */sys/class/dmi/id*. **serial**
 is what Dell calls the Service Tag. You can also write **service_tag**
 in a search, it means the same field. **asset_tag** is the tag your own
 IT sets, it is a different field.
 
-**board_vendor, **board_model**, **board_serial****  
+**board_vendor**, **board_model**, **board_serial**  
 The same three for the mainboard. Useful when a board series turns out
 to be faulty: the machine can carry the name of the maker who built it,
 the board carries the name of who made the board.
 
-**cpu_model, **cpu_count****  
+**cpu_model**, **cpu_count**  
 The CPU and how many logical CPUs there are, from */proc/cpuinfo*.
 **cpu_count** can be compared.
 
@@ -469,7 +469,7 @@ so a little under what is built in: a host with 32 GB shows about
 **31.2G**. So **'memory\<8G'** finds the hosts with 8 GB as well; ask
 for **'memory\<7G'** to leave them out.
 
-**disk, **disk_size**, **disk_serial**, **disk_vendor**, **disk_model****  
+**disk**, **disk_size**, **disk_serial**, **disk_vendor**, **disk_model**  
 One entry per disk, from */sys/block*. **disk** is the name, for example
 **sda**. **disk_size** is the size and can be compared. **disk_serial**
 is the serial number of the disk, the one on the sticker.
@@ -508,7 +508,7 @@ The names come from the PCI ID database of the host
 without one reports the IDs and the driver, and then only those can be
 searched.
 
-**virtual, **virt_type****  
+**virtual**, **virt_type**  
 Whether the host is a virtual machine, and on what. **virtual** is
 **yes** or **no**. **virt_type** is **kvm**, **vmware**, **virtualbox**,
 **xen**, **hyperv** and so on.  
@@ -516,7 +516,7 @@ It comes from */sys/hypervisor/type*, and else from the name a
 hypervisor writes into the DMI vendor or model. A hypervisor that is not
 known by its name there counts as **no**.
 
-**bios_vendor, **bios_version**, **bios_date****  
+**bios_vendor**, **bios_version**, **bios_date**  
 The BIOS. **bios_date** is written the way the board writes it, usually
 **mm/dd/yyyy**, so search it with a wildcard.
 

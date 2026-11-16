@@ -72,7 +72,7 @@ first VLAN its **vlan_trusts** allow, in the order of the entries.
 
 A VLAN of another site, or a VLAN for an object of another site, is used
 only if the site that answers allows it in its **vlan_trusts**, as
-*site*\[**:***vlan_site*\[**/***vlan*\]\], see **otpme**(7). The port is
+*site*\[**:*vlan_site***\[**/*vlan***\]\], see **otpme**(7). The port is
 in the network of that site, so that site decides. **assign** alone is
 not enough: the site that names the VLAN checks it on its own copy of
 the VLAN.
@@ -92,7 +92,7 @@ not 1 to 4094, or that another VLAN of the site has, is refused before
 the VLAN is made.  
 Needs **add:vlan** on the unit.
 
-**del \[**--no-trash**\] *vlan***  
+**del** \[**--no-trash**\] *vlan*  
 Delete the VLAN. It goes to the trash, see **otpme-trash**(1);
 **--no-trash** deletes it right away.  
 The question says how many members it still has. They lose their VLAN
@@ -102,7 +102,7 @@ reference to something that is gone. They are not listed, because that
 parameter is not in the index.  
 Needs **delete:object** on the VLAN or **delete:vlan** on the unit.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*vlan*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*vlan*\]  
 Without a VLAN: a table of all of them, with their unit, status, VLAN
 ID, tokens, roles, hosts, devices, policies, ACL inheritance and
 description. A member of another site has its site after it, a disabled
@@ -138,7 +138,7 @@ VLAN itself, one value per line: **VLAN_ID**, **TOKENS**, **ROLES**,
 **HOSTS** and **DEVICES**; one you may not see is empty. That needs
 **view_public:object**.
 
-**show_oid \[**--full**\] *vlan***  
+**show_oid** \[**--full**\] *vlan*  
 Show the OID of the VLAN: **vlan\|\<realm\>/\<site\>/\<name\>**. With
 **--full** the full OID, which names the unit as well:
 **vlan\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
@@ -148,7 +148,7 @@ Needs the ACL **view_public:object**.
 Show the UUID of the VLAN.  
 Needs the ACL **view_public:object**.
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the VLAN names, and with a pattern only those that match it, see
 **SELECTING OBJECTS** in **otpme**(1). You get the VLANs you may change;
 **-a** adds those you may only look at. **--attribute** matches the
@@ -168,7 +168,7 @@ and the **vlans** config parameters keep it: they name it by its UUID.
 Without a VLAN ID the switch gets the new name from then on.  
 Needs **rename:object**.
 
-**move \[**--keep-acls**\] *vlan* *unit***  
+**move** \[**--keep-acls**\] *vlan* *unit*  
 Move the VLAN into another unit. It keeps its ACLs; where ACL
 inheritance is on for it (off for VLANs by default, see
 **enable_acl_inheritance**), the default ACLs of the old unit are taken
@@ -335,7 +335,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *vlan***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *vlan*  
 List the policies attached to the VLAN, the disabled ones too, marked
 **(disabled)**. Use **--return-type** to select the attribute returned
 (**name**, **read_oid**, **full_oid**, **uuid**); without it the names.
@@ -359,10 +359,10 @@ Besides the ACLs every object has, these matter for a VLAN:
 > Name this VLAN in the **vlans** config parameter of an object, see
 > **DESCRIPTION**.
 >
-> **edit:vlan_id, **view:vlan_id****  
+> **edit:vlan_id**, **view:vlan_id**  
 > Change and see the VLAN ID, see **VLAN ID**.
 >
-> **add:token, **add:role**, **add:host**, **add:device****  
+> **add:token**, **add:role**, **add:host**, **add:device**  
 > Add members, see **Members**. **remove:** with the same values takes
 > them out again, **view:** with the plural (**view:tokens**, ...) lists
 > them.
@@ -414,7 +414,7 @@ Needs the ACL **disable:acl_inheritance**.
 
 A VLAN has two config parameters, see **CONFIG PARAMETERS**.
 
-**config \[**-d**\] \[**-a**\] *vlan* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *vlan* *parameter* \[*value*\]  
 Set a parameter on the VLAN.
 
 **-d**  
@@ -444,7 +444,7 @@ Set the description. Without one OTPme asks and offers the current text
 for editing.  
 Needs the ACL **edit:description**.
 
-**info \[**--language** *LANG*\] *vlan* \[*info*\]**  
+**info** \[**--language** *LANG*\] *vlan* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor named by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note. Nothing
@@ -452,14 +452,14 @@ shows the info of a VLAN to a user, so a text for a language stays a
 note as well.  
 Needs the ACL **edit:info**.
 
-**dump_info \[**--language** *LANG*\] *vlan***  
+**dump_info** \[**--language** *LANG*\] *vlan*  
 Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator.  
 Needs the ACL **view:info**.
 
 ## Export and Cleanup
 
-**export \[**--password** *password*\] *vlan***  
+**export** \[**--password** *password*\] *vlan*  
 Write the whole object of the VLAN to stdout, as JSON: its VLAN ID,
 members, ACLs, policies, config parameters and the rest. **otpme-tool
 import** reads it back.  

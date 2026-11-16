@@ -172,17 +172,34 @@ def decode(acl):
             acl_owner_uuid = x
         else:
             if acl_owner_type == "role":
+                x_parts = x.split("/")
                 # Role from other realm (e.g. /otpme.org/berlin/Role1)
                 # The leading slash makes the first part empty.
                 if x.startswith("/"):
-                    object_realm = x.split("/")[1]
-                    object_site = x.split("/")[2]
-                    object_name = x.split("/")[3]
-                else:
-                    # Role from own realm (e.g. berlin/Role1)
+                    if len(x_parts) != 4:
+                        msg = _("Malformed ACL: {acl}")
+                        msg = msg.format(acl=acl)
+                        raise OTPmeException(msg)
+                    object_realm = x_parts[1]
+                    object_site = x_parts[2]
+                    object_name = x_parts[3]
+                elif len(x_parts) == 1:
+                    # Role of the own site by name (e.g. Role1), as
+                    # add_acl takes it (resolve_acl()). It was an
+                    # IndexError here.
                     object_realm = config.realm
-                    object_site = x.split("/")[0]
-                    object_name = x.split("/")[1]
+                    object_site = config.site
+                    object_name = x
+                elif len(x_parts) == 2:
+                    # Role from own realm (e.g. berlin/Role1), as
+                    # list_acls prints it.
+                    object_realm = config.realm
+                    object_site = x_parts[0]
+                    object_name = x_parts[1]
+                else:
+                    msg = _("Malformed ACL: {acl}")
+                    msg = msg.format(acl=acl)
+                    raise OTPmeException(msg)
                 search_attr = "name"
                 search_value = object_name
             if acl_owner_type == "token":

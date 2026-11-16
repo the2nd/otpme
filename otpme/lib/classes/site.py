@@ -3843,6 +3843,9 @@ class Site(OTPmeObject):
                             "CONFIG_PARAMS:backupd_max_conn",
                             "CONFIG_PARAMS:socket_backlog",
                             "CONFIG_PARAMS:max_decompressed_size",
+                            # Read by confd on the host, see
+                            # get_inventory_site().
+                            "CONFIG_PARAMS:inventory_site",
                             ],
                         'sso_host'  : [
                                 "SSO_KEY",
@@ -3925,6 +3928,10 @@ class Site(OTPmeObject):
                             "CONFIG_PARAMS:deploy_device_token_reauth",
                             "CONFIG_PARAMS:sso_profile_edit_reauth",
                             "CONFIG_PARAMS:sso_reauth_timeout",
+                            # A host that reports its inventory to
+                            # another site (inventory_site) brings who
+                            # may read it, see inventory_read_allowed().
+                            "CONFIG_PARAMS:allow_inventory",
                             ],
                         },
                     }

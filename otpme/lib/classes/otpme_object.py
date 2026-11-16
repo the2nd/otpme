@@ -12516,12 +12516,14 @@ class OTPmeObject(OTPmeBaseObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
+        """ Put a copy of us into the trash. False if that failed: the
+        error was sent already, and the caller must not delete us. """
         if deleted_by is None:
             if config.auth_token:
                 deleted_by = f"token:{config.auth_token.rel_path}"
             else:
                 deleted_by = "API"
-        trash.add(self.oid, deleted_by, callback=callback)
+        return trash.add(self.oid, deleted_by, callback=callback)
 
     @object_lock(full_lock=True)
     @backend.transaction
@@ -12548,8 +12550,12 @@ class OTPmeObject(OTPmeBaseObject):
         # Before the trash: it would keep an object that stays.
         self.check_maintenance()
 
+        # Not without the copy: the object would be gone for good, and
+        # the trash had said nothing but an error line.
         if add_to_trash:
-            self.add_to_trash(deleted_by=deleted_by, callback=callback)
+            if self.add_to_trash(deleted_by=deleted_by,
+                                callback=callback) is False:
+                return callback.error()
 
         # Make sure all signatures are revoked before deleting the object.
         if self.auto_revoke and len(self.signatures) > 0:

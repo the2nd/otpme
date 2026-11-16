@@ -261,8 +261,12 @@ def add(object_id, deleted_by, callback=default_callback):
     # Trash only on nodes.
     if config.host_data['type'] != "node":
         return
+    # Both copies before anything is written: one that fails returns
+    # False, the object is not deleted then (OTPmeObject.delete()), and
+    # an entry of the first copy would stay for an object still there.
     try:
         trash_data = backup.backup_object(object_id)
+        cluster_trash_data = backup.backup_object(object_id, decrypt=True)
     except Exception as e:
         msg = _("Failed to create object trash data: {object_id}: {error}")
         msg = msg.format(object_id=object_id, error=e)
@@ -273,14 +277,8 @@ def add(object_id, deleted_by, callback=default_callback):
     filetools.create_file(path=trash_file, content=trash_data)
     filetools.create_file(path=deleted_by_file, content=deleted_by)
     # Cluster trash write.
-    try:
-        trash_data = backup.backup_object(object_id, decrypt=True)
-    except Exception as e:
-        msg = _("Failed to create object trash data: {object_id}: {error}")
-        msg = msg.format(object_id=object_id, error=e)
-        return callback.error(msg)
     event_data = cluster_sync_object(object_id=object_id,
-                                    object_data=trash_data,
+                                    object_data=cluster_trash_data,
                                     trash_id=trash_id,
                                     deleted_by=deleted_by,
                                     action="trash_write")
@@ -587,11 +585,18 @@ def show_trash(max_len=10, border=True, header=True,
     table.padding_width = 0
     table.right_padding_width = 1
 
-    # Use a list copy of output fields to prevent changing of given list.
+    # --fields comes as typed, "trash_id,object" (see cli.list_objects()).
     if output_fields:
-        output_fields = list(output_fields)
+        output_fields = output_fields.split(",")
     else:
         output_fields = list(table_headers)
+    # The table died of any other name, and the CSV left it out.
+    for field_name in output_fields:
+        if field_name in table_headers:
+            continue
+        msg = _("Unknown field: {field_name}")
+        msg = msg.format(field_name=field_name)
+        return callback.error(msg)
 
     entry_counter = 0
     for root, dirs, files in os.walk(TRASH_DIR):
@@ -648,8 +653,7 @@ def show_trash(max_len=10, border=True, header=True,
         footer = msg
 
     if csv:
-        field_index = [table_headers.index(x) for x in output_fields
-                        if x in table_headers]
+        field_index = [table_headers.index(x) for x in output_fields]
         lines = []
         if header:
             lines.append(csv_sep.join(table_headers[i] for i in field_index))

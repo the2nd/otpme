@@ -160,7 +160,7 @@ class OTPmeIdleP1(OTPmeServer1):
             return self._handle_who(username)
 
         if command == "host_wait":
-            return self._handle_host_wait()
+            return self._handle_host_wait(command_args.get('version'))
 
         if command == "host_notify":
             return self._handle_host_notify(command_args)
@@ -269,7 +269,7 @@ class OTPmeIdleP1(OTPmeServer1):
         self.logger.info(log_msg)
         return self.build_response(True, len(recipients))
 
-    def _handle_host_wait(self):
+    def _handle_host_wait(self, version=None):
         """ Long-poll for a host: tell it when there is something for it.
 
         What a host is told is never more than "look now". Everything
@@ -299,6 +299,7 @@ class OTPmeIdleP1(OTPmeServer1):
                         'type'          : self.peer.type,
                         'connect_time'  : time.time(),
                         'client_ip'     : self.client,
+                        'version'       : version,
                         }
             self.q = self.dispatcher.subscribe_host(host_uuid,
                                                 host_data=host_data)

@@ -162,7 +162,7 @@ On the host, confd keeps the job logs for 90 days.
 
 Each job has a job type and an action. The job type is also the signer
 type the host checks against. Arguments are given with **--arg**
-*name***=***value*. A value with commas is a list.
+***name*=*value***. A value with commas is a list.
 
 **sw_mgmt**  
 Manage software packages.
@@ -202,12 +202,12 @@ Update the package lists.
 **signer_mgmt**  
 Manage the signers of the host.
 
-**show_signer \[**type=***signer_type*\]**  
+**show_signer** \[**type=*signer_type***\]  
 Show the signers the host holds, or only those of one type. The answer
 is the output of the job, so **otpme-deploy results** shows it. This
 action changes nothing.
 
-**add_signer type=*signer_type* signer=*object_id* \[**tags=***tag1,tag2*\] \[**verify_token_opts=***yes*\] \[**allow_throwaway_key=***yes*\]**  
+**add_signer type=*signer_type* signer=*object_id*** \[**tags=*tag1,tag2***\] \[**verify_token_opts=*yes***\] \[**allow_throwaway_key=*yes***\]  
 Add a system-wide signer. *object_id* is the OID of a user or role, for
 example **role\|example.org/berlin/sw-admins**. The signer is pinned to
 the current key of the user or role. If the signer exists already,
@@ -231,11 +231,11 @@ sorts itself out.
 A name nobody ever had is a different thing, and **add** says so right
 away instead of letting every host refuse the job for ever.
 
-**del_signer type=*signer_type* signer=*object_id* \[**remove_last_own_signer=***yes*\]**  
+**del_signer type=*signer_type* signer=*object_id*** \[**remove_last_own_signer=*yes***\]  
 Remove a signer. If there is no such signer, nothing changes.  
 The user or role does not have to exist any more — see below.
 
-**update_signer type=*signer_type* signer=*object_id* \[**remove_gone=***yes*\] \[**remove_last_own_signer=***yes*\] \[**verify_token_opts=***yes*\] \[**allow_throwaway_key=***yes*\]**  
+**update_signer type=*signer_type* signer=*object_id*** \[**remove_gone=*yes***\] \[**remove_last_own_signer=*yes***\] \[**verify_token_opts=*yes***\] \[**allow_throwaway_key=*yes***\]  
 Pin the current key of the user or role again, for example after a key
 change.
 
@@ -285,13 +285,13 @@ anymore.
 **service_mgmt**  
 Manage systemd services.
 
-**start\|**stop**\|**restart**\|**enable**\|**disable** **unit=***unit***  
+**start**\|**stop**\|**restart**\|**enable**\|**disable** **unit=*unit***  
 Run the action on a systemd unit.
 
 **file_mgmt**  
 Manage files.
 
-**put_file path=*path* **--file** *source_file* \[**mode=***mode*\] \[**owner=***user*\] \[**group=***group*\]**  
+**put_file path=*path*** **--file** *source_file* \[**mode=*mode***\] \[**owner=*user***\] \[**group=*group***\]  
 Write a file on the host. The content comes from *source_file*.
 
 **del_file path=*path***  
@@ -316,7 +316,7 @@ Upgrading the host is not here. That is the package manager's work, see
 **remote_access**  
 Hand out a shell on the host.
 
-**shell \[**user=***user*\] \[**command=***command*\] \[**pubkey=***key*\]**  
+**shell** \[**user=*user***\] \[**command=*command***\] \[**pubkey=*key***\]  
 The host connects out to the master node of its site and speaks SSH
 through it. Without **pubkey** the host allows the keys of its own
 **authorized_keys** for *user*. With **pubkey** it allows that one key
@@ -346,7 +346,7 @@ So add signers only for users you trust with root access on that host.
 
 # COMMANDS
 
-**add \[**--host** *host1,host2*\] \[**--unit** *unit*\] \[**--recursive**\] \[**--role** *role1,role2*\] \[**--group** *group1,group2*\] \[**--arg** *name=value*\]... \[**--file** *path*\] \[**--key** *path*\] \[**--expiry** *time*\] *job_type* *action***  
+**add** \[**--host** *host1,host2*\] \[**--unit** *unit*\] \[**--recursive**\] \[**--role** *role1,role2*\] \[**--group** *group1,group2*\] \[**--arg** *name=value*\]... \[**--file** *path*\] \[**--key** *path*\] \[**--expiry** *time*\] *job_type* *action*  
 Create a job and sign it. You need at least one of **--host**,
 **--unit**, **--role** or **--group**. They can be combined, and a host
 named twice is taken once. The command fails if a required argument is
@@ -354,7 +354,7 @@ missing, if an argument is unknown, or if you may not create jobs for
 one of the hosts. A **signer_mgmt** job also fails here when it names a
 signer that is not a user or a role, or one that does not exist at all.
 
-**list \[**--host** *host*\] \[**--failed**\] \[**--pending**\]**  
+**list** \[**--host** *host*\] \[**--failed**\] \[**--pending**\]  
 List jobs. Shows the time, the job type and action, the arguments, the
 number of hosts, the signer and the state of the job. The colour says
 how the job stands: grey when the job was taken back, and otherwise the
@@ -379,7 +379,7 @@ Show a job and the state on each host: **ok**, **failed**, **refused**
 or **pending**. A **refused** line is only shown when there is one (see
 **Refused jobs**).
 
-**results \[**--host** *host*\] \[**--failed**\] \[**--watch**\] \[*job_uuid*\]**  
+**results** \[**--host** *host*\] \[**--failed**\] \[**--watch**\] \[*job_uuid*\]  
 Show the results of a job, or all results of a host. With both, the
 results of that host for that job. The header line of each result names
 the state, in the same colours as **list**: green when the job worked,
@@ -502,7 +502,7 @@ and in **ordered_by** the token the job was made with, so a result reads
 back to the order. The actor is the host: it reports about itself,
 nobody is logged in there. Warning level when the job did not work.
 
-**job_acked / job_cancelled**  
+**job_acked** / **job_cancelled**  
 Somebody acknowledged a failed job, or took a job back.
 
 On each host:

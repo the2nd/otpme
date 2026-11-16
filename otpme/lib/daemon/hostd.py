@@ -17,6 +17,7 @@ try:
 except Exception:
     pass
 
+from otpme import __version__
 from otpme.lib import log
 from otpme.lib import oid
 from otpme.lib import ssh
@@ -264,6 +265,8 @@ class HostDaemon(OTPmeDaemon):
                                         handle_user_auth=False,
                                         encrypt_session=False)
                 failures = 0
+                # For otpme-tool host_who, as the agent does for who.
+                wait_args = {'version': __version__}
                 log_msg = _("Waiting for news from our site.", log=True)[1]
                 self.logger.debug(log_msg)
                 while True:
@@ -271,7 +274,7 @@ class HostDaemon(OTPmeDaemon):
                     status_code, \
                     response, \
                     binary_data = idled_conn.send(command="host_wait",
-                                                command_args={},
+                                                command_args=wait_args,
                                                 timeout=None)
                     # Here as well as above: idled sends a keepalive of
                     # its own, so this is where a long poll notices

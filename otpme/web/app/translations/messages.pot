@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-16 19:23+0200\n"
+"POT-Creation-Date: 2026-11-16 15:35+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -18,586 +18,592 @@ msgstr ""
 "Generated-By: Babel 2.18.0\n"
 
 #: templates/base.html:8 templates/base.html:10 templates/base.html:28
-#: views.py:265
+#: views.py:269
 msgid "SSO Portal"
 msgstr ""
 
-#: templates/base.html:36 templates/settings.html:185 views.py:360
+#: templates/base.html:36 templates/settings.html:188 views.py:364
 msgid "Settings"
 msgstr ""
 
-#: views.py:497 views.py:2855
+#: views.py:501 views.py:2929
 msgid "Session expired. Please log in again."
 msgstr ""
 
-#: views.py:507 views.py:1873
+#: views.py:511 views.py:1885
 msgid "Please re-authenticate to continue."
 msgstr ""
 
-#: views.py:522 views.py:525
+#: views.py:526 views.py:529
 msgid "Failed to list device tokens."
 msgstr ""
 
-#: templates/settings.html:63 templates/settings.html:94 views.py:549
-#: views.py:654 views.py:800 views.py:943 views.py:1104
+#: templates/settings.html:64 templates/settings.html:95 views.py:553
+#: views.py:658 views.py:804 views.py:947 views.py:1108
 msgid "Device name is required."
 msgstr ""
 
-#: views.py:551
+#: views.py:555
 msgid "Role is required."
 msgstr ""
 
-#: templates/settings.html:60 views.py:557
+#: templates/settings.html:61 views.py:561
 msgid "Failed to add device token."
 msgstr ""
 
-#: views.py:580 views.py:596 views.py:713 views.py:730 views.py:851
-#: views.py:868 views.py:1004 views.py:1022 views.py:1169 views.py:1187
-#: views.py:1209 views.py:1238
+#: views.py:584 views.py:600 views.py:717 views.py:734 views.py:855
+#: views.py:872 views.py:1008 views.py:1026 views.py:1173 views.py:1191
+#: views.py:1213 views.py:1242
 msgid "Token name is required."
 msgstr ""
 
-#: templates/settings.html:61 views.py:583
+#: templates/settings.html:62 views.py:587
 msgid "Failed to delete device token."
 msgstr ""
 
-#: views.py:598 views.py:732 views.py:870 views.py:1288
+#: views.py:602 views.py:736 views.py:874 views.py:1292
 msgid "Missing 'enabled' flag."
 msgstr ""
 
-#: views.py:601
+#: views.py:605
 msgid "Failed to enable device token."
 msgstr ""
 
-#: views.py:603
+#: views.py:607
 msgid "Failed to disable device token."
 msgstr ""
 
-#: views.py:620 views.py:623
+#: views.py:624 views.py:627
 msgid "Failed to list passkeys."
 msgstr ""
 
-#: templates/settings.html:76 views.py:659 views.py:664
+#: templates/settings.html:77 views.py:663 views.py:668
 msgid "Failed to start passkey registration."
 msgstr ""
 
-#: views.py:679
+#: views.py:683
 msgid "No passkey registration in progress"
 msgstr ""
 
-#: views.py:682 views.py:823 views.py:2915
+#: views.py:686 views.py:827 views.py:2989
 msgid "Missing registration data"
 msgstr ""
 
-#: views.py:691
+#: views.py:695
 msgid "Failed to complete passkey registration."
 msgstr ""
 
-#: templates/settings.html:89 views.py:717
+#: templates/settings.html:90 views.py:721
 msgid "Failed to delete passkey."
 msgstr ""
 
-#: views.py:735
+#: views.py:739
 msgid "Failed to enable passkey."
 msgstr ""
 
-#: views.py:737
+#: views.py:741
 msgid "Failed to disable passkey."
 msgstr ""
 
-#: views.py:760 views.py:763
+#: views.py:764 views.py:767
 msgid "Failed to list security keys."
 msgstr ""
 
-#: views.py:805 views.py:810
+#: views.py:809 views.py:814
 msgid "Failed to start security key registration."
 msgstr ""
 
-#: views.py:820
+#: views.py:824
 msgid "No security key registration in progress"
 msgstr ""
 
-#: views.py:832
+#: views.py:836
 msgid "Failed to complete security key registration."
 msgstr ""
 
-#: templates/settings.html:130 views.py:855
+#: templates/settings.html:131 views.py:859
 msgid "Failed to delete security key."
 msgstr ""
 
-#: views.py:873
+#: views.py:877
 msgid "Failed to enable security key."
 msgstr ""
 
-#: views.py:875
+#: views.py:879
 msgid "Failed to disable security key."
 msgstr ""
 
-#: views.py:898 views.py:901 views.py:980
+#: views.py:902 views.py:905 views.py:984
 msgid "Failed to list tiqr tokens."
 msgstr ""
 
-#: templates/settings.html:96 views.py:947 views.py:951
+#: templates/settings.html:97 views.py:951 views.py:955
 msgid "Failed to start tiqr enrollment."
 msgstr ""
 
-#: views.py:1008
+#: views.py:1012
 msgid "Failed to delete tiqr token."
 msgstr ""
 
-#: views.py:1028
+#: views.py:1032
 msgid "Failed to update tiqr token."
 msgstr ""
 
-#: views.py:1043 views.py:1046
+#: views.py:1047 views.py:1050
 msgid "Failed to list authenticator apps."
 msgstr ""
 
-#: views.py:1080
+#: views.py:1084
 msgid "Failed to load login token options."
 msgstr ""
 
-#: templates/settings.html:107 views.py:1108 views.py:1113
+#: templates/settings.html:108 views.py:1112 views.py:1117
 msgid "Failed to start authenticator app setup."
 msgstr ""
 
-#: views.py:1134
+#: views.py:1138
 msgid "No authenticator app setup in progress."
 msgstr ""
 
-#: views.py:1139
+#: views.py:1143
 msgid "Code is required."
 msgstr ""
 
-#: templates/settings.html:110 views.py:1143 views.py:1148
+#: templates/settings.html:111 views.py:1147 views.py:1152
 msgid "Failed to verify the code."
 msgstr ""
 
-#: views.py:1151
+#: views.py:1155
 msgid "Invalid code. Please try again."
 msgstr ""
 
-#: templates/settings.html:113 views.py:1173
+#: templates/settings.html:114 views.py:1177
 msgid "Failed to delete authenticator app."
 msgstr ""
 
-#: templates/settings.html:115 views.py:1193
+#: templates/settings.html:116 views.py:1197
 msgid "Failed to update authenticator app."
 msgstr ""
 
-#: views.py:1211
+#: views.py:1215
 msgid "New PIN is required."
 msgstr ""
 
-#: templates/settings.html:54 views.py:1215
+#: templates/settings.html:55 views.py:1219
 msgid "PIN change failed."
 msgstr ""
 
-#: templates/settings.html:136 views.py:1246 views.py:1251
+#: templates/settings.html:137 views.py:1250 views.py:1255
 msgid "Failed to change the default token."
 msgstr ""
 
-#: templates/settings.html:160 views.py:1268 views.py:1271
+#: templates/settings.html:161 views.py:1272 views.py:1275
 msgid "Failed to load admin access state."
 msgstr ""
 
-#: templates/settings.html:161 views.py:1293
+#: templates/settings.html:162 views.py:1297
 msgid "Failed to update admin access."
 msgstr ""
 
-#: views.py:1316 views.py:1319
+#: views.py:1320 views.py:1323
 msgid "Failed to load settings."
 msgstr ""
 
-#: templates/settings.html:164 views.py:1343 views.py:1346
+#: templates/settings.html:165 views.py:1347 views.py:1350
 msgid "Failed to load recovery mail."
 msgstr ""
 
-#: views.py:1371
+#: views.py:1375
 msgid "Missing 'recovery_mail' field."
 msgstr ""
 
-#: views.py:1376
+#: views.py:1380
 msgid "Failed to update recovery mail."
 msgstr ""
 
-#: templates/login.html:65 templates/recover.html:20 views.py:1392
+#: templates/login.html:65 templates/recover.html:32 views.py:1396
 msgid "Username"
 msgstr ""
 
-#: views.py:1393
+#: views.py:1397
 msgid "Full name"
 msgstr ""
 
-#: views.py:1394
+#: views.py:1398
 msgid "First name"
 msgstr ""
 
-#: views.py:1395
+#: views.py:1399
 msgid "Last name"
 msgstr ""
 
-#: views.py:1396
+#: views.py:1400
 msgid "Display name"
 msgstr ""
 
-#: views.py:1397
+#: views.py:1401
 msgid "Initials"
 msgstr ""
 
-#: views.py:1398
+#: views.py:1402
 msgid "E-mail"
 msgstr ""
 
-#: views.py:1399
+#: views.py:1403
 msgid "Phone"
 msgstr ""
 
-#: views.py:1400
+#: views.py:1404
 msgid "Mobile phone"
 msgstr ""
 
-#: views.py:1401
+#: views.py:1405
 msgid "Home phone"
 msgstr ""
 
-#: views.py:1402
+#: views.py:1406
 msgid "Fax"
 msgstr ""
 
-#: views.py:1403
+#: views.py:1407
 msgid "Title"
 msgstr ""
 
-#: views.py:1404
+#: views.py:1408
 msgid "Organization"
 msgstr ""
 
-#: views.py:1405
+#: views.py:1409
 msgid "Organizational unit"
 msgstr ""
 
-#: views.py:1406
+#: views.py:1410
 msgid "Department"
 msgstr ""
 
-#: views.py:1407
+#: views.py:1411
 msgid "Employee number"
 msgstr ""
 
-#: views.py:1408
+#: views.py:1412
 msgid "Manager"
 msgstr ""
 
-#: views.py:1409
+#: views.py:1413
 msgid "Room"
 msgstr ""
 
-#: views.py:1410
+#: views.py:1414
 msgid "Street"
 msgstr ""
 
-#: views.py:1411
+#: views.py:1415
 msgid "Postal code"
 msgstr ""
 
-#: views.py:1412
+#: views.py:1416
 msgid "Location"
 msgstr ""
 
-#: views.py:1413
+#: views.py:1417
 msgid "State"
 msgstr ""
 
-#: oidc/views.py:837 views.py:1414
+#: oidc/views.py:837 views.py:1418
 msgid "Postal address"
 msgstr ""
 
-#: views.py:1415
+#: views.py:1419
 msgid "Website"
 msgstr ""
 
-#: views.py:1416
+#: views.py:1420
 msgid "Preferred language"
 msgstr ""
 
-#: views.py:1417
+#: views.py:1421
 msgid "Description"
 msgstr ""
 
-#: views.py:1418
+#: views.py:1422
 msgid "User ID"
 msgstr ""
 
-#: views.py:1419
+#: views.py:1423
 msgid "Group ID"
 msgstr ""
 
-#: views.py:1420
+#: views.py:1424
 msgid "Home directory"
 msgstr ""
 
-#: views.py:1421
+#: views.py:1425
 msgid "Login shell"
 msgstr ""
 
-#: views.py:1422
+#: views.py:1426
 msgid "UUID"
 msgstr ""
 
-#: views.py:1423
+#: views.py:1427
 msgid "Created"
 msgstr ""
 
-#: views.py:1424
+#: views.py:1428
 msgid "Last modified"
 msgstr ""
 
-#: views.py:1429
+#: views.py:1433
 msgid "You are not allowed to change this."
 msgstr ""
 
-#: views.py:1430
+#: views.py:1434
 msgid "A value is too long."
 msgstr ""
 
-#: views.py:1431
+#: views.py:1435
 msgid "Too many values."
 msgstr ""
 
-#: templates/profile.html:28 views.py:1432 views.py:1522
+#: templates/profile.html:29 views.py:1436 views.py:1526
 msgid "The photo must be a JPEG image."
 msgstr ""
 
-#: templates/profile.html:29 views.py:1433
+#: templates/profile.html:30 views.py:1437
 msgid "The photo is too large."
 msgstr ""
 
-#: templates/profile.html:35 views.py:1440
+#: templates/profile.html:38 views.py:1444
 msgid "Profile"
 msgstr ""
 
-#: templates/profile.html:15 views.py:1452 views.py:1455
+#: templates/profile.html:16 views.py:1456 views.py:1459
 msgid "Failed to load profile."
 msgstr ""
 
-#: views.py:1488
+#: views.py:1492
 msgid "Missing 'attribute' field."
 msgstr ""
 
-#: views.py:1490
+#: views.py:1494
 msgid "Missing 'values' field."
 msgstr ""
 
-#: templates/profile.html:16 views.py:1494
+#: templates/profile.html:17 views.py:1498
 msgid "Failed to save profile."
 msgstr ""
 
-#: views.py:1520
+#: views.py:1524
 msgid "Missing 'photo' field."
 msgstr ""
 
-#: templates/profile.html:17 views.py:1527
+#: templates/profile.html:18 views.py:1531
 msgid "Failed to save photo."
 msgstr ""
 
-#: views.py:1553 views.py:1556
+#: views.py:1557 views.py:1560
 msgid "Failed to list sessions."
 msgstr ""
 
-#: views.py:1574
+#: views.py:1578
 msgid "session_uuid is required."
 msgstr ""
 
-#: templates/settings.html:154 views.py:1578
+#: templates/settings.html:155 views.py:1582
 msgid "Failed to end session."
 msgstr ""
 
-#: templates/settings.html:155 views.py:1583
+#: templates/settings.html:156 views.py:1587
 msgid "Session ended."
 msgstr ""
 
-#: views.py:1593 views.py:1596
+#: views.py:1597 views.py:1600
 msgid "Failed to list OIDC consents."
 msgstr ""
 
-#: views.py:1612
+#: views.py:1616
 msgid "client_uuid is required."
 msgstr ""
 
-#: templates/settings.html:147 views.py:1616
+#: templates/settings.html:148 views.py:1620
 msgid "Failed to revoke consent."
 msgstr ""
 
-#: views.py:1645 views.py:1696
+#: views.py:1649 views.py:1700
 msgid "Missing data"
 msgstr ""
 
-#: templates/settings.html:51 views.py:1650 views.py:1701
+#: templates/settings.html:52 views.py:1654 views.py:1705
 msgid "All fields are required."
 msgstr ""
 
-#: templates/settings.html:52 views.py:1652
+#: templates/settings.html:53 views.py:1656
 msgid "New passwords do not match."
 msgstr ""
 
-#: views.py:1655
+#: views.py:1659
 msgid "Token does not support password change."
 msgstr ""
 
-#: views.py:1679
+#: views.py:1683
 msgid "Failed to change password."
 msgstr ""
 
-#: templates/settings.html:56 views.py:1703
+#: templates/settings.html:57 views.py:1707
 msgid "New PINs do not match."
 msgstr ""
 
-#: views.py:1706
+#: views.py:1710
 msgid "Token does not support PIN change."
 msgstr ""
 
-#: views.py:1729
+#: views.py:1733
 msgid "Failed to change PIN."
 msgstr ""
 
-#: views.py:1749
+#: views.py:1753
 msgid "Missing language."
 msgstr ""
 
-#: views.py:1755
+#: views.py:1759
 msgid "Unsupported language."
 msgstr ""
 
-#: views.py:1758
+#: views.py:1762
 msgid "Failed to change language."
 msgstr ""
 
-#: views.py:1788
+#: views.py:1792
 msgid "Re-deploying your login token is not allowed."
 msgstr ""
 
-#: templates/deploy.html:34 views.py:1812
+#: templates/deploy.html:34 views.py:1798 views.py:1824
 msgid "Token Enrollment"
 msgstr ""
 
-#: views.py:1821
+#: views.py:1833
 msgid "Deployment not required"
 msgstr ""
 
-#: views.py:1831
+#: views.py:1843
 msgid "Invalid token type."
 msgstr ""
 
-#: views.py:1863
+#: views.py:1875
 msgid "Failed to start token deploy."
 msgstr ""
 
-#: views.py:1914
+#: views.py:1926
 msgid "No deployment in progress."
 msgstr ""
 
-#: views.py:1938
+#: views.py:1950
 msgid "Failed to verify token deploy."
 msgstr ""
 
+#: templates/base.html:49 views.py:2048
+msgid ""
+"This site is in maintenance. Nothing can be changed right now. Please try"
+" again later."
+msgstr ""
+
 #: templates/login.html:59 templates/login.html:94 templates/login.html:124
-#: views.py:2177
+#: views.py:2235
 msgid "Sign In"
 msgstr ""
 
-#: views.py:2236 views.py:2251 views.py:2279 views.py:2289 views.py:2298
-#: views.py:3226 views.py:3236 views.py:3245
+#: views.py:2294 views.py:2309 views.py:2337 views.py:2347 views.py:2356
+#: views.py:3300 views.py:3310 views.py:3319
 msgid "Login failed."
 msgstr ""
 
-#: templates/login.html:59 templates/login.html:94 views.py:2440
+#: templates/login.html:59 templates/login.html:94 views.py:2498
 msgid "Re-authenticate"
 msgstr ""
 
-#: templates/recover.html:15 templates/recover_complete.html:40 views.py:2564
-#: views.py:2617
+#: templates/recover.html:15 templates/recover_complete.html:40 views.py:2624
+#: views.py:2679 views.py:2691
 msgid "Recover Your Account"
 msgstr ""
 
-#: views.py:2583
+#: views.py:2650
 msgid "Recovery request failed."
 msgstr ""
 
-#: views.py:2607 views.py:2615
+#: views.py:2674 views.py:2689
 msgid "Recovery link invalid"
 msgstr ""
 
-#: views.py:2612
+#: views.py:2686
 msgid "Recovery link invalid or expired."
 msgstr ""
 
-#: views.py:2632 views.py:2638 views.py:2660 views.py:2665 views.py:2682
-#: views.py:2689 views.py:2710 views.py:2716
+#: views.py:2706 views.py:2712 views.py:2734 views.py:2739 views.py:2756
+#: views.py:2763 views.py:2784 views.py:2790
 msgid "Recovery link invalid."
 msgstr ""
 
-#: views.py:2649 views.py:2722
+#: views.py:2723 views.py:2796
 msgid "Recovery deployment failed."
 msgstr ""
 
-#: views.py:2671 views.py:2697
+#: views.py:2745 views.py:2771
 msgid "Security key registration failed."
 msgstr ""
 
-#: views.py:2729
+#: views.py:2803
 msgid "Done. Please sign in with your new credentials."
 msgstr ""
 
-#: views.py:2793
+#: views.py:2867
 msgid "Failed to get app list."
 msgstr ""
 
-#: templates/index.html:11 views.py:2839
+#: templates/index.html:11 views.py:2913
 msgid "Failed to get SOTP."
 msgstr ""
 
-#: views.py:2892
+#: views.py:2966
 msgid "Failed to start fido2 registration."
 msgstr ""
 
-#: views.py:2912
+#: views.py:2986
 msgid "No registration in progress"
 msgstr ""
 
-#: views.py:2940
+#: views.py:3014
 msgid "Failed to complete fido2 registration."
 msgstr ""
 
-#: views.py:2973 views.py:3293
+#: views.py:3047 views.py:3367
 msgid "Username required"
 msgstr ""
 
-#: templates/login.html:23 views.py:2993
+#: templates/login.html:23 views.py:3067
 msgid "Failed to start tiqr authentication."
 msgstr ""
 
-#: views.py:3050 views.py:3114
+#: views.py:3124 views.py:3188
 msgid "Failed to complete tiqr authentication."
 msgstr ""
 
-#: views.py:3088
+#: views.py:3162
 msgid "Response required"
 msgstr ""
 
-#: views.py:3090 views.py:3338
+#: views.py:3164 views.py:3412
 msgid "No authentication in progress"
 msgstr ""
 
-#: views.py:3316
+#: views.py:3390
 msgid "Failed to start fido2 authentication."
 msgstr ""
 
-#: views.py:3341
+#: views.py:3415
 msgid "Missing auth response"
 msgstr ""
 
-#: views.py:3387
+#: views.py:3461
 msgid "Failed to complete fido2 authentication."
 msgstr ""
 
@@ -723,12 +729,12 @@ msgid "Deployment failed."
 msgstr ""
 
 #: templates/deploy.html:13 templates/recover_complete.html:16
-#: templates/settings.html:73
+#: templates/settings.html:74
 msgid "WebAuthn requires HTTPS."
 msgstr ""
 
 #: templates/deploy.html:14 templates/login.html:13
-#: templates/recover_complete.html:17 templates/settings.html:74
+#: templates/recover_complete.html:17 templates/settings.html:75
 msgid "WebAuthn is not supported in this browser."
 msgstr ""
 
@@ -748,11 +754,11 @@ msgstr ""
 msgid "e.g. my security key"
 msgstr ""
 
-#: templates/deploy.html:19 templates/login.html:21 templates/settings.html:97
+#: templates/deploy.html:19 templates/login.html:21 templates/settings.html:98
 msgid "Waiting for your phone..."
 msgstr ""
 
-#: templates/deploy.html:20 templates/login.html:22 templates/settings.html:99
+#: templates/deploy.html:20 templates/login.html:22 templates/settings.html:100
 msgid "The code expired. Please try again."
 msgstr ""
 
@@ -770,7 +776,7 @@ msgid "Please touch your security key..."
 msgstr ""
 
 #: templates/deploy.html:24 templates/recover_complete.html:21
-#: templates/settings.html:78
+#: templates/settings.html:79
 msgid "Completing registration..."
 msgstr ""
 
@@ -802,92 +808,98 @@ msgstr ""
 msgid "Your account requires a new authentication token."
 msgstr ""
 
-#: templates/deploy.html:42 templates/recover_complete.html:50
+#: templates/deploy.html:42
+msgid ""
+"Your login token cannot be set up while the site is in maintenance. "
+"Please try again later."
+msgstr ""
+
+#: templates/deploy.html:44 templates/recover_complete.html:55
 msgid "Token enrollment is currently disabled. Please contact your administrator."
 msgstr ""
 
-#: templates/deploy.html:44 templates/recover_complete.html:52
+#: templates/deploy.html:46 templates/recover_complete.html:57
 msgid "Choose your preferred authentication method:"
 msgstr ""
 
-#: templates/deploy.html:49 templates/recover_complete.html:57
-#: templates/settings.html:382
+#: templates/deploy.html:51 templates/recover_complete.html:62
+#: templates/settings.html:385
 msgid "Authenticator App (TOTP)"
 msgstr ""
 
-#: templates/deploy.html:51 templates/recover_complete.html:59
+#: templates/deploy.html:53 templates/recover_complete.html:64
 msgid "Security Key (FIDO2)"
 msgstr ""
 
-#: templates/deploy.html:53 templates/login.html:100
-#: templates/recover_complete.html:61 templates/settings.html:340
+#: templates/deploy.html:55 templates/login.html:100
+#: templates/recover_complete.html:66 templates/settings.html:343
 msgid "Smartphone Authentication App (tiqr)"
 msgstr ""
 
-#: templates/deploy.html:63 templates/recover_complete.html:73
+#: templates/deploy.html:65 templates/recover_complete.html:78
 msgid "Register Security Key"
 msgstr ""
 
-#: templates/deploy.html:65 templates/recover_complete.html:75
+#: templates/deploy.html:67 templates/recover_complete.html:80
 msgid "Set Up Smartphone Authentication App"
 msgstr ""
 
-#: templates/deploy.html:67 templates/recover_complete.html:79
+#: templates/deploy.html:69 templates/recover_complete.html:84
 msgid "Set Up Authenticator App"
 msgstr ""
 
-#: templates/deploy.html:80 templates/recover_complete.html:92
-#: templates/settings.html:265 templates/settings.html:347
-#: templates/settings.html:389
+#: templates/deploy.html:82 templates/recover_complete.html:97
+#: templates/settings.html:268 templates/settings.html:350
+#: templates/settings.html:392
 msgid "Device Name"
 msgstr ""
 
-#: templates/deploy.html:82 templates/recover_complete.html:94
+#: templates/deploy.html:84 templates/recover_complete.html:99
 msgid "Continue"
 msgstr ""
 
-#: templates/deploy.html:97 templates/recover_complete.html:107
-#: templates/settings.html:366
+#: templates/deploy.html:99 templates/recover_complete.html:112
+#: templates/settings.html:369
 msgid "tiqr enrollment code"
 msgstr ""
 
-#: templates/deploy.html:99
+#: templates/deploy.html:101
 msgid ""
 "Scan the code with the tiqr app. You need the code on a different screen "
 "from the phone: the app only takes it through its own scanner. Waiting "
 "for your phone..."
 msgstr ""
 
-#: templates/deploy.html:104 templates/recover_complete.html:115
+#: templates/deploy.html:106 templates/recover_complete.html:120
 msgid "QR Code"
 msgstr ""
 
-#: templates/deploy.html:107 templates/recover_complete.html:118
-#: templates/settings.html:402
+#: templates/deploy.html:109 templates/recover_complete.html:123
+#: templates/settings.html:405
 msgid "PIN:"
 msgstr ""
 
-#: templates/deploy.html:111 templates/recover_complete.html:122
-#: templates/settings.html:279 templates/settings.html:401
+#: templates/deploy.html:113 templates/recover_complete.html:127
+#: templates/settings.html:282 templates/settings.html:404
 msgid "Secret:"
 msgstr ""
 
-#: templates/deploy.html:115 templates/recover_complete.html:126
+#: templates/deploy.html:117 templates/recover_complete.html:131
 msgid ""
 "Scan the QR code with your authenticator app (e.g. Google Authenticator, "
 "Authy). Then enter the OTP shown in your app to verify."
 msgstr ""
 
-#: templates/deploy.html:117 templates/login.html:81
-#: templates/recover_complete.html:128
+#: templates/deploy.html:119 templates/login.html:81
+#: templates/recover_complete.html:133
 msgid "One-Time Password"
 msgstr ""
 
-#: templates/deploy.html:118 templates/recover_complete.html:129
+#: templates/deploy.html:120 templates/recover_complete.html:134
 msgid "Enter OTP from app"
 msgstr ""
 
-#: templates/deploy.html:119 templates/recover_complete.html:130
+#: templates/deploy.html:121 templates/recover_complete.html:135
 msgid "Verify & Activate"
 msgstr ""
 
@@ -939,7 +951,7 @@ msgstr ""
 msgid "Scan the code with the tiqr app, or tap it if you are on your phone."
 msgstr ""
 
-#: templates/login.html:24 templates/settings.html:108
+#: templates/login.html:24 templates/settings.html:109
 msgid "Please enter the code from your app."
 msgstr ""
 
@@ -947,8 +959,8 @@ msgstr ""
 msgid "Please verify your identity to continue."
 msgstr ""
 
-#: templates/login.html:83 templates/recover_complete.html:63
-#: templates/settings.html:275
+#: templates/login.html:83 templates/recover_complete.html:68
+#: templates/settings.html:278
 msgid "Password"
 msgstr ""
 
@@ -968,9 +980,9 @@ msgstr ""
 msgid "Enter code manually"
 msgstr ""
 
-#: templates/login.html:119 templates/profile.html:21 templates/profile.html:49
-#: templates/settings.html:369 templates/settings.html:409
-#: templates/settings.html:426 templates/settings.html:458
+#: templates/login.html:119 templates/profile.html:22 templates/profile.html:52
+#: templates/settings.html:372 templates/settings.html:412
+#: templates/settings.html:429 templates/settings.html:461
 msgid "Cancel"
 msgstr ""
 
@@ -982,7 +994,11 @@ msgstr ""
 msgid "Can't sign in?"
 msgstr ""
 
-#: templates/login.html:139 templates/recover.html:42
+#: templates/login.html:134
+msgid "Account recovery is not possible while the site is in maintenance."
+msgstr ""
+
+#: templates/login.html:142 templates/recover.html:55
 #: templates/recover_invalid.html:15
 msgid "Logo"
 msgstr ""
@@ -1027,83 +1043,83 @@ msgstr ""
 msgid "Please try again later."
 msgstr ""
 
-#: templates/profile.html:18
+#: templates/profile.html:19
 msgid "Not set"
 msgstr ""
 
-#: templates/profile.html:19 templates/settings.html:451
+#: templates/profile.html:20 templates/settings.html:454
 msgid "Edit"
 msgstr ""
 
-#: templates/profile.html:20 templates/settings.html:253
-#: templates/settings.html:456
+#: templates/profile.html:21 templates/settings.html:256
+#: templates/settings.html:459
 msgid "Save"
 msgstr ""
 
-#: templates/profile.html:22 templates/profile.html:48
-#: templates/settings.html:457
+#: templates/profile.html:23 templates/profile.html:51
+#: templates/settings.html:460
 msgid "Remove"
 msgstr ""
 
-#: templates/profile.html:23
+#: templates/profile.html:24
 msgid "Add value"
 msgstr ""
 
-#: templates/profile.html:24
+#: templates/profile.html:25
 msgid "Saved."
 msgstr ""
 
-#: templates/profile.html:25
+#: templates/profile.html:26
 msgid "Photo saved."
 msgstr ""
 
-#: templates/profile.html:26
+#: templates/profile.html:27
 msgid "Photo removed."
 msgstr ""
 
-#: templates/profile.html:27
+#: templates/profile.html:28
 msgid "Please choose a photo first."
 msgstr ""
 
-#: templates/profile.html:30
-msgid "Remove your photo?"
-msgstr ""
-
 #: templates/profile.html:31
-#, python-brace-format
-msgid "The photo is {photo_dimensions}, photos here are {dimensions}. Resize it?"
+msgid "Remove your photo?"
 msgstr ""
 
 #: templates/profile.html:32
 #, python-brace-format
+msgid "The photo is {photo_dimensions}, photos here are {dimensions}. Resize it?"
+msgstr ""
+
+#: templates/profile.html:33
+#, python-brace-format
 msgid "The photo must be {dimensions}."
 msgstr ""
 
-#: templates/profile.html:38
+#: templates/profile.html:41
 msgid "Photo"
 msgstr ""
 
-#: templates/profile.html:40
+#: templates/profile.html:43
 msgid "Your photo"
 msgstr ""
 
-#: templates/profile.html:41
+#: templates/profile.html:44
 msgid "No photo"
 msgstr ""
 
-#: templates/profile.html:42
+#: templates/profile.html:45
 msgid "Change photo"
 msgstr ""
 
-#: templates/profile.html:47
+#: templates/profile.html:50
 msgid "Upload"
 msgstr ""
 
-#: templates/profile.html:57
+#: templates/profile.html:60
 msgid "Your Data"
 msgstr ""
 
-#: templates/profile.html:58
+#: templates/profile.html:61
 msgid ""
 "The details stored for your account, as applications that use the "
 "directory (LDAP) see them."
@@ -1128,19 +1144,29 @@ msgid ""
 "recovery inbox and click the link within the next few minutes."
 msgstr ""
 
-#: templates/recover.html:16
+#: templates/recover.html:20
+msgid ""
+"Your account cannot be recovered while the site is in maintenance. Please"
+" try again later."
+msgstr ""
+
+#: templates/recover.html:22
+msgid "If the link from your mail has expired by then, please request a new one."
+msgstr ""
+
+#: templates/recover.html:25 templates/recover.html:37
+#: templates/recover.html:45 templates/recover_invalid.html:11
+msgid "Back to Sign In"
+msgstr ""
+
+#: templates/recover.html:28
 msgid ""
 "Enter your username. If a recovery e-mail address is set on the account, "
 "a re-deploy link will be sent to it."
 msgstr ""
 
-#: templates/recover.html:24
+#: templates/recover.html:36
 msgid "Send Recovery Link"
-msgstr ""
-
-#: templates/recover.html:25 templates/recover.html:33
-#: templates/recover_invalid.html:11
-msgid "Back to Sign In"
 msgstr ""
 
 #: templates/recover_complete.html:28
@@ -1163,7 +1189,7 @@ msgstr ""
 msgid "Checking your phone..."
 msgstr ""
 
-#: templates/recover_complete.html:41
+#: templates/recover_complete.html:42
 #, python-brace-format
 msgid "Re-deploying token '{token_name}' for user '{user_name}'."
 msgstr ""
@@ -1173,34 +1199,34 @@ msgstr ""
 msgid "Setting up token '{token_name}' for user '{user_name}'."
 msgstr ""
 
-#: templates/recover_complete.html:77
+#: templates/recover_complete.html:82
 msgid "Set New Password"
 msgstr ""
 
-#: templates/recover_complete.html:109
+#: templates/recover_complete.html:114
 msgid ""
 "Scan the code with the tiqr app. You need the code on a different screen "
 "from the phone: the app only takes it through its own scanner. Then come "
 "back here and continue."
 msgstr ""
 
-#: templates/recover_complete.html:110
+#: templates/recover_complete.html:115
 msgid "I have added the account"
 msgstr ""
 
-#: templates/recover_complete.html:135
+#: templates/recover_complete.html:140
 msgid "Choose a new password to sign in with."
 msgstr ""
 
-#: templates/recover_complete.html:136 templates/settings.html:195
+#: templates/recover_complete.html:141 templates/settings.html:198
 msgid "New Password"
 msgstr ""
 
-#: templates/recover_complete.html:138 templates/settings.html:198
+#: templates/recover_complete.html:143 templates/settings.html:201
 msgid "Confirm New Password"
 msgstr ""
 
-#: templates/recover_complete.html:140
+#: templates/recover_complete.html:145
 msgid "Set Password"
 msgstr ""
 
@@ -1222,648 +1248,648 @@ msgstr ""
 msgid "Request New Link"
 msgstr ""
 
-#: templates/settings.html:48
+#: templates/settings.html:49
 msgid "Changing password..."
 msgstr ""
 
-#: templates/settings.html:49
+#: templates/settings.html:50
 msgid "Password change failed."
 msgstr ""
 
-#: templates/settings.html:50
+#: templates/settings.html:51
 msgid "Password changed successfully."
 msgstr ""
 
-#: templates/settings.html:53
+#: templates/settings.html:54
 msgid "Changing PIN..."
 msgstr ""
 
-#: templates/settings.html:55
+#: templates/settings.html:56
 msgid "PIN changed successfully."
 msgstr ""
 
-#: templates/settings.html:57
+#: templates/settings.html:58
 msgid "Saving..."
 msgstr ""
 
-#: templates/settings.html:58
+#: templates/settings.html:59
 msgid "Failed to save language."
 msgstr ""
 
-#: templates/settings.html:59
+#: templates/settings.html:60
 msgid "Failed to load device tokens."
 msgstr ""
 
-#: templates/settings.html:62
+#: templates/settings.html:63
 msgid "Failed to update device token."
 msgstr ""
 
-#: templates/settings.html:64
+#: templates/settings.html:65
 msgid "Adding device token..."
 msgstr ""
 
-#: templates/settings.html:65
+#: templates/settings.html:66
 msgid "Device token created."
 msgstr ""
 
-#: templates/settings.html:66
+#: templates/settings.html:67
 #, python-brace-format
 msgid "Delete device token \"{name}\"?"
 msgstr ""
 
-#: templates/settings.html:67
+#: templates/settings.html:68
 msgid "Password copied to clipboard."
 msgstr ""
 
-#: templates/settings.html:68
+#: templates/settings.html:69
 msgid "Failed to copy password."
 msgstr ""
 
-#: templates/settings.html:69
+#: templates/settings.html:70
 msgid "Failed to load passkeys."
 msgstr ""
 
-#: templates/settings.html:70
+#: templates/settings.html:71
 msgid "No passkeys yet."
 msgstr ""
 
-#: templates/settings.html:71 templates/settings.html:273
+#: templates/settings.html:72 templates/settings.html:276
 msgid "Delete"
 msgstr ""
 
-#: templates/settings.html:72
+#: templates/settings.html:73
 msgid "Passkey name is required."
 msgstr ""
 
-#: templates/settings.html:75
+#: templates/settings.html:76
 msgid "Preparing passkey registration..."
 msgstr ""
 
-#: templates/settings.html:77
+#: templates/settings.html:78
 msgid "Confirm on your device to create the passkey..."
 msgstr ""
 
-#: templates/settings.html:79
+#: templates/settings.html:80
 msgid "Passkey registration failed."
 msgstr ""
 
-#: templates/settings.html:80
+#: templates/settings.html:81
 msgid "Passkey added."
 msgstr ""
 
-#: templates/settings.html:86
+#: templates/settings.html:87
 msgid ""
 "Your new token was created. It can take up to a minute before you can "
 "sign in with it."
 msgstr ""
 
-#: templates/settings.html:87
+#: templates/settings.html:88
 msgid "Failed to add passkey."
 msgstr ""
 
-#: templates/settings.html:88
+#: templates/settings.html:89
 #, python-brace-format
 msgid "Delete passkey \"{name}\"?"
 msgstr ""
 
-#: templates/settings.html:90
+#: templates/settings.html:91
 msgid "Passkey deleted."
 msgstr ""
 
-#: templates/settings.html:91
+#: templates/settings.html:92
 msgid "Failed to update passkey."
 msgstr ""
 
-#: templates/settings.html:92
+#: templates/settings.html:93
 msgid "Failed to load phones."
 msgstr ""
 
-#: templates/settings.html:93
+#: templates/settings.html:94
 msgid "No phones enrolled yet."
 msgstr ""
 
-#: templates/settings.html:95
+#: templates/settings.html:96
 msgid "Preparing enrollment..."
 msgstr ""
 
-#: templates/settings.html:98
+#: templates/settings.html:99
 msgid "Phone enrolled."
 msgstr ""
 
-#: templates/settings.html:100
+#: templates/settings.html:101
 #, python-brace-format
 msgid "Remove phone \"{name}\"?"
 msgstr ""
 
-#: templates/settings.html:101
+#: templates/settings.html:102
 msgid "Failed to remove phone."
 msgstr ""
 
-#: templates/settings.html:102
+#: templates/settings.html:103
 msgid "Phone removed."
 msgstr ""
 
-#: templates/settings.html:103
+#: templates/settings.html:104
 msgid "Failed to update phone."
 msgstr ""
 
-#: templates/settings.html:104
+#: templates/settings.html:105
 msgid "Failed to load authenticator apps."
 msgstr ""
 
-#: templates/settings.html:105
+#: templates/settings.html:106
 msgid "No authenticator apps set up yet."
 msgstr ""
 
-#: templates/settings.html:106
+#: templates/settings.html:107
 msgid "Preparing setup..."
 msgstr ""
 
-#: templates/settings.html:109
+#: templates/settings.html:110
 msgid "Verifying code..."
 msgstr ""
 
-#: templates/settings.html:111
+#: templates/settings.html:112
 msgid "Authenticator app added."
 msgstr ""
 
-#: templates/settings.html:112
+#: templates/settings.html:113
 #, python-brace-format
 msgid "Remove authenticator app \"{name}\"?"
 msgstr ""
 
-#: templates/settings.html:114
+#: templates/settings.html:115
 msgid "Authenticator app removed."
 msgstr ""
 
-#: templates/settings.html:116 templates/settings.html:213
-#: templates/settings.html:224 templates/settings.html:425
+#: templates/settings.html:117 templates/settings.html:216
+#: templates/settings.html:227 templates/settings.html:428
 msgid "Change PIN"
 msgstr ""
 
-#: templates/settings.html:117
+#: templates/settings.html:118
 #, python-brace-format
 msgid "You have the maximum number of tokens of this type ({max})."
 msgstr ""
 
-#: templates/settings.html:118
+#: templates/settings.html:119
 #, python-brace-format
 msgid ""
 "New PIN for \"{name}\". The app keeps working, sign in with the new PIN "
 "followed by its code."
 msgstr ""
 
-#: templates/settings.html:119
+#: templates/settings.html:120
 msgid "Default token"
 msgstr ""
 
-#: templates/settings.html:120
+#: templates/settings.html:121
 msgid "Make default token"
 msgstr ""
 
-#: templates/settings.html:121
+#: templates/settings.html:122
 #, python-brace-format
 msgid ""
 "Make \"{name}\" your default token? Your current one keeps working under "
 "a new name."
 msgstr ""
 
-#: templates/settings.html:122
+#: templates/settings.html:123
 #, python-brace-format
 msgid "Name for your current default token (\"{name}\"), which keeps working:"
 msgstr ""
 
-#: templates/settings.html:123
+#: templates/settings.html:124
 msgid "Failed to load security keys."
 msgstr ""
 
-#: templates/settings.html:124
+#: templates/settings.html:125
 msgid "No security keys registered yet."
 msgstr ""
 
-#: templates/settings.html:125
+#: templates/settings.html:126
 msgid "Key name is required."
 msgstr ""
 
-#: templates/settings.html:126
+#: templates/settings.html:127
 msgid "Touch your security key..."
 msgstr ""
 
-#: templates/settings.html:127
+#: templates/settings.html:128
 msgid "Registering security key..."
 msgstr ""
 
-#: templates/settings.html:128
+#: templates/settings.html:129
 msgid "Security key registered."
 msgstr ""
 
-#: templates/settings.html:129
+#: templates/settings.html:130
 msgid "Failed to register security key."
 msgstr ""
 
-#: templates/settings.html:131
+#: templates/settings.html:132
 msgid "Failed to update security key."
 msgstr ""
 
-#: templates/settings.html:132
+#: templates/settings.html:133
 #, python-brace-format
 msgid "Delete security key \"{name}\"?"
 msgstr ""
 
-#: templates/settings.html:133
+#: templates/settings.html:134
 msgid "You are signed in with this one. Sign in with another factor to remove it."
 msgstr ""
 
-#: templates/settings.html:134
+#: templates/settings.html:135
 msgid ""
 "You are signed in with this one. Sign in with another factor to switch it"
 " off."
 msgstr ""
 
-#: templates/settings.html:135
+#: templates/settings.html:136
 msgid "Please enter a name for your current default token."
 msgstr ""
 
-#: templates/settings.html:137
+#: templates/settings.html:138
 msgid "Default token changed."
 msgstr ""
 
-#: templates/settings.html:138
+#: templates/settings.html:139
 msgid "Confirmed. Press the button again to continue."
 msgstr ""
 
-#: templates/settings.html:139
+#: templates/settings.html:140
 msgid "Enabled"
 msgstr ""
 
-#: templates/settings.html:140
+#: templates/settings.html:141
 msgid "Disabled"
 msgstr ""
 
-#: templates/settings.html:141
+#: templates/settings.html:142
 msgid "Failed to load consents."
 msgstr ""
 
-#: templates/settings.html:142
+#: templates/settings.html:143
 msgid "No connected applications."
 msgstr ""
 
-#: templates/settings.html:143
+#: templates/settings.html:144
 msgid "Scopes:"
 msgstr ""
 
-#: templates/settings.html:144
+#: templates/settings.html:145
 msgid "Granted:"
 msgstr ""
 
-#: templates/settings.html:145
+#: templates/settings.html:146
 msgid "Disconnect"
 msgstr ""
 
-#: templates/settings.html:146
+#: templates/settings.html:147
 #, python-brace-format
 msgid ""
 "Disconnect \"{name}\"? Active sessions for this application will be "
 "terminated."
 msgstr ""
 
-#: templates/settings.html:148
+#: templates/settings.html:149
 msgid "Disconnected."
 msgstr ""
 
-#: templates/settings.html:149
+#: templates/settings.html:150
 msgid "Failed to load sessions."
 msgstr ""
 
-#: templates/settings.html:150
+#: templates/settings.html:151
 msgid "No active sessions."
 msgstr ""
 
-#: templates/settings.html:151
+#: templates/settings.html:152
 msgid "This session"
 msgstr ""
 
-#: templates/settings.html:152
+#: templates/settings.html:153
 msgid "End session"
 msgstr ""
 
-#: templates/settings.html:153
+#: templates/settings.html:154
 msgid ""
 "End this session? Applications you signed in to with it will be signed "
 "out."
 msgstr ""
 
-#: templates/settings.html:156
+#: templates/settings.html:157
 msgid "Login:"
 msgstr ""
 
-#: templates/settings.html:157
+#: templates/settings.html:158
 msgid "Expires:"
 msgstr ""
 
-#: templates/settings.html:158
+#: templates/settings.html:159
 msgid "Client:"
 msgstr ""
 
-#: templates/settings.html:159
+#: templates/settings.html:160
 msgid "Token:"
 msgstr ""
 
-#: templates/settings.html:162
+#: templates/settings.html:163
 msgid "Admin access enabled."
 msgstr ""
 
-#: templates/settings.html:163
+#: templates/settings.html:164
 msgid "Admin access disabled."
 msgstr ""
 
-#: templates/settings.html:165
+#: templates/settings.html:166
 msgid "Failed to save recovery mail."
 msgstr ""
 
-#: templates/settings.html:166
+#: templates/settings.html:167
 msgid "Recovery mail saved."
 msgstr ""
 
-#: templates/settings.html:167
+#: templates/settings.html:168
 msgid "Recovery mail removed."
 msgstr ""
 
-#: templates/settings.html:168
+#: templates/settings.html:169
 msgid "Please enter a valid e-mail address."
 msgstr ""
 
-#: templates/settings.html:169
+#: templates/settings.html:170
 msgid "No recovery address set."
 msgstr ""
 
-#: templates/settings.html:170
+#: templates/settings.html:171
 msgid "Remove your recovery e-mail address?"
 msgstr ""
 
-#: templates/settings.html:181
+#: templates/settings.html:182
 msgid "Loading your settings..."
 msgstr ""
 
-#: templates/settings.html:190 templates/settings.html:201
+#: templates/settings.html:193 templates/settings.html:204
 msgid "Change Password"
 msgstr ""
 
-#: templates/settings.html:192
+#: templates/settings.html:195
 msgid "Current Password"
 msgstr ""
 
-#: templates/settings.html:215
+#: templates/settings.html:218
 msgid "Current PIN"
 msgstr ""
 
-#: templates/settings.html:218 templates/settings.html:420
+#: templates/settings.html:221 templates/settings.html:423
 msgid "New PIN"
 msgstr ""
 
-#: templates/settings.html:221 templates/settings.html:422
+#: templates/settings.html:224 templates/settings.html:425
 msgid "Confirm New PIN"
 msgstr ""
 
-#: templates/settings.html:235
+#: templates/settings.html:238
 msgid "Login Token"
 msgstr ""
 
-#: templates/settings.html:236
+#: templates/settings.html:239
 msgid ""
 "Re-deploy your login token. This will replace your current login token "
 "with a new one."
 msgstr ""
 
-#: templates/settings.html:237
+#: templates/settings.html:240
 msgid "Re-deploy Login Token"
 msgstr ""
 
-#: templates/settings.html:243 templates/settings.html:246
+#: templates/settings.html:246 templates/settings.html:249
 msgid "Language"
 msgstr ""
 
-#: templates/settings.html:244
+#: templates/settings.html:247
 msgid ""
 "Choose your preferred language. \"Browser default\" follows the language "
 "sent by your browser."
 msgstr ""
 
-#: templates/settings.html:248
+#: templates/settings.html:251
 msgid "Browser default"
 msgstr ""
 
-#: templates/settings.html:264
+#: templates/settings.html:267
 msgid "Device Tokens"
 msgstr ""
 
-#: templates/settings.html:266
+#: templates/settings.html:269
 msgid "e.g. my phone, work laptop"
 msgstr ""
 
-#: templates/settings.html:267
+#: templates/settings.html:270
 msgid "Add Device Token"
 msgstr ""
 
-#: templates/settings.html:268
+#: templates/settings.html:271
 msgid "Existing Device Tokens"
 msgstr ""
 
-#: templates/settings.html:269
+#: templates/settings.html:272
 msgid "No device tokens yet."
 msgstr ""
 
-#: templates/settings.html:270
+#: templates/settings.html:273
 msgid "New password:"
 msgstr ""
 
-#: templates/settings.html:271
+#: templates/settings.html:274
 msgid "Copy"
 msgstr ""
 
-#: templates/settings.html:272
+#: templates/settings.html:275
 msgid "This password is shown only once. Copy it now."
 msgstr ""
 
-#: templates/settings.html:274
+#: templates/settings.html:277
 msgid "Token Type"
 msgstr ""
 
-#: templates/settings.html:276
+#: templates/settings.html:279
 msgid "Authenticator app (TOTP)"
 msgstr ""
 
-#: templates/settings.html:277
+#: templates/settings.html:280
 msgid "TOTP"
 msgstr ""
 
-#: templates/settings.html:278
+#: templates/settings.html:281
 msgid "Scan this code with your authenticator app:"
 msgstr ""
 
-#: templates/settings.html:280 templates/settings.html:399
+#: templates/settings.html:283 templates/settings.html:402
 msgid "TOTP code"
 msgstr ""
 
-#: templates/settings.html:281
+#: templates/settings.html:284
 msgid "This code is shown only once. Scan it now."
 msgstr ""
 
-#: templates/settings.html:282
+#: templates/settings.html:285
 #, python-brace-format
 msgid "You have the maximum number of device tokens for this role ({max})."
 msgstr ""
 
-#: templates/settings.html:289
+#: templates/settings.html:292
 msgid "Passkeys"
 msgstr ""
 
-#: templates/settings.html:290
+#: templates/settings.html:293
 msgid ""
 "Sign in without a password using a passkey on this device or a synced "
 "credential provider (iCloud Keychain, Google Password Manager, 1Password,"
 " ...)."
 msgstr ""
 
-#: templates/settings.html:296 templates/settings.html:301
+#: templates/settings.html:299 templates/settings.html:304
 msgid "Add Passkey"
 msgstr ""
 
-#: templates/settings.html:299
+#: templates/settings.html:302
 msgid "Passkey Name"
 msgstr ""
 
-#: templates/settings.html:300
+#: templates/settings.html:303
 msgid "e.g. my iPhone, work laptop"
 msgstr ""
 
-#: templates/settings.html:306
+#: templates/settings.html:309
 msgid "Existing Passkeys"
 msgstr ""
 
-#: templates/settings.html:315
+#: templates/settings.html:318
 msgid "Security Keys (FIDO2)"
 msgstr ""
 
-#: templates/settings.html:316
+#: templates/settings.html:319
 msgid ""
 "Sign in with a hardware security key (YubiKey, Nitrokey, Titan, ...). The"
 " key is plugged in or held to the device, and never leaves your hands."
 msgstr ""
 
-#: templates/settings.html:319 templates/settings.html:324
+#: templates/settings.html:322 templates/settings.html:327
 msgid "Add Security Key"
 msgstr ""
 
-#: templates/settings.html:322
+#: templates/settings.html:325
 msgid "Key Name"
 msgstr ""
 
-#: templates/settings.html:323
+#: templates/settings.html:326
 msgid "e.g. my YubiKey, backup key"
 msgstr ""
 
-#: templates/settings.html:329
+#: templates/settings.html:332
 msgid "Registered Keys"
 msgstr ""
 
-#: templates/settings.html:341
+#: templates/settings.html:344
 msgid ""
 "Sign in by confirming on your phone. Scan the code with the tiqr app, or "
 "tap the link if you are reading this on the phone itself."
 msgstr ""
 
-#: templates/settings.html:344 templates/settings.html:349
+#: templates/settings.html:347 templates/settings.html:352
 msgid "Add Phone"
 msgstr ""
 
-#: templates/settings.html:348 templates/settings.html:390
+#: templates/settings.html:351 templates/settings.html:393
 msgid "e.g. my phone, work phone"
 msgstr ""
 
-#: templates/settings.html:364
+#: templates/settings.html:367
 msgid ""
 "Scan this code with the tiqr app. You need the code on a different screen"
 " from the phone: the app only takes it through its own scanner. Waiting "
 "for your phone..."
 msgstr ""
 
-#: templates/settings.html:372
+#: templates/settings.html:375
 msgid "Enrolled Phones"
 msgstr ""
 
-#: templates/settings.html:383
+#: templates/settings.html:386
 msgid ""
 "Sign in with your PIN followed by the six-digit code from an "
 "authenticator app (e.g. FreeOTP, Aegis, Google Authenticator)."
 msgstr ""
 
-#: templates/settings.html:386 templates/settings.html:391
+#: templates/settings.html:389 templates/settings.html:394
 msgid "Add Authenticator App"
 msgstr ""
 
-#: templates/settings.html:397
+#: templates/settings.html:400
 msgid "Scan this code with your authenticator app, or enter the secret by hand."
 msgstr ""
 
-#: templates/settings.html:403
+#: templates/settings.html:406
 msgid ""
 "Remember the PIN: you sign in with the PIN followed by the code from the "
 "app. Both are shown only once."
 msgstr ""
 
-#: templates/settings.html:405
+#: templates/settings.html:408
 msgid "Code from the app"
 msgstr ""
 
-#: templates/settings.html:408
+#: templates/settings.html:411
 msgid "Verify"
 msgstr ""
 
-#: templates/settings.html:432
+#: templates/settings.html:435
 msgid "Authenticator Apps"
 msgstr ""
 
-#: templates/settings.html:446
+#: templates/settings.html:449
 msgid "Recovery E-Mail"
 msgstr ""
 
-#: templates/settings.html:447
+#: templates/settings.html:450
 msgid ""
 "If you lose access to your default token, a re-deploy link is sent to "
 "this address. Keep it under an account only you control (private mailbox,"
 " not your work address). Editing requires re-authentication."
 msgstr ""
 
-#: templates/settings.html:473
+#: templates/settings.html:476
 msgid "Admin Access"
 msgstr ""
 
-#: templates/settings.html:474
+#: templates/settings.html:477
 msgid ""
 "Allow administrators to set a temporary password on your account for "
 "support purposes. Turn off when no longer needed."
 msgstr ""
 
-#: templates/settings.html:481
+#: templates/settings.html:484
 msgid "Allow admin access"
 msgstr ""
 
-#: templates/settings.html:493
+#: templates/settings.html:496
 msgid "Active Sessions"
 msgstr ""
 
-#: templates/settings.html:495
+#: templates/settings.html:498
 msgid ""
 "Where your account is currently logged in on this site. Ending a session "
 "also ends what it opened (applications you signed in to with it)."
 msgstr ""
 
-#: templates/settings.html:504
+#: templates/settings.html:507
 msgid "Connected Applications"
 msgstr ""
 
-#: templates/settings.html:506
+#: templates/settings.html:509
 msgid ""
 "Applications you have granted access to your account. Disconnecting "
 "removes the approval and terminates the application's active session."

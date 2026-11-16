@@ -37,7 +37,7 @@ see **otpme**(7).
 
 ## Realm Initialization
 
-**init \[*options*\] *realm* *site* *fqdn* \[*address*\]**  
+**init** \[*options*\] *realm* *site* *fqdn* \[*address*\]  
 Create a new realm on the machine you run it on. This is the first
 command of a new OTPme installation.  
 It creates the realm and its first site, the one named by *site*, which
@@ -67,7 +67,7 @@ The options are under **INIT OPTIONS**.
 
 ## Display
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*realm*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*realm*\]  
 Without a realm: a table of the realms, with their type, whether
 authentication and synchronization with them are on, their policies and
 their description.  
@@ -116,7 +116,7 @@ add** to those of the new site.
 
 <!-- -->
 
-**show_oid \[**--full**\] *realm***  
+**show_oid** \[**--full**\] *realm*  
 Show the OID of the realm: **realm\|\<realm\>**. **--full** is accepted
 and shows the same.  
 Needs the ACL **view_public:object**.
@@ -127,7 +127,7 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the realm names, and with a pattern only those that match it, see
 **SELECTING OBJECTS** in **otpme**(1). You get the realms you may
 change; **-a** adds those you may only look at.  
@@ -223,7 +223,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *realm***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *realm*  
 List the policies attached to the realm, the disabled ones too, marked
 **(disabled)**. Use **--return-type** to select the attribute returned
 (**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
@@ -314,19 +314,19 @@ Only an attribute one of its classes allows. One that only
 class needs it. An attribute can hold more than one value, so this adds
 one and leaves the others.
 
-The ACL is per attribute, **add:attribute:***attribute*, and a plain
+The ACL is per attribute, **add:attribute:*attribute***, and a plain
 **add:attribute** covers all of them.
 
 **modify_attribute *realm* *attribute* *old_value* *new_value***  
 Put *new_value* in the place of *old_value*, and leave the other values
 of the attribute alone.  
-The ACL is **edit:attribute:***attribute*.
+The ACL is **edit:attribute:*attribute***.
 
 **del_attribute *realm* *attribute***=**\[*value*\]**  
 Remove that value, or the whole attribute where no value is given.  
 A mandatory attribute of a class the realm is of cannot be removed,
 **o** while it has **organization** for example, and neither can **dc**.
-The ACL is **delete:attribute:***attribute*.
+The ACL is **delete:attribute:*attribute***.
 
 **add_object_class *realm* *class***  
 Add an LDAP object class. For a realm that can only be **organization**.
@@ -341,10 +341,10 @@ ones before it asks, and changes nothing before the answer. **dcObject**
 stays, it allows **dc**.  
 Needs the ACL **delete:object_class**.
 
-**show_ldif *realm* \[**-a** *attribute1,attribute2*\]**  
+**show_ldif *realm*** \[**-a** *attribute1,attribute2*\]  
 The realm as LDAP sees it. **-a** prints only those attributes.  
 It shows the attributes in **ldif_whitelist_attributes**, see
-**otpme**(7), and the ones you have **view:attribute:***attribute* for;
+**otpme**(7), and the ones you have **view:attribute:*attribute*** for;
 the others are left out. By default that leaves **dn**, **objectClass**
 and **entryUUID** of a realm.
 
@@ -356,7 +356,7 @@ for editing. Each site keeps its own description of the realm: it can be
 set on any site, and the sync does not change it.  
 Needs the ACL **edit:description**.
 
-**info \[**--language** *LANG*\] *realm* \[*info*\]**  
+**info** \[**--language** *LANG*\] *realm* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current text is
 opened in the editor named by the **EDITOR** environment variable, or in
 vim; that reads the text first and needs **view:info** as well. Without
@@ -366,7 +366,7 @@ well. The info is set on the master site and comes to the other sites
 with the sync; another site refuses it.  
 Needs the ACL **edit:info**.
 
-**dump_info \[**--language** *LANG*\] *realm***  
+**dump_info** \[**--language** *LANG*\] *realm*  
 Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator.  
 Needs the ACL **view:info**.
@@ -432,7 +432,7 @@ have **allow_changelog_clearing** set to true, see **otpme-token**(1).
 
 ## Export and Cleanup
 
-**export \[**--password** *password*\] *realm***  
+**export** \[**--password** *password*\] *realm*  
 Write the whole object of the realm to stdout, as JSON: its ACLs,
 policies, LDAP attributes, the certificates and CRLs of the CA and the
 rest, but not the sites in it. **otpme-tool import** reads it back.  
@@ -518,8 +518,8 @@ the site gets none. See **otpme-site**(1) for the names, and
 
 **--id-ranges *range1,range2***  
 The ranges the master site takes the numbers of new users and groups
-from, each written as *attribute***:***type***:***first***-***last*.
-They go into its ID range policy, see **otpme-policy**(1).  
+from, each written as ***attribute*:*type*:*first*-*last***. They go
+into its ID range policy, see **otpme-policy**(1).  
 Without this option the site gets **uidNumber:s:70000-80000** and
 **gidNumber:s:70000-80000**.
 

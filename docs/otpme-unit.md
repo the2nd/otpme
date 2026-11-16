@@ -44,7 +44,7 @@ The new unit takes the ACLs of the unit above that belong to your token
 or its roles, inherits ACLs, and gets the policies that
 **default_policies** names for units, see **otpme-policy**(1).
 
-**del \[**--no-trash**\] *unit***  
+**del** \[**--no-trash**\] *unit*  
 Delete the unit with everything in it, the units below included. The
 question names what is in it; **-f** does not ask. All of it goes to the
 trash as one entry, see **otpme-trash**(1); **--no-trash** deletes right
@@ -53,7 +53,7 @@ If you may not delete one of the objects, nothing is deleted. Needs
 **delete:unit** on the unit above, or **delete:object** on the unit. The
 units a site comes with cannot be deleted.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*unit*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*unit*\]  
 Without a unit: a table of the units, with **unitname**, **status**,
 **policies**, **inherit** (ACL inheritance) and **description**.
 
@@ -84,7 +84,7 @@ That needs **view_public:object** on the unit.
 
 <!-- -->
 
-**show_oid \[**--full**\] *unit***  
+**show_oid** \[**--full**\] *unit*  
 Show the OID of the unit: **unit\|\<realm\>/\<site\>/\<unit_path\>**.
 **--full** is accepted and shows the same.  
 Needs the ACL **view_public:object**.
@@ -95,7 +95,7 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the unit names, and with a pattern only those that match it, see
 **SELECTING OBJECTS** in **otpme**(1). You get the units you may change;
 **-a** adds those you may only look at. **--attribute** matches the
@@ -111,7 +111,7 @@ a disabled unit with **(D)**.
 Not possible; use **move** with the full new path, e.g. **otpme-unit
 move linux/users linux/staff**.
 
-**move \[**-m**\] \[**-k**\] \[**-o** *types*\] \[**--keep-acls**\] \[**--skip-ca**\] *unit* *new_unit***  
+**move** \[**-m**\] \[**-k**\] \[**-o** *types*\] \[**--keep-acls**\] \[**--skip-ca**\] *unit* *new_unit*  
 Move the unit with everything in it. *new_unit* is a path below the
 site, not below the unit above. A new unit is made there and takes over
 what this one has: ACLs, policies, description, info texts, config
@@ -162,7 +162,7 @@ object, then at each unit above it, then at the site; a parameter in
 **force_site_config_parameters** starts at the site. Which parameters
 there are is in **otpme**(7).
 
-**config \[**-d**\] \[**-a**\] *unit* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *unit* *parameter* \[*value*\]  
 Set a parameter on the unit.
 
 **-d**  
@@ -190,7 +190,7 @@ and the site have been looked at. So this answers what applies, where
 Set the description. Without one OTPme asks and offers the current text
 for editing. Needs **edit:description**.
 
-**info \[**--language** *LANG*\] *unit* \[*info*\]**  
+**info** \[**--language** *LANG*\] *unit* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor named by the **EDITOR** environment variable. Needs
 **edit:info**.  
@@ -198,7 +198,7 @@ Without **--language** the text is the administrator's own note. Nothing
 shows the info of a unit to a user, so a text for a language stays a
 note as well.
 
-**dump_info \[**--language** *LANG*\] *unit***  
+**dump_info** \[**--language** *LANG*\] *unit*  
 Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator. Needs **view:info**.
 
@@ -226,7 +226,7 @@ signature is up to date, or out of date with the users it lacks (**+**)
 and the ones it still names (**-**).  
 Needs the ACL **view:config:password_store_members**.
 
-**unsign_password_members \[**--signer** *user*\] *unit***  
+**unsign_password_members** \[**--signer** *user*\] *unit*  
 Remove your signature. With **--signer** the one of that user. For a
 user that is gone, give the UUID that **show_password_members** shows.  
 It asks first; the global option **-f** skips the question. The members
@@ -307,7 +307,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *unit***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *unit*  
 List the policies attached to the unit, the disabled ones too, marked
 **(disabled)**. Use **--return-type** to select the attribute returned
 (**name**, **read_oid**, **full_oid**, **uuid**); without it the names.
@@ -329,7 +329,7 @@ ACLs a unit knows.
 Adding and removing ask first, once for the whole command; the global
 option **-f** skips the question.
 
-**add_acl \[**-r**\] \[**-a**\] \[**--objects** *types*\] \[**--procs** *num*\] *unit* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
+**add_acl** \[**-r**\] \[**-a**\] \[**--objects** *types*\] \[**--procs** *num*\] *unit* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]  
 Give a role or a token one or more ACLs on this unit.  
 *owner_type* is **role** or **token**. *owner* names it the way
 **list_acls** prints it: a role as *site/name*, or by its name alone on
@@ -366,7 +366,7 @@ that go on serving logins while this runs.
 says.  
 Needs the ACL **add:acl**.
 
-**del_acl \[**-r**\] \[**-a**\] \[**--objects** *types*\] \[**--procs** *num*\] *unit* *acl*\[,*acl*\]**  
+**del_acl** \[**-r**\] \[**-a**\] \[**--objects** *types*\] \[**--procs** *num*\] *unit* *acl*\[,*acl*\]  
 Take those ACLs away again.  
 Here an *acl* is the whole entry, owner and all, the way **list_acls**
 prints it: **role:berlin/helpdesk:+user:edit**.  
@@ -425,7 +425,7 @@ Needs the ACL **disable:acl_inheritance**.
 
 ## Extensions and LDAP Attributes
 
-A unit is also an LDAP entry, **ou=***unit* under its parent unit or the
+A unit is also an LDAP entry, **ou=*unit*** under its parent unit or the
 site, for example **ou=users,ou=linux,ou=berlin,dc=example,dc=org**. An
 extension is what gives it one: the object classes it is of, and the
 attributes those classes allow. What **ldapd** serves and what
@@ -464,19 +464,19 @@ Everything after the first **=** is the value, so a DN works:
 OTPme fills in its own where it has one: for **description**, the
 description of the unit.
 
-The ACL is per attribute, **add:attribute:***attribute*, and a plain
+The ACL is per attribute, **add:attribute:*attribute***, and a plain
 **add:attribute** covers all of them.
 
 **modify_attribute *unit* *attribute* *old_value* *new_value***  
 Put *new_value* in the place of *old_value*, and leave the other values
 of the attribute alone. An *old_value* the unit does not have is an
 error.  
-The ACL is **edit:attribute:***attribute*.
+The ACL is **edit:attribute:*attribute***.
 
 **del_attribute *unit* *attribute***=**\[*value*\]**  
 Remove that value, or the whole attribute where no value is given.
 **ou** cannot be removed.  
-The ACL is **delete:attribute:***attribute*.
+The ACL is **delete:attribute:*attribute***.
 
 **add_object_class *unit* *class***  
 Add an LDAP object class. Only a class an extension of the unit knows is
@@ -491,12 +491,12 @@ class of the unit allows it too. For a unit that is
 **organizationalUnit**, its only class.  
 Needs the ACL **delete:object_class**.
 
-**show_ldif *unit* \[**-a** *attribute1,attribute2*\]**  
+**show_ldif *unit*** \[**-a** *attribute1,attribute2*\]  
 The unit as LDAP sees it. **-a** prints only those attributes.
 
 ## Export and Cleanup
 
-**export \[**--password** *password*\] *unit***  
+**export** \[**--password** *password*\] *unit*  
 Write the whole object of the unit to stdout, as JSON: its ACLs,
 policies, config parameters, LDAP attributes and the rest, but not the
 objects in it. **otpme-tool import** reads it back.  
@@ -504,7 +504,7 @@ A unit holds no key and no secret, so **--password** has nothing to
 encrypt: the output is in clear either way.  
 Needs the ACL **export**.
 
-**remove_orphans \[**-r**\] *unit***  
+**remove_orphans** \[**-r**\] *unit*  
 Remove references to objects that are gone: orphan ACLs and policies of
 the unit. Config parameters set on the unit that keep other objects lose
 the ones that are gone, e.g. a deleted VLAN in **vlans**, the way

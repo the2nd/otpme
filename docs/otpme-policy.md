@@ -124,7 +124,7 @@ policy of your user names. Name another unit as *unit*/*policy*. Needs
 A new policy does nothing until it is assigned to an object, see
 **Policy Assignment**.
 
-**del \[**--no-trash**\] *policy***  
+**del** \[**--no-trash**\] *policy*  
 Delete a policy. It goes to the trash, from where **otpme-trash**(1) can
 bring it back with its assignments; **--no-trash** deletes it right
 away.  
@@ -132,7 +132,7 @@ The question names every object the policy is assigned to; **-f**
 deletes without asking. Needs **delete:object** on the policy, or
 **delete:policy** (or **delete:policy:\<type\>**) on its unit.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[*policy*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[*policy*\]  
 Without a policy, a table of all of them with their unit, type and
 status; the options below are for that table. With a policy, its
 settings: what the commands of its type set, see **POLICY TYPE
@@ -157,7 +157,7 @@ policy.
 
 <!-- -->
 
-**show_oid \[**--full**\] *policy***  
+**show_oid** \[**--full**\] *policy*  
 Show the OID of the policy: **policy\|\<realm\>/\<site\>/\<name\>**.
 With **--full** the full OID, which names the unit as well:
 **policy\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
@@ -169,7 +169,7 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[*pattern*\]**  
+**list** \[*pattern*\]  
 List the policy names, and with a pattern only those that match it, see
 **SELECTING OBJECTS** in **otpme**(1).
 
@@ -186,7 +186,7 @@ auto-disable policy is not for policies.
 Rename a policy. It asks first; **-f** does not. The assignments stay,
 they hold the UUID.
 
-**move \[**--keep-acls**\] *policy* *unit***  
+**move** \[**--keep-acls**\] *policy* *unit*  
 Move the policy into another unit. Needs **add:policy** on the new unit.
 Its ACLs move with it: the default ACLs of the old unit are taken away
 and those of the new one are applied. **--keep-acls** leaves them as
@@ -199,7 +199,7 @@ TYPE DETAILS**. **config** sets the parameters every object has; for a
 policy these are **changelog** and **allow_changelog_clearing**, see
 **Object Changelog**.
 
-**config \[**-d**\] \[**-a**\] *policy* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *policy* *parameter* \[*value*\]  
 Set a parameter on the policy.
 
 **-d**  
@@ -227,7 +227,7 @@ and its site have been looked at. So this answers what applies, where
 Set the description. Without one OTPme asks and offers the current text
 for editing. Needs **edit:description**.
 
-**info \[**--language** *LANG*\] *policy* \[*info*\]**  
+**info** \[**--language** *LANG*\] *policy* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor named by the **EDITOR** environment variable. Needs
 **edit:info**.  
@@ -235,7 +235,7 @@ Without **--language** the text is the administrator's own note. Nothing
 shows the info of a policy to a user, so a text for a language stays a
 note as well.
 
-**dump_info \[**--language** *LANG*\] *policy***  
+**dump_info** \[**--language** *LANG*\] *policy*  
 Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator. Needs **view:info**.
 
@@ -269,7 +269,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Removing a policy takes away what it
 enforces, so it must not be cheaper than assigning one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *policy***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *policy*  
 List the policies assigned to this policy, disabled ones too, marked
 **(disabled)**. **--return-type** picks what is printed: **name** (the
 default), **read_oid**, **full_oid** or **uuid**. **--policy-types**
@@ -380,7 +380,7 @@ back in is **otpme-tool import,** see **otpme-tool**(1).
 **remove_orphans** asks before it changes anything; the global option
 **-f** skips the question.
 
-**export \[**--password** *password*\] *policy***  
+**export** \[**--password** *password*\] *policy*  
 Write the whole object of the policy to stdout, as JSON.
 
 Without **--password** it is written as it is, in clear. With one, a key
@@ -468,7 +468,7 @@ ask first, and **-f** skips the question.
 > Years in a password that count as easy to guess, counted back and
 > forward from this year. Default 150 and 10.
 >
-> **test \[**--password** *password*\] \[**--pin** *pin*\] *policy***  
+> **test** \[**--password** *password*\] \[**--pin** *pin*\] *policy*  
 > Check a password or a PIN against the policy, without setting it. For
 > a password it prints the score and whether it is strong enough.
 
@@ -509,7 +509,7 @@ To enable such an object again takes **-f**, and the time starts anew.
 A site has **auto_disable_hour**, **\_day**, **\_week**, **\_month** and
 **\_year** (+1h, +1D, +1W, +1M, +1Y), assigned to nothing.
 
-> **auto_disable \[**-u**\] *policy* *time***  
+> **auto_disable** \[**-u**\] *policy* *time*  
 > After how long, or when. A relative time has a leading **+**, e.g.
 > **+30D** for 30 days; the units are **s**, **m**, **h**, **D**, **W**,
 > **M** (30 days) and **Y** (365 days), see **otpme**(7). An absolute

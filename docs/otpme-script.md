@@ -51,7 +51,7 @@ A script has no status: there is no **enable** or **disable**. Nothing
 that runs a script would ask for it. To stop a script from running, take
 it away from what runs it, or delete it.
 
-**add \[**-r**\] \[**--sign**\] *script* *file***  
+**add** \[**-r**\] \[**--sign**\] *script* *file*  
 Add a script with the content of *file*, a file on your host. With a
 path, e.g. **linux/login.sh**, it goes into that unit; else into the
 unit a **defaultunits** policy names, see **otpme-policy**(1), or into
@@ -73,7 +73,7 @@ signatures of others stay as they are. With **enable_autosign** on your
 user, see **otpme-user**(1), or the config parameter **auto_sign**, this
 happens without **--sign**.
 
-**del \[**--no-trash**\] *script***  
+**del** \[**--no-trash**\] *script*  
 Delete the script. It goes to the trash, see **otpme-trash**(1);
 **--no-trash** deletes it right away.  
 The scripts a site comes with cannot be deleted. They are in the unit
@@ -82,7 +82,7 @@ The scripts a site comes with cannot be deleted. They are in the unit
 **push_script.sh**, **backup_script.sh** and **node_vote_script.sh**.  
 Needs **delete:object** on the script or **delete:script** on the unit.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*script*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*script*\]  
 Without a script: a table of all of them, with their signatures,
 policies, ACL inheritance and description. A signature says who made it,
 its tags, and **OK** or **FAIL**: whether it matches the content.
@@ -113,11 +113,11 @@ A column you may not see says **-**. With a script named, this prints
 the object itself instead of a table row, one value per line. It shows
 the MD5 sum of the content (**SCRIPT_MD5**), to those with
 **view:script** or **edit:script**, but not the content; that is
-**dump**. **show** *script***$** prints that one script as a table row.
+**dump**. **show** ***script*$** prints that one script as a table row.
 A name that is no script is a pattern with **\***, not a regex, see
 **SELECTING OBJECTS** in **otpme**(1).
 
-**show_oid \[**--full**\] *script***  
+**show_oid** \[**--full**\] *script*  
 Show the OID of the script:
 **script\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**. **--full** is
 accepted and shows the same.  
@@ -127,7 +127,7 @@ Needs the ACL **view_public:object**.
 Show the UUID of the script.  
 Needs the ACL **view_public:object**.
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the scripts as *unit/name*, and with a pattern only those that
 match it, e.g. **"scripts/\*"**. You get the scripts you may change;
 **-a** adds those you may only look at. **--attribute** matches the
@@ -148,7 +148,7 @@ signatures, and they no longer match.
 Needs **view:script** or **dump** on the script, and **edit:script** on
 the destination or **add:script** on the unit for a new one.
 
-**move \[**--keep-acls**\] *script* *unit***  
+**move** \[**--keep-acls**\] *script* *unit*  
 Move the script into another unit of the site. The script keeps its
 ACLs; where ACL inheritance is on for it (off for scripts by default,
 see **enable_acl_inheritance**), the default ACLs of the old unit are
@@ -171,7 +171,7 @@ Print the content of the script. A script without content gives an
 error.  
 Needs **view:script** or **dump** on the script.
 
-**edit \[**--sign**\] *script***  
+**edit** \[**--sign**\] *script*  
 Open the script in your editor, **$EDITOR** or else **vim**. When you
 close the editor, the new content is saved, like with **add -r**. If
 nothing changed, nothing is saved. The file you edit is in
@@ -197,7 +197,7 @@ one of its signatures, see **add_signer** in **otpme-tool**(1). A signer
 can ask for tags. On a host without such a signer the script runs
 unchecked.
 
-**sign \[**--stdin-pass**\] \[**--tags** *tag1,tag2*\] *script***  
+**sign** \[**--stdin-pass**\] \[**--tags** *tag1,tag2*\] *script*  
 Sign the script. If you already have a valid signature with these tags,
 it is replaced only with **-f**.  
 Needs **add:signature**, and **view:script** or **dump**, on the script.
@@ -217,14 +217,14 @@ exist is refused. Anything else is taken as it is, for example
 written the same way, with **add_signer --tag**. **verify_sign**,
 **get_sign** and **del_sign** take tags like this too.
 
-**resign \[**--stdin-pass**\] *script***  
+**resign** \[**--stdin-pass**\] *script*  
 Make all your signatures of the script again, with their tags, for the
 content as it is now: after **add -r** or **edit**. The signatures of
 others stay as they are. **--stdin-pass** as with **sign**; the
 passphrase is read once for all of them.  
 Needs what **sign** needs.
 
-**verify_sign \[**--user** *username*\] \[**--tags** *tag1,tag2*\] *script***  
+**verify_sign** \[**--user** *username*\] \[**--tags** *tag1,tag2*\] *script*  
 Check the signatures of the script against the content and the public
 sign key of their user. It shows one line for each signature, and
 succeeds if at least one of them is valid. With **--user** only the
@@ -233,13 +233,13 @@ signatures of that user, with **--tags** only those that have these tags
 Needs **verify:signature**, **view:signatures** or **view:script** on
 the script.
 
-**get_sign \[**--user** *username*\] \[**--tags** *tag1,tag2*\] *script***  
+**get_sign** \[**--user** *username*\] \[**--tags** *tag1,tag2*\] *script*  
 Show the signatures, one per line as *user_uuid*:*signature*. With
 **--user** only those of that user, with **--tags** only the one with
 exactly these tags (and the default ones).  
 Needs no ACL: a host fetches the signatures to check a script.
 
-**del_sign \[**--user** *username*\] \[**--tags** *tag1,tag2*\] *script***  
+**del_sign** \[**--user** *username*\] \[**--tags** *tag1,tag2*\] *script*  
 Delete your signature with exactly these tags (and the default ones),
 after you confirm it; with **--user** that of another user. The
 signature is revoked as well.  
@@ -271,7 +271,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *script***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *script*  
 List the policies attached to the script, the disabled ones too, marked
 **(disabled)**. Use **--return-type** to select the attribute returned
 (**name**, **read_oid**, **full_oid**, **uuid**); without it the names.
@@ -291,7 +291,7 @@ ACLs a script knows. A script has no default ACLs, **+acl** and
 
 Besides the ACLs every object has, these matter for a script:
 
-> **dump, **view:script****  
+> **dump**, **view:script**  
 > Read the content: **dump**, **edit**, **copy** and **sign** need one
 > of them.
 >
@@ -304,10 +304,10 @@ Besides the ACLs every object has, these matter for a script:
 > **otpme-user**(1), or as mount script of a share, see
 > **otpme-share**(1).
 >
-> **add:signature, **delete:signature****  
+> **add:signature**, **delete:signature**  
 > Sign the script, and delete a signature, see **Signature Management**.
 >
-> **verify:signature, **view:signatures****  
+> **verify:signature**, **view:signatures**  
 > Check the signatures without reading the content.
 
 Adding and removing ask first; the global option **-f** skips the
@@ -356,7 +356,7 @@ Needs the ACL **disable:acl_inheritance**.
 
 A script has four config parameters, see **CONFIG PARAMETERS**.
 
-**config \[**-d**\] \[**-a**\] *script* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *script* *parameter* \[*value*\]  
 Set a parameter on the script.
 
 **-d**  
@@ -387,7 +387,7 @@ Set the description. Without one OTPme asks and offers the current text
 for editing.  
 Needs the ACL **edit:description**.
 
-**info \[**--language** *LANG*\] *script* \[*info*\]**  
+**info** \[**--language** *LANG*\] *script* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor named by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note. Nothing
@@ -395,7 +395,7 @@ shows the info of a script to a user, so a text for a language stays a
 note as well.  
 Needs the ACL **edit:info**.
 
-**dump_info \[**--language** *LANG*\] *script***  
+**dump_info** \[**--language** *LANG*\] *script*  
 Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator.  
 Needs the ACL **view:info**.
@@ -448,7 +448,7 @@ Without one, the value of the script counts, read along its cascade.
 
 ## Export and Cleanup
 
-**export \[**--password** *password*\] *script***  
+**export** \[**--password** *password*\] *script*  
 Write the whole object of the script to stdout, as JSON: its content,
 signatures, ACLs, policies, config parameters and the rest. **otpme-tool
 import** reads it back.  

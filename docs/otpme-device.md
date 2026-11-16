@@ -42,14 +42,14 @@ put into the access group of **devices_accessgroup** and into the role
 of **devices_role**, where they are set, see **otpme**(7).  
 Needs **add:device** on the unit.
 
-**del \[**--no-trash**\] *device***  
+**del** \[**--no-trash**\] *device*  
 Delete the device. It goes to the trash, see **otpme-trash**(1);
 **--no-trash** deletes it right away.  
 It is taken out of its access groups and roles. Its passwords stay, see
 **otpme-pass**(1); the question says how many there are.  
 Needs **delete:object** on the device or **delete:device** on the unit.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--role-limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*device*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--role-limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*device*\]  
 Without a device: a table of all of them, with their unit, status, MAC
 address, roles, access groups, policies, ACL inheritance and
 description. The access groups are those the device is in and, in
@@ -82,11 +82,11 @@ another separator.
 
 A column you may not see says **-**. With a device named, this prints
 the object itself instead of a table row, one value per line. **show**
-*device***$** prints that one device as a table row. A name that is no
+***device*$** prints that one device as a table row. A name that is no
 device is a pattern with **\***, not a regex, see **SELECTING OBJECTS**
 in **otpme**(1).
 
-**show_oid \[**--full**\] *device***  
+**show_oid** \[**--full**\] *device*  
 Show the OID of the device: **device\|\<realm\>/\<name\>**. With
 **--full** the full OID, which names the unit as well:
 **device\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
@@ -96,7 +96,7 @@ Needs the ACL **view_public:object**.
 Show the UUID of the device.  
 Needs the ACL **view_public:object**.
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the device names, and with a pattern only those that match it, e.g.
 **berlin-\***. You get the devices you may change; **-a** adds those you
 may only look at. **--attribute** matches the pattern against that
@@ -113,7 +113,7 @@ Rename the device. The new name must not be in use in the realm, and is
 taken in lower case.  
 Needs **rename:object**.
 
-**move \[**--keep-acls**\] *device* *unit***  
+**move** \[**--keep-acls**\] *device* *unit*  
 Move the device into another unit. The device keeps its ACLs; where ACL
 inheritance is on for it (off for devices by default, see
 **enable_acl_inheritance**), the default ACLs of the old unit are taken
@@ -125,7 +125,7 @@ Needs **move** on the device and **add:device** on the unit.
 Write the index entries of the device again.  
 Needs **touch**.
 
-**auto_disable \[**-u**\] *device* *time***  
+**auto_disable** \[**-u**\] *device* *time*  
 Set auto-disable time. It is either a relative time with a leading
 **+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
 The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
@@ -188,7 +188,7 @@ add --device** or **otpme-pass add_device**, see **otpme-pass**(1). Each
 password decides itself whether you may see it; the device has no ACL
 for that.
 
-**find_passwords \[**--return-type** *TYPE*\] *device***  
+**find_passwords** \[**--return-type** *TYPE*\] *device*  
 List the passwords that belong to the device and that you may look at,
 by **view_public**, **view** or **view:entries** on the password. *TYPE*
 is **name** (the default), **read_oid**, **full_oid** or **uuid**. A
@@ -210,7 +210,7 @@ over the device and its units (see **otpme**(7)).
 
 Which parameters a device takes is in **CONFIG PARAMETERS** below.
 
-**config \[**-d**\] \[**-a**\] *device* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *device* *parameter* \[*value*\]  
 Set a parameter on the device.
 
 **-d**  
@@ -223,7 +223,7 @@ Append the value to a parameter that holds a list, instead of replacing
 what is there.
 
 A parameter that devices do not take is refused. The ACL is per
-parameter, **set:config:***parameter*. Removing a parameter that is not
+parameter, **set:config:*parameter***. Removing a parameter that is not
 registered any more, which is what a rename or a dropped feature leaves
 behind, is for admins only.
 
@@ -231,20 +231,20 @@ behind, is for admins only.
 The parameters set on the device itself, or only the one named. Nothing
 is shown for a parameter that the device gets from a unit or from the
 site.  
-Each parameter needs **view:config:***parameter*.
+Each parameter needs **view:config:*parameter***.
 
 **get_config *device* *parameter***  
 What the parameter comes to for this device, once the device, its units
 and its site have been looked at. So this answers what applies, where
 **show_config** answers what was set here.  
-Needs **view:config:***parameter*.
+Needs **view:config:*parameter***.
 
 **description *device* \[*description*\]**  
 Set the description. Without one OTPme asks and offers the current text
 for editing.  
 Needs **edit:description**.
 
-**info \[**--language** *LANG*\] *device* \[*info*\]**  
+**info** \[**--language** *LANG*\] *device* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor named by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note. Nothing
@@ -252,7 +252,7 @@ shows the info of a device to a user, so a text for a language stays a
 note as well.  
 Needs **edit:info**.
 
-**dump_info \[**--language** *LANG*\] *device***  
+**dump_info** \[**--language** *LANG*\] *device*  
 Write one of those texts to stdout, for reading it with something other
 than the editor.  
 Needs **view:info**.
@@ -329,7 +329,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *device***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *device*  
 List the policies attached to the device, the disabled ones too, marked
 **(disabled)**. Use **--return-type** to select the attribute returned
 (**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
@@ -397,7 +397,7 @@ back in is **otpme-tool import,** see **otpme-tool**(1).
 **remove_orphans** asks before it changes anything; the global option
 **-f** skips the question.
 
-**export \[**--password** *password*\] *device***  
+**export** \[**--password** *password*\] *device*  
 Write the whole object of the device to stdout, as JSON.
 
 Without **--password** it is written as it is, in clear. With one, a key

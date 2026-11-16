@@ -58,7 +58,7 @@ the backup object, see **CONFIG PARAMETERS**.
 > A share of this site, backed up from its root directory. A restore
 > share cannot be backed up.
 
-**start \[**--dry-run**\] \[**--skip-special**\] \[**--exclude** *pattern*\] \[**--include** *pattern*\] \[**--apply-retention**\] *backup_object***  
+**start** \[**--dry-run**\] \[**--skip-special**\] \[**--exclude** *pattern*\] \[**--include** *pattern*\] \[**--apply-retention**\] *backup_object*  
 Back up the object now, into a new snapshot named after the time it
 started, for example **2026-03-29T02-00-00**. With **backup_enabled**
 off it is refused; the global option **-f** starts it all the same. Only
@@ -78,7 +78,7 @@ retention no longer keeps, after the backup. A backup started by the
 schedule always does.  
 **--dry-run** shows what would be backed up and stores nothing.
 
-**restore \[**--dry-run**\] \[**--snapshot** *snapshot*\] \[**--path** *path*\] **--destination** *directory* *backup_object***  
+**restore** \[**--dry-run**\] \[**--snapshot** *snapshot*\] \[**--path** *path*\] **--destination** *directory* *backup_object*  
 Restore a snapshot into *directory* on this machine. Without
 **--snapshot** it is the newest one. **--path** restores only that file
 or directory, as a path below what was backed up; **/etc/otpme** and
@@ -90,7 +90,7 @@ List the snapshots of the object: their name, the number of files, the
 data and what was stored for it, when they ran and how long, and whether
 they are complete.
 
-**ls \[**--full-path**\] \[**--recursive**\] *backup_object* *snapshot* \[*path*\]**  
+**ls** \[**--full-path**\] \[**--recursive**\] *backup_object* *snapshot* \[*path*\]  
 List what a snapshot holds below *path*, or below what was backed up;
 **/etc** and **etc** are the same. Without **--recursive** only what is
 directly in it. **--full-path** shows each entry with its whole path.
@@ -138,7 +138,7 @@ The password the backup server asks for.
 **pack** or **tree**; unset a share is backed up as **tree**, which a
 restore share needs, and a node as **pack**. Object types: node, share.
 
-**backup_excludes, **backup_includes** (list)**  
+**backup_excludes**, **backup_includes** (list)  
 The patterns **start** uses when it gets no **--exclude** or
 **--include**, see there. Object types: node, share.
 
@@ -158,7 +158,7 @@ scheduled.
 How long after the last backup the next one may start, for example
 **1D** (default: 23h).
 
-**backup_retry_interval (time, default: 5m), **backup_retry_count** (int, default: 12)**  
+**backup_retry_interval** (time, default: 5m), **backup_retry_count** (int, default: 12)  
 How long and how often a backup waits when another backup, a restore or
 a repack holds the repository.
 
@@ -171,7 +171,7 @@ What a failed pre hook of **backup_script** does: **abort** starts no
 backup and reports it as failed, **report** backs up all the same and
 puts the failure into the log and into the report mail.
 
-**backup_report_enabled, **backup_report_mode**, **backup_report_mail_from**, **backup_report_mail_to****  
+**backup_report_enabled**, **backup_report_mode**, **backup_report_mail_from**, **backup_report_mail_to**  
 Whether, which and to whom a mail is sent about a scheduled backup, over
 the **smtp_relay\_\*** parameters.
 

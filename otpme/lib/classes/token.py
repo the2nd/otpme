@@ -4839,8 +4839,11 @@ class Token(OTPmeObject):
         if not self.ask_delete_confirmation(force=force, exception=exception_str, callback=callback):
             return callback.abort()
 
+        # Not without the copy, see OTPmeObject.delete().
         if add_to_trash:
-            self.add_to_trash(deleted_by=deleted_by, callback=callback)
+            if self.add_to_trash(deleted_by=deleted_by,
+                                callback=callback) is False:
+                return callback.error()
 
         # Our parent object is the token owner which may already be locked
         # if this is a token add/del. So we have to acquire no lock.

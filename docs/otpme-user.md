@@ -20,7 +20,7 @@ hierarchy (e.g., alice, bob, it/admin_user).
 
 ## User Management
 
-**add \[*options*\] *username***  
+**add** \[*options*\] *username*  
 Create a new user account. It gets a default token, whose name and type
 come from **default_token_name** and **default_token_type** (see
 **otpme**(7)) unless **--default-token** or **--default-token-type**
@@ -40,12 +40,12 @@ secret later. The ACL group **USERMANAGER** holds both, see
 temporary password, see **temp_password** in **otpme-token**(1). More in
 **otpme-token**(1) under **add**.
 
-**del \[**--no-trash**\] *user* \[*user* ...\]**  
+**del** \[**--no-trash**\] *user* \[*user* ...\]  
 Delete one or more user accounts. The user and their tokens go to the
 trash, from where **otpme-trash**(1) can bring them back. **--no-trash**
 deletes them right away instead.
 
-**show \[*user*\]**  
+**show** \[*user*\]  
 Display user information. Without arguments, shows all users.  
 With a user it shows the fields of the user and a table of its tokens. A
 field you may not see shows **-**. The tokens are shown as with
@@ -54,7 +54,7 @@ it, and a token you have no ACL on is left out.
 
 <!-- -->
 
-**show_oid \[**--full**\] *user***  
+**show_oid** \[**--full**\] *user*  
 Show the OID of the user: **user\|\<realm\>/\<name\>**. With **--full**
 the full OID, which names the site and unit as well:
 **user\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
@@ -66,7 +66,7 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**-t**\] \[**--attribute** *ATTR*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**-t**\] \[**--attribute** *ATTR*\] \[*pattern*\]  
 List the users, and with a pattern only those whose name matches it, see
 **SELECTING OBJECTS** in **otpme**(1).  
 You get the users you may change; **-a** adds those you may only look
@@ -75,7 +75,7 @@ the templates you may change or have **use** on, i.e. the ones you may
 give to **add --template**. **--attribute** matches the pattern against
 that attribute instead of the name.
 
-**enable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *user***  
+**enable** \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *user*  
 Enable a disabled user account.
 
 **--share-notify**  
@@ -87,7 +87,7 @@ Do not send notification to all online hosts on new share permissions.
 **--no-persist-mount**  
 Do not persist new share mounts on hosts.
 
-**disable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *user***  
+**disable** \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *user*  
 Disable a user account without deleting it.
 
 **--share-notify**  
@@ -103,14 +103,14 @@ Keep persisted share mounts on hosts (transient unmount only).
 **rename *user* *new_name***  
 Rename a user account.
 
-**move \[**--keep-acls**\] *user* *unit***  
+**move** \[**--keep-acls**\] *user* *unit*  
 Move the user into another unit. The default ACLs of the old unit go,
 those of the new one come; **--keep-acls** leaves the ACLs as they are.
 
 **touch *user***  
 Re-index the object to fix potential index problems.
 
-**auto_disable \[**-u**\] *user* *time***  
+**auto_disable** \[**-u**\] *user* *time*  
 Set auto-disable time. It is either a relative time with a leading
 **+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
 The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
@@ -160,7 +160,7 @@ For a template, **""** takes its group away: a user made from it then
 gets the group a policy or the site gives. A user that is no template
 always has a group.
 
-**find_groups \[**--return-type** *TYPE*\] \[*user*\]**  
+**find_groups** \[**--return-type** *TYPE*\] \[*user*\]  
 Find groups the user belongs to. Use **--return-type** to select the
 attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
@@ -168,7 +168,7 @@ attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 Roles are managed from the role side; see **otpme-role**(1).
 
-**find_roles \[**--return-type** *TYPE*\] \[*user*\]**  
+**find_roles** \[**--return-type** *TYPE*\] \[*user*\]  
 Find roles assigned to the user. Use **--return-type** to select the
 attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
@@ -194,7 +194,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *user***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *user*  
 List the policies attached to the user, the disabled ones too, marked
 **(disabled)**. Use **--return-type** to select the attribute returned
 (**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
@@ -204,7 +204,7 @@ Needs the ACL **view:policies**.
 
 ## User Configuration
 
-**config \[**-d**\] \[**-a**\] *user* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *user* *parameter* \[*value*\]  
 Set a configuration parameter on the user. **-a** appends the value to a
 parameter that holds a list.  
 **-d** removes the parameter from the user, or with a value only that
@@ -224,7 +224,7 @@ unit and site.
 Set the description of the user. Without a description OTPme asks for
 one and offers the current text for editing.
 
-**info \[**--language** *LANG*\] *user* \[*info*\]**  
+**info** \[**--language** *LANG*\] *user* \[*info*\]  
 Set the info text of the user, a free text that may run over several
 paragraphs. Without a text OTPme opens the current one in the editor
 named by **EDITOR**.  
@@ -234,7 +234,7 @@ is the note of the administrator and is never shown to a user.
 How long such a text may be is **max_info_len** in **otpme**(7), which
 also says who reads it.
 
-**dump_info \[**--language** *LANG*\] *user***  
+**dump_info** \[**--language** *LANG*\] *user*  
 Write the info text of that language to stdout.
 
 **language *user* *language***  
@@ -428,7 +428,7 @@ that user get as long as none of them carries one of its own.
 
 ## Cryptographic Keys
 
-**gen_keys \[*options*\] *user***  
+**gen_keys** \[*options*\] *user*  
 Generate the sign and the encrypt key pair of the user. Both are RSA by
 default; **--sign-algo** and **--encrypt-algo** choose another one, see
 **Key Generation Options** below.
@@ -438,7 +438,7 @@ Remove all four keys of the user: both private and both public ones. It
 asks first, and it refuses when the user has no keys at all. Needs the
 ACL **del_keys**.
 
-**gen_csr \[*attributes*\] \[**--slot** *slot*\] \[**--stdin-pass**\] *user***  
+**gen_csr** \[*attributes*\] \[**--slot** *slot*\] \[**--stdin-pass**\] *user*  
 Make a certificate signing request with the private key of the user and
 write it to stdout. The key script does the work, so the key never
 leaves where it lies.  
@@ -604,7 +604,7 @@ offline tokens until the user logs in there again, and in its agent
 until the user logs out. A key that must be gone everywhere has to be
 replaced, see **key_pass** and **gen_keys**.
 
-**key_pass \[**--stdin-pass**\] *user***  
+**key_pass** \[**--stdin-pass**\] *user*  
 Change the password of the private keys of the user. **--stdin-pass**
 reads it from stdin.
 
@@ -626,7 +626,7 @@ ACL **edit:sign_public_key**.
 The same for the encrypt public key, with the ACL
 **edit:encrypt_public_key**.
 
-**import_sign_key \[**--server**\] \[**-n**\] \[**--stdin-key**\] *user* \[*private_key_file*\]**  
+**import_sign_key** \[**--server**\] \[**-n**\] \[**--stdin-key**\] *user* \[*private_key_file*\]  
 Take a private key the user already has and make it their sign key. The
 key comes from a file, or from stdin with **--stdin-key**.  
 It only works in server key mode. In client key mode the key belongs to
@@ -639,11 +639,11 @@ on the server.
 The user themselves needs no permission for it. Anybody else needs the
 ACL **edit:sign_private_key**, plus **import_sign_key**.
 
-**import_encrypt_key \[**--server**\] \[**-n**\] \[**--stdin-key**\] *user* \[*private_key_file*\]**  
+**import_encrypt_key** \[**--server**\] \[**-n**\] \[**--stdin-key**\] *user* \[*private_key_file*\]  
 The same for the encrypt key, with the ACLs **edit:encrypt_private_key**
 and **import_encrypt_key**. Options as for **import_sign_key**.
 
-**dump_sign_key \[**-p**\] \[**-n**\] \[**--stdin-pass**\] *user***  
+**dump_sign_key** \[**-p**\] \[**-n**\] \[**--stdin-pass**\] *user*  
 Write the sign key of the user to stdout. Without **-p** that is the
 public key, base64 encoded; **-n** writes it decoded instead.  
 **-p** writes the private key. In server key mode **-n** decrypts it
@@ -653,11 +653,11 @@ the client put there.
 Dumping the private key needs the ACL **dump:sign_private_key**, the
 user themselves does not need it. The public key needs no ACL.
 
-**dump_encrypt_key \[**-p**\] \[**-n**\] \[**--stdin-pass**\] *user***  
+**dump_encrypt_key** \[**-p**\] \[**-n**\] \[**--stdin-pass**\] *user*  
 The same for the encrypt key, with the ACL **dump:encrypt_private_key**.
 Options as for **dump_sign_key**.
 
-**find_signatures \[**--return-type** *TYPE*\] \[**--object-types** *t1,t2*\] \[*user*\]**  
+**find_signatures** \[**--return-type** *TYPE*\] \[**--object-types** *t1,t2*\] \[*user*\]  
 Find the objects the user has signed. Signing writes the signer into the
 index, so the answer comes from the index. No object is read.  
 What is found can be of any type, so the default answer names the type:
@@ -710,7 +710,7 @@ Without one, the value of the object counts, read along its cascade.
 An ACL says what somebody may do with this user. The somebody is a role
 or a token, never another user.
 
-What the three forms *acl*, **+***acl* and **++***acl* mean, and which
+What the three forms *acl*, **+*acl*** and **++*acl*** mean, and which
 ACLs exist, is under **ACLs** in **otpme**(7).
 
 A command that changes something asks first; the global option **-f**
@@ -719,7 +719,7 @@ skips the question.
 A user holds no ACLs of their own, so there is no **find_acls** here.
 Their tokens do; see **otpme-token**(1).
 
-**add_acl \[**-r**\] \[**-a**\] *user* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]**  
+**add_acl** \[**-r**\] \[**-a**\] *user* *owner_type* *owner* *acl*\[:*value*\]\[,*acl*\[:*value*\]\]  
 Give a role or a token one or more ACLs on this user.  
 *owner_type* is **role** or **token**. *owner* names it the way
 **list_acls** prints it: a role as *site/name*, or by its name alone on
@@ -730,7 +730,7 @@ with commas: **edit:password,view:status**.
 the default ACLs of the user to the tokens it already has.  
 Needs the ACL **add:acl**.
 
-**del_acl \[**-r**\] \[**-a**\] *user* *acl*\[**:***value*\]**  
+**del_acl** \[**-r**\] \[**-a**\] *user* *acl*\[**:*value***\]  
 Take that ACL away again. **-r** removes it from the tokens of the user
 as well, **-a** removes the default ACLs from the tokens it already
 has.  
@@ -767,7 +767,7 @@ Needs the ACL **disable:acl_inheritance**.
 
 ## LDAP Integration
 
-**add_attribute \[**-i** *position*\] *user* *attribute*=\[*value*\]**  
+**add_attribute** \[**-i** *position*\] *user* *attribute*=\[*value*\]  
 Add an LDAP attribute to the user. Use **-i** to insert a multi-value
 attribute at the given zero-based position.
 
@@ -783,7 +783,7 @@ Add an LDAP object class to the user.
 **del_object_class *user* *class***  
 Remove an LDAP object class from the user.
 
-**show_ldif \[**-a** *attr1,attr2*\] *user***  
+**show_ldif** \[**-a** *attr1,attr2*\] *user*  
 Show the user as LDIF, the way LDAP hands them out. **-a** shows only
 the attributes you name.
 
@@ -818,7 +818,7 @@ Remove the user's photo.
 
 ## Export and Cleanup
 
-**export \[**--password** *PASS*\] *user***  
+**export** \[**--password** *PASS*\] *user*  
 Write the whole object of the user to stdout, as JSON.  
 Without **--password** it is written as it is, in clear. With one, a key
 is derived from that password and the object is encrypted with it; the
@@ -826,7 +826,7 @@ salt goes into the output, so the password is all you need to read it
 back.  
 Reading it back in is **otpme-tool** **import**, see **otpme-tool**(1).
 
-**remove_orphans \[**-r**\] *user***  
+**remove_orphans** \[**-r**\] *user*  
 Remove what the user still points at although it is gone: ACLs,
 policies, signatures and tokens whose object does not exist any more.
 Config parameters set on the user that keep other objects lose the ones

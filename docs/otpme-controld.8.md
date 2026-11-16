@@ -55,7 +55,7 @@ controld still runs then. controld goes on stopping.
 With **-k** the command waits half the timeout and then kills controld
 and all its daemons.
 
-**restart \[*daemon*\]**  
+**restart** \[*daemon*\]  
 Without a daemon: stop and start controld and all daemons. If controld
 still runs after 70 seconds, it is killed.  
 With a daemon: controld stops that daemon and starts it again. A daemon
@@ -63,7 +63,7 @@ reads most settings when it starts, for example **authd_workers**, see
 **Daemon Tuning** in **otpme**(7). **clusterd** is not restarted on the
 master node; the log says so.
 
-**reload \[*daemon*\]**  
+**reload** \[*daemon*\]  
 Without a daemon: controld reads **otpme.conf**(5) again and tells every
 daemon to do the same. This is the same as sending SIGHUP to controld. A
 daemon that is new on the list, for example httpd after **SSO_SERVER**

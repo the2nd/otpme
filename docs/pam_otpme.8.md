@@ -107,23 +107,23 @@ Without either of them, pam_otpme asks for the password itself.
 **nullok**  
 Allow an empty password, e.g. for a **fido2** token that needs none.
 
-**send_password=***auto\|false*  
+**send_password=*auto\|false***  
 Whether the password goes to the nodes. **auto** (default): if the token
 of the user needs it there. **false**: never, e.g. for a token that is
 checked with an SSH key, so the password does not leave the host.
 
-**use_smartcard=***auto\|true\|false*  
+**use_smartcard=*auto\|true\|false***  
 Use a smartcard, e.g. the HMAC-SHA1 slot of a YubiKey. **auto**
 (default): if one is plugged in. **true**: always; without one the login
 fails. **false**: never.
 
-**use_ssh_agent=***auto\|true\|false*  
+**use_ssh_agent=*auto\|true\|false***  
 Log in with an SSH key from an SSH agent, e.g. a YubiKey with the GPG
 applet for an **ssh** token of OTPme. **auto** (default): if the agent
 has a key the nodes know. **true**: always, and start the agent; without
 a key the login fails. **false**: never, and do not start the agent.
 
-**start_ssh_agent=***auto\|true\|false*  
+**start_ssh_agent=*auto\|true\|false***  
 Start an SSH agent at login. **auto** (default): if the nodes send SSH
 keys of the user. **true**: always. **false**: never. When it is not
 set, **use_ssh_agent=true** and **false** set it to the same.
@@ -132,7 +132,7 @@ set, **use_ssh_agent=true** and **false** set it to the same.
 On a screen unlock, check the password against the offline copy of the
 login token, if this host has one, and ask no node.
 
-**do_dot1x=***auto\|force\|false*  
+**do_dot1x=*auto\|force\|false***  
 Log the network port in with 802.1X at login, through a NetworkManager
 connection (default: **false**). pam_otpme writes the user name and the
 password or OTP into that connection, see **dot1x_token_types**, and
@@ -162,24 +162,24 @@ every RADIUS node. Identity and password are only placeholders here:
         802-1x.identity "user" \
         802-1x.password "pass"
 
-**dot1x_connection=***name*  
+**dot1x_connection=*name***  
 The NetworkManager connection (default: **dot1x-lan**).
 
-**dot1x_token_types=***type\[,type...\]*  
+**dot1x_token_types=*type\[,type...\]***  
 What the password of the connection is made from; without it,
 **do_dot1x** does nothing and says so in the log. **yubikey_piv**: an
 OTP derived by the YubiKey, which asks for its PIN; used when one is
 plugged in. **password**: the password of the login.
 
-**dot1x_timeout=***seconds*  
+**dot1x_timeout=*seconds***  
 How long to wait for the connection to come up (default: **10**).
 
-**offline_key_func=***func\[;opt:val,...\]*  
+**offline_key_func=*func\[;opt:val,...\]***  
 How the key that encrypts the offline copy of the login token is made
 from the password, see **cache_login_tokens** (default: **Argon2_i**).
 **Argon2_i**, **Argon2_d** and **Argon2_id** work; another function
 gives a warning in the log and the default stays. After **;** come
-options as *opt***:***val*, separated by **,**; an option not given
+options as ***opt*:*val***, separated by **,**; an option not given
 keeps its default:
 
 **iterations**  
@@ -200,7 +200,7 @@ In KiB (default: **262144**).
 
     offline_key_func=Argon2_id;max_mem:524288,threads:2
 
-**check_offline_pass_strength\[=***policy\[;score:iterations,...\]\]*  
+**check_offline_pass_strength\[=*policy\[;score:iterations,...\]\]***  
 A weak password gets more **iterations** of **offline_key_func**, so its
 offline copy takes longer to guess. A password policy gives the password
 a score from 0 (weak) to 10 (strong), and the score picks the
@@ -235,15 +235,15 @@ in offline!".
 When the login fails, show why, e.g. "Login failed: Host disabled".
 Without it, the reason is only in the log.
 
-**message_timeout=***seconds*  
+**message_timeout=*seconds***  
 How long to wait after each message pam_otpme shows, so it can be read
 (default: **2**).
 
-**connect_timeout=***seconds*  
+**connect_timeout=*seconds***  
 How long to wait for the connection to the nodes at login (default:
 **3**).
 
-**connection_timeout=***seconds*  
+**connection_timeout=*seconds***  
 How long to wait for an answer of the nodes at login (default: **30**).
 
 **create_home**  
@@ -251,7 +251,7 @@ Create the home directory of the user if it does not exist, with
 mode 0700. That happens before the password is checked, because the
 OTPme agent that the login starts keeps its files there.
 
-**home_skel=***path*  
+**home_skel=*path***  
 Copy the new home directory from this directory, e.g. */etc/skel*.
 Without **create_home** it does nothing.
 

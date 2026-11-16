@@ -50,7 +50,7 @@ It prints the JOTP.
 There is no \fBrename\fR.
 A node is found by the name it joined with, which is also the name in its certificate, so a machine that is renamed leaves the realm and joins again.
 .TP
-.B del \fR[\fB\-\-no\-trash\fR] \fInode\fR
+\fBdel\fR [\fB\-\-no\-trash\fR] \fInode\fR
 Delete a node.
 It goes to the trash, from where \fBotpme-trash\fR(1) can bring it back; \fB\-\-no\-trash\fR deletes it right away.
 .RS
@@ -72,7 +72,7 @@ The machine itself is not asked anything.
 A node that is still joined should leave the realm first, with \fBotpme-tool leave\fR.
 .RE
 .TP
-.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-token\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] [\fInode\fR]
+\fBshow\fR [\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-token\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-sort\-by\fR \fIfield\fR] [\fB\-\-reverse\fR] [\fB\-\-raw\fR] [\fB\-\-csv\fR] [\fB\-\-csv\-sep\fR \fIsep\fR] [\fInode\fR]
 Show the nodes, with their tokens, roles and policies.
 Without a node you get all of them.
 .RS
@@ -102,7 +102,7 @@ For reading with something other than your eyes: \fB\-\-raw\fR leaves the header
 .na
 .nh
 .TP
-.B show_oid \fR[\fB\-\-full\fR] \fInode\fR
+\fBshow_oid\fR [\fB\-\-full\fR] \fInode\fR
 Show the OID of the node: \fB\%node|<realm>/<name>\fR.
 With \fB\-\-full\fR the full OID, which names the site and unit as well: \fB\%node|<realm>/<site>/<unit_path>/<name>\fR.
 .br
@@ -115,7 +115,7 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
+\fBlist\fR [\fB\-a\fR] [\fB\-\-attribute\fR \fIattribute\fR] \fR[\fIpattern\fR]
 List the node names, and with a pattern only those that match it, see
 .B SELECTING OBJECTS
 in
@@ -125,7 +125,7 @@ You get the nodes you may change; \fB\-a\fR adds those you may only look at.
 \fB\-\-attribute\fR matches the pattern against that attribute instead of the name: \fBlist \-\-attribute enabled True\fR lists the nodes that are enabled.
 A value that is not text has to be spelled out \(em \fB*\fR matches none of it.
 .TP
-.B enable \fR[\fB\-\-offline\fR] \fInode\fR
+\fBenable\fR [\fB\-\-offline\fR] \fInode\fR
 Enable a disabled node.
 .br
 Nothing is asked of the node itself: while it was disabled it asked the master once a second whether it still is, and it starts its own services again as soon as it is not.
@@ -133,7 +133,7 @@ Nothing is asked of the node itself: while it was disabled it asked the master o
 .br
 The node then syncs like one that has just joined, which includes the deletions it missed while it was away.
 .TP
-.B disable \fR[\fB\-\-offline\fR] \fInode\fR
+\fBdisable\fR [\fB\-\-offline\fR] \fInode\fR
 Disable a node without deleting it.
 .RS
 .PP
@@ -148,7 +148,7 @@ It does not count towards the quorum either, because the quorum is counted from 
 The node that holds the master role is refused.
 .RE
 .TP
-.B move \fR[\fB\-\-keep\-acls\fR] \fInode\fR \fIunit\fR
+\fBmove\fR [\fB\-\-keep\-acls\fR] \fInode\fR \fIunit\fR
 Move the node into another unit.
 Its ACLs move with it: the default ACLs of the old unit are taken away and those of the new one are applied.
 \fB\-\-keep\-acls\fR leaves the ACLs of the node as they are.
@@ -156,7 +156,7 @@ Its ACLs move with it: the default ACLs of the old unit are taken away and those
 .B touch \fInode\fR
 Re-index the object to fix potential index problems.
 .TP
-.B auto_disable \fR[\fB\-u\fR] \fInode\fR \fItime\fR
+\fBauto_disable\fR [\fB\-u\fR] \fInode\fR \fItime\fR
 Set auto\-disable time.
 It is either a relative time with a leading \fB+\fR, e.g. \fB+30D\fR, or an absolute one, e.g. \fB"09:53 13.06.2023"\fR.
 The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
@@ -167,10 +167,10 @@ It is refused for an object the realm or a site comes with, e.g. the admin user;
 Use \fB\-u\fR to disable the node once it was unused for the given time.
 That takes a relative time; a node that was never used counts from when this was set.
 .SS Token and Role Assignment
-A token is named by its path, \fIuser\fB/\fItoken\fR.
-A role is named by its name, which is looked for in the site of the node, or as \fIsite\fB/\fIrole\fR to take one from another site of the realm.
+A token is named by its path, \f(BIuser\fB/\f(BItoken\fR.
+A role is named by its name, which is looked for in the site of the node, or as \f(BIsite\fB/\f(BIrole\fR to take one from another site of the realm.
 .TP
-.B add_token \fR[\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] \fInode\fR \fItoken_path\fR \fR[\fItoken_options\fR]
+\fBadd_token\fR [\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] \fInode\fR \fItoken_path\fR \fR[\fItoken_options\fR]
 Let this token log in to the node.
 .RS
 .TP
@@ -198,11 +198,11 @@ Do not sign, whatever the \fBauto_sign\fR of the node or the \fBautosign\fR sett
 .IP
 A token that is already assigned, with other interfaces or options, is not added twice: OTPme asks whether to change what it has.
 .TP
-.B remove_token \fR[\fB\-\-keep\-sign\fR] \fInode\fR \fItoken_path\fR
+\fBremove_token\fR [\fB\-\-keep\-sign\fR] \fInode\fR \fItoken_path\fR
 Take the token away from the node.
 The signature for this assignment is removed with it; \fB\-\-keep\-sign\fR leaves it in place.
 .TP
-.B list_tokens \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fInode\fR
+\fBlist_tokens\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fInode\fR
 List the tokens assigned to the node.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-token\-types\fR to limit the listing to the given token types.
 .TP
@@ -243,7 +243,7 @@ Both are checked for an interactive login and for an SSH key, see
 .SS User and Group Listing
 \fB\-\-return\-type\fR picks what these print: \fBname\fR (the default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR.
 .TP
-.B list_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fInode\fR
+\fBlist_users\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fInode\fR
 The users who own a token assigned to the node.
 Only the tokens the node holds itself count here, not the ones it gets through a role.
 .TP
@@ -253,17 +253,17 @@ The dynamic groups of the node, with those of the roles it is in.
 A command that starts with \fBlist_\fR answers what the node holds.
 One that starts with \fBfind_\fR answers the other question: where the node itself is named.
 .PP
-\fB\-\-return\-type\fR works as above, and a name from another site is printed as \fIsite\fB/\fIname\fR.
+\fB\-\-return\-type\fR works as above, and a name from another site is printed as \f(BIsite\fB/\f(BIname\fR.
 Disabled objects are listed as well, so something that is only switched off is not mistaken for something that is gone.
 Each of these needs its own ACL, \fBfind:shares\fR for \fBfind_shares\fR and \fBfind:pools\fR for \fBfind_pools\fR.
 .TP
-.B find_shares \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fInode\fR
+\fBfind_shares\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fInode\fR
 The shares this node serves.
 A share that names no node at all is served by every node of its site, so an empty answer does not mean the node serves nothing.
 See
 .BR otpme\-share (1).
 .TP
-.B find_pools \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fInode\fR
+\fBfind_pools\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fInode\fR
 The pools this node serves.
 A pool hands out shares of its own, and it names its nodes the same way a share does, see
 .BR otpme\-pool (1).
@@ -272,7 +272,7 @@ Passwords can belong to the node, for example the password of its iDRAC, see
 .BR otpme\-pass (1).
 Each password decides itself whether you may see it.
 .TP
-.B find_passwords \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fInode\fR
+\fBfind_passwords\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fInode\fR
 The password objects that belong to the node.
 .TP
 .B show_password \fInode\fR [\fIentry\fR]
@@ -543,7 +543,7 @@ Remove a policy from the node.
 Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
-.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fInode\fR
+\fBlist_policies\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fInode\fR
 List the policies attached to the node, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
@@ -609,7 +609,7 @@ Which parameters a node takes is in
 .B CONFIG PARAMETERS
 below.
 .TP
-.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fInode\fR \fIparameter\fR \fR[\fIvalue\fR]
+\fBconfig\fR [\fB\-d\fR] [\fB\-a\fR] \fInode\fR \fIparameter\fR \fR[\fIvalue\fR]
 Set a parameter on the node.
 .RS
 .TP
@@ -621,7 +621,7 @@ It is not set back to a default: what applies afterwards is whatever the unit or
 Append the value to a parameter that holds a list, instead of replacing what is there.
 .RE
 .IP
-The ACL is per parameter, \fBset:config:\fIparameter\fR.
+The ACL is per parameter, \fBset:config:\f(BIparameter\fR.
 Removing a parameter that is not registered any more, which is what a rename or a dropped feature leaves behind, is for admins only.
 .TP
 .B show_config \fInode\fR \fR[\fIparameter\fR]
@@ -636,7 +636,7 @@ So this answers what applies, where \fBshow_config\fR answers what was set here.
 Set the description.
 Without one OTPme asks and offers the current text for editing.
 .TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fInode\fR \fR[\fIinfo\fR]
+\fBinfo\fR [\fB\-\-language\fR \fILANG\fR] \fInode\fR \fR[\fIinfo\fR]
 Set free-form info text.
 If \fIinfo\fR is omitted, the current info text is opened in the editor named by the \fBEDITOR\fR environment variable.
 .br
@@ -645,7 +645,7 @@ Without
 the text is the administrator's own note, which no user is ever shown.
 A text can be written for a language as well, for the places that show such a text to a user; nothing shows the info of a node, so for a node it stays a note either way.
 .TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fInode\fR
+\fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fInode\fR
 Write one of those texts to stdout, for reading it with something other than the editor.
 .br
 \fB\-\-language\fR picks which one; without it you get the note of the administrator.
@@ -660,7 +660,7 @@ see
 .B remove_orphans
 asks before it changes anything; the global option \fB\-f\fR skips the question.
 .TP
-.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fInode\fR
+\fBexport\fR [\fB\-\-password\fR \fIpassword\fR] \fInode\fR
 Write the whole object of the node to stdout, as JSON.
 .RS
 .PP
@@ -726,7 +726,7 @@ Then the settings the daemons of the node read:
 .BR socket_backlog ,
 .B max_decompressed_size
 and one
-.BI \fR*\fB_max_conn
+*\fB_max_conn\fR
 per daemon:
 .BR mgmtd_max_conn ,
 .BR syncd_max_conn ,

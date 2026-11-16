@@ -13,7 +13,7 @@ Users are identified by their name within the organizational unit hierarchy (e.g
 .SH COMMANDS
 .SS User Management
 .TP
-.B add \fR[\fIoptions\fR] \fIusername\fR
+\fBadd\fR [\fIoptions\fR] \fIusername\fR
 Create a new user account.
 It gets a default token, whose name and type come from
 .BR default_token_name " and " default_token_type
@@ -40,14 +40,14 @@ More in
 .BR otpme\-token (1)
 under \fBadd\fR.
 .TP
-.B del \fR[\fB\-\-no\-trash\fR] \fIuser\fR [\fIuser\fR ...]
+\fBdel\fR [\fB\-\-no\-trash\fR] \fIuser\fR [\fIuser\fR ...]
 Delete one or more user accounts.
 The user and their tokens go to the trash, from where
 .BR otpme\-trash (1)
 can bring them back.
 \fB\-\-no\-trash\fR deletes them right away instead.
 .TP
-.B show \fR[\fIuser\fR]
+\fBshow\fR [\fIuser\fR]
 Display user information. Without arguments, shows all users.
 .br
 With a user it shows the fields of the user and a table of its tokens.
@@ -56,7 +56,7 @@ The tokens are shown as with \fBotpme\-token show\fR: what you see of each token
 .na
 .nh
 .TP
-.B show_oid \fR[\fB\-\-full\fR] \fIuser\fR
+\fBshow_oid\fR [\fB\-\-full\fR] \fIuser\fR
 Show the OID of the user: \fB\%user|<realm>/<name>\fR.
 With \fB\-\-full\fR the full OID, which names the site and unit as well: \fB\%user|<realm>/<site>/<unit_path>/<name>\fR.
 .br
@@ -69,7 +69,7 @@ Needs the ACL \fBview_public:object\fR.
 .hy
 .ad
 .TP
-.B list \fR[\fB\-a\fR] [\fB\-t\fR] [\fB\-\-attribute\fR \fIATTR\fR] \fR[\fIpattern\fR]
+\fBlist\fR [\fB\-a\fR] [\fB\-t\fR] [\fB\-\-attribute\fR \fIATTR\fR] \fR[\fIpattern\fR]
 List the users, and with a pattern only those whose name matches it, see
 .B SELECTING OBJECTS
 in
@@ -80,7 +80,7 @@ You get the users you may change; \fB\-a\fR adds those you may only look at.
 Without \fB\-a\fR these are the templates you may change or have \fBuse\fR on, i.e. the ones you may give to \fBadd \-\-template\fR.
 \fB\-\-attribute\fR matches the pattern against that attribute instead of the name.
 .TP
-.B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIuser\fR
+\fBenable\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIuser\fR
 Enable a disabled user account.
 .RS
 .TP
@@ -94,7 +94,7 @@ Do not send notification to all online hosts on new share permissions.
 Do not persist new share mounts on hosts.
 .RE
 .TP
-.B disable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIuser\fR
+\fBdisable\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIuser\fR
 Disable a user account without deleting it.
 .RS
 .TP
@@ -111,14 +111,14 @@ Keep persisted share mounts on hosts (transient unmount only).
 .B rename \fIuser\fR \fInew_name\fR
 Rename a user account.
 .TP
-.B move \fR[\fB\-\-keep\-acls\fR] \fIuser\fR \fIunit\fR
+\fBmove\fR [\fB\-\-keep\-acls\fR] \fIuser\fR \fIunit\fR
 Move the user into another unit.
 The default ACLs of the old unit go, those of the new one come; \fB\-\-keep\-acls\fR leaves the ACLs as they are.
 .TP
 .B touch \fIuser\fR
 Re-index the object to fix potential index problems.
 .TP
-.B auto_disable \fR[\fB\-u\fR] \fIuser\fR \fItime\fR
+\fBauto_disable\fR [\fB\-u\fR] \fIuser\fR \fItime\fR
 Set auto\-disable time.
 It is either a relative time with a leading \fB+\fR, e.g. \fB+30D\fR, or an absolute one, e.g. \fB"09:53 13.06.2023"\fR.
 The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
@@ -166,13 +166,13 @@ Change the user's default group. (A user is added to further groups from the gro
 For a template, \fB\(dq\(dq\fR takes its group away: a user made from it then gets the group a policy or the site gives.
 A user that is no template always has a group.
 .TP
-.B find_groups \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fR[\fIuser\fR]
+\fBfind_groups\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fR[\fIuser\fR]
 Find groups the user belongs to. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .SS Role Membership
 Roles are managed from the role side; see
 .BR otpme-role (1).
 .TP
-.B find_roles \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fR[\fIuser\fR]
+\fBfind_roles\fR [\fB\-\-return\-type\fR \fITYPE\fR] \fR[\fIuser\fR]
 Find roles assigned to the user. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .SS Policy Management
 A \fIpolicy\fR is the name of a policy, not a path.
@@ -196,7 +196,7 @@ Remove a policy from the user.
 Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
 Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
-.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIuser\fR
+\fBlist_policies\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIuser\fR
 List the policies attached to the user, the disabled ones too, marked \fB(disabled)\fR.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
@@ -204,7 +204,7 @@ Use \fB\-\-policy\-types\fR to list only policies of the given types; these are 
 Needs the ACL \fBview:policies\fR.
 .SS User Configuration
 .TP
-.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIuser\fR \fIparameter\fR \fR[\fIvalue\fR]
+\fBconfig\fR [\fB\-d\fR] [\fB\-a\fR] \fIuser\fR \fIparameter\fR \fR[\fIvalue\fR]
 Set a configuration parameter on the user.
 \fB\-a\fR appends the value to a parameter that holds a list.
 .br
@@ -223,7 +223,7 @@ Show the value of one parameter, as the user sees it after the lookup on unit an
 Set the description of the user.
 Without a description OTPme asks for one and offers the current text for editing.
 .TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIuser\fR \fR[\fIinfo\fR]
+\fBinfo\fR [\fB\-\-language\fR \fILANG\fR] \fIuser\fR \fR[\fIinfo\fR]
 Set the info text of the user, a free text that may run over several paragraphs.
 Without a text OTPme opens the current one in the editor named by
 .BR EDITOR .
@@ -238,7 +238,7 @@ in
 .BR otpme (7),
 which also says who reads it.
 .TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIuser\fR
+\fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fIuser\fR
 Write the info text of that language to stdout.
 .TP
 .B language \fIuser\fR \fIlanguage\fR
@@ -446,7 +446,7 @@ The parameter is read along the cascade of the \fItoken\fR: first on the token, 
 The value on the user is therefore what the tokens of that user get as long as none of them carries one of its own.
 .SS Cryptographic Keys
 .TP
-.B gen_keys \fR[\fIoptions\fR] \fIuser\fR
+\fBgen_keys\fR [\fIoptions\fR] \fIuser\fR
 Generate the sign and the encrypt key pair of the user.
 Both are RSA by default; \fB\-\-sign\-algo\fR and \fB\-\-encrypt\-algo\fR choose another one, see \fBKey Generation Options\fR below.
 .TP
@@ -455,7 +455,7 @@ Remove all four keys of the user: both private and both public ones.
 It asks first, and it refuses when the user has no keys at all.
 Needs the ACL \fBdel_keys\fR.
 .TP
-.B gen_csr \fR[\fIattributes\fR] [\fB\-\-slot\fR \fIslot\fR] [\fB\-\-stdin\-pass\fR] \fIuser\fR
+\fBgen_csr\fR [\fIattributes\fR] [\fB\-\-slot\fR \fIslot\fR] [\fB\-\-stdin\-pass\fR] \fIuser\fR
 Make a certificate signing request with the private key of the user and write it to stdout.
 The key script does the work, so the key never leaves where it lies.
 .br
@@ -633,7 +633,7 @@ What a host has already got stays in its offline tokens until the user logs in t
 A key that must be gone everywhere has to be replaced, see \fBkey_pass\fR and \fBgen_keys\fR.
 .RE
 .TP
-.B key_pass \fR[\fB\-\-stdin\-pass\fR] \fIuser\fR
+\fBkey_pass\fR [\fB\-\-stdin\-pass\fR] \fIuser\fR
 Change the password of the private keys of the user.
 \fB\-\-stdin\-pass\fR reads it from stdin.
 .TP
@@ -655,7 +655,7 @@ Anybody else needs the ACL \fBedit:sign_public_key\fR.
 .B encrypt_public_key \fIuser\fR \fIpublic_key\fR
 The same for the encrypt public key, with the ACL \fBedit:encrypt_public_key\fR.
 .TP
-.B import_sign_key \fR[\fB\-\-server\fR] [\fB\-n\fR] [\fB\-\-stdin\-key\fR] \fIuser\fR \fR[\fIprivate_key_file\fR]
+\fBimport_sign_key\fR [\fB\-\-server\fR] [\fB\-n\fR] [\fB\-\-stdin\-key\fR] \fIuser\fR \fR[\fIprivate_key_file\fR]
 Take a private key the user already has and make it their sign key.
 The key comes from a file, or from stdin with \fB\-\-stdin\-key\fR.
 .br
@@ -671,12 +671,12 @@ Either way the key ends up on the server.
 The user themselves needs no permission for it.
 Anybody else needs the ACL \fBedit:sign_private_key\fR, plus \fBimport_sign_key\fR.
 .TP
-.B import_encrypt_key \fR[\fB\-\-server\fR] [\fB\-n\fR] [\fB\-\-stdin\-key\fR] \fIuser\fR \fR[\fIprivate_key_file\fR]
+\fBimport_encrypt_key\fR [\fB\-\-server\fR] [\fB\-n\fR] [\fB\-\-stdin\-key\fR] \fIuser\fR \fR[\fIprivate_key_file\fR]
 The same for the encrypt key, with the ACLs \fBedit:encrypt_private_key\fR and \fBimport_encrypt_key\fR.
 Options as for
 .BR import_sign_key .
 .TP
-.B dump_sign_key \fR[\fB\-p\fR] [\fB\-n\fR] [\fB\-\-stdin\-pass\fR] \fIuser\fR
+\fBdump_sign_key\fR [\fB\-p\fR] [\fB\-n\fR] [\fB\-\-stdin\-pass\fR] \fIuser\fR
 Write the sign key of the user to stdout.
 Without \fB\-p\fR that is the public key, base64 encoded; \fB\-n\fR writes it decoded instead.
 .br
@@ -687,12 +687,12 @@ In client key mode you get what the client put there.
 Dumping the private key needs the ACL \fBdump:sign_private_key\fR, the user themselves does not need it.
 The public key needs no ACL.
 .TP
-.B dump_encrypt_key \fR[\fB\-p\fR] [\fB\-n\fR] [\fB\-\-stdin\-pass\fR] \fIuser\fR
+\fBdump_encrypt_key\fR [\fB\-p\fR] [\fB\-n\fR] [\fB\-\-stdin\-pass\fR] \fIuser\fR
 The same for the encrypt key, with the ACL \fBdump:encrypt_private_key\fR.
 Options as for
 .BR dump_sign_key .
 .TP
-.B find_signatures \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-object\-types\fR \fIt1,t2\fR] \fR[\fIuser\fR]
+\fBfind_signatures\fR [\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-object\-types\fR \fIt1,t2\fR] \fR[\fIuser\fR]
 Find the objects the user has signed.
 Signing writes the signer into the index, so the answer comes from the index.
 No object is read.
@@ -743,7 +743,7 @@ Without one, the value of the object counts, read along its cascade.
 An ACL says what somebody may do with this user.
 The somebody is a role or a token, never another user.
 .PP
-What the three forms \fIacl\fR, \fB+\fIacl\fR and \fB++\fIacl\fR mean, and which ACLs exist, is under \fBACLs\fR in
+What the three forms \fIacl\fR, \fB+\f(BIacl\fR and \fB++\f(BIacl\fR mean, and which ACLs exist, is under \fBACLs\fR in
 .BR otpme (7).
 .PP
 A command that changes something asks first; the global option \fB\-f\fR skips the question.
@@ -751,7 +751,7 @@ A command that changes something asks first; the global option \fB\-f\fR skips t
 A user holds no ACLs of their own, so there is no \fBfind_acls\fR here. Their tokens do; see
 .BR otpme\-token (1).
 .TP
-.B add_acl \fR[\fB\-r\fR] [\fB\-a\fR] \fIuser\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
+\fBadd_acl\fR [\fB\-r\fR] [\fB\-a\fR] \fIuser\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[:\fIvalue\fR][,\fIacl\fR[:\fIvalue\fR]]
 Give a role or a token one or more ACLs on this user.
 .br
 \fIowner_type\fR is \fBrole\fR or \fBtoken\fR.
@@ -764,7 +764,7 @@ To give several ACLs at once, separate them with commas: \fB\%edit:password,view
 .br
 Needs the ACL \fBadd:acl\fR.
 .TP
-.B del_acl \fR[\fB\-r\fR] [\fB\-a\fR] \fIuser\fR \fIacl\fR[\fB:\fIvalue\fR]
+\fBdel_acl\fR [\fB\-r\fR] [\fB\-a\fR] \fIuser\fR \fIacl\fR[\fB:\f(BIvalue\fR]
 Take that ACL away again.
 \fB\-r\fR removes it from the tokens of the user as well, \fB\-a\fR removes the default ACLs from the tokens it already has.
 .br
@@ -798,7 +798,7 @@ A move leaves the ACLs of the user as they are again.
 Needs the ACL \fBdisable:acl_inheritance\fR.
 .SS LDAP Integration
 .TP
-.B add_attribute \fR[\fB\-i\fR \fIposition\fR] \fIuser\fR \fIattribute\fR=[\fIvalue\fR]
+\fBadd_attribute\fR [\fB\-i\fR \fIposition\fR] \fIuser\fR \fIattribute\fR=[\fIvalue\fR]
 Add an LDAP attribute to the user. Use \fB\-i\fR to insert a multi-value attribute at the given zero-based position.
 .TP
 .B del_attribute \fIuser\fR \fIattribute\fR=\fIvalue\fR
@@ -813,7 +813,7 @@ Add an LDAP object class to the user.
 .B del_object_class \fIuser\fR \fIclass\fR
 Remove an LDAP object class from the user.
 .TP
-.B show_ldif \fR[\fB\-a\fR \fIattr1,attr2\fR] \fIuser\fR
+\fBshow_ldif\fR [\fB\-a\fR \fIattr1,attr2\fR] \fIuser\fR
 Show the user as LDIF, the way LDAP hands them out.
 \fB\-a\fR shows only the attributes you name.
 .SS Extension Management
@@ -846,7 +846,7 @@ Dump the user's photo as base64 to stdout.
 Remove the user's photo.
 .SS Export and Cleanup
 .TP
-.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIuser\fR
+\fBexport\fR [\fB\-\-password\fR \fIPASS\fR] \fIuser\fR
 Write the whole object of the user to stdout, as JSON.
 .br
 Without \fB\-\-password\fR it is written as it is, in clear.
@@ -857,7 +857,7 @@ Reading it back in is
 see
 .BR otpme\-tool (1).
 .TP
-.B remove_orphans \fR[\fB\-r\fR] \fIuser\fR
+\fBremove_orphans\fR [\fB\-r\fR] \fIuser\fR
 Remove what the user still points at although it is gone: ACLs, policies, signatures and tokens whose object does not exist any more.
 Config parameters set on the user that keep other objects lose the ones that are gone, e.g. a deleted VLAN in \fBvlans\fR or a deleted role in \fBadmin_access_role\fR, the way \fBconfig \-d\fR does.
 .br

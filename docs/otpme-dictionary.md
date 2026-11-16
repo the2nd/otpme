@@ -55,7 +55,7 @@ into the unit a **defaultunits** policy names, or into
 **dictionaries**.  
 Needs **add:dictionary** on the unit.
 
-**del \[**--no-trash**\] *dictionary***  
+**del** \[**--no-trash**\] *dictionary*  
 Delete the dictionary. It goes to the trash, see **otpme-trash**(1);
 **--no-trash** deletes it right away.  
 A password policy that names it skips it from then on, and
@@ -63,7 +63,7 @@ A password policy that names it skips it from then on, and
 Needs **delete:object** on the dictionary or **delete:dictionary** on
 the unit.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*dictionary*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*dictionary*\]  
 Without a dictionary: a table of them, with their unit, type, status,
 size, policies, ACL inheritance and description. The size is the memory
 its words take.
@@ -93,7 +93,7 @@ A column you may not see says **-**. With a dictionary named, this
 prints the object itself instead of a table row, one value per line, its
 type and size among them.
 
-**show_oid \[**--full**\] *dictionary***  
+**show_oid** \[**--full**\] *dictionary*  
 Show the OID of the dictionary:
 **dictionary\|\<realm\>/\<site\>/\<name\>**. With **--full** the full
 OID, which names the unit as well:
@@ -104,7 +104,7 @@ Needs the ACL **view_public:object**.
 Show the UUID of the dictionary.  
 Needs the ACL **view_public:object**.
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the dictionary names, and with a pattern only those that match it,
 see **SELECTING OBJECTS** in **otpme**(1). You get the dictionaries you
 may change; **-a** adds those you may only look at. **--attribute**
@@ -121,7 +121,7 @@ Rename the dictionary. A password policy knows it by its UUID, so it
 keeps it.  
 Needs **rename**.
 
-**move \[**--keep-acls**\] *dictionary* *unit***  
+**move** \[**--keep-acls**\] *dictionary* *unit*  
 Move the dictionary into another unit of the same site. It keeps its
 ACLs; where ACL inheritance is on for it, the default ACLs of the old
 unit are taken away and those of the new one given. **--keep-acls**
@@ -253,7 +253,7 @@ Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it. Detaching a policy takes away what it
 enforces, so it must not be cheaper than attaching one.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *dictionary***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *dictionary*  
 List the policies attached to the dictionary, the disabled ones too,
 marked **(disabled)**. Use **--return-type** to select the attribute
 returned (**name**, **read_oid**, **full_oid**, **uuid**); without it
@@ -323,7 +323,7 @@ A dictionary has two config parameters: **changelog** and
 **otpme**(7). A parameter is looked up at the dictionary, then at its
 unit and the units above it, then at the site.
 
-**config \[**-d**\] \[**-a**\] *dictionary* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *dictionary* *parameter* \[*value*\]  
 Set a parameter on the dictionary.
 
 **-d**  
@@ -351,7 +351,7 @@ where **show_config** answers what was set here.
 Set the description. Without one OTPme asks and offers the current text
 for editing. Needs **edit:description**.
 
-**info \[**--language** *LANG*\] *dictionary* \[*info*\]**  
+**info** \[**--language** *LANG*\] *dictionary* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor named by the **EDITOR** environment variable. Needs
 **edit:info**.  
@@ -359,13 +359,13 @@ Without **--language** the text is the administrator's own note. Nothing
 shows the info of a dictionary to a user, so a text for a language stays
 a note as well.
 
-**dump_info \[**--language** *LANG*\] *dictionary***  
+**dump_info** \[**--language** *LANG*\] *dictionary*  
 Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator. Needs **view:info**.
 
 ## Export and Cleanup
 
-**export \[**--password** *password*\] *dictionary***  
+**export** \[**--password** *password*\] *dictionary*  
 Write the whole object of the dictionary to stdout, as JSON: its type,
 its entries (compressed), ACLs, policies, config parameters and the
 rest. **otpme-tool import** reads it back.  

@@ -58,7 +58,7 @@ user can set it in *\~/.otpme/otpme.conf* as well.
 **LOG_LANGUAGE**  
 The language of the log messages (default: **en**).
 
-**USER, **GROUP****  
+**USER**, **GROUP**  
 The system user and group that own the files of OTPme and that the
 daemons run as (default: **otpme** and **otpme**).
 
@@ -124,7 +124,7 @@ damage the index; **otpme-tool index rebuild** builds it again.
 
 ## PostgreSQL
 
-**POSTGRES_PG_CTL_BIN, **POSTGRES_PSQL_BIN**, **POSTGRES_CREATEDB_BIN**, **POSTGRES_CREATEUSER_BIN**, **POSTGRES_PG_ISREADY_BIN****  
+**POSTGRES_PG_CTL_BIN**, **POSTGRES_PSQL_BIN**, **POSTGRES_CREATEDB_BIN**, **POSTGRES_CREATEUSER_BIN**, **POSTGRES_PG_ISREADY_BIN**  
 The PostgreSQL programs (default: **pg_ctl**, **psql**, **createdb**,
 **createuser** and **pg_isready**, found in **PATH**). On Debian
 **pg_ctl** is not in **PATH**: give the full path, e.g.
@@ -161,7 +161,7 @@ writes. Then none of the settings above apply.
 
 ## MySQL
 
-**MYSQLD_BIN, **MYSQL_BIN**, **MYSQL_ADMIN_BIN**, **MYSQL_INSTALL_DB****  
+**MYSQLD_BIN**, **MYSQL_BIN**, **MYSQL_ADMIN_BIN**, **MYSQL_INSTALL_DB**  
 The MySQL programs (default: */usr/sbin/mysqld*, then **mysql**,
 **mysqladmin** and **mysql_install_db**, found in **PATH**).
 
@@ -216,7 +216,7 @@ for one start.
 
 **OBJECT_CACHES**  
 How many objects of a type each process keeps in its own memory, as
-*type***:***count* pairs separated by commas, e.g.
+***type*:*count*** pairs separated by commas, e.g.
 **user:2048,group:512**. When a type is full, the quarter used longest
 ago goes. The defaults: **user** and **token** 10240, **script** 512,
 **dictionary** 128, every other type 1024. A type not named keeps its
@@ -224,7 +224,7 @@ default.
 
 ## Redis
 
-**REDIS_SERVER_BIN, **REDIS_CLI_BIN****  
+**REDIS_SERVER_BIN**, **REDIS_CLI_BIN**  
 The Redis programs (default: **redis-server** and **redis-cli**, found
 in **PATH**). **otpme-tool cache cli** opens **redis-cli**.
 
@@ -244,7 +244,7 @@ What goes when that is full: **lru**, the entries used longest ago
 With **lru**: how many entries Redis looks at to pick one (default:
 **5**).
 
-**REDIS_LFU_LOG_FACTOR, **REDIS_LFU_DECAY_TIME****  
+**REDIS_LFU_LOG_FACTOR**, **REDIS_LFU_DECAY_TIME**  
 With **lfu**: Redis **lfu-log-factor** and **lfu-decay-time** (default:
 **10** and **1**).
 
@@ -294,7 +294,7 @@ fine:
 The largest entry memcached takes (default: **8m**). Make it larger if
 roles or groups with many members grow beyond it.
 
-**MEMCACHED_SOCKET, **MEMCACHED_PIDFILE****  
+**MEMCACHED_SOCKET**, **MEMCACHED_PIDFILE**  
 The socket and the PID file (default:
 */var/run/otpme/sockets/memcached.sock* and
 */var/run/otpme/pidfiles/memcached.pid*). Memcached listens on no TCP or
@@ -328,7 +328,7 @@ Whether the node runs FreeRADIUS (default: **True**).
 **FREERADIUS_BIN**  
 The FreeRADIUS program (default: */usr/sbin/freeradius*).
 
-**FREERADIUS_USER, **FREERADIUS_GROUP****  
+**FREERADIUS_USER**, **FREERADIUS_GROUP**  
 The user and group FreeRADIUS runs as with the module (default:
 **freerad** and **freerad**).
 
@@ -349,7 +349,7 @@ which is slower, and no VLAN is sent. Either way an answer comes from
 the cache only where the client has its auth cache enabled, for its
 **auth_cache_timeout**, see **THE AUTH CACHE** in **otpme-client**(1).
 
-**RADIUS_START_SERVERS, **RADIUS_MAX_SERVERS**, **RADIUS_MIN_SPARE_SERVERS**, **RADIUS_MAX_SPARE_SERVERS****  
+**RADIUS_START_SERVERS**, **RADIUS_MAX_SERVERS**, **RADIUS_MIN_SPARE_SERVERS**, **RADIUS_MAX_SPARE_SERVERS**  
 The thread pool of FreeRADIUS: **start_servers**, **max_servers**,
 **min_spare_servers** and **max_spare_servers** (default: **32**,
 **64**, **8** and **16**).
@@ -370,7 +370,7 @@ follows the master to another node. When a member node comes or goes it
 is reloaded without dropping a connection.
 
 It passes the connections on as they are, LDAPS with the site
-certificate, so the **dc=***client* of a bind DN still picks the access
+certificate, so the **dc=*client*** of a bind DN still picks the access
 group. ldapd sees the address of haproxy, not that of the client.
 Clients can still reach every ldapd directly on its own port, 2026.
 
@@ -399,7 +399,7 @@ node is out after 3 failed checks and back after 2 good ones.
 **HAPROXY_CONNECT_TIMEOUT**  
 How long haproxy waits for a connection to an ldapd (default: **5s**).
 
-**HAPROXY_CLIENT_TIMEOUT, **HAPROXY_SERVER_TIMEOUT****  
+**HAPROXY_CLIENT_TIMEOUT**, **HAPROXY_SERVER_TIMEOUT**  
 How long an idle connection to the client and to the ldapd is kept
 (default: **1h** and **1h**). Generous on purpose: dovecot keeps its
 LDAP connection open between logins, and cutting an idle one only makes
@@ -459,7 +459,7 @@ The files a host or node gets when it joins the realm, and that hostd
 keeps up to date. OTPme writes them; change the paths only to have them
 somewhere else.
 
-**SSL_CERT_FILE, **SSL_KEY_FILE****  
+**SSL_CERT_FILE**, **SSL_KEY_FILE**  
 The certificate of this host or node, issued by the CA of its site, and
 its private key (default: */etc/otpme/ssl/cert.pem* and
 */etc/otpme/ssl/key.pem*). Daemons answer with them, and commands
@@ -541,23 +541,23 @@ global options **--login-use-dns** and **--login-no-dns** override it
 for one command.
 
 **otpme-tool join** always asks DNS, in the domain it is given, else in
-*site***.***realm*, else in the domain of the host: the SRV record for
+***site*.*realm***, else in the domain of the host: the SRV record for
 joind (unless **--joind-uri** names it), else the address of the domain
 itself with port 2024, and the TXT records for the realm and site it is
 not given.
 
 # LOGIN
 
-**VALID_LOGIN_USERS, **DENY_LOGIN_USERS****  
+**VALID_LOGIN_USERS**, **DENY_LOGIN_USERS**  
 Which users may log in on this host, as names separated by commas
-(default: empty, everybody). An entry *name***:***uuid* also matches the
+(default: empty, everybody). An entry ***name*:*uuid*** also matches the
 user with that UUID, so a renamed user stays matched. A user in
 **DENY_LOGIN_USERS** is refused, also when **VALID_LOGIN_USERS** names
 them; with **VALID_LOGIN_USERS** set, everybody else is refused. It
 counts for a login through pam_otpme, and the SSH keys of a refused user
 are not written to their *authorized_keys*.
 
-**ALLOW_DYNAMIC_GROUPS, **DENY_DYNAMIC_GROUPS****  
+**ALLOW_DYNAMIC_GROUPS**, **DENY_DYNAMIC_GROUPS**  
 Which dynamic groups a user gets at login, as names separated by commas
 (default: empty, all). A dynamic group is a group of this host that
 pam_otpme adds the user to: those of the host and those of the login
@@ -577,7 +577,7 @@ own for these three, in *\~/.otpme/signers/* (**add_signer --private**).
 These parameters say whether those count. A disabled signer never
 counts.
 
-**FORCE_TOKEN_SIGNERS, **FORCE_KEY_SCRIPT_SIGNERS**, **FORCE_AGENT_SCRIPT_SIGNERS****  
+**FORCE_TOKEN_SIGNERS**, **FORCE_KEY_SCRIPT_SIGNERS**, **FORCE_AGENT_SCRIPT_SIGNERS**  
 For token signatures, the key script and the agent script (default:
 **True**):
 
@@ -587,7 +587,7 @@ Only the signers of the host count; private signers are ignored.
 **False**  
 A user who has private signers gets them instead of those of the host.
 
-*user\[**,***user*\]...*  
+*user*\[**,*user***\]...  
 Only the signers of the host count for these users; every other user
 gets their private signers, where they have any.
 
@@ -603,7 +603,7 @@ script of a user and a push script also get the other groups of the
 user. A share script and the vote script run as the user and group
 below.
 
-**ROOT_SCRIPT_USER, **ROOT_SCRIPT_GROUP****  
+**ROOT_SCRIPT_USER**, **ROOT_SCRIPT_GROUP**  
 The user and group a script runs as instead of root or
 **USER**/**GROUP** (default: **nobody** and **nogroup**).
 
@@ -649,7 +649,7 @@ with **LOG_RESEND:** and the time it was written.
 Send the audit log to **AUDIT_LOG_SERVER** (default: **False**).
 
 **AUDIT_LOG_SERVER**  
-The syslog server, as *host***:***port* for TCP, or as *host* for UDP on
+The syslog server, as ***host*:*port*** for TCP, or as *host* for UDP on
 port 514 (default: none). TLS and RELP need the port.
 
 **AUDIT_LOG_PROTOCOL**  
@@ -690,7 +690,7 @@ to their files. The parameters work like those of **AUDIT LOG**:
 Send the log to **SYSLOG_SERVER** (default: **False**).
 
 **SYSLOG_SERVER**  
-*host***:***port* for TCP, or *host* for UDP on port 514 (default:
+***host*:*port*** for TCP, or *host* for UDP on port 514 (default:
 none). TLS and RELP need the port.
 
 **SYSLOG_PROTOCOL**  

@@ -135,7 +135,7 @@ On the host, confd keeps the job logs for 90 days.
 .SH JOB TYPES
 Each job has a job type and an action.
 The job type is also the signer type the host checks against.
-Arguments are given with \fB\-\-arg\fR \fIname\fB=\fIvalue\fR.
+Arguments are given with \fB\-\-arg\fR \f(BIname\fB=\f(BIvalue\fR.
 A value with commas is a list.
 .TP
 .B sw_mgmt
@@ -179,14 +179,14 @@ Update the package lists.
 Manage the signers of the host.
 .RS
 .TP
-.B show_signer \fR[\fBtype=\fIsigner_type\fR]
+\fBshow_signer\fR [\fBtype=\f(BIsigner_type\fR]
 Show the signers the host holds, or only those of one type.
 The answer is the output of the job, so
 .B otpme\-deploy results
 shows it.
 This action changes nothing.
 .TP
-.B add_signer type=\fIsigner_type\fB signer=\fIobject_id\fR [\fBtags=\fItag1,tag2\fR] [\fBverify_token_opts=\fIyes\fR] [\fBallow_throwaway_key=\fIyes\fR]
+\fBadd_signer type=\f(BIsigner_type\fB signer=\f(BIobject_id\fR [\fBtags=\f(BItag1,tag2\fR] [\fBverify_token_opts=\f(BIyes\fR] [\fBallow_throwaway_key=\f(BIyes\fR]
 Add a system-wide signer. \fIobject_id\fR is the OID of a user or role, for example \fBrole|example.org/berlin/sw\-admins\fR.
 The signer is pinned to the current key of the user or role.
 If the signer exists already, nothing changes.
@@ -206,12 +206,12 @@ This happens with a user or a role that was just created, and it sorts itself ou
 A name nobody ever had is a different thing, and \fBadd\fR says so right away instead of letting every host refuse the job for ever.
 .RE
 .TP
-.B del_signer type=\fIsigner_type\fB signer=\fIobject_id\fR [\fBremove_last_own_signer=\fIyes\fR]
+\fBdel_signer type=\f(BIsigner_type\fB signer=\f(BIobject_id\fR [\fBremove_last_own_signer=\f(BIyes\fR]
 Remove a signer. If there is no such signer, nothing changes.
 .br
 The user or role does not have to exist any more \(em see below.
 .TP
-.B update_signer type=\fIsigner_type\fB signer=\fIobject_id\fR [\fBremove_gone=\fIyes\fR] [\fBremove_last_own_signer=\fIyes\fR] [\fBverify_token_opts=\fIyes\fR] [\fBallow_throwaway_key=\fIyes\fR]
+\fBupdate_signer type=\f(BIsigner_type\fB signer=\f(BIobject_id\fR [\fBremove_gone=\f(BIyes\fR] [\fBremove_last_own_signer=\f(BIyes\fR] [\fBverify_token_opts=\f(BIyes\fR] [\fBallow_throwaway_key=\f(BIyes\fR]
 Pin the current key of the user or role again, for example after a key change.
 .RS
 .PP
@@ -251,7 +251,7 @@ These actions do the same as \fBotpme\-tool show_signer\fR, \fBadd_signer\fR, \f
 Manage systemd services.
 .RS
 .TP
-.B start\fR|\fBstop\fR|\fBrestart\fR|\fBenable\fR|\fBdisable\fR \fBunit=\fIunit\fR
+\fBstart\fR|\fBstop\fR|\fBrestart\fR|\fBenable\fR|\fBdisable\fR \fBunit=\f(BIunit\fR
 Run the action on a systemd unit.
 .RE
 .TP
@@ -259,7 +259,7 @@ Run the action on a systemd unit.
 Manage files.
 .RS
 .TP
-.B put_file path=\fIpath\fR \fB\-\-file\fR \fIsource_file\fR [\fBmode=\fImode\fR] [\fBowner=\fIuser\fR] [\fBgroup=\fIgroup\fR]
+\fBput_file path=\f(BIpath\fR \fB\-\-file\fR \fIsource_file\fR [\fBmode=\f(BImode\fR] [\fBowner=\f(BIuser\fR] [\fBgroup=\f(BIgroup\fR]
 Write a file on the host.
 The content comes from \fIsource_file\fR.
 .TP
@@ -289,7 +289,7 @@ That is the package manager's work, see \fBsw_mgmt dist_upgrade\fR.
 Hand out a shell on the host.
 .RS
 .TP
-.B shell \fR[\fBuser=\fIuser\fR] [\fBcommand=\fIcommand\fR] [\fBpubkey=\fIkey\fR]
+\fBshell\fR [\fBuser=\f(BIuser\fR] [\fBcommand=\f(BIcommand\fR] [\fBpubkey=\f(BIkey\fR]
 The host connects out to the master node of its site and speaks SSH through it.
 Without \fBpubkey\fR the host allows the keys of its own \fBauthorized_keys\fR for \fIuser\fR.
 With \fBpubkey\fR it allows that one key and no other, and then the signature of the job is the only thing that gets somebody in.
@@ -316,13 +316,13 @@ Those two cannot take the host over, but they can stop it doing its work.
 So add signers only for users you trust with root access on that host.
 .SH COMMANDS
 .TP
-.B add \fR[\fB\-\-host\fR \fIhost1,host2\fR] [\fB\-\-unit\fR \fIunit\fR] [\fB\-\-recursive\fR] [\fB\-\-role\fR \fIrole1,role2\fR] [\fB\-\-group\fR \fIgroup1,group2\fR] [\fB\-\-arg\fR \fIname=value\fR]... [\fB\-\-file\fR \fIpath\fR] [\fB\-\-key\fR \fIpath\fR] [\fB\-\-expiry\fR \fItime\fR] \fIjob_type\fR \fIaction\fR
+\fBadd\fR [\fB\-\-host\fR \fIhost1,host2\fR] [\fB\-\-unit\fR \fIunit\fR] [\fB\-\-recursive\fR] [\fB\-\-role\fR \fIrole1,role2\fR] [\fB\-\-group\fR \fIgroup1,group2\fR] [\fB\-\-arg\fR \fIname=value\fR]... [\fB\-\-file\fR \fIpath\fR] [\fB\-\-key\fR \fIpath\fR] [\fB\-\-expiry\fR \fItime\fR] \fIjob_type\fR \fIaction\fR
 Create a job and sign it.
 You need at least one of \fB\-\-host\fR, \fB\-\-unit\fR, \fB\-\-role\fR or \fB\-\-group\fR. They can be combined, and a host named twice is taken once.
 The command fails if a required argument is missing, if an argument is unknown, or if you may not create jobs for one of the hosts.
 A \fBsigner_mgmt\fR job also fails here when it names a signer that is not a user or a role, or one that does not exist at all.
 .TP
-.B list \fR[\fB\-\-host\fR \fIhost\fR] [\fB\-\-failed\fR] [\fB\-\-pending\fR]
+\fBlist\fR [\fB\-\-host\fR \fIhost\fR] [\fB\-\-failed\fR] [\fB\-\-pending\fR]
 List jobs. Shows the time, the job type and action, the arguments, the number of hosts, the signer and the state of the job.
 The colour says how the job stands:
 grey when the job was taken back,
@@ -347,7 +347,7 @@ It changes nothing about a job that worked or one that is still running.
 Show a job and the state on each host: \fBok\fR, \fBfailed\fR, \fBrefused\fR or \fBpending\fR.
 A \fBrefused\fR line is only shown when there is one (see \fBRefused jobs\fR).
 .TP
-.B results \fR[\fB\-\-host\fR \fIhost\fR] [\fB\-\-failed\fR] [\fB\-\-watch\fR] [\fIjob_uuid\fR]
+\fBresults\fR [\fB\-\-host\fR \fIhost\fR] [\fB\-\-failed\fR] [\fB\-\-watch\fR] [\fIjob_uuid\fR]
 Show the results of a job, or all results of a host.
 With both, the results of that host for that job.
 The header line of each result names the state, in the same colours as \fBlist\fR: green when the job worked, yellow when the host refused it, red when it ran and did not work.
@@ -463,7 +463,7 @@ Says the status and the exit code, and in \fBordered_by\fR the token the job was
 The actor is the host: it reports about itself, nobody is logged in there.
 Warning level when the job did not work.
 .TP
-.B job_acked \fR/\fB job_cancelled
+\fBjob_acked\fR / \fBjob_cancelled\fR
 Somebody acknowledged a failed job, or took a job back.
 .PP
 On each host:

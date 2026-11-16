@@ -486,10 +486,6 @@ msgstr ""
 msgid "Admin access enabled"
 msgstr "Accès administrateur activé"
 
-#: templates/base.html:35
-msgid "Logged in user"
-msgstr "Utilisateur connecté"
-
 #: templates/base.html:39
 msgid "Logout"
 msgstr "Déconnexion"
@@ -1348,10 +1344,6 @@ msgstr "Enregistrer"
 msgid "Device Tokens"
 msgstr "Jetons d'appareil"
 
-#: templates/settings.html:210
-msgid "e.g. my-phone"
-msgstr "par ex. mon-téléphone"
-
 #: templates/settings.html:211
 msgid "Add Device Token"
 msgstr "Ajouter un jeton d'appareil"
@@ -1395,10 +1387,6 @@ msgstr ""
 msgid "Passkey Name"
 msgstr "Nom de la clé d'accès"
 
-#: templates/settings.html:228
-msgid "e.g. iphone, laptop, work-pc"
-msgstr "par ex. iphone, ordinateur-portable, pc-travail"
-
 #: templates/settings.html:229
 msgid "Add Passkey"
 msgstr "Ajouter une clé d'accès"
@@ -1406,11 +1394,6 @@ msgstr "Ajouter une clé d'accès"
 #: templates/settings.html:233
 msgid "Existing Passkeys"
 msgstr "Clés d'accès existantes"
-
-#. AI-generated
-#: templates/settings.html:242
-msgid "Security Keys"
-msgstr "Clés de sécurité"
 
 #. AI-generated
 #: templates/settings.html:243
@@ -1426,11 +1409,6 @@ msgstr ""
 #: templates/settings.html:245
 msgid "Key Name"
 msgstr "Nom de la clé"
-
-#. AI-generated
-#: templates/settings.html:246
-msgid "e.g. yubikey, backup key"
-msgstr "par ex. yubikey, clé de secours"
 
 #. AI-generated
 #: templates/settings.html:247
@@ -1617,6 +1595,21 @@ msgstr ""
 #~ msgstr ""
 #~ "Scannez ce code avec l'application tiqr. En attente de votre téléphone..."
 
+#~ msgid "Logged in user"
+#~ msgstr "Utilisateur connecté"
+
+#~ msgid "e.g. my-phone"
+#~ msgstr "par ex. mon-téléphone"
+
+#~ msgid "e.g. iphone, laptop, work-pc"
+#~ msgstr "par ex. iphone, ordinateur-portable, pc-travail"
+
+#~ msgid "Security Keys"
+#~ msgstr "Clés de sécurité"
+
+#~ msgid "e.g. yubikey, backup key"
+#~ msgstr "par ex. yubikey, clé de secours"
+
 #: views.py templates/base.html
 msgid ""
 "This site is in maintenance. Nothing can be changed right now. Please try "
@@ -1652,3 +1645,527 @@ msgid ""
 msgstr ""
 "Si le lien de votre e-mail a expiré d'ici là, veuillez en demander un "
 "nouveau."
+
+#: views.py
+msgid "Failed to list authenticator apps."
+msgstr "Échec de l'affichage des applications d'authentification."
+
+#: views.py
+msgid "Failed to load login token options."
+msgstr "Échec du chargement des options du jeton de connexion."
+
+#: templates/settings.html views.py
+msgid "Failed to start authenticator app setup."
+msgstr ""
+"Échec du démarrage de la configuration de l'application "
+"d'authentification."
+
+#: views.py
+msgid "No authenticator app setup in progress."
+msgstr "Aucune configuration d'application d'authentification en cours."
+
+#: views.py
+msgid "Code is required."
+msgstr "Le code est requis."
+
+#: templates/settings.html views.py
+msgid "Failed to verify the code."
+msgstr "Échec de la vérification du code."
+
+#: views.py
+msgid "Invalid code. Please try again."
+msgstr "Code invalide. Veuillez réessayer."
+
+#: templates/settings.html views.py
+msgid "Failed to delete authenticator app."
+msgstr "Échec de la suppression de l'application d'authentification."
+
+#: templates/settings.html views.py
+msgid "Failed to update authenticator app."
+msgstr "Échec de la mise à jour de l'application d'authentification."
+
+#: views.py
+msgid "New PIN is required."
+msgstr "Le nouveau code PIN est requis."
+
+#: views.py
+msgid "Failed to load settings."
+msgstr "Échec du chargement des paramètres."
+
+#: views.py
+msgid "Full name"
+msgstr "Nom complet"
+
+#: views.py
+msgid "First name"
+msgstr "Prénom"
+
+#: views.py
+msgid "Last name"
+msgstr "Nom"
+
+#: views.py
+msgid "Display name"
+msgstr "Nom d'affichage"
+
+#: views.py
+msgid "Initials"
+msgstr "Initiales"
+
+#: views.py
+msgid "E-mail"
+msgstr "E-mail"
+
+#: views.py
+msgid "Phone"
+msgstr "Téléphone"
+
+#: views.py
+msgid "Mobile phone"
+msgstr "Téléphone mobile"
+
+#: views.py
+msgid "Home phone"
+msgstr "Téléphone personnel"
+
+#: views.py
+msgid "Fax"
+msgstr "Fax"
+
+#: views.py
+msgid "Title"
+msgstr "Fonction"
+
+#: views.py
+msgid "Organization"
+msgstr "Organisation"
+
+#: views.py
+msgid "Organizational unit"
+msgstr "Unité d'organisation"
+
+#: views.py
+msgid "Department"
+msgstr "Service"
+
+#: views.py
+msgid "Employee number"
+msgstr "Matricule"
+
+#: views.py
+msgid "Manager"
+msgstr "Responsable"
+
+#: views.py
+msgid "Room"
+msgstr "Bureau"
+
+#: views.py
+msgid "Street"
+msgstr "Rue"
+
+#: views.py
+msgid "Postal code"
+msgstr "Code postal"
+
+#: views.py
+msgid "Location"
+msgstr "Localité"
+
+#: views.py
+msgid "State"
+msgstr "Région"
+
+#: views.py
+msgid "Website"
+msgstr "Site web"
+
+#: views.py
+msgid "Preferred language"
+msgstr "Langue préférée"
+
+#: views.py
+msgid "Description"
+msgstr "Description"
+
+#: views.py
+msgid "User ID"
+msgstr "ID utilisateur"
+
+#: views.py
+msgid "Group ID"
+msgstr "ID de groupe"
+
+#: views.py
+msgid "Home directory"
+msgstr "Répertoire personnel"
+
+#: views.py
+msgid "Login shell"
+msgstr "Shell de connexion"
+
+#: views.py
+msgid "UUID"
+msgstr "UUID"
+
+#: views.py
+msgid "Created"
+msgstr "Créé"
+
+#: views.py
+msgid "Last modified"
+msgstr "Dernière modification"
+
+#: views.py
+msgid "You are not allowed to change this."
+msgstr "Vous n'êtes pas autorisé à modifier ceci."
+
+#: views.py
+msgid "A value is too long."
+msgstr "Une valeur est trop longue."
+
+#: views.py
+msgid "Too many values."
+msgstr "Trop de valeurs."
+
+#: templates/profile.html views.py
+msgid "The photo must be a JPEG image."
+msgstr "La photo doit être une image JPEG."
+
+#: templates/profile.html views.py
+msgid "The photo is too large."
+msgstr "La photo est trop volumineuse."
+
+#: templates/profile.html views.py
+msgid "Profile"
+msgstr "Profil"
+
+#: templates/profile.html views.py
+msgid "Failed to load profile."
+msgstr "Échec du chargement du profil."
+
+#: views.py
+msgid "Missing 'attribute' field."
+msgstr "Champ 'attribute' manquant."
+
+#: views.py
+msgid "Missing 'values' field."
+msgstr "Champ 'values' manquant."
+
+#: templates/profile.html views.py
+msgid "Failed to save profile."
+msgstr "Échec de l'enregistrement du profil."
+
+#: views.py
+msgid "Missing 'photo' field."
+msgstr "Champ 'photo' manquant."
+
+#: templates/profile.html views.py
+msgid "Failed to save photo."
+msgstr "Échec de l'enregistrement de la photo."
+
+#: views.py
+msgid "Failed to list sessions."
+msgstr "Échec de l'affichage des sessions."
+
+#: views.py
+msgid "session_uuid is required."
+msgstr "session_uuid est requis."
+
+#: templates/settings.html views.py
+msgid "Failed to end session."
+msgstr "Échec de la fermeture de la session."
+
+#: templates/settings.html views.py
+msgid "Session ended."
+msgstr "Session fermée."
+
+#: views.py
+msgid "Re-deploying your login token is not allowed."
+msgstr "Le redéploiement de votre jeton de connexion n'est pas autorisé."
+
+#: templates/base.html
+msgid "Your profile"
+msgstr "Votre profil"
+
+#: templates/deploy.html templates/recover_complete.html
+msgid "Please enter a name for your security key."
+msgstr "Veuillez saisir un nom pour votre clé de sécurité."
+
+#: templates/deploy.html templates/recover_complete.html
+msgid "e.g. my security key"
+msgstr "ex. ma clé de sécurité"
+
+#: templates/login.html templates/recover.html templates/recover_invalid.html
+msgid "Logo"
+msgstr "Logo"
+
+#: templates/profile.html
+msgid "Not set"
+msgstr "Non défini"
+
+#: templates/profile.html
+msgid "Add value"
+msgstr "Ajouter une valeur"
+
+#: templates/profile.html
+msgid "Saved."
+msgstr "Enregistré."
+
+#: templates/profile.html
+msgid "Photo saved."
+msgstr "Photo enregistrée."
+
+#: templates/profile.html
+msgid "Photo removed."
+msgstr "Photo supprimée."
+
+#: templates/profile.html
+msgid "Please choose a photo first."
+msgstr "Veuillez d'abord choisir une photo."
+
+#: templates/profile.html
+msgid "Remove your photo?"
+msgstr "Supprimer votre photo ?"
+
+#: templates/profile.html
+#, python-brace-format
+msgid "The photo is {photo_dimensions}, photos here are {dimensions}. Resize it?"
+msgstr ""
+"La photo fait {photo_dimensions}, les photos ici font {dimensions}. La "
+"redimensionner ?"
+
+#: templates/profile.html
+#, python-brace-format
+msgid "The photo must be {dimensions}."
+msgstr "La photo doit faire {dimensions}."
+
+#: templates/profile.html
+msgid "Photo"
+msgstr "Photo"
+
+#: templates/profile.html
+msgid "Your photo"
+msgstr "Votre photo"
+
+#: templates/profile.html
+msgid "No photo"
+msgstr "Pas de photo"
+
+#: templates/profile.html
+msgid "Change photo"
+msgstr "Changer de photo"
+
+#: templates/profile.html
+msgid "Upload"
+msgstr "Téléverser"
+
+#: templates/profile.html
+msgid "Your Data"
+msgstr "Vos données"
+
+#: templates/profile.html
+msgid ""
+"The details stored for your account, as applications that use the "
+"directory (LDAP) see them."
+msgstr ""
+"Les informations enregistrées pour votre compte, telles que les voient "
+"les applications qui utilisent l'annuaire (LDAP)."
+
+#: templates/settings.html
+msgid ""
+"Your new token was created. It can take up to a minute before you can "
+"sign in with it."
+msgstr ""
+"Votre nouveau jeton a été créé. Il peut s'écouler jusqu'à une minute "
+"avant que vous puissiez vous connecter avec."
+
+#: templates/settings.html
+msgid "Failed to load authenticator apps."
+msgstr "Échec du chargement des applications d'authentification."
+
+#: templates/settings.html
+msgid "No authenticator apps set up yet."
+msgstr "Aucune application d'authentification configurée pour l'instant."
+
+#: templates/settings.html
+msgid "Preparing setup..."
+msgstr "Préparation de la configuration..."
+
+#: templates/settings.html
+msgid "Verifying code..."
+msgstr "Vérification du code..."
+
+#: templates/settings.html
+msgid "Authenticator app added."
+msgstr "Application d'authentification ajoutée."
+
+#: templates/settings.html
+#, python-brace-format
+msgid "Remove authenticator app \"{name}\"?"
+msgstr "Supprimer l'application d'authentification « {name} » ?"
+
+#: templates/settings.html
+msgid "Authenticator app removed."
+msgstr "Application d'authentification supprimée."
+
+#: templates/settings.html
+#, python-brace-format
+msgid "You have the maximum number of tokens of this type ({max})."
+msgstr "Vous avez atteint le nombre maximal de jetons de ce type ({max})."
+
+#: templates/settings.html
+#, python-brace-format
+msgid ""
+"New PIN for \"{name}\". The app keeps working, sign in with the new PIN "
+"followed by its code."
+msgstr ""
+"Nouveau code PIN pour « {name} ». L'application continue de fonctionner, "
+"connectez-vous avec le nouveau code PIN suivi de son code."
+
+#: templates/settings.html
+msgid "Confirmed. Press the button again to continue."
+msgstr "Confirmé. Appuyez à nouveau sur le bouton pour continuer."
+
+#: templates/settings.html
+msgid "Failed to load sessions."
+msgstr "Échec du chargement des sessions."
+
+#: templates/settings.html
+msgid "No active sessions."
+msgstr "Aucune session active."
+
+#: templates/settings.html
+msgid "This session"
+msgstr "Cette session"
+
+#: templates/settings.html
+msgid "End session"
+msgstr "Fermer la session"
+
+#: templates/settings.html
+msgid ""
+"End this session? Applications you signed in to with it will be signed "
+"out."
+msgstr ""
+"Fermer cette session ? Les applications auxquelles vous vous êtes "
+"connecté avec elle seront déconnectées."
+
+#: templates/settings.html
+msgid "Login:"
+msgstr "Connexion :"
+
+#: templates/settings.html
+msgid "Expires:"
+msgstr "Expire :"
+
+#: templates/settings.html
+msgid "Client:"
+msgstr "Client :"
+
+#: templates/settings.html
+msgid "Token:"
+msgstr "Jeton :"
+
+#: templates/settings.html
+msgid "Loading your settings..."
+msgstr "Chargement de vos paramètres..."
+
+#: templates/settings.html
+msgid "e.g. my phone, work laptop"
+msgstr "ex. mon téléphone, ordinateur portable professionnel"
+
+#: templates/settings.html
+msgid "Token Type"
+msgstr "Type de jeton"
+
+#: templates/settings.html
+msgid "Authenticator app (TOTP)"
+msgstr "Application d'authentification (TOTP)"
+
+#: templates/settings.html
+msgid "TOTP"
+msgstr "TOTP"
+
+#: templates/settings.html
+msgid "Scan this code with your authenticator app:"
+msgstr "Scannez ce code avec votre application d'authentification :"
+
+#: templates/settings.html
+msgid "TOTP code"
+msgstr "Code TOTP"
+
+#: templates/settings.html
+msgid "This code is shown only once. Scan it now."
+msgstr "Ce code n'est affiché qu'une seule fois. Scannez-le maintenant."
+
+#: templates/settings.html
+#, python-brace-format
+msgid "You have the maximum number of device tokens for this role ({max})."
+msgstr ""
+"Vous avez atteint le nombre maximal de jetons d'appareil pour ce rôle "
+"({max})."
+
+#: templates/settings.html
+msgid "e.g. my iPhone, work laptop"
+msgstr "ex. mon iPhone, ordinateur portable professionnel"
+
+#: templates/settings.html
+msgid "Security Keys (FIDO2)"
+msgstr "Clés de sécurité (FIDO2)"
+
+#: templates/settings.html
+msgid "e.g. my YubiKey, backup key"
+msgstr "ex. ma YubiKey, clé de secours"
+
+#: templates/settings.html
+msgid ""
+"Sign in with your PIN followed by the six-digit code from an "
+"authenticator app (e.g. FreeOTP, Aegis, Google Authenticator)."
+msgstr ""
+"Connectez-vous avec votre code PIN suivi du code à six chiffres d'une "
+"application d'authentification (ex. FreeOTP, Aegis, Google "
+"Authenticator)."
+
+#: templates/settings.html
+msgid "Add Authenticator App"
+msgstr "Ajouter une application d'authentification"
+
+#: templates/settings.html
+msgid "Scan this code with your authenticator app, or enter the secret by hand."
+msgstr ""
+"Scannez ce code avec votre application d'authentification ou saisissez le"
+" secret à la main."
+
+#: templates/settings.html
+msgid ""
+"Remember the PIN: you sign in with the PIN followed by the code from the "
+"app. Both are shown only once."
+msgstr ""
+"Retenez le code PIN : vous vous connectez avec le code PIN suivi du code "
+"de l'application. Les deux ne sont affichés qu'une seule fois."
+
+#: templates/settings.html
+msgid "Code from the app"
+msgstr "Code de l'application"
+
+#: templates/settings.html
+msgid "Verify"
+msgstr "Vérifier"
+
+#: templates/settings.html
+msgid "Authenticator Apps"
+msgstr "Applications d'authentification"
+
+#: templates/settings.html
+msgid "Active Sessions"
+msgstr "Sessions actives"
+
+#: templates/settings.html
+msgid ""
+"Where your account is currently logged in on this site. Ending a session "
+"also ends what it opened (applications you signed in to with it)."
+msgstr ""
+"Les endroits où votre compte est actuellement connecté sur ce site. "
+"Fermer une session ferme aussi ce qu'elle a ouvert (les applications "
+"auxquelles vous vous êtes connecté avec elle)."

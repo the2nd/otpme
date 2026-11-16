@@ -36,7 +36,7 @@ a login runs — see **otpme**(7).
 
 ## Client Management
 
-**add \[**--enable-oidc**\] \[**--scopes** *s1,s2*\] \[**--add-scopes** *s1,s2*\] \[**--no-default-scopes**\] *client* \[*address*\]**  
+**add** \[**--enable-oidc**\] \[**--scopes** *s1,s2*\] \[**--add-scopes** *s1,s2*\] \[**--no-default-scopes**\] *client* \[*address*\]  
 Create a client.  
 It is created in the **clients** unit of your site; a path puts it into
 another unit, and **move** takes it there afterwards. A secret of 32
@@ -65,7 +65,7 @@ them out, is in **otpme-scope**(1).
 Needs the ACL **add:client** on the unit it is created in, not on the
 client — there is none yet.
 
-**del \[**--no-trash**\] *client***  
+**del** \[**--no-trash**\] *client*  
 Delete a client. It goes to the trash, from where **otpme-trash**(1) can
 bring it back; **--no-trash** deletes it right away.  
 The passwords of the client stay; the question says how many there
@@ -74,7 +74,7 @@ Needs the ACL **delete:object** on the client, or **delete:client** on
 the unit it sits in.  
 A client a site brings with it cannot be deleted.
 
-**show \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--scope-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*client*\]**  
+**show** \[**-a**\] \[**-z** *N*\] \[**--fields** *F1,F2*\] \[**--limit** *N*\] \[**--policy-limit** *N*\] \[**--scope-limit** *N*\] \[**--sort-by** *field*\] \[**--reverse**\] \[**--raw**\] \[**--csv**\] \[**--csv-sep** *sep*\] \[*client*\]  
 Without a client: a table of all of them, with their unit, their access
 group, their roles and tokens, their scopes, whether 802.1X and OIDC are
 on, whether logins are limited, their addresses, the auth cache and its
@@ -115,7 +115,7 @@ whoever may see it.
 
 <!-- -->
 
-**show_oid \[**--full**\] *client***  
+**show_oid** \[**--full**\] *client*  
 Show the OID of the client: **client\|\<realm\>/\<site\>/\<name\>**.
 With **--full** the full OID, which names the unit as well:
 **client\|\<realm\>/\<site\>/\<unit_path\>/\<name\>**.  
@@ -127,7 +127,7 @@ Needs the ACL **view_public:object**.
 
 <!-- -->
 
-**list \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]**  
+**list** \[**-a**\] \[**--attribute** *attribute*\] \[*pattern*\]  
 List the client names, and with a pattern only those that match it, see
 **SELECTING OBJECTS** in **otpme**(1). You get the clients you may
 change; **-a** adds those you may only look at.  
@@ -152,7 +152,7 @@ what an LDAP client puts in front of the realm as a **dc=**, so a rename
 is a change on the other side as well.  
 Needs the ACL **rename:object**.
 
-**move \[**--keep-acls**\] *client* *unit***  
+**move** \[**--keep-acls**\] *client* *unit*  
 Move the client into another unit. Its ACLs stay as they are, unless
 **enable_acl_inheritance** (below) was switched on for it: then the
 default ACLs of the old unit are taken away and those of the new one are
@@ -163,7 +163,7 @@ any case.
 Re-index the object to fix potential index problems.  
 Needs the ACL **touch**.
 
-**auto_disable \[**-u**\] *client* *time***  
+**auto_disable** \[**-u**\] *client* *time*  
 Set auto-disable time. It is either a relative time with a leading
 **+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
 The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
@@ -191,9 +191,9 @@ Needs the ACL **edit:accessgroup**.
 
 ## Who May Log In
 
-A token is named by its path, *user***/***token*. A role is named by its
+A token is named by its path, ***user*/*token***. A role is named by its
 name, which is looked for in the site of the client, or as
-*site***/***role* to take one from another site of the realm.
+***site*/*role*** to take one from another site of the realm.
 
 **limit_logins *client***  
 From now on let only the tokens of this client in.  
@@ -209,7 +209,7 @@ roles of the client stay as they are and stop deciding anything.
 This is how a client is created.  
 Needs the ACL **unlimit_logins**.
 
-**add_token \[**--skip-portal-token**\] *client* *token_path* \[*token_options*\]**  
+**add_token** \[**--skip-portal-token**\] *client* *token_path* \[*token_options*\]  
 Put a token into the client.  
 With limited logins this is what lets it in; without them it decides
 nothing.  
@@ -226,7 +226,7 @@ client it was assigned to. Where a signed assignment does mean something
 is on a role, a group, a host or a node.  
 Needs the ACL **add:token**.
 
-**remove_token \[**--skip-portal-token**\] *client* *token_path***  
+**remove_token** \[**--skip-portal-token**\] *client* *token_path*  
 Take the token out of the client. A UUID is taken as well, which is how
 a reference to a token that is gone is cleared out.  
 If the token is the SSO token of a portal, the tokens the portal manages
@@ -234,7 +234,7 @@ are removed with it; **--skip-portal-token** removes only the given
 token.  
 Needs the ACL **remove:token**.
 
-**list_tokens \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] \[*client*\]**  
+**list_tokens** \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] \[*client*\]  
 List the tokens of the client, disabled ones included.  
 **--return-type** selects what is printed per token; the default is the
 path. **--token-types** lists only tokens of the given types, for
@@ -400,7 +400,7 @@ talking about the same person.
 For **pairwise** the site needs that secret, see **otpme-site**(1).  
 Needs the ACL **edit:oidc_subject_type**.
 
-**oidc_sector_identifier_uri \[**--validate**\] \[**--clear**\] *client* \[*uri*\]**  
+**oidc_sector_identifier_uri** \[**--validate**\] \[**--clear**\] *client* \[*uri*\]  
 The URI that groups several applications into one sector, so they get
 the same pairwise identifiers.  
 It has to be **https** and name a host. **--validate** fetches it right
@@ -408,7 +408,7 @@ away and checks that every registered redirect URI is in it; without
 that the check waits until a token is signed. **--clear** removes it.  
 Needs the ACL **edit:oidc_sector_identifier_uri**.
 
-**oidc_backchannel_logout_uri \[**--clear**\] *client* \[*uri*\]**  
+**oidc_backchannel_logout_uri** \[**--clear**\] *client* \[*uri*\]  
 Where this application is told that the user has signed out.  
 When a session ends, OTPme sends every application a signed message,
 from server to server, so each of them can end its own session as well —
@@ -449,7 +449,7 @@ For a lab application with a self-signed certificate. In production pin
 the CA instead, with **oidc_backchannel_ca_cert** below.  
 Needs the ACL **disable:oidc_backchannel_tls_verify**.
 
-**oidc_backchannel_ca_cert \[**--clear**\] *client* *ca_cert_file***  
+**oidc_backchannel_ca_cert** \[**--clear**\] *client* *ca_cert_file*  
 Verify that certificate against this CA bundle instead of the trust
 store of the system.  
 The file is read here and has to be PEM. **--clear** removes it, and the
@@ -489,7 +489,7 @@ Needs the ACL **delete:oidc_response_type**.
 List them.  
 Needs the ACL **view:oidc_response_types**.
 
-**find_scopes \[**--return-type** *TYPE*\] \[*client*\]**  
+**find_scopes** \[**--return-type** *TYPE*\] \[*client*\]  
 The other direction: which scopes hold this client, i.e. what it may ask
 for. Disabled ones are listed too, and the roles of the client are not
 followed.  
@@ -571,7 +571,7 @@ Passwords can belong to the client, for example the admin password of
 the application, see **otpme-pass**(1). Each password decides itself
 whether you may see it.
 
-**find_passwords \[**--return-type** *TYPE*\] *client***  
+**find_passwords** \[**--return-type** *TYPE*\] *client*  
 The password objects that belong to the client.
 
 **show_password *client* \[*entry*\]**  
@@ -633,7 +633,7 @@ Remove a policy from the client.
 Needs the ACL **remove:policy**, and that one verbatim: a plain
 **remove** does not cover it.
 
-**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *client***  
+**list_policies** \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *client*  
 List the policies attached to the client, the disabled ones too, marked
 **(disabled)**. Use **--return-type** to select the attribute returned
 (**name**, **read_oid**, **full_oid**, **uuid**). Use **--policy-types**
@@ -698,7 +698,7 @@ names in **force_site_config_parameters,** and then its own value wins
 
 Which parameters a client takes is in **CONFIG PARAMETERS** below.
 
-**config \[**-d**\] \[**-a**\] *client* *parameter* \[*value*\]**  
+**config** \[**-d**\] \[**-a**\] *client* *parameter* \[*value*\]  
 Set a parameter on the client.
 
 **-d**  
@@ -713,12 +713,12 @@ what is there.
 Without a *value* the parameter is set to its default, which is not the
 same as leaving it unset: the value then stands on the client and
 nothing above it is read any more.  
-The ACL is per parameter, **set:config:***parameter*.
+The ACL is per parameter, **set:config:*parameter***.
 
 **show_config *client* \[*parameter*\]**  
 The config parameters set on the client itself, or only the one named.  
 Nothing is shown for a parameter that the client gets from a unit or
-from the site, and nothing for one whose ACL **view:config:***parameter*
+from the site, and nothing for one whose ACL **view:config:*parameter***
 you do not hold. The settings of the client — its secret, its addresses,
 its OIDC registration — are not config parameters: **show** and
 **export** are where those are.
@@ -727,7 +727,7 @@ its OIDC registration — are not config parameters: **show** and
 What the parameter comes to for this client, once the client, its units
 and its site have been looked at. So this answers what applies, where
 **show_config** answers what was set here.  
-Needs the ACL **view:config:***parameter*, the same one that opens it in
+Needs the ACL **view:config:*parameter***, the same one that opens it in
 **show_config**.
 
 **description *client* \[*description*\]**  
@@ -735,7 +735,7 @@ Set the description. Without one OTPme asks and offers the current text
 for editing.  
 Needs the ACL **edit:description**.
 
-**info \[**--language** *LANG*\] *client* \[*info*\]**  
+**info** \[**--language** *LANG*\] *client* \[*info*\]  
 Set free-form info text. If *info* is omitted, the current text is
 opened in the editor named by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note about
@@ -745,13 +745,13 @@ nothing shows the info of a client, so for a client it stays a note
 either way.  
 Needs the ACL **edit:info**.
 
-**dump_info \[**--language** *LANG*\] *client***  
+**dump_info** \[**--language** *LANG*\] *client*  
 Print the info text, of that language or the administrator's own.  
 Needs the ACL **view:info**.
 
 ## Export and Cleanup
 
-**export \[**--password** *password*\] *client***  
+**export** \[**--password** *password*\] *client*  
 Write the whole object of the client to stdout, as JSON.  
 Without **--password** it is written as it is, in clear — and that
 includes the secret. With one, a key is derived from that password and
