@@ -1461,9 +1461,14 @@ are offered is decided by `sso_allow_fido2_deploy`, `sso_allow_totp_deploy`
 #### The User Gets the SSO Token by the Account Recovery
 
 You do not have to add the SSO token yourself. The login page of the
-portal has a link "Can't sign in?". There a user asks for a mail, and the
-link in the mail sets up a new SSO token. The same link helps a user who
-lost their SSO token.
+portal has a link "Can't sign in?". There a user enters their username.
+OTPme looks up the recovery mail address of that user, the LDAP attribute
+`otpmeRecoveryMail`, and sends a mail with a link to it. The link sets up a
+new SSO token. The same way helps a user who lost their SSO token.
+
+The page gives the same answer for every username, whether the user
+exists and has a recovery mail address or not. So nobody can find out
+with it which accounts there are.
 
 For a user who has no SSO token yet, the portal creates one only where
 `sso_token_deploy_roles` or `sso_token_deploy_accessgroups` is set. These
@@ -1486,14 +1491,27 @@ The mail is sent by the home site of the user, over the SMTP relay of the
 site. Without a sender no mail is sent:
 
 ```bash
-otpme-site config <site> sso_recovery_mail_from otpme@example.org
+otpme-site config <site> sso_recovery_mail_from noreply@example.org
 otpme-site config <site> smtp_relay_server mail.example.org
 ```
 
 `smtp_relay_port`, `smtp_relay_starttls`, `smtp_relay_auth`,
 `smtp_relay_username` and `smtp_relay_password` set the rest of the
-connection. The text of the mail is the info text of the access group
-`SSO`, one per language (`otpme-accessgroup info --language`).
+connection.
+
+The text of the mail is the info text of the access group `SSO`, one text
+per language. The first line is the subject, then comes an empty line,
+then the body. `{user_name}`, `{minutes}` and `{reset_url}` are filled in.
+A new site brings an English text. Without the text after the group name
+the command opens the current text in your editor:
+
+```bash
+otpme-accessgroup info --language en SSO
+otpme-accessgroup info --language de SSO
+```
+
+A user gets the text in their own language, or in the language their
+browser asks for. Where there is no text for it, the English one is used.
 
 The mail goes to the recovery mail address of the user. Users can set it
 themselves on the settings page of the portal, or you set it:
@@ -1532,8 +1550,9 @@ otpme-accessgroup add_child_group SSO sogo
 #### Granting Access with Roles
 
 Give access to the access groups of the applications with roles, not with
-single tokens. Then a new user only has to be put into one role, and a
-user who leaves only has to be taken out of it.
+single tokens. Then a new application needs one step: add the role to its
+access group, and every user in the role may use it. With single tokens
+you would have to add the token of every user to every new access group.
 
 **All portal users use the same applications.** Then you need no new role:
 add the role `SSO_USER` to the access groups of the applications. Every
@@ -1670,6 +1689,35 @@ provider (the first one is 1):
 ```bash
 otpme-client login_url nextcloud https://cloud.example.org/index.php/apps/user_oidc/login/1
 ```
+
+The tile shows the name of the client and no picture. Set the name users
+should read and a logo:
+
+```bash
+otpme-client sso_name nextcloud "Nextcloud"
+otpme-client sso_logo nextcloud /path/to/nextcloud.png
+```
+
+`otpme-client del_sso_logo nextcloud` removes the logo again.
+
+An application that signs the user out sends them to the logout endpoint
+of the portal (`/oidc/end_session`). What happens there is decided by the
+config parameter `oidc_logout_scope`:
+
+- `sso` (the default) signs the user out completely: the portal session
+  ends, and with it every application session below it. Every application
+  with a backchannel logout URI is told.
+- `rp` ends only the session of this application. The user stays signed in
+  to the portal and to the other applications.
+
+Use `rp` for an application that should have its own, shorter session:
+
+```bash
+otpme-client config nextcloud oidc_logout_scope rp
+```
+
+The parameter can also be set on the site or a unit, as the default for
+the clients below it.
 
 What Nextcloud learns about the user is decided by the scopes. A scope is
 granted only if the application asks for it, the client is in the scope
