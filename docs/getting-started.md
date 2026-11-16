@@ -1986,14 +1986,36 @@ own site need no entry.
 | `sso_allow_tiqr_trusts` | both sites | tiqr phones of users of other sites |
 | `admin_access_trusts` | home site | the admin access (temporary password) at the portal of another site |
 
-The first two need an entry for the site and one for each role or access
-group. On `munich`, users of `berlin` get device tokens in the role
-`wlan-user`, and new SSO tokens in the role `SSO_USER`:
+The first two are set on the portal site and have two kinds of entries:
+
+- the bare site, e.g. `berlin`: the users of `berlin` may get roles
+  (or access groups) of this site at all;
+- one entry for each role or access group, e.g. `berlin:wlan-user`. In
+  front of the colon is the home site of the users, after it a role of the
+  portal site — the site the parameter is set on. So `berlin:wlan-user` on
+  `munich` means "users of `berlin` may get `munich`'s role `wlan-user`".
+  For `sso_token_deploy_trusts` the type is part of the entry:
+  `berlin:role/SSO_USER` or `berlin:accessgroup/nextcloud`.
+
+Both are needed. On `munich`, users of `berlin` get device tokens in the
+role `wlan-user`, and new SSO tokens in the role `SSO_USER`:
 
 ```bash
 otpme-site config munich device_token_roles_trusts berlin,berlin:wlan-user
 otpme-site config munich sso_token_deploy_trusts berlin,berlin:role/SSO_USER
 ```
+
+The bare site entry is the general permission. Without it no role entry of
+that site counts. So to suspend a site for a while, remove only the bare
+entry; the role entries stay and count again as soon as you put it back:
+
+```bash
+otpme-site config munich device_token_roles_trusts berlin:wlan-user
+```
+
+For `sso_token_deploy_trusts` a suspended site means: the recovery still
+creates the new SSO token, but it gets into no role or access group of
+`munich`, so the user cannot sign in with it. The portal logs a warning.
 
 The passkey, TOTP and tiqr lists have to be set on both sites, because each
 side protects something of its own. The portal site protects its backend

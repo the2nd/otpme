@@ -1291,7 +1291,11 @@ adds them to this site's role *SSO_USER*, if the user's own
 **sso_token_deploy_roles** names it
 
 Without the bare site entry the token is still created, but it gets into
-nothing here, and the user cannot sign in with it.  
+nothing here, and the user cannot sign in with it. The bare entry is the
+permission for the whole site, and the entries with a role or access
+group count only below it. So to suspend a site for a while, take out
+the bare entry alone: the other entries stay and count again when it is
+back.  
 The recovery page still says that it worked. So the portal writes a
 warning to its log for each entry that is missing here, and one more
 when the token got into no role or access group of this site at all.  
@@ -1613,7 +1617,10 @@ own **device_token_roles** names it
 
 Without the bare site entry a user of that site is offered nothing here.
 A role without its own entry is left out, even when the user's
-**device_token_roles** names it.  
+**device_token_roles** names it. The bare entry is the permission for
+the whole site, and the entries with a role count only below it. So to
+suspend a site for a while, take out the bare entry alone: the role
+entries stay and count again when it is back.  
 Object types: site
 
 **device_token_suffix (str)**  
