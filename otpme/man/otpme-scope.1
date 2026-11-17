@@ -423,6 +423,13 @@ Needs the ACL \fBedit:info\fR.
 Print the info text, of that language or the administrator's own.
 .br
 Needs the ACL \fBview:info\fR.
+.TP
+\fBshow_info\fR \fIscope\fR
+List the languages the scope has a text for, one per line, with the first line of the text.
+The note of the administrator comes first, as \fB\-\fR.
+An empty text is not listed.
+.br
+Needs the ACL \fBview:info\fR.
 .SS Export and Cleanup
 .TP
 \fBexport\fR [\fB\-\-password\fR \fIpassword\fR] \fIscope\fR

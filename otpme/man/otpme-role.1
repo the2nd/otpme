@@ -644,6 +644,13 @@ Write one of those texts to stdout, for reading it with something other than the
 .br
 \fB\-\-language\fR picks which one, the same way as for \fBinfo\fR; without it you get the note of the administrator.
 A language the role has no text for gives nothing and is not an error.
+.TP
+\fBshow_info\fR \fIrole\fR
+List the languages the role has a text for, one per line, with the first line of the text.
+The note of the administrator comes first, as \fB\-\fR.
+An empty text is not listed.
+.br
+Needs the ACL \fBview:info\fR.
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.

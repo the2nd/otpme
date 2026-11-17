@@ -1671,6 +1671,32 @@ sessions and the application (OIDC) sessions below it. The session the
 Settings page itself runs in is shown, but it cannot be ended there.  
 Object types: site, unit, user
 
+**sso_confirm_terms (bool, default: false)**  
+Whether a user accepts the terms of use of the SSO portal before an SSO
+token is set up for them. The portal then shows the terms with a box to
+tick, before the user chooses a token type. That is at the deploy of the
+first login (**otpme-token enable_sso_deploy**), at a re-deploy from the
+Settings page, and at an account recovery that creates the SSO token of
+a user who has none. A recovery that replaces an SSO token does not
+ask.  
+The terms are the info text of the site of the portal, one per language,
+see **info** in **otpme-site**(1). The first line of a text has to be
+**Version:** *version*. A text without that line, and an empty one, is
+ignored as if there was none. The user gets the text in their language,
+else the English one, else the one OTPme brings, in their language. A
+new site gets the one OTPme brings in English, with **Version: 1**; the
+other languages fall back to it.  
+The portal keeps the version the user accepted on the user, with the
+time and the language, see **show_sso_terms** in **otpme-user**(1). It
+asks again when the text has another version. So a typo can be fixed
+without asking everybody again, and a change that needs a new acceptance
+gets a new version.  
+For a user of the portal's site the value is looked up at the user, then
+at the unit, then at the site. For a user of another site only the value
+of the portal's site counts: they are its terms, and the home site
+cannot switch them off.  
+Object types: site, unit, user
+
 **sso_profile_attributes (list, default: uid,givenName,sn,mail,telephoneNumber,mobile,title,o,ou,departmentNumber,l,createTimestamp,modifyTimestamp)**  
 Comma-separated list of the LDAP attributes the Profile page of the SSO
 portal shows, in this order. The page is reached by clicking the user
@@ -2299,6 +2325,12 @@ request originates from one of these IPs, the **X-Forwarded-For** and
 and the requested host.  
 A request from any other address ignores these headers, so a client
 cannot fake where it comes from by setting them itself.  
+The proxy adds the address it saw to the end of X-Forwarded-For. So the
+portal reads the header from the right: it skips the addresses in this
+list, and the first other address is the client. An address the client
+wrote into the header itself stands further left and is not used. If
+there are several proxies in a row, put all of them into this list. Of
+X-Forwarded-Host the last entry counts.  
 Object types: site
 
 **site_admin_blacklist (list)**  

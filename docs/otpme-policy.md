@@ -239,6 +239,12 @@ note as well.
 Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator. Needs **view:info**.
 
+**show_info** *policy*  
+List the languages the policy has a text for, one per line, with the
+first line of the text. The note of the administrator comes first, as
+**-**. An empty text is not listed.  
+Needs the ACL **view:info**.
+
 ## Policy Assignment
 
 A policy can have policies assigned to it like any other object. They
@@ -531,9 +537,12 @@ A token is let in when its type is in **force_token_types** (if that is
 set) and its pass type in **force_pass_types** (if that is set). The
 pass types are **otp** (hotp, totp, motp), **otp_push**, **tiqr**,
 **smartcard** (fido2, u2f, passkey, yubikey_hmac, yubikey_piv),
-**ssh_key**, **static** (password, and an ssh token used with a
-password), and **script_otp** and **script_static**, which are the types
-of the script tokens themselves.
+**ssh_key**, **static** (a password token without a second factor, and
+an ssh token used with a password), and **script_otp** and
+**script_static**, which are the types of the script tokens themselves.
+A password token with its second factor enabled counts as **otp**, also
+when the second factor is a smartcard: a login with it needs the second
+factor too.
 
 A new policy has no token types and the pass types otp, otp_push, tiqr,
 ssh_key and smartcard. A site has **force_token_otp** (otp, otp_push,
@@ -753,9 +762,11 @@ other sites.
 A range is written *\<attribute\>:\<type\>:\<start\>-\<end\>*, e.g.
 **uidNumber:s:70000-80000**. *attribute* is **uidNumber** or
 **gidNumber**. Type **s** hands out the numbers in order, going on after
-the last one handed out; at the end of the range it starts over. Type
-**r** takes a free number at random. Several ranges are separated by
-commas.
+the last one handed out. When that was the last number of the range, it
+starts over from its start. When all numbers after the last one are
+taken, e.g. given by hand, no number is found, unless
+**enable_id_range_recheck** is on. Type **r** takes a free number at
+random. Several ranges are separated by commas.
 
 **show** *policy* lists **ID_RANGES**, **VERIFY_NEW_ID** and
 **RECHECK_ID_RANGES**.
@@ -779,8 +790,9 @@ Commands:
 > **enable_id_range_recheck** *policy*  
 > **disable_id_range_recheck** *policy*  
 > When a range of type **s** has no free number after the last one
-> handed out, look for gaps from its start. Off by default. Needs
-> **enable:id_range_recheck** or **disable:id_range_recheck**.
+> handed out, look for gaps from its start, e.g. the numbers of deleted
+> users. Without it, the user or group is not added. Off by default.
+> Needs **enable:id_range_recheck** or **disable:id_range_recheck**.
 
 ## Token ACLs Policy
 

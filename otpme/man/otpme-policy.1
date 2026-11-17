@@ -235,6 +235,13 @@ Nothing shows the info of a policy to a user, so a text for a language stays a n
 Write one of those texts to stdout.
 \fB\-\-language\fR picks which one; without it you get the note of the administrator.
 Needs \fBview:info\fR.
+.TP
+\fBshow_info\fR \fIpolicy\fR
+List the languages the policy has a text for, one per line, with the first line of the text.
+The note of the administrator comes first, as \fB\-\fR.
+An empty text is not listed.
+.br
+Needs the ACL \fBview:info\fR.
 .SS Policy Assignment
 A policy can have policies assigned to it like any other object.
 They act on the policy itself, not on the objects it is assigned to.
@@ -507,7 +514,8 @@ It is checked at every login on the role, host, node, client or access group it 
 A link token is checked as the token it points to.
 .PP
 A token is let in when its type is in \fBforce_token_types\fR (if that is set) and its pass type in \fBforce_pass_types\fR (if that is set).
-The pass types are \fBotp\fR (hotp, totp, motp), \fBotp_push\fR, \fBtiqr\fR, \fBsmartcard\fR (fido2, u2f, passkey, yubikey_hmac, yubikey_piv), \fBssh_key\fR, \fBstatic\fR (password, and an ssh token used with a password), and \fBscript_otp\fR and \fBscript_static\fR, which are the types of the script tokens themselves.
+The pass types are \fBotp\fR (hotp, totp, motp), \fBotp_push\fR, \fBtiqr\fR, \fBsmartcard\fR (fido2, u2f, passkey, yubikey_hmac, yubikey_piv), \fBssh_key\fR, \fBstatic\fR (a password token without a second factor, and an ssh token used with a password), and \fBscript_otp\fR and \fBscript_static\fR, which are the types of the script tokens themselves.
+A password token with its second factor enabled counts as \fBotp\fR, also when the second factor is a smartcard: a login with it needs the second factor too.
 .PP
 A new policy has no token types and the pass types otp, otp_push, tiqr, ssh_key and smartcard.
 A site has \fBforce_token_otp\fR (otp, otp_push, tiqr) and \fBforce_token_non_static\fR (the same with ssh_key and smartcard), assigned to nothing.
@@ -714,7 +722,9 @@ Ranges must not overlap with any range of any idrange policy, also of other site
 .PP
 A range is written \fI<attribute>:<type>:<start>\-<end>\fR, e.g. \fB\%uidNumber:s:70000\-80000\fR.
 \fIattribute\fR is \fBuidNumber\fR or \fBgidNumber\fR.
-Type \fBs\fR hands out the numbers in order, going on after the last one handed out; at the end of the range it starts over.
+Type \fBs\fR hands out the numbers in order, going on after the last one handed out.
+When that was the last number of the range, it starts over from its start.
+When all numbers after the last one are taken, e.g. given by hand, no number is found, unless \fBenable_id_range_recheck\fR is on.
 Type \fBr\fR takes a free number at random.
 Several ranges are separated by commas.
 .PP
@@ -743,7 +753,8 @@ Needs \fB\%enable:id_check\fR or \fB\%disable:id_check\fR.
 \fBenable_id_range_recheck\fR \fIpolicy\fR
 .TQ
 \fBdisable_id_range_recheck\fR \fIpolicy\fR
-When a range of type \fBs\fR has no free number after the last one handed out, look for gaps from its start.
+When a range of type \fBs\fR has no free number after the last one handed out, look for gaps from its start, e.g. the numbers of deleted users.
+Without it, the user or group is not added.
 Off by default.
 Needs \fB\%enable:id_range_recheck\fR or \fB\%disable:id_range_recheck\fR.
 .RE

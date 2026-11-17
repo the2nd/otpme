@@ -575,6 +575,13 @@ Write one of those texts to stdout, for reading it with something other than the
 \fB\-\-language\fR picks which one; without it you get the note of the administrator.
 A language the group has no text for gives nothing and is not an error.
 .TP
+\fBshow_info\fR \fIaccessgroup\fR
+List the languages the accessgroup has a text for, one per line, with the first line of the text.
+The note of the administrator comes first, as \fB\-\fR.
+An empty text is not listed.
+.br
+Needs the ACL \fBview:info\fR.
+.TP
 .B add_extension \fIaccessgroup\fR \fIextension\fR
 Add an LDAP extension to the group, which is what gives it LDAP object classes and attributes.
 .TP

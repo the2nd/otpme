@@ -13,14 +13,18 @@ except Exception:
 
 from otpme.lib import mschap
 from otpme.lib.encoding.base import encode
-from otpme.lib.encoding.base import decode
+
+# The hex here is decoded with bytes.fromhex(), not encoding.base.decode():
+# that one hands back a str wherever the bytes happen to be valid UTF-8,
+# which an 8 byte challenge is about once in a hundred, and DES refuses a
+# str with a TypeError.
 
 def verify(password_hash, challenge, response):
     """ Verify MSCHAP challenge/response with given pw_hash. """
     # Decode challenge.
-    challenge_bin = decode(challenge, "hex")
+    challenge_bin = bytes.fromhex(challenge)
     # Decode pass hash.
-    password_hash_bin = decode(password_hash, "hex")
+    password_hash_bin = bytes.fromhex(password_hash)
     # Create response.
     my_response_bin = mschap.challenge_response(challenge_bin, password_hash_bin)
     # Encode response.
@@ -39,7 +43,7 @@ def generate(username, password_hash):
     if not isinstance(username, bytes):
         username = username.encode("ascii")
     # Decode password hash.
-    password_hash_bin = decode(password_hash, "hex")
+    password_hash_bin = bytes.fromhex(password_hash)
     # Generate random challenges.
     peer_challenge_bin = os.urandom(16)
     auth_challenge_bin = os.urandom(16)

@@ -121,13 +121,30 @@ def get_ssod_conn(username, master_failover_timeout=10, mgmt=False):
                 break
     return ssod_conn
 
+def _forwarded_entries(header):
+    """ The entries of a forwarded header, of all its lines, in order. """
+    entries = []
+    for line in request.headers.getlist(header):
+        for x in line.split(','):
+            x = x.strip()
+            if x:
+                entries.append(x)
+    return entries
+
 def check_forwarded_for():
-    """ Get X-Forwarded-For and X-Forwarded-Host for reverse proxy setups. """
+    """ Get X-Forwarded-For and X-Forwarded-Host for reverse proxy setups.
+
+    A proxy adds what it saw to what the client sent: nginx appends to
+    the list ($proxy_add_x_forwarded_for), HAProxy adds a line of its
+    own (option forwardfor). So the entries are read from the right:
+    those of our proxies are skipped, the first other one is the client.
+    One the client wrote itself stands further left and is never
+    reached. """
     from otpme.lib import net
     client = net.normalize_ip(request.remote_addr)
     hostname = request.host.split(':')[0]
-    x_forwarded_for = request.headers.get('X-Forwarded-For')
-    x_forwarded_host = request.headers.get('X-Forwarded-Host')
+    x_forwarded_for = _forwarded_entries('X-Forwarded-For')
+    x_forwarded_host = _forwarded_entries('X-Forwarded-Host')
     if not x_forwarded_for:
         if not x_forwarded_host:
             return client, hostname
@@ -137,12 +154,26 @@ def check_forwarded_for():
         return client, hostname
     if client not in reverse_proxy_ips:
         return client, hostname
-    if x_forwarded_for:
-        client = x_forwarded_for.split(',')[0].strip()
-        client = net.normalize_ip(client)
+    for x in reversed(x_forwarded_for):
+        client = net.normalize_ip(x)
+        if client not in reverse_proxy_ips:
+            break
     if x_forwarded_host:
-        hostname = x_forwarded_host.split(',')[0].strip().split(':')[0]
+        hostname = x_forwarded_host[-1].split(':')[0]
     return client, hostname
+
+def _sso_terms_args(data):
+    """ What a deploy step tells ssod about the terms of use: the
+    version the user accepted on the page (sso_confirm_terms), and the
+    language the page was shown in, so ssod picks the same text. """
+    args = {}
+    version = (data or {}).get('sso_terms_version')
+    if version:
+        args['sso_terms_version'] = str(version)
+    accept_language = _browser_preferred_language()
+    if accept_language:
+        args['accept_language'] = accept_language
+    return args
 
 def _ssod_error_message(response, default):
     """ Extract a user-friendly error message from an ssod response. """
@@ -151,6 +182,10 @@ def _ssod_error_message(response, default):
         # maintenance, see _site_maintenance().
         if response.get('message') == 'MAINTENANCE':
             return _maintenance_message()
+        # sso_confirm_terms: the terms of use were not accepted, or not
+        # in the version the portal shows now.
+        if response.get('message') == 'TERMS_NOT_ACCEPTED':
+            return gettext("Please accept the terms of use first.")
         return response.get('message') or response.get('error') or default
     if response:
         return str(response)
@@ -1820,10 +1855,15 @@ def deploy():
                 deploy_token_types = [tt for tt in deploy_token_types
                                       if tt in ssod_types]
     deploy_optional = bool(flask_session.get('sso_deploy_optional'))
+    # The terms of use the user accepts first (sso_confirm_terms).
+    sso_terms = None
+    if isinstance(response, dict) and isinstance(response.get('sso_terms'), dict):
+        sso_terms = response['sso_terms']
     return render_template("deploy.html",
                            title=gettext('Token Enrollment'),
                            deploy_token_types=deploy_token_types,
-                           deploy_optional=deploy_optional)
+                           deploy_optional=deploy_optional,
+                           sso_terms=sso_terms)
 
 @app.route('/deploy/begin', methods=['POST'])
 @login_required
@@ -1860,6 +1900,7 @@ def deploy_begin():
         # all of them it is the name the token keeps when the SSO role
         # is handed to another one. ssod refuses without it.
         verify_args['device_name'] = (data.get('device_name') or '').strip()
+    verify_args.update(_sso_terms_args(data))
     ssod_conn = get_ssod_conn(g.user.name, mgmt=True)
     try:
         status, \
@@ -1935,6 +1976,7 @@ def deploy_verify():
                     'token_data'        : token_data,
                     'login_token_name'  : login_token_name,
                 }
+    verify_args.update(_sso_terms_args(token_data))
     ssod_conn = get_ssod_conn(g.user.name, mgmt=True)
     try:
         status, \
@@ -2494,15 +2536,69 @@ def reauth():
     logger.info(log_msg)
     form = LoginForm()
     form.username.data = username
+    back_kind, _back_target = _reauth_back_target(
+                _safe_next_url(flask_session.get('reauth_next')),
+                bool(flask_session.get('sso_deploy_optional')))
     return render_template('login.html',
                            title=gettext('Re-authenticate'),
                            form=form,
                            show_fido2_button=_show_login_button("sso_show_fido2_button"),
                            show_tiqr_button=_show_login_button("sso_show_tiqr_button"),
                            reauth=True,
+                           reauth_back=back_kind is not None,
                            reauth_username=username,
                            reauth_token_pass_type=flask_session.get('login_token_pass_type') or '',
                            reauth_token_type=flask_session.get('login_token_type') or '')
+
+def _reauth_back_target(next_url, deploy_optional):
+    """ Where "Back" on the reauth page goes, from the page that sent
+    the user there.
+
+    Returns ("page", endpoint), ("oidc", next_url), or (None, None)
+    when there is no way back and no button is shown.
+
+    The settings and the profile page carry a hash in next= that
+    resumes the action after the reauth; going back drops it. /deploy
+    asks for the reauth itself when it is loaded, so going back to it
+    would ask again: a voluntary redeploy goes back to the settings,
+    a forced one has nothing to go back to. An OIDC request goes
+    back to /authorize, which answers the client with access_denied.
+    """
+    if not next_url:
+        return "page", "index"
+    path = urlparse(next_url).path
+    if path == url_for('oidc.authorize'):
+        return "oidc", next_url
+    if path == url_for('deploy'):
+        if deploy_optional:
+            return "page", "settings"
+        return None, None
+    for endpoint in ("settings", "profile"):
+        if path == url_for(endpoint):
+            return "page", endpoint
+    return "page", "index"
+
+@app.route('/reauth/cancel', methods=['GET'])
+@login_required
+def reauth_cancel():
+    """ "Back" on the reauth page: the user does not want to do what
+    asked for it. The markers of /reauth go, so a later reauth does
+    not land on the action given up here. """
+    flask_session.pop('reauth_mode', None)
+    flask_session.pop('tiqr_reauth', None)
+    next_url = _safe_next_url(flask_session.pop('reauth_next', None))
+    deploy_optional = bool(flask_session.get('sso_deploy_optional'))
+    kind, target = _reauth_back_target(next_url, deploy_optional)
+    log_msg = _("/reauth/cancel: user={u} back={k}", log=True)[1]
+    log_msg = log_msg.format(u=flask_session.get('otpme_username'), k=kind)
+    logger.info(log_msg)
+    if kind == "oidc":
+        # /authorize takes it as the answer to this very request only.
+        flask_session['oidc_reauth_cancelled'] = target
+        return redirect(target)
+    if kind is None:
+        target = "index"
+    return redirect(url_for(target, _external=True, _scheme='https'))
 
 def _logout_origin_ok():
     # Logout is CSRF-exempt (see csrf.exempt(logout) below) so a stale
@@ -2644,10 +2740,14 @@ def recover_request():
     accept_language = _browser_preferred_language()
     if accept_language:
         extra_args['accept_language'] = accept_language
+    # To the master node: the request writes the recovery token onto the
+    # user. Sent to the ssod of the node the portal runs on, a node that
+    # is not master wrote it there, and the cluster never took it.
     response, error = _send_ssod_command_unauth(
             command="request_sso_token_recovery",
             extra_args=extra_args,
-            default_error=gettext("Recovery request failed."))
+            default_error=gettext("Recovery request failed."),
+            mgmt=True)
     if error:
         # ssod returns generic-OK for all logic-level failures, so an
         # error here is a real infrastructure fault (cluster down,
@@ -2679,21 +2779,29 @@ def recover_complete():
                                title=gettext('Recover Your Account'),
                                recover_maintenance=True,
                                recover_maintenance_link=True)
+    extra_args = {'username':       username,
+                'recovery_token': raw_token}
+    extra_args.update(_sso_terms_args({}))
     response, error = _send_ssod_command_unauth(
             command="get_sso_token_recovery_info",
-            extra_args={'username':       username,
-                        'recovery_token': raw_token},
+            extra_args=extra_args,
             default_error=gettext("Recovery link invalid or expired."))
     if error or not isinstance(response, dict) or not response.get('valid'):
         return render_template('recover_invalid.html',
                                title=gettext('Recovery link invalid'))
+    # The terms of use the user accepts first (sso_confirm_terms), only
+    # where the recovery creates the SSO token.
+    sso_terms = response.get('sso_terms')
+    if not isinstance(sso_terms, dict):
+        sso_terms = None
     return render_template('recover_complete.html',
                            title=gettext('Recover Your Account'),
                            recovery_username=username,
                            recovery_token=raw_token,
                            sso_token_name=response.get('sso_token_name') or '',
                            sso_token_type=response.get('sso_token_type') or '',
-                           deploy_token_types=response.get('allowed_deploy_types') or [])
+                           deploy_token_types=response.get('allowed_deploy_types') or [],
+                           sso_terms=sso_terms)
 
 
 @app.route('/recover/complete/begin', methods=['POST'])
@@ -2717,6 +2825,7 @@ def recover_complete_begin():
     device_name = (data.get('device_name') or '').strip()
     if device_name:
         extra_args['device_name'] = device_name
+    extra_args.update(_sso_terms_args(data))
     response, error = _send_ssod_command_unauth(
             command="recovery_deploy_begin",
             extra_args=extra_args,
@@ -2788,11 +2897,13 @@ def recover_complete_verify():
     token_data = data.get('token_data') or {}
     if not username or not raw_token:
         return jsonify({"error": gettext("Recovery link invalid.")}), 400
+    extra_args = {'username':       username,
+                'recovery_token': raw_token,
+                'token_data':     token_data}
+    extra_args.update(_sso_terms_args(data))
     response, error = _send_ssod_command_unauth(
             command="recovery_deploy_verify",
-            extra_args={'username':       username,
-                        'recovery_token': raw_token,
-                        'token_data':     token_data},
+            extra_args=extra_args,
             default_error=gettext("Recovery deployment failed."),
             mgmt=True)
     if error:

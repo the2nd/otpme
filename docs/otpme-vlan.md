@@ -457,6 +457,12 @@ Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator.  
 Needs the ACL **view:info**.
 
+**show_info** *vlan*  
+List the languages the VLAN has a text for, one per line, with the first
+line of the text. The note of the administrator comes first, as **-**.
+An empty text is not listed.  
+Needs the ACL **view:info**.
+
 ## Export and Cleanup
 
 **export** \[**--password** *password*\] *vlan*  

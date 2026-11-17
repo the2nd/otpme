@@ -290,6 +290,15 @@ Adds the base ACL group \fBPASSUSER\fR, see
 The base ACL groups have their names in upper case now: \fBrealm_user\fR is \fBREALM_USERS\fR, \fBusermanager\fR is \fBUSERMANAGER\fR, and so on.
 This renames them.
 They keep their UUID, so every ACL they are given in stays as it is.
+.TP
+.B 8 (0.3.0a288)
+An ACL group holds the groups it inherits from now, not the groups that inherit from it.
+This turns the lists round, and puts the base ACL groups in place again, so a base group inherits only what OTPme says, see
+.BR otpme\-aclgroup (1).
+.TP
+.B 9 (0.3.0a289)
+Writes the terms of use OTPme brings into the English info of the site, see \fBinfo\fR below, when that text has no \fBVersion:\fR line or is empty.
+A text with that line is kept.
 .RE
 .PP
 It stores the objects of the site in the format of the new version.
@@ -349,12 +358,24 @@ If \fIinfo\fR is omitted, the current text is opened in the editor named by the 
 Without
 .B \-\-language
 the text is the administrator's own note about the object, which no user is ever shown.
-A text can be written for a language as well, for the places that show such a text to a user; nothing shows the info of a site, so for a site it stays a note either way.
+A text written for a language is the terms of use the SSO portal of the site shows in that language, see \fBsso_confirm_terms\fR in
+.BR otpme (7).
+Its first line has to be \fBVersion:\fR \fIversion\fR, and the version is what is kept on a user who accepts.
+A text without that line is ignored as if there was none, and so is an empty one; the command warns about the first.
+A language without a text that counts falls back to the English one.
+A new site has the terms OTPme brings in English, with \fBVersion: 1\fR.
 .br
 Needs the ACL \fBedit:info\fR.
 .TP
 \fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fIsite\fR
 Print the info text, of that language or the administrator's own.
+.br
+Needs the ACL \fBview:info\fR.
+.TP
+\fBshow_info\fR \fIsite\fR
+List the languages the site has a text for, one per line, with the first line of the text.
+The note of the administrator comes first, as \fB\-\fR.
+An empty text is not listed.
 .br
 Needs the ACL \fBview:info\fR.
 .SS Maintenance
@@ -868,13 +889,19 @@ is on, a key is only taken when that certificate is valid and was signed by one 
 .PP
 The CA certificate is found by its subject: it has to be the one the attestation certificate names as its issuer.
 A CA further up does not count, so add the certificate that signed the keys themselves.
+YubiKeys with firmware 5.7.4 and later, for one, are signed by intermediates; add Yubico's file of intermediates, not only the root.
+That file holds the CAs of the other functions of a YubiKey too (PIV, OpenPGP and more).
+Remove those again: each CA here is one the site trusts to say that a key is a FIDO2 key.
 .PP
 A site has none of them at first.
 With the check on and no certificate for the maker of a key, that key is refused.
 .TP
 .B add_fido2_ca_cert \fIsite\fR \fIca_cert_file\fR
-Add a CA certificate from a file in PEM format.
-A file that is no certificate is refused, and so is one whose subject the site already has.
+Add the CA certificates from a file in PEM format.
+A file may hold several of them, as the intermediates of a maker often come in one file.
+Each is kept under its own subject.
+Subjects the site already has are skipped.
+A file that holds no certificate is refused.
 .br
 Asks first; the global option \fB\-f\fR skips the question.
 .br

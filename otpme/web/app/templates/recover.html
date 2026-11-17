@@ -25,9 +25,10 @@
       <a href="{{ url_for('login', _external=True, _scheme='https') }}" class="btn btn-primary">{{ gettext("Back to Sign In") }}</a>
     </div>
     {% else %}
-    <p class="deploy-desc">{{ gettext("Enter your username. If a recovery e-mail address is set on the account, a re-deploy link will be sent to it.") }}</p>
-
     <div id="recover-form-block">
+      {# Goes with the form: the confirmation says the same again. #}
+      <p class="deploy-desc">{{ gettext("Enter your username. If a recovery e-mail address is set on the account, a re-deploy link will be sent to it.") }}</p>
+
       <form id="recoverForm" onsubmit="return false;">
         <label for="recoverUsername">{{ gettext("Username") }}</label>
         <input type="text" id="recoverUsername" name="username" autocomplete="username" autofocus>

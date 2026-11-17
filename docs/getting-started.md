@@ -155,6 +155,61 @@ otpme-token --type password add --enable-mschap alice/notebook-wlan
 otpme-token --type password password alice/notebook-wlan
 ```
 
+### Password Policy
+
+A password or a PIN is checked when it is set. The check comes from the
+password policy `password_strength`. A new site has it, and every user, token,
+host and node gets it. A token without a password policy of its own is checked
+with the one of its user.
+
+The policy asks for at least 8 characters with a number, an uppercase and a
+lowercase letter and a special character. A PIN must have at least 4 digits.
+On top of these rules a strength checker gives the password a score from 0 to
+10, and the score must be at least 2. The score is about the years it takes to
+guess the password at a million tries a second. The checker also looks the
+password up in the dictionaries the realm was created with (`--dicts`).
+
+```bash
+# Which policies the token has.
+otpme-token list_policies alice/notebook-wlan
+# The settings of the policy.
+otpme-policy show password_strength
+```
+
+You can test a password against the policy without setting it. The output
+shows the score and whether the password is strong enough:
+
+```bash
+otpme-policy --type password test --password "SuziMiller2019!" password_strength
+```
+
+To ask for longer passwords and PINs, change the policy:
+
+```bash
+otpme-policy --type password password_min_len password_strength 12
+otpme-policy --type password pin_min_len password_strength 6
+```
+
+The score is an option of the strength checker. `strength_checker_opts` replaces
+all options of the checker with what you give. An option you leave out goes
+back to its default, and the default for the dictionaries is none. So give the
+dictionaries again:
+
+```bash
+otpme-policy --type password strength_checker_opts password_strength \
+	"min_score=3;dict_order=english,en-top10000,common-passwords,us-female,us-male,us-surnames,abbreviations-it"
+```
+
+The rules for numbers and letters can be switched on and off one by one, e.g.
+`disable_require_special`. See `otpme-policy(1)`.
+
+An admin can still set a password the policy refuses. This needs the ACL
+`force_password`:
+
+```bash
+otpme-token --type password password --weak-password alice/notebook-wlan
+```
+
 ## 8. Grant WLAN Access Directly via Token
 
 The simplest way to grant access is to add the token directly to the access
@@ -421,6 +476,56 @@ otpme-token --type password add user1/wlan
 otpme-tool logout
 ```
 
+### Log In Again Before an Action
+
+When joe added the token, he was asked to log in again. That comes from the
+policy `auth_on_action`. A new site has it, and every object gets it. Before
+certain actions, e.g. adding a token, changing a PIN or deleting an object, it
+asks the user to log in again with the token they are logged in with.
+
+It does not ask over the local socket of a node, so root on a node is not
+asked. It does not ask in API mode either.
+
+```bash
+otpme-policy show auth_on_action
+```
+
+`show` lists the actions it asks before (`HOOKS`), per object type. A login
+again holds while the user keeps working: every action within
+`reauth_timeout` (30 seconds by default) starts it anew. `reauth_expiry` is how
+long it holds at most from the first login again, however busy the user is.
+It is 0 by default, which means no limit. The timeout must be lower than the
+expiry, so set the expiry first:
+
+```bash
+otpme-policy --type authonaction reauth_expiry auth_on_action 1h
+otpme-policy --type authonaction reauth_timeout auth_on_action 5m
+```
+
+A timeout of 0 asks before every action.
+
+Tokens and roles on the whitelist of the policy are never asked. A token in a
+role counts, however deep the roles are nested:
+
+```bash
+otpme-policy --type authonaction whitelist_token auth_on_action joe/login
+otpme-policy --type authonaction unwhitelist_token auth_on_action joe/login
+# The same for a role.
+otpme-policy --type authonaction whitelist_role auth_on_action <role>
+```
+
+You can also stop asking before a single action, and ask again. A hook you
+removed by hand stays removed, also when an OTPme update brings new hooks
+(`update_hooks`):
+
+```bash
+otpme-policy --type authonaction remove_hook auth_on_action user add_token
+otpme-policy --type authonaction add_hook auth_on_action user add_token
+```
+
+The actions each object type knows are in the section AUTH ON ACTION HOOKS of
+its man page, e.g. `otpme-user(1)`.
+
 ## 18. Simplify User Creation with Policies
 
 Having to specify `--group` and `--role` on every `otpme-user add` call is
@@ -491,6 +596,146 @@ Joe can now create users with a simple `otpme-user add <username>` and they
 will automatically land in `management/users`, get `management` as their
 default group and be assigned the `management-user` role.
 
+### ID Range Policy
+
+A new user gets a `uidNumber`, a new group a `gidNumber`. Both come from an
+`idrange` policy. The site has `id_range` with the ranges given with
+`--id-ranges` at realm init, here 70000-80000:
+
+```bash
+otpme-policy show id_range
+```
+
+A user or group added without a number gets the next free one from the policy
+of its unit. If the unit has none, or none for that attribute, the policy of
+the site counts. A unit further up does not count. A number given by hand must
+lie in a range as well.
+
+To give the users of the management unit a range of their own, add a policy
+with a `uidNumber` range and assign it to the unit:
+
+```bash
+otpme-policy --type idrange add management/policies/management-ids
+otpme-policy --type idrange add_id_range management-ids uidNumber:s:80001-89999
+otpme-unit add_policy management/users management-ids
+```
+
+A range is written `<attribute>:<type>:<start>-<end>`. The attribute is
+`uidNumber` or `gidNumber`. Type `s` hands out the numbers in order and goes on
+after the last one it handed out. Type `r` takes a free number at random.
+Ranges must not overlap with any range of any `idrange` policy, also not with
+those of other sites.
+
+The next user added to the unit gets the first free number of the new range:
+
+```bash
+otpme-user add management/users/user2
+otpme-user show_ldif user2 -a uidNumber
+```
+
+Before a number is handed out, the policy checks that no user or group has it
+already (`disable_id_check` turns that off). A range of type `s` goes on after
+the last number it handed out. When that was the last number of the range, it
+starts over from its start. When all numbers after the last one are taken,
+e.g. because they were given by hand, no number is found and the user is not
+added. With `enable_id_range_recheck` the policy then looks for gaps from the
+start of the range, e.g. the numbers of deleted users:
+
+```bash
+otpme-policy --type idrange enable_id_range_recheck management-ids
+```
+
+### Token ACLs Policy
+
+When joe added the token `user1/wlan`, the token got its ACLs from the policy
+`token_acls`. A new site has it, and every user gets it. When a token is added
+to the user, the policy gives three kinds of ACLs:
+
+| Kind | Given on | Given to | Default |
+|---|---|---|---|
+| user ACLs | the user | the new token | `view_all`, `gen_keys`, `encrypt`, `decrypt`, `sign` |
+| token ACLs | the new token | the token itself and the default token of the user | `view`, `edit:pin`, `edit:password`, `delete` |
+| creator ACLs | the new token | the token that added it, when it belongs to another user (here `joe/login`) | `view`, `edit`, `delete` |
+
+```bash
+otpme-policy show token_acls
+otpme-token list_acls user1/wlan
+```
+
+A token type can bring more ACLs of its own, and a token gets only the ones its
+type knows. When a token is deleted, the same ACLs are taken away.
+
+To allow users to disable their own tokens, e.g. when a notebook is lost, add
+`disable` to the token ACLs. The user can then disable the token with their
+default token:
+
+```bash
+otpme-policy --type tokenacls add_token_acl token_acls disable
+```
+
+A change to the policy counts for tokens added or deleted after it. Tokens
+that exist already keep the ACLs they have. The commands for the other two
+kinds are `add_user_acl` and `add_creator_acl`, and `del_...` takes an ACL away
+again.
+
+### Default Policies Policy
+
+A new object gets its policies from the `defaultpolicies` policy of the unit
+it is added to. A unit right below the site gets them from the site, and a
+token from the unit of its user. A unit further up does not count.
+
+The site has `default_policies` on the site and on every unit. It lists
+policies per object type: `auth_on_action` for every type, `password_strength`
+for users, tokens, hosts and nodes, `default_units` and `token_acls` for users,
+and the default groups, roles and templates and itself for units. That is how
+every new unit gets it as well.
+
+```bash
+otpme-policy show default_policies
+```
+
+To give the management users and their tokens a stricter password policy, add
+a password policy:
+
+```bash
+otpme-policy --type password add management/policies/management-passwords
+otpme-policy --type password password_min_len management-passwords 12
+```
+
+Changing `default_policies` would change it for every unit, and a unit takes
+one policy of each type. So add a `defaultpolicies` policy for
+`management/users` that lists what `default_policies` lists for users and
+tokens, with the new password policy in place of `password_strength`. Tokens
+need it too: a token gets a password policy of its own and is only checked with
+the one of its user when it has none.
+
+```bash
+otpme-policy --type defaultpolicies add management/policies/management-defaults
+otpme-policy --type defaultpolicies add_default_policy management-defaults user auth_on_action
+otpme-policy --type defaultpolicies add_default_policy management-defaults user management-passwords
+otpme-policy --type defaultpolicies add_default_policy management-defaults user default_units
+otpme-policy --type defaultpolicies add_default_policy management-defaults user token_acls
+otpme-policy --type defaultpolicies add_default_policy management-defaults token auth_on_action
+otpme-policy --type defaultpolicies add_default_policy management-defaults token management-passwords
+# Replace default_policies on the unit.
+otpme-unit remove_policy management/users default_policies
+otpme-unit add_policy management/users management-defaults
+```
+
+The next user added to the unit, and the tokens added to that user, get the new
+password policy:
+
+```bash
+otpme-user add management/users/user3
+otpme-user list_policies user3
+otpme-token list_policies user3/login
+```
+
+A new object gets the listed policies without a check of rights. If one of them
+cannot be assigned, the object is not added. Because of that, whoever adds a
+policy to the list needs what assigning that policy needs. Objects that exist
+already keep the policies they have.
+
 ## 19. Joining a Host to the Realm
 
 Before a host can authenticate users via OTPme, it must be joined to the realm.
@@ -540,6 +785,61 @@ otpme-host add <yourhostname>
 otpme-tool join --jotp <jotp>
 ```
 
+### Leaving via LOTP and Joining Again
+
+The LOTP that the join printed lets the host leave the realm without a login.
+Leaving revokes the certificate of the host and makes a new JOTP. The host
+object stays. `otpme-host show` prints the JOTP, and the LOTP while the host is
+joined.
+
+```bash
+# On the host.
+otpme-tool leave --lotp <lotp>
+# On a node: the new JOTP.
+otpme-host show <yourhostname>
+# On the host.
+otpme-tool join --jotp <jotp>
+```
+
+By default only an admin sees the new JOTP. With `enable_jotp_rejoin`,
+`otpme-tool leave` prints it, so whoever leaves the realm can join again
+without an admin. When you turn it off, the printed JOTP stops working.
+`gen_jotp` makes a new one, and the old one stops working.
+
+```bash
+otpme-host enable_jotp_rejoin <yourhostname>
+otpme-host disable_jotp_rejoin <yourhostname>
+otpme-host gen_jotp <yourhostname>
+```
+
+### A Lost Machine
+
+If a notebook is lost or reinstalled, it has not left the realm. Disable the
+host first, then make a JOTP for the new machine. `gen_jotp` refuses a host
+that has joined and is still enabled. A join with `-f` takes the place of the
+old machine: the certificate of the old one is revoked, and the host is
+enabled again. Tokens, roles and sync users stay as they are.
+
+```bash
+otpme-host disable <yourhostname>
+otpme-host gen_jotp <yourhostname>
+# On the new machine.
+otpme-tool join -f --jotp <jotp>
+```
+
+### Switching JOTP and LOTP Off
+
+If a join or a leave should always need a login, switch the JOTP or the LOTP
+off. When you switch one on again, it is printed. Nodes have the same commands
+in `otpme-node`.
+
+```bash
+otpme-host disable_jotp <yourhostname>
+otpme-host disable_lotp <yourhostname>
+otpme-host enable_jotp <yourhostname>
+otpme-host enable_lotp <yourhostname>
+```
+
 ### Allow Users to Log in to a Host
 
 By default, login to a host is restricted: only tokens explicitly assigned to
@@ -565,6 +865,13 @@ restriction entirely:
 
 ```bash
 otpme-host unlimit_logins <yourhostname>
+```
+
+`limit_logins` goes back to how a host starts: only the tokens and roles
+assigned to it may log in.
+
+```bash
+otpme-host limit_logins <yourhostname>
 ```
 
 ### Controlling Which Users Are Synced
@@ -744,6 +1051,59 @@ target node and run:
 
 ```bash
 otpme-cluster master_failover --wait
+```
+
+### Who May Be Master: the Vote Script
+
+The master role is not configured. The nodes of the site elect it again and
+again, and the node that was last in sync with the master gets it. A vote
+script lets a node take part in that decision. It runs on the node when its
+vote is asked for. With it the node can say that it should not be master, for
+example because it cannot reach the client network. The master holds the
+floating IP, so a master that the clients cannot reach is of no use.
+
+Every site has `scripts/node_vote_script.sh`, which only exits 0. Edit it
+first. This version is happy if one of the listed addresses answers a ping:
+
+```bash
+otpme-script edit scripts/node_vote_script.sh
+```
+
+```bash
+#!/bin/bash
+for ip in 192.168.1.254 192.168.1.253; do
+	ping -c 1 -W 1 -q "$ip" > /dev/null 2>&1 && exit 0
+done
+exit 1
+```
+
+Three things to keep in mind:
+
+- List more than one address. If all nodes lose the ping, all of them vote
+  that they cannot be master, and the site has no master.
+- The script runs very often, in every round of the election. Keep the
+  timeout short.
+- It runs as the OTPme user, not as root. On Debian `ping` works without root.
+
+The script is the same for all nodes. Set it for each node and start asking it:
+
+```bash
+otpme-node vote_script node1 scripts/node_vote_script.sh
+otpme-node vote_script node2 scripts/node_vote_script.sh
+otpme-node enable_vote_script node1
+otpme-node enable_vote_script node2
+```
+
+An exit code of 0 keeps the normal vote of the node. Anything else votes 0, so
+the node does not become master while the script says no. A master that votes
+0 gives the role up. A script that is missing or fails to run votes 1. That is
+lower than any sync time, so such a node is the last choice rather than no
+choice, and the log says so.
+
+`disable_vote_script` stops asking the script. The script stays set:
+
+```bash
+otpme-node disable_vote_script node2
 ```
 
 ## 24. Fileserver and Shares
@@ -997,7 +1357,13 @@ See `otpme-pool(1)` and the section "Pool and Node Management" in
 
 OTPme supports encrypted shares where file content and path names are
 encrypted on the client side. Every user who needs access to the share
-(including the creating user) must have a public/private key pair:
+(including the creating user) must have a public/private key pair.
+
+> **Note:** Keys made with `gen_keys` are only meant to demonstrate and test
+> OTPme. While they are used, the private keys are held unencrypted in memory
+> and in otpme-agent. For real use we recommend a YubiKey in PIV mode, see
+> *Using a Yubikey for Key Management* below: there the private key never
+> leaves the key.
 
 ```bash
 otpme-user gen_keys root
@@ -1015,8 +1381,9 @@ otpme-share add --crypt testcrypt
 ### Using a Yubikey for Key Management
 
 By default the private key created with `gen_keys` is encrypted by the key
-script (`scripts/key_script.sh`) and stored in the user object on the nodes.
-A more secure alternative is to use a Yubikey in PIV mode. The following
+script (`scripts/key_script.sh`) and stored in the user object on the nodes,
+but it is unencrypted in memory while it is used. A Yubikey in PIV mode is
+the recommended way. The following
 command replaces (`-r`) the user's default token so that the user can only
 log in on hosts where the PAM module is configured and the Yubikey is
 connected. The `--add-user-key` option adds the public key to the token
@@ -1071,6 +1438,27 @@ otpme-tool sign test.txt test.txt.sig
 
 # Verify the signature.
 otpme-tool verify test.txt.sig test.txt
+```
+
+### Encrypting for Another User and Key Modes
+
+To encrypt a file for another user, give that user with `-u`. The file is
+encrypted with their public key, so only they can decrypt it:
+
+```bash
+otpme-tool encrypt -u joe test.txt test.txt.enc
+```
+
+By default `gen_keys` makes the keys on the client, and the server gets the
+private keys only encrypted with the key password of the user (key mode
+`client`). With `--server` the server makes them and keeps the private keys
+wrapped with a key that the client encrypts with the key password (key mode
+`server`). Like `gen_keys` without it, this is only for testing; see the note
+under *Encrypted Shares*.
+
+```bash
+otpme-user gen_keys --server joe
+otpme-user get_key_mode joe
 ```
 
 ### Script Signature Verification
@@ -1170,6 +1558,49 @@ otpme-host add_token <yourhostname> joe/totp
 
 After syncing (`otpme-tool sync` or waiting for `SYNC_INTERVAL` (default 180s, configurable in `/etc/otpme/otpme.conf`)), enter
 PIN+OTP at the login prompt.
+
+### Allow Only Certain Token Types
+
+A `forcetoken` policy says which tokens may log in. It is checked at every
+login on the role, host, node, client or access group it is assigned to, for
+admin tokens too. A link token is checked as the token it points to.
+
+The site has two of them, assigned to nothing:
+
+| Policy | Pass types it lets in |
+|---|---|
+| `force_token_otp` | `otp` (hotp, totp, motp), `otp_push`, `tiqr` |
+| `force_token_non_static` | the same, and `ssh_key` and `smartcard` (fido2, u2f, passkey, yubikey_hmac, yubikey_piv) |
+
+To let only OTP tokens log in to your host:
+
+```bash
+otpme-policy show force_token_otp
+otpme-host add_policy <yourhostname> force_token_otp
+```
+
+You can also add your own policy. It has two lists, and a token must match both
+of them where they are set: its token type must be in `force_token_types`, and
+its pass type in `force_pass_types`. A new policy has no token types and the
+pass types `otp`, `otp_push`, `tiqr`, `ssh_key` and `smartcard`. To let in only
+TOTP and FIDO2 tokens:
+
+```bash
+otpme-policy --type forcetoken add totp-fido2
+otpme-policy --type forcetoken force_token_types totp-fido2 totp,fido2
+```
+
+Each command replaces its list, and `""` empties it, so it no longer limits
+anything.
+
+A password token is of the pass type `static`. Only with its second factor
+enabled, as in the next section, it counts as `otp`, and `force_token_otp` lets
+it in. Until then the policy refuses it, so remove the policy from the host
+again for now:
+
+```bash
+otpme-host remove_policy <yourhostname> force_token_otp
+```
 
 ### Using TOTP as Second Factor
 
@@ -1499,19 +1930,57 @@ otpme-site config <site> smtp_relay_server mail.example.org
 `smtp_relay_username` and `smtp_relay_password` set the rest of the
 connection.
 
-The text of the mail is the info text of the access group `SSO`, one text
-per language. The first line is the subject, then comes an empty line,
-then the body. `{user_name}`, `{minutes}` and `{reset_url}` are filled in.
-A new site brings an English text. Without the text after the group name
-the command opens the current text in your editor:
+##### The Recovery Mail
+
+The text of the recovery mail is the *info text of the access group
+`SSO`* of the site that sends it, one text per language. A new site writes
+an English text there:
+
+```bash
+# Show the English text.
+otpme-accessgroup dump_info --language en SSO
+```
+
+```
+Account recovery
+
+Hello,
+
+we received a request to recover the SSO token for the account '{user_name}'.
+
+To set up a fresh SSO token, open the following link within the next {minutes} minutes:
+
+{reset_url}
+
+If you did not request this, you can ignore this message -- your existing token stays untouched.
+```
+
+The first line is the subject, then comes an empty line, then the body.
+These placeholders are filled in:
+
+| Placeholder | Filled in with |
+|-------------|----------------|
+| `{user_name}` | the name of the user |
+| `{minutes}` | how long the link works, from `sso_recovery_link_ttl` |
+| `{reset_url}` | the recovery link |
+
+A text with another placeholder is refused when you set it.
+
+To change the text, or to add one for another language, run `info` with
+the language. Without a text after the group name the command opens the
+current text in your editor:
 
 ```bash
 otpme-accessgroup info --language en SSO
 otpme-accessgroup info --language de SSO
 ```
 
-A user gets the text in their own language, or in the language their
-browser asks for. Where there is no text for it, the English one is used.
+A user gets the text in their own language (`otpme-user language`), or
+in the language their browser asks for when they have none. Where there
+is no text for it, the English one is used, and where that is missing too,
+the text OTPme brings, translated into the language of the user. A text
+written without `--language` is the administrator's own note about the
+access group and is never sent.
 
 The mail goes to the recovery mail address of the user. Users can set it
 themselves on the settings page of the portal, or you set it:
@@ -1524,6 +1993,70 @@ otpme-user add_attribute alice otpmeRecoveryMail=alice@example.org
 `sso_token_deploy_roles` and `sso_recovery_mail_from` can also be set on a
 unit or a user, so the recovery can be allowed for some users only. A
 link from the mail works for 15 minutes (`sso_recovery_link_ttl`).
+
+#### Terms of Use
+
+The portal can ask users to accept its terms of use before an SSO token is
+set up for them. It then shows the terms with a box to tick, before the
+user chooses a token type: at the deploy of the first login, at a
+re-deploy from the settings page, and at an account recovery that creates
+the SSO token. A recovery that replaces an SSO token does not ask.
+Switch it on for the site, or for a unit or a single user:
+
+```bash
+otpme-site config <site> sso_confirm_terms True
+```
+
+The terms are the info text of the site, one text per language. The first
+line of a text must be `Version: <version>`; a text without it, or an
+empty one, is ignored as if there was none. A new site has an English
+text with `Version: 1`:
+
+```bash
+otpme-site dump_info --language en <site>
+```
+
+```
+Version: 1
+
+Terms of use
+
+Your SSO token is personal. Do not give it to anybody, and do not tell anybody its PIN or password.
+Your device tokens, for example for WLAN access, are personal as well. You must not give them or their passwords to others.
+If you lose a token, or think that somebody else knows its secret, tell your administrator at once.
+Your logins are logged (time, address, application) to protect your account.
+The terms can change. You will be asked again when they do.
+```
+
+To change it, or to add a text for another language, run `info` with the
+language. Without a text after the site name the command opens the current
+text in your editor:
+
+```bash
+otpme-site info --language en <site>
+otpme-site info --language de <site>
+```
+
+A user gets the text in their own language, else the English one. If you
+set a text without the version line, the command warns you, and the
+portal goes on showing the English text.
+
+The portal keeps on the user which version they accepted, with the time
+and the language. It asks again only when the version changes. So fix a
+typo without changing the version, and give the text a new version when
+users have to accept a change:
+
+```bash
+# What alice accepted, per site of the portal.
+otpme-user show_sso_terms alice
+
+# Forget it, so the portal asks again at the next deploy.
+otpme-user reset_sso_terms alice
+```
+
+A user of another site who signs in at this portal accepts the terms of
+this site. Here only the value of `sso_confirm_terms` on the portal's site
+counts. What the user accepted is kept on the user at their home site.
 
 ### Applications
 
@@ -1820,7 +2353,8 @@ With an HTTP load balancer, the portal sees the address of the load
 balancer instead of the client. Add the load balancer's IP to
 `reverse_proxy_ips`. The portal then takes the client address from the
 `X-Forwarded-For` header, for its logs and its rate limits. It trusts that
-header only from the addresses listed there:
+header only from the addresses listed there. If a second proxy stands in
+front of the load balancer, add its address as well:
 
 ```bash
 otpme-site config <site> reverse_proxy_ips 192.168.10.5
@@ -1928,6 +2462,38 @@ Some notes on the types:
   ```bash
   otpme-site config <site> force_fido2_rp sso_fqdn
   ```
+
+- **FIDO2 keys of a known maker:** A FIDO2 key carries an attestation
+  certificate that says who made it. With `check_fido2_attestation_cert`
+  on (site, unit, user or token), a key is only taken when that certificate
+  is valid and was signed by a CA certificate of the site. Only the CA that
+  signed the key counts, not a root above it. The check is made when a key
+  is deployed; keys that are deployed stay as they are.
+
+  For YubiKeys you need two roots for older keys and the intermediates for
+  firmware 5.7.4 and later. Yubico has the intermediates in one file, and
+  `add_fido2_ca_cert` adds every certificate in it. That file also holds
+  the CAs of the other functions of a YubiKey (PIV, OpenPGP and more).
+  Remove those again: each CA on the site is one it trusts to say that a
+  key is a FIDO2 key.
+
+  ```bash
+  wget https://developers.yubico.com/PKI/yubico-fido-ca-1.pem
+  wget https://developers.yubico.com/PKI/yubico-fido-ca-2.pem
+  wget https://developers.yubico.com/PKI/yubico-intermediate.pem
+  otpme-site add_fido2_ca_cert <site> yubico-fido-ca-1.pem
+  otpme-site add_fido2_ca_cert <site> yubico-fido-ca-2.pem
+  otpme-site add_fido2_ca_cert <site> yubico-intermediate.pem
+  # Keep only the FIDO ones.
+  otpme-site list_fido2_ca_certs <site> | grep -v -e FIDO -e U2F | while read subject; do
+      otpme-site -f del_fido2_ca_cert <site> "$subject"
+  done
+  otpme-site list_fido2_ca_certs <site>
+  otpme-site config <site> check_fido2_attestation_cert True
+  ```
+
+  Without a CA for the maker of a key, that key is refused once the check
+  is on.
 
 - **Passkeys** are always registered for the SSO FQDN of the site.
 - **tiqr** needs the tiqr app on the phone, and the phone has to trust the

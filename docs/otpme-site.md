@@ -286,6 +286,17 @@ pending. The upgrades so far:
 > is **REALM_USERS**, **usermanager** is **USERMANAGER**, and so on.
 > This renames them. They keep their UUID, so every ACL they are given
 > in stays as it is.
+>
+> **8 (0.3.0a288)**  
+> An ACL group holds the groups it inherits from now, not the groups
+> that inherit from it. This turns the lists round, and puts the base
+> ACL groups in place again, so a base group inherits only what OTPme
+> says, see **otpme-aclgroup**(1).
+>
+> **9 (0.3.0a289)**  
+> Writes the terms of use OTPme brings into the English info of the
+> site, see **info** below, when that text has no **Version:** line or
+> is empty. A text with that line is kept.
 
 It stores the objects of the site in the format of the new version. A
 new version may store an object in another way. The command writes every
@@ -337,14 +348,24 @@ Needs the ACL **edit:description**.
 Set free-form info text. If *info* is omitted, the current text is
 opened in the editor named by the **EDITOR** environment variable.  
 Without **--language** the text is the administrator's own note about
-the object, which no user is ever shown. A text can be written for a
-language as well, for the places that show such a text to a user;
-nothing shows the info of a site, so for a site it stays a note either
-way.  
+the object, which no user is ever shown. A text written for a language
+is the terms of use the SSO portal of the site shows in that language,
+see **sso_confirm_terms** in **otpme**(7). Its first line has to be
+**Version:** *version*, and the version is what is kept on a user who
+accepts. A text without that line is ignored as if there was none, and
+so is an empty one; the command warns about the first. A language
+without a text that counts falls back to the English one. A new site has
+the terms OTPme brings in English, with **Version: 1**.  
 Needs the ACL **edit:info**.
 
 **dump_info** \[**--language** *LANG*\] *site*  
 Print the info text, of that language or the administrator's own.  
+Needs the ACL **view:info**.
+
+**show_info** *site*  
+List the languages the site has a text for, one per line, with the first
+line of the text. The note of the administrator comes first, as **-**.
+An empty text is not listed.  
 Needs the ACL **view:info**.
 
 ## Maintenance
@@ -841,15 +862,21 @@ here (see **otpme**(7)).
 
 The CA certificate is found by its subject: it has to be the one the
 attestation certificate names as its issuer. A CA further up does not
-count, so add the certificate that signed the keys themselves.
+count, so add the certificate that signed the keys themselves. YubiKeys
+with firmware 5.7.4 and later, for one, are signed by intermediates; add
+Yubico's file of intermediates, not only the root. That file holds the
+CAs of the other functions of a YubiKey too (PIV, OpenPGP and more).
+Remove those again: each CA here is one the site trusts to say that a
+key is a FIDO2 key.
 
 A site has none of them at first. With the check on and no certificate
 for the maker of a key, that key is refused.
 
 **add_fido2_ca_cert *site* *ca_cert_file***  
-Add a CA certificate from a file in PEM format. A file that is no
-certificate is refused, and so is one whose subject the site already
-has.  
+Add the CA certificates from a file in PEM format. A file may hold
+several of them, as the intermediates of a maker often come in one file.
+Each is kept under its own subject. Subjects the site already has are
+skipped. A file that holds no certificate is refused.  
 Asks first; the global option **-f** skips the question.  
 Needs the ACL **add:fido2_ca_cert**.
 

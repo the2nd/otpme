@@ -314,6 +314,14 @@ cmd_help = {
                                 },
                 },
 
+    'show_info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup show_info {accessgroup}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the languages that have an info'),
+                                },
+                },
+
     '_list_valid_object_classes'    : {
                     'cmd'   :   '<|object|>',
                 },

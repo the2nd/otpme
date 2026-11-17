@@ -2169,3 +2169,11 @@ msgstr ""
 "Les endroits où votre compte est actuellement connecté sur ce site. "
 "Fermer une session ferme aussi ce qu'elle a ouvert (les applications "
 "auxquelles vous vous êtes connecté avec elle)."
+
+#: views.py templates/deploy.html templates/recover_complete.html
+msgid "Please accept the terms of use first."
+msgstr "Veuillez d'abord accepter les conditions d'utilisation."
+
+#: templates/deploy.html templates/recover_complete.html
+msgid "I accept the terms of use."
+msgstr "J'accepte les conditions d'utilisation."

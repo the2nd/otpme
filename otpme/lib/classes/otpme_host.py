@@ -758,7 +758,7 @@ class OTPmeHost(OTPmeClientObject):
         ):
         """ Enable JOTP rejoining. """
         if self.allow_jotp_rejoin:
-            return callback.error(_("LOTP rejoin already enabled."))
+            return callback.error(_("JOTP rejoin already enabled."))
 
         msg = _("Enable JOTP rejoin for {object_type} '{object_name}'?: ")
         msg = msg.format(object_type=self.type, object_name=self.name)
@@ -798,7 +798,7 @@ class OTPmeHost(OTPmeClientObject):
         ):
         """ Disable JOTP rejoining. """
         if not self.allow_jotp_rejoin:
-            return callback.error(_("LOTP rejoin already disabled."))
+            return callback.error(_("JOTP rejoin already disabled."))
 
         msg = _("Disable JOTP rejoin for {object_type} '{object_name}'?: ")
         msg = msg.format(object_type=self.type, object_name=self.name)
@@ -816,7 +816,59 @@ class OTPmeHost(OTPmeClientObject):
             except Exception as e:
                 return callback.error()
         self.allow_jotp_rejoin = False
+        # The JOTP was printed to whoever left the realm. Turning
+        # rejoin off must take it from them; renew_jotp() makes a
+        # new one for the admin.
         self.jotp = None
+        return self._cache(callback=callback)
+
+    @check_acls(['enable:jotp'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    @object_changelog("generate new JOTP")
+    def renew_jotp(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Replace the JOTP, the old one stops working. """
+        if not self.jotp_enabled:
+            msg = _("JOTP disabled for {object_type} '{object_name}'. Use enable_jotp first.")
+            msg = msg.format(object_type=self.type, object_name=self.name)
+            return callback.error(msg)
+
+        # With a JOTP a join with -f takes the place of the joined
+        # machine and revokes its certificate. That is what a lost or
+        # reinstalled machine needs, and it is disabled for that
+        # first. A running one is not taken over by the way.
+        if self.joined and self.enabled:
+            msg = _("{object_type} '{object_name}' has joined the realm and is enabled. Disable it first.")
+            msg = msg.format(object_type=self.type, object_name=self.name)
+            return callback.error(msg)
+
+        msg = _("Generate new JOTP for {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("gen_jotp",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.jotp = self.gen_jotp()
+        msg = _("You can use the following JOTP to join the {host_type}: {jotp}")
+        msg = msg.format(host_type=self.type, jotp=self.jotp)
+        callback.send(msg)
         return self._cache(callback=callback)
 
     def get_public_key(self, _caller: str="API",

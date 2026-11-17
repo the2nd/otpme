@@ -417,6 +417,12 @@ Needs the ACL **edit:info**.
 Print the info text, of that language or the administrator's own.  
 Needs the ACL **view:info**.
 
+**show_info** *scope*  
+List the languages the scope has a text for, one per line, with the
+first line of the text. The note of the administrator comes first, as
+**-**. An empty text is not listed.  
+Needs the ACL **view:info**.
+
 ## Export and Cleanup
 
 **export** \[**--password** *password*\] *scope*  

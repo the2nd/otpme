@@ -357,6 +357,13 @@ Nothing shows the info of a dictionary to a user, so a text for a language stays
 Write one of those texts to stdout.
 \fB\-\-language\fR picks which one; without it you get the note of the administrator.
 Needs \fBview:info\fR.
+.TP
+\fBshow_info\fR \fIdictionary\fR
+List the languages the dictionary has a text for, one per line, with the first line of the text.
+The note of the administrator comes first, as \fB\-\fR.
+An empty text is not listed.
+.br
+Needs the ACL \fBview:info\fR.
 .hy
 .ad
 .SS Export and Cleanup

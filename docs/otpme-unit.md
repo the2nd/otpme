@@ -202,6 +202,12 @@ note as well.
 Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator. Needs **view:info**.
 
+**show_info** *unit*  
+List the languages the unit has a text for, one per line, with the first
+line of the text. The note of the administrator comes first, as **-**.
+An empty text is not listed.  
+Needs the ACL **view:info**.
+
 ## Password Members
 
 The config parameter **password_store_members** names who gets the keys

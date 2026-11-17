@@ -285,6 +285,12 @@ note as well.
 Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator. Needs **view:info**.
 
+**show_info** *pool*  
+List the languages the pool has a text for, one per line, with the first
+line of the text. The note of the administrator comes first, as **-**.
+An empty text is not listed.  
+Needs the ACL **view:info**.
+
 ## Object Changelog
 
 Every change to the object writes an entry: who made it, when, and what

@@ -353,6 +353,13 @@ An info text is kept per language.
 \fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fItoken\fR
 Write the info text of that language to stdout.
 .TP
+\fBshow_info\fR \fItoken\fR
+List the languages the token has a text for, one per line, with the first line of the text.
+The note of the administrator comes first, as \fB\-\fR.
+An empty text is not listed.
+.br
+Needs the ACL \fBview:info\fR.
+.TP
 .B test \fItoken\fR
 Check whether the token verifies.
 OTPme asks for the OTP or the password; it is never given on the command line.

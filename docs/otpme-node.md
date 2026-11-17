@@ -427,7 +427,15 @@ Print the new JOTP to the machine that is leaving. Whoever leaves the
 realm can then join again without an admin login. It is off by default.
 
 **disable_jotp_rejoin *node***  
-Keep the new JOTP to yourself.
+Keep the new JOTP to yourself. The JOTP that was printed stops working.
+**gen_jotp** makes a new one.
+
+**gen_jotp *node***  
+Make a new JOTP and print it. The old one stops working.  
+The JOTP must be allowed, see **enable_jotp**. A node that has joined
+must be disabled first. With a JOTP, a join with -f takes the place of
+the machine and revokes its certificate.  
+Needs the ACL **enable:jotp**.
 
 The JOTP and the LOTP are shown by **show** and by **export** to whoever
 holds the ACL **view:jotp** or **view:lotp**.
@@ -677,6 +685,12 @@ than the editor.
 administrator. A language the node has no text for gives nothing and is
 not an error.
 
+**show_info** *node*  
+List the languages the node has a text for, one per line, with the first
+line of the text. The note of the administrator comes first, as **-**.
+An empty text is not listed.  
+Needs the ACL **view:info**.
+
 ## Export and Cleanup
 
 Both write to stdout. There is no import on this page: reading an export
@@ -834,7 +848,7 @@ brackets:
 > add_dynamic_group, add_token, change_public_key (public_key),
 > change_vote_script (vote_script), disable_jotp, disable_jotp_rejoin,
 > disable_lotp, disable_vote_script, enable_jotp, enable_jotp_rejoin,
-> enable_lotp, enable_vote_script, join, leave, limit_logins,
+> enable_lotp, enable_vote_script, gen_jotp, join, leave, limit_logins,
 > remove_dynamic_group, remove_token, renew_cert, revoke_cert,
 > set_config_parameter (config), unlimit_logins.
 

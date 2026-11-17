@@ -2152,3 +2152,11 @@ msgstr ""
 "Dónde está iniciada tu cuenta en este sitio. Al cerrar una sesión también"
 " se cierra lo que abrió (las aplicaciones en las que iniciaste sesión con"
 " ella)."
+
+#: views.py templates/deploy.html templates/recover_complete.html
+msgid "Please accept the terms of use first."
+msgstr "Acepta primero las condiciones de uso."
+
+#: templates/deploy.html templates/recover_complete.html
+msgid "I accept the terms of use."
+msgstr "Acepto las condiciones de uso."

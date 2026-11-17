@@ -654,6 +654,14 @@ cmd_help = {
                                 },
                 },
 
+    'show_info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user show_info {user}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the languages that have an info'),
+                                },
+                },
+
     '_list_valid_object_classes'    : {
                     'cmd'   :   '<|object|>',
                 },
@@ -721,6 +729,22 @@ cmd_help = {
                     'cmd'   :   '<|object|> ["access_group"]',
                     '_help' :   {
                                     'cmd'                   : _('Unblock user for an given accessgroup or for all'),
+                                },
+                },
+
+    'show_sso_terms'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user show_sso_terms {user}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the terms of use the user accepted at the SSO portals.'),
+                                },
+                },
+
+    'reset_sso_terms'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user reset_sso_terms {user} [site]'),
+                    'cmd'   :   '<|object|> ["site"]',
+                    '_help' :   {
+                                    'cmd'                   : _('Forget the accepted terms of use of one site or of all, so the portal asks again.'),
                                 },
                 },
 

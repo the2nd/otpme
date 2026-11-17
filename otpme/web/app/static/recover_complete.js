@@ -24,6 +24,26 @@
     // Which type the name step is collecting for.
     let pendingTokenType = null;
 
+    // The terms of use (sso_confirm_terms), asked only where the
+    // recovery creates the SSO token: the version shown, or ''. The
+    // server checks the version on begin and verify, the box only
+    // spares the user that round trip.
+    function termsVersion() {
+        return getUrls().ssoTermsVersion || '';
+    }
+
+    function termsAccepted() {
+        if (!termsVersion()) return true;
+        const box = document.getElementById('ssoTermsAccept');
+        return !!(box && box.checked);
+    }
+
+    function withTerms(body) {
+        const version = termsVersion();
+        if (version) body.sso_terms_version = version;
+        return body;
+    }
+
     function showDeviceNameStep(tokenType) {
         const i18n = getI18n();
         pendingTokenType = tokenType;
@@ -45,6 +65,11 @@
         statusEl.textContent = '';
         errorEl.textContent = '';
 
+        if (!termsAccepted()) {
+            errorEl.textContent = i18n.labelAcceptTerms || 'Please accept the terms of use first.';
+            return;
+        }
+
         // A phone or a security key needs its name before anything can
         // start. Ask for it first, then come back here with it.
         if (DEVICE_NAME_TYPES.includes(tokenType) && !deviceName) {
@@ -55,11 +80,11 @@
         document.querySelectorAll('#step-start button').forEach(b => b.disabled = true);
         statusEl.textContent = i18n.labelCreatingToken || 'Creating token...';
 
-        const beginBody = {
+        const beginBody = withTerms({
             username:       ctx.username,
             recovery_token: ctx.token,
             token_type:     tokenType,
-        };
+        });
         if (deviceName) beginBody.device_name = deviceName;
         try {
             const resp = await fetchJSON(urls.urlBegin, {
@@ -261,11 +286,11 @@
 
         const resp = await fetchJSON(urls.urlVerify, {
             method: 'POST',
-            body: JSON.stringify({
+            body: JSON.stringify(withTerms({
                 username:       ctx.username,
                 recovery_token: ctx.token,
                 token_data:     tokenData,
-            }),
+            })),
         });
         const {body: result, error} = await window.readJsonResponse(
             resp, i18n.labelVerifyFailed || 'Verification failed.');

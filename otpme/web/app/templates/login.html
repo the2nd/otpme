@@ -99,6 +99,12 @@
           {% if show_tiqr %}
           <button type="button" id="tiqrLoginBtn" class="btn btn-secondary">{{ gettext("Smartphone Authentication App (tiqr)") }}</button>
           {% endif %}
+          {# Leave the action that asked for the reauth, see
+             reauth_cancel(). Not there when nothing lies behind, as
+             for a forced token deploy. #}
+          {% if reauth and reauth_back %}
+          <a href="{{ url_for('reauth_cancel', _external=True, _scheme='https') }}" class="btn btn-secondary" id="reauthBackBtn">{{ gettext("Back") }}</a>
+          {% endif %}
         </div>
     </form>
 

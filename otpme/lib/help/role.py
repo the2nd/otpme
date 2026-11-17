@@ -339,6 +339,14 @@ cmd_help = {
                                 },
                 },
 
+    'show_info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-role show_info {role}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the languages that have an info'),
+                                },
+                },
+
     '_list_valid_object_classes'    : {
                     'cmd'   :   '<|object|>',
                 },

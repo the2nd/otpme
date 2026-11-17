@@ -403,6 +403,14 @@ cmd_help = {
                                 },
                 },
 
+    'show_info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share show_info {share}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the languages that have an info'),
+                                },
+                },
+
      'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share config [-d] [-a] {share} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <"parameter"> [value]',

@@ -2165,3 +2165,11 @@ msgstr ""
 "Wo Ihr Konto auf dieser Site gerade angemeldet ist. Das Beenden einer "
 "Sitzung beendet auch, was sie geöffnet hat (Anwendungen, bei denen Sie "
 "sich damit angemeldet haben)."
+
+#: views.py templates/deploy.html templates/recover_complete.html
+msgid "Please accept the terms of use first."
+msgstr "Bitte bestätigen Sie zuerst die Nutzungsbedingungen."
+
+#: templates/deploy.html templates/recover_complete.html
+msgid "I accept the terms of use."
+msgstr "Ich stimme den Nutzungsbedingungen zu."

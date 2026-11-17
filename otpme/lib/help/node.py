@@ -316,6 +316,14 @@ cmd_help = {
                                 },
                 },
 
+    'show_info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-node show_info {node}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the languages that have an info'),
+                                },
+                },
+
     '_list_valid_object_classes'    : {
                     'cmd'   :   '<|object|>',
                 },
@@ -552,6 +560,14 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Disable printing of rejoin JOTP on realm leave.'),
+                                },
+                },
+
+    'gen_jotp'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-node gen_jotp {node}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Generate a new JOTP, the old one stops working.'),
                                 },
                 },
 

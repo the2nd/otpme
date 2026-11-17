@@ -257,6 +257,12 @@ Write one of those texts to stdout, for reading it with something other
 than the editor.  
 Needs **view:info**.
 
+**show_info** *device*  
+List the languages the device has a text for, one per line, with the
+first line of the text. The note of the administrator comes first, as
+**-**. An empty text is not listed.  
+Needs the ACL **view:info**.
+
 ## Object Changelog
 
 Every change to the object writes an entry: who made it, when, and what

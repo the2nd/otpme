@@ -517,6 +517,11 @@ class AuthHandler(object):
 
     def update_session(self, session):
         """ Update session. """
+        # A logout request: authenticate() deletes the session right
+        # after verify_user_sessions(), nothing to update.
+        if self.session_logout:
+            return
+
         # If this is a refresh-request...
         if self.session_refresh:
             # Set auth_failed because we dont want to allow logins using SRPs
@@ -784,7 +789,10 @@ class AuthHandler(object):
                                         uuid=session_uuid)
             if not session:
                 continue
-            verify_response = session.verify(auth_type=self.auth_type,
+            # The SLP is a clear-text password whatever the new login
+            # was made with: verify() skips a smartcard, ssh or tiqr
+            # request, and the old session stayed.
+            verify_response = session.verify(auth_type="clear-text",
                                              password=slp,
                                             check_auth=False,
                                             check_srp=False,

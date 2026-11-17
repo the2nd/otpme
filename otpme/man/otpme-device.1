@@ -275,6 +275,13 @@ Needs \fBedit:info\fR.
 Write one of those texts to stdout, for reading it with something other than the editor.
 .br
 Needs \fBview:info\fR.
+.TP
+\fBshow_info\fR \fIdevice\fR
+List the languages the device has a text for, one per line, with the first line of the text.
+The note of the administrator comes first, as \fB\-\fR.
+An empty text is not listed.
+.br
+Needs the ACL \fBview:info\fR.
 .SS Object Changelog
 Every change to the object writes an entry: who made it, when, and what was done.
 A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.

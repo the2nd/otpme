@@ -241,6 +241,13 @@ which also says who reads it.
 \fBdump_info\fR [\fB\-\-language\fR \fILANG\fR] \fIuser\fR
 Write the info text of that language to stdout.
 .TP
+\fBshow_info\fR \fIuser\fR
+List the languages the user has a text for, one per line, with the first line of the text.
+The note of the administrator comes first, as \fB\-\fR.
+An empty text is not listed.
+.br
+Needs the ACL \fBview:info\fR.
+.TP
 .B language \fIuser\fR \fIlanguage\fR
 Set the user's localization language (e.g. "en", "de").
 .TP
@@ -253,6 +260,19 @@ Undo
 .TP
 .B unblock \fIuser\fR \fR[\fIaccessgroup\fR]
 Unblock the user for the given accessgroup, or for all accessgroups if none is given.
+.TP
+.B show_sso_terms \fIuser\fR
+Show the terms of use the user accepted at the SSO portals: per site of the portal the version, when and in which language.
+See \fBsso_confirm_terms\fR in
+.BR otpme (7).
+.br
+Needs the ACL \fBview:sso_terms\fR.
+.TP
+.B reset_sso_terms \fIuser\fR \fR[\fIsite\fR]
+Forget that the user accepted the terms of use of that site, or of all sites.
+The portal asks again at the next deploy of an SSO token.
+.br
+Needs the ACL \fBdelete:sso_terms\fR.
 .TP
 .B enable_auto_mount \fIuser\fR / \fBdisable_auto_mount \fIuser\fR
 See \fBUser Management\fR above.
@@ -1220,7 +1240,7 @@ A user has the hooks every object type has, and these; a command of another name
 .PP
 .na
 .nh
-add_photo\ (photo), add_token, change_agent_script\ (agent_script), change_auth_script\ (auth_script), change_encrypt_private_key\ (encrypt_private_key), change_encrypt_public_key\ (encrypt_public_key), change_group\ (group), change_key_cache_time\ (key_cache_time), change_key_pass\ (key_pass), change_key_script\ (key_script), change_login_script\ (login_script), change_sign_private_key\ (sign_private_key), change_sign_public_key\ (sign_public_key), decrypt, del_keys, del_photo, del_token, deploy_token, disable_admin_access, disable_auth_script, disable_auto_mount, disable_autosign, disable_disabled_login, disable_key_caching, disable_login_script, dump_photo, enable_admin_access, enable_auth_script, enable_auto_mount, enable_autosign, enable_disabled_login, enable_key_caching, enable_login_script, encrypt, gen_keys, move, pre_add_token, set_config_parameter\ (config), sign, unblock, verify.
+add_photo\ (photo), add_token, change_agent_script\ (agent_script), change_auth_script\ (auth_script), change_encrypt_private_key\ (encrypt_private_key), change_encrypt_public_key\ (encrypt_public_key), change_group\ (group), change_key_cache_time\ (key_cache_time), change_key_pass\ (key_pass), change_key_script\ (key_script), change_login_script\ (login_script), change_sign_private_key\ (sign_private_key), change_sign_public_key\ (sign_public_key), decrypt, del_keys, del_photo, del_token, deploy_token, disable_admin_access, disable_auth_script, disable_auto_mount, disable_autosign, disable_disabled_login, disable_key_caching, disable_login_script, dump_photo, enable_admin_access, enable_auth_script, enable_auto_mount, enable_autosign, enable_disabled_login, enable_key_caching, enable_login_script, encrypt, gen_keys, move, pre_add_token, reset_sso_terms, set_config_parameter\ (config), show_sso_terms, sign, unblock, verify.
 .hy
 .ad
 .RE

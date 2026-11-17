@@ -507,6 +507,14 @@ commands = {
                     },
                 },
             },
+    'gen_jotp'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'renew_jotp',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'limit_logins'   : {
             'default'    : {
                 'exists'    : {
@@ -728,6 +736,14 @@ commands = {
                 'exists'    : {
                     'method'            : 'dump_info',
                     'oargs'             : ['language'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_info'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_info',
                     'job_type'          : 'thread',
                     },
                 },
@@ -992,6 +1008,7 @@ def register_hooks():
     config.register_auth_on_action_hook("node", "disable_lotp")
     config.register_auth_on_action_hook("node", "enable_jotp_rejoin")
     config.register_auth_on_action_hook("node", "disable_jotp_rejoin")
+    config.register_auth_on_action_hook("node", "gen_jotp")
     config.register_auth_on_action_hook("node", "add_dynamic_group")
     config.register_auth_on_action_hook("node", "remove_dynamic_group")
     config.register_auth_on_action_hook("node", "change_vote_script")

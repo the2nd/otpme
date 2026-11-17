@@ -21,6 +21,25 @@
     // Which type the name step is collecting for.
     let pendingTokenType = null;
 
+    // The terms of use (sso_confirm_terms): the version shown, or ''
+    // when the portal asks for none. The server checks the version on
+    // begin and verify, the box only spares the user that round trip.
+    function termsVersion() {
+        return getUrls().ssoTermsVersion || '';
+    }
+
+    function termsAccepted() {
+        if (!termsVersion()) return true;
+        const box = document.getElementById('ssoTermsAccept');
+        return !!(box && box.checked);
+    }
+
+    function withTerms(body) {
+        const version = termsVersion();
+        if (version) body.sso_terms_version = version;
+        return body;
+    }
+
     function showDeviceNameStep(tokenType) {
         const i18n = getI18n();
         pendingTokenType = tokenType;
@@ -41,6 +60,11 @@
         statusEl.textContent = '';
         errorEl.textContent = '';
 
+        if (!termsAccepted()) {
+            errorEl.textContent = i18n.labelAcceptTerms || 'Please accept the terms of use first.';
+            return;
+        }
+
         // A phone or a security key needs its name before anything can
         // start. Ask for it first, then come back here with it.
         if (DEVICE_NAME_TYPES.includes(tokenType) && !deviceName) {
@@ -51,7 +75,7 @@
         document.querySelectorAll('#step-start button').forEach(b => b.disabled = true);
         statusEl.textContent = i18n.labelCreatingToken || 'Creating token...';
 
-        const beginBody = {token_type: tokenType};
+        const beginBody = withTerms({token_type: tokenType});
         if (deviceName) beginBody.device_name = deviceName;
         try {
             const resp = await fetchJSON(urls.urlDeployBegin, {
@@ -169,7 +193,7 @@
         statusEl.textContent = i18n.labelFinalizing || 'Finalizing deployment...';
         const verifyResp = await fetchJSON(urls.urlDeployVerify, {
             method: 'POST',
-            body: JSON.stringify({}),
+            body: JSON.stringify(withTerms({})),
         });
         const verifyResult = await verifyResp.json();
         if (!verifyResp.ok) {
@@ -204,7 +228,7 @@
             try {
                 const resp = await fetchJSON(urls.urlDeployVerify, {
                     method: 'POST',
-                    body: JSON.stringify({}),
+                    body: JSON.stringify(withTerms({})),
                 });
                 const result = await resp.json();
                 if (resp.ok) {
@@ -245,7 +269,7 @@
         try {
             const resp = await fetchJSON(urls.urlDeployVerify, {
                 method: 'POST',
-                    body: JSON.stringify({otp: otp}),
+                    body: JSON.stringify(withTerms({otp: otp})),
             });
             const result = await resp.json();
             if (!resp.ok) {

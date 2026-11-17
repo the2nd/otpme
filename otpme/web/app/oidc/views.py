@@ -816,6 +816,30 @@ def end_session():
 # ---------------------------------------------------------------------------
 
 
+def _reauth_cancelled_response(client_id, redirect_uri, state):
+    """ The user left the reauth that prompt=login or max_age asked
+    for. access_denied goes to the client if redirect_uri is one of
+    its own, else it is shown here.
+
+    Spec: OIDC Core 1.0 §3.1.2.6 "Authentication Error Response"
+      https://openid.net/specs/openid-connect-core-1_0.html#AuthError
+    """
+    description = 'user cancelled the reauthentication'
+    v_status, v_response = _send_oidc_command(
+            'oidc_prompt_none_no_session',
+            {'client_id': client_id,
+             'redirect_uri': redirect_uri})
+    if (v_status and isinstance(v_response, dict)
+            and v_response.get('valid') and redirect_uri):
+        target = _build_redirect_with_params(redirect_uri, {
+            'error': 'access_denied',
+            'error_description': description,
+            'state': state,
+        })
+        return redirect(target)
+    return _authorize_error_page('access_denied', description)
+
+
 def _build_redirect_with_params(redirect_uri, params):
     """ Append OIDC response params to the registered redirect_uri.
     Preserves any pre-existing query string. """
@@ -1049,6 +1073,15 @@ def authorize():
         return redirect(url_for('login',
                                 next=_self_url(),
                                 _external=True, _scheme='https'))
+
+    # "Back" on the reauth page (/reauth/cancel): the user would not
+    # log in again, so the client gets access_denied (Core §3.1.2.6).
+    # Only for the request that sent them there, so a later one of
+    # another client is not refused. redirect_uri is not validated
+    # yet at this point; ask ssod first, as for prompt=none.
+    cancelled = flask_session.pop('oidc_reauth_cancelled', None)
+    if cancelled and cancelled == _self_url():
+        return _reauth_cancelled_response(client_id, redirect_uri, state)
 
     # OIDC Core §3.1.2.1: prompt=login MUST trigger reauthentication.
     # Redirect through /reauth (a step-up FIDO2 verify) so the user

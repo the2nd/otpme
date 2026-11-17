@@ -813,7 +813,14 @@ def get_opts(command_syntax, command_line, command_args=None,
                             args_dict[arg] = val
                         para_val = args_dict
                     elif var_type == str:
-                        para_val = str(para_val)
+                        # After "--" the rest of the line is one value
+                        # (the options of a script), quoted or not:
+                        # below the line is emptied, a word left out
+                        # here would be lost without a word.
+                        if found_end_of_opts:
+                            para_val = " ".join(command_line)
+                        else:
+                            para_val = str(para_val)
                     else:
                         if found_end_of_opts:
                             para_val = " ".join(command_line)

@@ -366,6 +366,13 @@ Needs the ACL \fBedit:info\fR.
 Print the info text, of that language or the administrator's own.
 .br
 Needs the ACL \fBview:info\fR.
+.TP
+\fBshow_info\fR \fIshare\fR
+List the languages the share has a text for, one per line, with the first line of the text.
+The note of the administrator comes first, as \fB\-\fR.
+An empty text is not listed.
+.br
+Needs the ACL \fBview:info\fR.
 .SS Mount Script
 The mount script runs on the node every time somebody mounts the share, before the mount is answered.
 It can make sure the directory is there, e.g. mount the file system it is on.

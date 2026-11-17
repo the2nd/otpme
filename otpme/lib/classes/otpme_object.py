@@ -11917,6 +11917,41 @@ class OTPmeObject(OTPmeBaseObject):
             info = ""
         return callback.ok(info)
 
+    @check_acls(acls=['view:info'])
+    @object_lock()
+    @audit_log()
+    def show_info(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        verbose_level: int=0,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ The languages the object has an info for, each with the
+        first line of its text. The administrator's own note (see
+        DEFAULT_INFO_LANGUAGE) comes first, as "-". An empty text is no
+        info, as for dump_info. """
+        info = self.info
+        if info is None or not hasattr(info, "items"):
+            info = {}
+        languages = {}
+        for x_language, x_text in info.items():
+            if not x_text or not str(x_text).strip():
+                continue
+            languages[x_language] = str(x_text).strip().split("\n")[0]
+        lines = []
+        if DEFAULT_INFO_LANGUAGE in languages:
+            first_line = languages.pop(DEFAULT_INFO_LANGUAGE)
+            lines.append(f"-\t{first_line}")
+        for x_language in sorted(languages):
+            lines.append(f"{x_language}\t{languages[x_language]}")
+        if not lines:
+            msg = _("No info set for {object_type} '{object_name}'.")
+            msg = msg.format(object_type=self.type, object_name=self.name)
+            return callback.ok(msg)
+        return callback.ok("\n".join(lines))
+
     @object_lock()
     def add_default_policies(self, callback: JobCallback=default_callback):
         """ Add default policies to object. """

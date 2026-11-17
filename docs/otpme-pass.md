@@ -550,6 +550,12 @@ Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator.  
 Needs the ACL **view:info**.
 
+**show_info** *password*  
+List the languages the password has a text for, one per line, with the
+first line of the text. The note of the administrator comes first, as
+**-**. An empty text is not listed.  
+Needs the ACL **view:info**.
+
 ## Export and Cleanup
 
 There is no import on this page: reading an export back in is

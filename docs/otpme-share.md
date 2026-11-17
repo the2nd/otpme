@@ -369,6 +369,12 @@ Needs the ACL **edit:info**.
 Print the info text, of that language or the administrator's own.  
 Needs the ACL **view:info**.
 
+**show_info** *share*  
+List the languages the share has a text for, one per line, with the
+first line of the text. The note of the administrator comes first, as
+**-**. An empty text is not listed.  
+Needs the ACL **view:info**.
+
 ## Mount Script
 
 The mount script runs on the node every time somebody mounts the share,

@@ -237,6 +237,12 @@ also says who reads it.
 **dump_info** \[**--language** *LANG*\] *user*  
 Write the info text of that language to stdout.
 
+**show_info** *user*  
+List the languages the user has a text for, one per line, with the first
+line of the text. The note of the administrator comes first, as **-**.
+An empty text is not listed.  
+Needs the ACL **view:info**.
+
 **language *user* *language***  
 Set the user's localization language (e.g. "en", "de").
 
@@ -249,6 +255,17 @@ Undo **enable_disabled_login**.
 **unblock *user* \[*accessgroup*\]**  
 Unblock the user for the given accessgroup, or for all accessgroups if
 none is given.
+
+**show_sso_terms *user***  
+Show the terms of use the user accepted at the SSO portals: per site of
+the portal the version, when and in which language. See
+**sso_confirm_terms** in **otpme**(7).  
+Needs the ACL **view:sso_terms**.
+
+**reset_sso_terms *user* \[*site*\]**  
+Forget that the user accepted the terms of use of that site, or of all
+sites. The portal asks again at the next deploy of an SSO token.  
+Needs the ACL **delete:sso_terms**.
 
 **enable_auto_mount *user* / **disable_auto_mount** *user***  
 See **User Management** above.
@@ -1205,7 +1222,8 @@ brackets:
 > dump_photo, enable_admin_access, enable_auth_script,
 > enable_auto_mount, enable_autosign, enable_disabled_login,
 > enable_key_caching, enable_login_script, encrypt, gen_keys, move,
-> pre_add_token, set_config_parameter (config), sign, unblock, verify.
+> pre_add_token, reset_sso_terms, set_config_parameter (config),
+> show_sso_terms, sign, unblock, verify.
 
 # SEE ALSO
 

@@ -337,6 +337,14 @@ cmd_help = {
                                 },
                 },
 
+    'show_info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-group show_info {group}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show the languages that have an info'),
+                                },
+                },
+
     'list_sync_users'   : {
                     '_cmd_usage_help' : _('Usage: otpme-group list_sync_users [--return-type <type>] {group}'),
                     'cmd'   :   '--return-type :"return_type": [|object|]',

@@ -6,6 +6,7 @@ import magic
 import base64
 from datetime import datetime
 from cryptography import x509
+from cryptography.hazmat.primitives import serialization
 from typing import List
 from typing import Union
 
@@ -49,6 +50,7 @@ from otpme.lib.policy.idrange.idrange import IdrangePolicy
 from otpme.lib.daemon.clusterd import cluster_radius_reload
 from otpme.lib.compression.base import get_uncompressed_size
 from otpme.lib.policy.idrange.idrange  import BASE_POLICY_NAME
+from otpme.lib.classes.otpme_object import DEFAULT_INFO_LANGUAGE
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 from otpme.lib.classes.otpme_object import name_len_setter
 from otpme.lib.classes.otpme_object import uuid_orphans
@@ -87,6 +89,7 @@ SITE_UPGRADES = [
                 (6, "0.3.0a288", "upgrade_passuser_aclgroup"),
                 (7, "0.3.0a288", "upgrade_base_aclgroup_names"),
                 (8, "0.3.0a288", "upgrade_aclgroup_inherits"),
+                (9, "0.3.0a289", "upgrade_sso_terms"),
                 ]
 
 def get_upgrade_level_string(upgrade_level):
@@ -688,6 +691,14 @@ commands = {
                 'exists'    : {
                     'method'            : 'dump_info',
                     'oargs'             : ['language'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'show_info'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_info',
                     'job_type'          : 'thread',
                     },
                 },
@@ -2745,6 +2756,19 @@ def register_config():
     # portal site are listed, that is where a login of this portal
     # lives.
     config.register_config_parameter(name="sso_allow_session_mgmt",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=object_types)
+    # Whether a user accepts the terms of use of the portal before an
+    # SSO token is set up for them: at the deploy of the first login,
+    # and at an account recovery that creates their SSO token. The
+    # terms are the info of the portal's site, see sso_terms.py.
+    #
+    # For a user of the portal's site the value is looked up at the
+    # user, the unit, the site. For a user of another site only the
+    # portal's site counts: it is that site's terms, and the home site
+    # of the user cannot switch them off for its users.
+    config.register_config_parameter(name="sso_confirm_terms",
                                     ctype=bool,
                                     default_value=False,
                                     object_types=object_types)
@@ -6933,6 +6957,9 @@ class Site(OTPmeObject):
         self.otpme_version = otpme.__version__
         self.config_versions = config.get_config_versions()
         self.upgrade_level = SITE_UPGRADES[-1][0]
+        # The terms of use of the SSO portal, see sso_terms.py. Upgrade 9
+        # writes them into a site from before.
+        self.add_default_sso_terms()
 
         # Start site add.
         add_result = self._add(**kwargs)
@@ -7479,6 +7506,63 @@ class Site(OTPmeObject):
         maintenance.get_reasons(). """
         upgrade_level = self.upgrade_level or 0
         return [x for x in SITE_UPGRADES if x[0] > upgrade_level]
+
+    def change_info(self, info: Union[str,None]=None,
+        language: str=DEFAULT_INFO_LANGUAGE,
+        callback=default_callback, **kwargs):
+        """ Change object info.
+
+        The info of a site in a language is the terms of use its SSO
+        portal shows in that language (see sso_terms.py). A text counts
+        only with "Version: <value>" in its first line, and one without
+        is ignored as if there was none. It is not refused: the
+        administrator may want to set it in two steps. But they are
+        told, because at the portal they would only see the default.
+        The text without a language is the administrator's own note. """
+        result = super().change_info(info=info,
+                                    language=language,
+                                    callback=callback,
+                                    **kwargs)
+        if not result or language == DEFAULT_INFO_LANGUAGE:
+            return result
+        from otpme.lib import sso_terms
+        text = self.info.get(language)
+        if text and sso_terms.parse_terms(text) is None:
+            msg = _("Warning: Without \"Version: <version>\" in its first line the text is not used as the terms of use of the SSO portal.")
+            callback.send(msg)
+        return result
+
+    def add_default_sso_terms(self):
+        """ Write the default terms of use into the info of the site,
+        in each language of sso_terms.DEFAULT_LANGUAGES -- English --
+        whose text does not count (none, empty or without a version
+        line). Every other language falls back to the English text.
+
+        A text that counts is never replaced: it is the administrator's.
+        So this can run again and again. Returns the languages written.
+        The caller writes the site. """
+        from otpme.lib import sso_terms
+        languages = sso_terms.missing_languages(self.info)
+        for language in languages:
+            self.info[language] = sso_terms.default_terms(language)
+        return languages
+
+    def upgrade_sso_terms(self, procs: Union[int,None]=None,
+        callback: JobCallback=default_callback):
+        """ Write the default terms of use of the SSO portal into the
+        info of the site, see add_default_sso_terms(). A language whose
+        text is empty, or has no version line, gets the default as well.
+
+        <procs> is not used, see run_site_upgrades(), which writes the
+        site afterwards. """
+        msg = _("Adding the default terms of use of the SSO portal...")
+        callback.send(msg)
+        languages = self.add_default_sso_terms()
+        if languages:
+            msg = _("Terms of use written for: {languages}")
+            msg = msg.format(languages=", ".join(languages))
+            callback.send(msg)
+        return callback.ok()
 
     def run_site_upgrades(self, procs: Union[int,None]=None,
         callback: JobCallback=default_callback):
@@ -8553,23 +8637,47 @@ class Site(OTPmeObject):
         ):
         if isinstance(ca_cert, str):
             ca_cert = ca_cert.encode()
+        # A file may hold several certificates, as the intermediates of
+        # a maker come in one file. Each is kept under its own subject:
+        # the attestation check finds a CA by the issuer of the key.
+        # load_pem_x509_certificate() read the first one only, and the
+        # whole file was kept under its subject.
         try:
-            x_cert = x509.load_pem_x509_certificate(ca_cert)
+            x_certs = x509.load_pem_x509_certificates(ca_cert)
         except Exception as e:
             msg = _("Failed to load PEM cert: {e}")
             msg = msg.format(e=e)
             return callback.error(msg)
-        if x_cert.subject.rfc4514_string() in self.fido2_ca_certs:
+        new_certs = {}
+        for x_cert in x_certs:
+            subject = x_cert.subject.rfc4514_string()
+            if subject in new_certs:
+                continue
+            if subject in self.fido2_ca_certs:
+                msg = _("Cert already added: {subject}")
+                msg = msg.format(subject=subject)
+                callback.send(msg)
+                continue
+            cert_pem = x_cert.public_bytes(serialization.Encoding.PEM)
+            new_certs[subject] = cert_pem.decode()
+        if not new_certs:
             msg = _("Cert already added.")
             return callback.error(msg)
 
-        msg = _("Add FIDO2 CA certificate '{subject}' to site '{site_name}'?: ")
-        msg = msg.format(subject=x_cert.subject.rfc4514_string(),
-                        site_name=self.name)
+        if len(new_certs) == 1:
+            msg = _("Add FIDO2 CA certificate '{subject}' to site '{site_name}'?: ")
+            msg = msg.format(subject=list(new_certs)[0], site_name=self.name)
+        else:
+            for subject in new_certs:
+                callback.send(subject)
+            msg = _("Add {count} FIDO2 CA certificates to site '{site_name}'?: ")
+            msg = msg.format(count=len(new_certs), site_name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
 
-        self.fido2_ca_certs[x_cert.subject.rfc4514_string()] = ca_cert.decode()
+        # An IncrementalDict: one item at a time, it has no update().
+        for subject, cert_pem in new_certs.items():
+            self.fido2_ca_certs[subject] = cert_pem
         return self._cache(callback=callback)
 
     @check_acls(['delete:fido2_ca_cert'])

@@ -330,6 +330,12 @@ administrator.
 **dump_info** \[**--language** *LANG*\] *token*  
 Write the info text of that language to stdout.
 
+**show_info** *token*  
+List the languages the token has a text for, one per line, with the
+first line of the text. The note of the administrator comes first, as
+**-**. An empty text is not listed.  
+Needs the ACL **view:info**.
+
 **test *token***  
 Check whether the token verifies. OTPme asks for the OTP or the
 password; it is never given on the command line.  

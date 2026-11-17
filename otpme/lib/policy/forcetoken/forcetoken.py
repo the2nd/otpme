@@ -63,6 +63,16 @@ PASS_TYPES = [
 # What a new policy lets in: every pass type but a static password.
 DEFAULT_PASS_TYPES = ['otp', 'otp_push', 'tiqr', 'ssh_key', 'smartcard']
 
+def get_pass_type(token):
+    """ The pass type a token is checked as. A password token with its
+    second factor enabled is not a static password any more: a login
+    needs the OTP or the smartcard of the second factor too. It counts
+    as "otp", so force_token_otp lets it in. """
+    if token.token_type == "password" \
+    and getattr(token, "second_factor_token_enabled", False):
+        return "otp"
+    return token.pass_type
+
 def parse_types(types_string, valid_types):
     """ A comma separated list of types: the list, or the first one that
     is not in <valid_types>. "" is the empty list. """
@@ -305,7 +315,7 @@ class ForcetokenPolicy(Policy):
                 msg = msg.format(self.name, hook_object.rel_path)
                 raise self.policy_exception(msg)
         if self.force_pass_types:
-            if verify_token.pass_type not in self.force_pass_types:
+            if get_pass_type(verify_token) not in self.force_pass_types:
                 msg = _("Token pass type denied by policy: {}: {}")
                 msg = msg.format(self.name, hook_object.rel_path)
                 raise self.policy_exception(msg)

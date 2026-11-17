@@ -945,6 +945,14 @@ commands = {
                     },
                 },
             },
+    'show_info'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_info',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'export'   : {
             'default'    : {
                 'exists'    : {

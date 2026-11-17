@@ -593,6 +593,13 @@ Write one of those texts to stdout.
 \fB\-\-language\fR picks which one; without it you get the note of the administrator.
 .br
 Needs the ACL \fBview:info\fR.
+.TP
+\fBshow_info\fR \fIpassword\fR
+List the languages the password has a text for, one per line, with the first line of the text.
+The note of the administrator comes first, as \fB\-\fR.
+An empty text is not listed.
+.br
+Needs the ACL \fBview:info\fR.
 .hy
 .ad
 .SS Export and Cleanup

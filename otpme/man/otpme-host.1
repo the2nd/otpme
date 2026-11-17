@@ -490,6 +490,19 @@ It is off by default.
 .TP
 .B disable_jotp_rejoin \fIhost\fR
 Keep the new JOTP to yourself.
+The JOTP that was printed stops working.
+.B gen_jotp
+makes a new one.
+.TP
+.B gen_jotp \fIhost\fR
+Make a new JOTP and print it.
+The old one stops working.
+.br
+The JOTP must be allowed, see \fBenable_jotp\fR.
+A host that has joined must be disabled first.
+With a JOTP, a join with \-f takes the place of the machine and revokes its certificate.
+.br
+Needs the ACL \fBenable:jotp\fR.
 .PP
 The JOTP and the LOTP are shown by
 .B show
@@ -758,6 +771,13 @@ Write one of those texts to stdout, for reading it with something other than the
 .br
 \fB\-\-language\fR picks which one; without it you get the note of the administrator.
 A language the host has no text for gives nothing and is not an error.
+.TP
+\fBshow_info\fR \fIhost\fR
+List the languages the host has a text for, one per line, with the first line of the text.
+The note of the administrator comes first, as \fB\-\fR.
+An empty text is not listed.
+.br
+Needs the ACL \fBview:info\fR.
 .SS Export and Cleanup
 Both write to stdout.
 There is no import on this page: reading an export back in is
@@ -904,6 +924,17 @@ See \fBotpme-deploy\fR(1).
 .B otpme-inventory packages notebook1
 What it has installed.
 Reading it needs \fBallow_inventory\fR, see \fBotpme-inventory\fR(1).
+.SS A lost machine
+.TP
+.B otpme-host disable notebook1
+Lock the old machine out.
+.TP
+.B otpme-host gen_jotp notebook1
+A JOTP for the new machine.
+.TP
+.B otpme-tool join \-f \-\-jotp 12345678
+Run on the new machine.
+It takes the place of the old one, the certificate of the old one is revoked, and the host is enabled again.
 .SS When it leaves
 .TP
 .B otpme-host enable_jotp_rejoin notebook1
@@ -926,7 +957,7 @@ A host has the hooks every object type has, and these; a command of another name
 .PP
 .na
 .nh
-add_dynamic_group, add_role, add_sync_group, add_token, change_mac\ (mac), change_public_key\ (public_key), disable_jotp, disable_jotp_rejoin, disable_lotp, disable_sync_by_login_token, disable_sync_groups, enable_jotp, enable_jotp_rejoin, enable_lotp, enable_sync_by_login_token, enable_sync_groups, join, leave, limit_logins, remove_dynamic_group, remove_role, remove_sync_group, remove_token, renew_cert, revoke_cert, set_config_parameter\ (config), unlimit_logins.
+add_dynamic_group, add_role, add_sync_group, add_token, change_mac\ (mac), change_public_key\ (public_key), disable_jotp, disable_jotp_rejoin, disable_lotp, disable_sync_by_login_token, disable_sync_groups, enable_jotp, enable_jotp_rejoin, enable_lotp, enable_sync_by_login_token, enable_sync_groups, gen_jotp, join, leave, limit_logins, remove_dynamic_group, remove_role, remove_sync_group, remove_token, renew_cert, revoke_cert, set_config_parameter\ (config), unlimit_logins.
 .hy
 .ad
 .RE

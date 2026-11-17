@@ -371,6 +371,12 @@ Write one of those texts to stdout. **--language** picks which one;
 without it you get the note of the administrator.  
 Needs the ACL **view:info**.
 
+**show_info** *realm*  
+List the languages the realm has a text for, one per line, with the
+first line of the text. The note of the administrator comes first, as
+**-**. An empty text is not listed.  
+Needs the ACL **view:info**.
+
 **touch *realm***  
 Write the index entries, the ACLs and the LDAP entry of the realm again,
 on this site. Any site can do that.  

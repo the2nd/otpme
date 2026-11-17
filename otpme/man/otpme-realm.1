@@ -359,6 +359,13 @@ Write one of those texts to stdout.
 .br
 Needs the ACL \fBview:info\fR.
 .TP
+\fBshow_info\fR \fIrealm\fR
+List the languages the realm has a text for, one per line, with the first line of the text.
+The note of the administrator comes first, as \fB\-\fR.
+An empty text is not listed.
+.br
+Needs the ACL \fBview:info\fR.
+.TP
 .B touch \fIrealm\fR
 Write the index entries, the ACLs and the LDAP entry of the realm again, on this site.
 Any site can do that.

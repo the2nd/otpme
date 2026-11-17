@@ -2152,3 +2152,11 @@ msgstr ""
 "Dove il tuo account ha attualmente effettuato l'accesso su questo sito. "
 "Terminare una sessione termina anche ciò che ha aperto (le applicazioni a"
 " cui hai effettuato l'accesso con essa)."
+
+#: views.py templates/deploy.html templates/recover_complete.html
+msgid "Please accept the terms of use first."
+msgstr "Accetta prima le condizioni d'uso."
+
+#: templates/deploy.html templates/recover_complete.html
+msgid "I accept the terms of use."
+msgstr "Accetto le condizioni d'uso."

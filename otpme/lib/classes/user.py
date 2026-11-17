@@ -115,6 +115,7 @@ read_value_acls = {
                         "auto_mount",
                         "key_cache_time",
                         "key_caching",
+                        "sso_terms",
                         ],
             # A public key is for everybody, get_sign_key() and
             # get_encrypt_key() ask only for the private one.
@@ -141,6 +142,7 @@ write_value_acls = {
                                 "token",
                                 "photo",
                                 "session",
+                                "sso_terms",
                                 ],
                     "deploy"    : [
                                 "token",
@@ -490,6 +492,23 @@ commands = {
                 'exists'    : {
                     'method'            : 'unblock',
                     'oargs'             : ['access_group'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'show_sso_terms'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_sso_terms',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'reset_sso_terms'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'reset_sso_terms',
+                    'oargs'             : ['site'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1016,6 +1035,14 @@ commands = {
                     },
                 },
             },
+    'show_info'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_info',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'photo'   : {
             'default'    : {
                 'exists'    : {
@@ -1279,6 +1306,8 @@ def register_dn():
 
 def register_hooks():
     config.register_auth_on_action_hook("user", "unblock")
+    config.register_auth_on_action_hook("user", "show_sso_terms")
+    config.register_auth_on_action_hook("user", "reset_sso_terms")
     config.register_auth_on_action_hook("user", "gen_keys")
     config.register_auth_on_action_hook("user", "del_keys")
     config.register_auth_on_action_hook("user", "sign")
@@ -1985,6 +2014,10 @@ class User(OTPmeObject):
                     'node'  : {
                         'untrusted'  : [
                             "TOKENS",
+                            # Whether the user accepted the terms of a
+                            # portal of another site: that portal asks
+                            # its copy of the user, see sso_terms.py.
+                            "SSO_TERMS",
                             "SIGN_PUBLIC_KEY",
                             "ENCRYPT_PUBLIC_KEY",
                             "SIGN_KEY_TYPE",
@@ -2211,6 +2244,13 @@ class User(OTPmeObject):
                                                     },
                         'OIDC_CONSENTS'             : {
                                                         'var_name'  : 'oidc_consents',
+                                                        'type'      : dict,
+                                                        'required'  : False,
+                                                    },
+                        # The terms of use accepted at the SSO portals,
+                        # see set_sso_terms().
+                        'SSO_TERMS'                 : {
+                                                        'var_name'  : 'sso_terms',
                                                         'type'      : dict,
                                                         'required'  : False,
                                                     },
@@ -5422,6 +5462,139 @@ class User(OTPmeObject):
             except Exception:
                 out[str(cid)] = rec
         return out
+
+    # ------------------------------------------------------------------
+    # The terms of use the user accepted at an SSO portal, per site of
+    # the portal: {site_uuid: {'version', 'time', 'language'}}. Written
+    # by ssod on the home site of the user, see sso_terms.py.
+    # ------------------------------------------------------------------
+
+    def get_sso_terms_version(self, site_uuid):
+        """ The version of the terms of the site the user accepted, or
+        None. """
+        if not self.sso_terms:
+            return None
+        record = self.sso_terms.get(str(site_uuid), None)
+        if not record:
+            return None
+        try:
+            return record.get('version')
+        except Exception:
+            return None
+
+    def set_sso_terms(self, site_uuid, version, language):
+        """ Keep that the user accepted the terms of the site in that
+        version. The caller writes the user. """
+        record = {
+                'version'   : str(version),
+                'time'      : int(time.time()),
+                'language'  : str(language or ""),
+                }
+        self.sso_terms[str(site_uuid)] = record
+        return record
+
+    @check_acls(['view:sso_terms'])
+    @object_lock()
+    @audit_log()
+    def show_sso_terms(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ The terms of use the user accepted: site, version, when and
+        in which language. """
+        if run_policies:
+            try:
+                self.run_policies("show_sso_terms",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error(str(e))
+        lines = []
+        for site_uuid in sorted(self.sso_terms or {}):
+            record = self.sso_terms[site_uuid]
+            site_name = backend.get_object(object_type="site",
+                                            uuid=site_uuid)
+            if site_name:
+                site_name = site_name.name
+            else:
+                site_name = site_uuid
+            accepted = record.get('time')
+            try:
+                accepted = datetime.datetime.fromtimestamp(accepted)
+                accepted = accepted.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                accepted = "-"
+            line = (f"{site_name}\t{record.get('version')}\t"
+                    f"{accepted}\t{record.get('language') or '-'}")
+            lines.append(line)
+        if not lines:
+            msg = _("User '{user_name}' has accepted no terms of use.")
+            msg = msg.format(user_name=self.name)
+            return callback.ok(msg)
+        return callback.ok("\n".join(lines))
+
+    @check_acls(['delete:sso_terms'])
+    @object_lock()
+    @audit_log()
+    @object_changelog("reset SSO terms")
+    def reset_sso_terms(
+        self,
+        site: Union[str,None]=None,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Forget that the user accepted the terms of use, of one site
+        or of all. The portal asks again at the next deploy. """
+        if site:
+            result = backend.search(object_type="site",
+                                    attribute="name",
+                                    value=site,
+                                    realm=config.realm,
+                                    return_type="uuid")
+            if not result:
+                msg = _("Unknown site: {site}")
+                msg = msg.format(site=site)
+                return callback.error(msg)
+            site_uuids = [result[0]]
+            if site_uuids[0] not in (self.sso_terms or {}):
+                msg = _("User '{user_name}' has not accepted the terms of use of site '{site}'.")
+                msg = msg.format(user_name=self.name, site=site)
+                return callback.error(msg)
+            msg = _("Reset the terms of use of site '{site}' for user '{user_name}'?: ")
+            msg = msg.format(site=site, user_name=self.name)
+        else:
+            site_uuids = list(self.sso_terms or {})
+            if not site_uuids:
+                msg = _("User '{user_name}' has accepted no terms of use.")
+                msg = msg.format(user_name=self.name)
+                return callback.error(msg)
+            msg = _("Reset all terms of use of user '{user_name}'?: ")
+            msg = msg.format(user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("reset_sso_terms",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = _("Error running policies: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
+
+        for site_uuid in site_uuids:
+            self.sso_terms.pop(site_uuid)
+        return self._cache(callback=callback)
 
     @check_acls(['add:token'])
     @object_lock()

@@ -571,6 +571,12 @@ than the editor.
 administrator. A language the group has no text for gives nothing and is
 not an error.
 
+**show_info** *accessgroup*  
+List the languages the accessgroup has a text for, one per line, with
+the first line of the text. The note of the administrator comes first,
+as **-**. An empty text is not listed.  
+Needs the ACL **view:info**.
+
 **add_extension *accessgroup* *extension***  
 Add an LDAP extension to the group, which is what gives it LDAP object
 classes and attributes.

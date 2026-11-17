@@ -523,6 +523,14 @@ commands = {
                     },
                 },
             },
+    'gen_jotp'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'renew_jotp',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'add_sync_group'   : {
             'default'    : {
                 'exists'    : {
@@ -838,6 +846,14 @@ commands = {
                     },
                 },
             },
+    'show_info'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'show_info',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'auto_disable'   : {
             'default'    : {
                 'exists'    : {
@@ -1097,6 +1113,7 @@ def register_hooks():
     config.register_auth_on_action_hook("host", "disable_lotp")
     config.register_auth_on_action_hook("host", "enable_jotp_rejoin")
     config.register_auth_on_action_hook("host", "disable_jotp_rejoin")
+    config.register_auth_on_action_hook("host", "gen_jotp")
     config.register_auth_on_action_hook("host", "add_dynamic_group")
     config.register_auth_on_action_hook("host", "remove_dynamic_group")
     config.register_auth_on_action_hook("host", "add_sync_group")

@@ -500,7 +500,15 @@ Print the new JOTP to the machine that is leaving. Whoever leaves the
 realm can then join again without an admin login. It is off by default.
 
 **disable_jotp_rejoin *host***  
-Keep the new JOTP to yourself.
+Keep the new JOTP to yourself. The JOTP that was printed stops working.
+**gen_jotp** makes a new one.
+
+**gen_jotp *host***  
+Make a new JOTP and print it. The old one stops working.  
+The JOTP must be allowed, see **enable_jotp**. A host that has joined
+must be disabled first. With a JOTP, a join with -f takes the place of
+the machine and revokes its certificate.  
+Needs the ACL **enable:jotp**.
 
 The JOTP and the LOTP are shown by **show** and by **export** to whoever
 holds the ACL **view:jotp** or **view:lotp**.
@@ -779,6 +787,12 @@ than the editor.
 administrator. A language the host has no text for gives nothing and is
 not an error.
 
+**show_info** *host*  
+List the languages the host has a text for, one per line, with the first
+line of the text. The note of the administrator comes first, as **-**.
+An empty text is not listed.  
+Needs the ACL **view:info**.
+
 ## Export and Cleanup
 
 Both write to stdout. There is no import on this page: reading an export
@@ -925,6 +939,18 @@ it from a signer of type **sw_mgmt**. See **otpme-deploy**(1).
 What it has installed. Reading it needs **allow_inventory**, see
 **otpme-inventory**(1).
 
+## A lost machine
+
+**otpme-host disable notebook1**  
+Lock the old machine out.
+
+**otpme-host gen_jotp notebook1**  
+A JOTP for the new machine.
+
+**otpme-tool join -f --jotp 12345678**  
+Run on the new machine. It takes the place of the old one, the
+certificate of the old one is revoked, and the host is enabled again.
+
 ## When it leaves
 
 **otpme-host enable_jotp_rejoin notebook1**  
@@ -946,7 +972,7 @@ brackets:
 > (mac), change_public_key (public_key), disable_jotp,
 > disable_jotp_rejoin, disable_lotp, disable_sync_by_login_token,
 > disable_sync_groups, enable_jotp, enable_jotp_rejoin, enable_lotp,
-> enable_sync_by_login_token, enable_sync_groups, join, leave,
+> enable_sync_by_login_token, enable_sync_groups, gen_jotp, join, leave,
 > limit_logins, remove_dynamic_group, remove_role, remove_sync_group,
 > remove_token, renew_cert, revoke_cert, set_config_parameter (config),
 > unlimit_logins.

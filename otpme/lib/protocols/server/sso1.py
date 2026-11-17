@@ -28,6 +28,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import maintenance
 from otpme.lib import connections
+from otpme.lib import sso_terms
 from otpme.lib import multiprocessing
 from otpme.lib.audit import emit_audit
 from otpme.lib.protocols.oidc_helpers import verify_pkce as _verify_pkce_helper
@@ -749,6 +750,11 @@ class OTPmeSsoP1(OTPmeServer1):
                                             command_args)
             if step_up is not None:
                 return step_up
+        # The terms of use, before anything is set up for the token.
+        refused = self._check_sso_terms(user, command_args)
+        if refused is not None:
+            return self.build_response(False,
+                            {'message': refused, 'status': False})
         # Check for command redirection.
         if user.site != config.site:
             forward_args = dict(command_args)
@@ -1033,11 +1039,21 @@ class OTPmeSsoP1(OTPmeServer1):
                                     mgmt=True)
             response = self._drop_untrusted_tiqr(user, response,
                                                 "token_types")
+            # The terms are ours, not the home site's.
+            if status and isinstance(response, dict):
+                pending = self._sso_terms_pending(user, command_args)
+                if pending is not None:
+                    response['sso_terms'] = pending
             return self.build_response(status, response)
         allowed = [tt for tt in DEPLOY_TOKEN_TYPES
                    if self._deploy_type_allowed(user, tt)]
-        return self.build_response(True,
-                            {'token_types': allowed, 'status': True})
+        response = {'token_types': allowed, 'status': True}
+        # The terms the user has to accept before the deploy, see
+        # _check_sso_terms().
+        pending = self._sso_terms_pending(user, command_args)
+        if pending is not None:
+            response['sso_terms'] = pending
+        return self.build_response(True, response)
 
     def deploy_verify(self, username, sso_jwt, command_args):
         try:
@@ -1073,6 +1089,13 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, response)
         if self._redeploy_refused(user):
             return self._redeploy_refused_response()
+        # Asked again here, not only at deploy_begin: this is the step
+        # that writes the token, and it puts the acceptance into the
+        # args for _record_sso_terms() -- here or on the home site.
+        refused = self._check_sso_terms(user, command_args)
+        if refused is not None:
+            return self.build_response(False,
+                            {'message': refused, 'status': False})
         # Check for command redirection.
         if user.site != config.site:
             return self.ssod_redirect_command(command="deploy_verify",
@@ -1118,6 +1141,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 self.logger.warning(log_msg)
                 response = {'message': str(e), 'status':False}
                 return self.build_response(False, response)
+            self._record_sso_terms(user, command_args)
             response = {'message':'Token deployment successful.', 'status':True}
             return self.build_response(True, response)
         # OATH / FIDO2: verify the staging token this portal parked,
@@ -1178,6 +1202,7 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.critical(log_msg)
             response = {'message':'Token deployment failed.', 'status':False}
             return self.build_response(False, response)
+        self._record_sso_terms(user, command_args)
         response = {'message':'Token deployment successful.', 'status':True}
         return self.build_response(True, response)
 
@@ -5962,14 +5987,15 @@ class OTPmeSsoP1(OTPmeServer1):
         the design notes above.
 
         Every early-return path stays enum-safe (generic OK to the
-        client) but logs an admin-only DEBUG line naming the reason
-        so a broken deployment can be diagnosed without leaking the
-        state to attackers.
+        client) but logs an INFO line naming the reason, so a broken
+        deployment can be diagnosed without leaking the state to
+        attackers. INFO and not DEBUG: the log is the administrator's,
+        and "no mail came" is a question asked without debug on.
         """
         def _skip(reason):
             log_msg = _("SSO-token recovery skipped: {reason}", log=True)[1]
             log_msg = log_msg.format(reason=reason)
-            self.logger.debug(log_msg)
+            self.logger.info(log_msg)
             return self._recovery_generic_ok()
 
         if not isinstance(username, str) or not username:
@@ -6126,6 +6152,14 @@ class OTPmeSsoP1(OTPmeServer1):
                                         mgmt=True)
             response = self._drop_untrusted_tiqr(user, response,
                                                 "allowed_deploy_types")
+            # The terms are ours, not the home site's, and only for a
+            # recovery that creates the SSO token.
+            if status and isinstance(response, dict) \
+            and response.get('valid') \
+            and not response.get('sso_token_type'):
+                pending = self._recovery_sso_terms_pending(user, command_args)
+                if pending is not None:
+                    response['sso_terms'] = pending
             return self.build_response(status, response)
         sso_token, err = self._recovery_gate_home(user, command_args)
         if err is not None:
@@ -6140,13 +6174,19 @@ class OTPmeSsoP1(OTPmeServer1):
             # A token to create: its type is the one asked about.
             allowed_deploy_types = [tt for tt in allowed_deploy_types
                                 if self._recovery_type_allowed(user, tt)]
-            return self.build_response(True, {
+            response = {
                     'valid':                True,
                     'status':               True,
                     'sso_token_name':       self._sso_token_name(command_args),
                     'sso_token_type':       None,
                     'allowed_deploy_types': allowed_deploy_types,
-                })
+                }
+            # The terms the user has to accept first, see
+            # _check_sso_terms().
+            pending = self._recovery_sso_terms_pending(user, command_args)
+            if pending is not None:
+                response['sso_terms'] = pending
+            return self.build_response(True, response)
         return self.build_response(True, {
                 'valid':                True,
                 'status':               True,
@@ -6211,6 +6251,11 @@ class OTPmeSsoP1(OTPmeServer1):
         user, err = self._recovery_gate(username, command_args)
         if err is not None:
             return err
+        # The terms of use, before anything is set up. For a user of
+        # another site this runs before the home site checked the link,
+        # so it answers like every failed check does.
+        if self._recovery_check_sso_terms(user, command_args) is not None:
+            return self._recovery_invalid()
         if user.site != config.site:
             forward_args = command_args
             if token_type == "tiqr":
@@ -6551,6 +6596,10 @@ class OTPmeSsoP1(OTPmeServer1):
         user, err = self._recovery_gate(username, command_args)
         if err is not None:
             return err
+        # Asked again: this step writes the token, and it puts the
+        # acceptance into the args for _record_sso_terms().
+        if self._recovery_check_sso_terms(user, command_args) is not None:
+            return self._recovery_invalid()
         if user.site != config.site:
             return self._recovery_deploy_verify_remote(user, command_args)
         sso_token, err = self._recovery_gate_home(user, command_args)
@@ -6675,6 +6724,7 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             # Don't fail the whole flow -- deploy succeeded, only the
             # cleanup didn't. TTL will still expire the token.
+        self._record_sso_terms(user, command_args)
         log_msg = _("Recovery deploy complete for user '{u}'.", log=True)[1]
         log_msg = log_msg.format(u=user.name)
         self.logger.info(log_msg)
@@ -7180,6 +7230,144 @@ class OTPmeSsoP1(OTPmeServer1):
                 continue
             return value
         return ""
+
+    # ------------------------------------------------------------------
+    # The terms of use a user accepts before an SSO token is set up for
+    # them (sso_confirm_terms), see sso_terms.py.
+    #
+    # The terms are those of the portal, the site this request came in
+    # at: it checks them, and a node it forwards to (the home site of a
+    # user of another site, or a node of its own site) takes its word.
+    # What the user accepted is written on the home site, which owns the
+    # user, once the token is written.
+    # ------------------------------------------------------------------
+
+    def _sso_terms_required(self, user):
+        """ Does the portal ask this user for its terms? A user of the
+        portal's site by the usual lookup, user, unit, site. A user of
+        another site by the portal's site alone: they are its terms. """
+        if user.site == config.site:
+            value = user.get_config_parameter("sso_confirm_terms")
+        else:
+            own_site = backend.get_object(object_type="site",
+                                        uuid=config.site_uuid)
+            if own_site is None:
+                return False
+            value = own_site.get_config_parameter("sso_confirm_terms")
+        return bool(value)
+
+    def _sso_terms_language(self, user, command_args):
+        """ The language of the terms in a flow without an SSO session
+        (the recovery). The language the user set, as this site has it,
+        else the one the browser asks for. _resolve_language() would ask
+        the home site of a user of another site, which needs a session. """
+        try:
+            if getattr(user, 'language_set', False) and user.language:
+                return user.language
+        except Exception:
+            pass
+        return command_args.get('accept_language') or "en"
+
+    def _sso_terms_pending(self, user, command_args, language=None):
+        """ The terms the user still has to accept here, as
+        {'version', 'text', 'language'}, or None.
+
+        None where the portal does not ask, and where the user accepted
+        this version already. That is read from the user here: for a
+        user of another site the copy of this site, see SSO_TERMS in
+        the sync fields of the user. A node that got the request
+        forwarded never asks, the portal did. """
+        if self.from_peer_node:
+            return None
+        if not self._sso_terms_required(user):
+            return None
+        own_site = backend.get_object(object_type="site",
+                                    uuid=config.site_uuid)
+        if own_site is None:
+            return None
+        if language is None:
+            language = self._resolve_language(user, command_args)
+        version, text = sso_terms.resolve_terms(own_site.info, language)
+        if user.get_sso_terms_version(config.site_uuid) == version:
+            return None
+        return {'version': version, 'text': text, 'language': language}
+
+    def _check_sso_terms(self, user, command_args, language=None):
+        """ Refuse a deploy step the terms were not accepted for.
+
+        Returns None to go on. The portal then puts what was accepted
+        into the command args as _sso_terms_accept, which go with the
+        request to the node it forwards to, and _record_sso_terms()
+        writes it from there. Only a node puts it there: what came
+        from anywhere else is dropped first. """
+        if self.from_peer_node:
+            return None
+        command_args.pop('_sso_terms_accept', None)
+        pending = self._sso_terms_pending(user, command_args,
+                                        language=language)
+        if pending is None:
+            return None
+        accepted = str(command_args.get('sso_terms_version') or "")
+        if accepted != pending['version']:
+            return "TERMS_NOT_ACCEPTED"
+        command_args['_sso_terms_accept'] = {
+                                    'site'      : config.site_uuid,
+                                    'version'   : pending['version'],
+                                    'language'  : pending['language'],
+                                    }
+        return None
+
+    def _recovery_sso_terms_pending(self, user, command_args):
+        """ _sso_terms_pending() for the recovery: only a recovery that
+        creates the SSO token asks. One that replaces the token of a
+        user who has one does not -- that user set up a token before. """
+        if self._recovery_lookup_target_token(user, command_args) is not None:
+            return None
+        language = self._sso_terms_language(user, command_args)
+        return self._sso_terms_pending(user, command_args, language=language)
+
+    def _recovery_check_sso_terms(self, user, command_args):
+        """ _check_sso_terms() for the recovery, see above. """
+        if self._recovery_lookup_target_token(user, command_args) is not None:
+            if not self.from_peer_node:
+                command_args.pop('_sso_terms_accept', None)
+            return None
+        language = self._sso_terms_language(user, command_args)
+        return self._check_sso_terms(user, command_args, language=language)
+
+    def _record_sso_terms(self, user, command_args):
+        """ Write onto the user what _check_sso_terms() let through,
+        after the token was written. Only the home site of the user
+        writes it; the portal of another site forwarded the request
+        there with the args. """
+        accept = command_args.get('_sso_terms_accept')
+        if not isinstance(accept, dict):
+            return
+        if user.site != config.site:
+            return
+        site_uuid = accept.get('site')
+        version = accept.get('version')
+        if not site_uuid or not version:
+            return
+        # Read again: writing the token wrote the user as well (its
+        # tokens), and the object we hold is from before that. Written
+        # as it is, it would take the new token off the user again.
+        fresh_user = backend.get_object(object_type="user", uuid=user.uuid)
+        if fresh_user is not None:
+            user = fresh_user
+        user.set_sso_terms(site_uuid, version, accept.get('language'))
+        try:
+            user._write(callback=self.get_callback())
+        except Exception as e:
+            log_msg = _("Failed to write the accepted terms of use of user '{user_name}': {e}", log=True)[1]
+            log_msg = log_msg.format(user_name=user.name, e=e)
+            self.logger.warning(log_msg)
+            return
+        emit_audit("SSO", "terms_accepted",
+                    user=user.name,
+                    site=site_uuid,
+                    version=version,
+                    language=accept.get('language'))
 
     def _fetch_home_language(self, user, command_args):
         """ Cross-site fetch of ``user.language`` from the user's home

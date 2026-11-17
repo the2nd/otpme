@@ -412,6 +412,19 @@ It is off by default.
 .TP
 .B disable_jotp_rejoin \fInode\fR
 Keep the new JOTP to yourself.
+The JOTP that was printed stops working.
+.B gen_jotp
+makes a new one.
+.TP
+.B gen_jotp \fInode\fR
+Make a new JOTP and print it.
+The old one stops working.
+.br
+The JOTP must be allowed, see \fBenable_jotp\fR.
+A node that has joined must be disabled first.
+With a JOTP, a join with \-f takes the place of the machine and revokes its certificate.
+.br
+Needs the ACL \fBenable:jotp\fR.
 .PP
 The JOTP and the LOTP are shown by
 .B show
@@ -650,6 +663,13 @@ Write one of those texts to stdout, for reading it with something other than the
 .br
 \fB\-\-language\fR picks which one; without it you get the note of the administrator.
 A language the node has no text for gives nothing and is not an error.
+.TP
+\fBshow_info\fR \fInode\fR
+List the languages the node has a text for, one per line, with the first line of the text.
+The note of the administrator comes first, as \fB\-\fR.
+An empty text is not listed.
+.br
+Needs the ACL \fBview:info\fR.
 .SS Export and Cleanup
 Both write to stdout.
 There is no import on this page: reading an export back in is
@@ -849,7 +869,7 @@ A node has the hooks every object type has, and these; a command of another name
 .PP
 .na
 .nh
-add_dynamic_group, add_token, change_public_key\ (public_key), change_vote_script\ (vote_script), disable_jotp, disable_jotp_rejoin, disable_lotp, disable_vote_script, enable_jotp, enable_jotp_rejoin, enable_lotp, enable_vote_script, join, leave, limit_logins, remove_dynamic_group, remove_token, renew_cert, revoke_cert, set_config_parameter\ (config), unlimit_logins.
+add_dynamic_group, add_token, change_public_key\ (public_key), change_vote_script\ (vote_script), disable_jotp, disable_jotp_rejoin, disable_lotp, disable_vote_script, enable_jotp, enable_jotp_rejoin, enable_lotp, enable_vote_script, gen_jotp, join, leave, limit_logins, remove_dynamic_group, remove_token, renew_cert, revoke_cert, set_config_parameter\ (config), unlimit_logins.
 .hy
 .ad
 .RE

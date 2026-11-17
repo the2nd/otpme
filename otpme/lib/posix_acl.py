@@ -225,6 +225,13 @@ def check_access(mode, uid, gid, acl, user_uid, user_gids, amode,
     group_perms = (mode >> 3) & 0o7
     other_perms = mode & 0o7
 
+    # With an ACL the group bits of the mode are its mask. Linux looks at
+    # the ACL only if one of them is set (acl_permission_check() in
+    # fs/namei.c), else the mode bits decide and a named user or group
+    # gets what "other" gets.
+    if acl is not None and not group_perms:
+        acl = None
+
     if acl is None:
         if user_uid == uid:
             return (wanted & owner_perms) == wanted

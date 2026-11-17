@@ -9,7 +9,8 @@
      data-recovery-username="{{ recovery_username }}"
      data-recovery-token="{{ recovery_token }}"
      data-sso-token-name="{{ sso_token_name }}"
-     data-sso-token-type="{{ sso_token_type }}"></div>
+     data-sso-token-type="{{ sso_token_type }}"
+     data-sso-terms-version="{{ sso_terms.version if sso_terms else '' }}"></div>
 <div id="page-i18n"
      data-label-creating-token="{{ gettext('Creating token...') }}"
      data-label-deployment-failed="{{ gettext('Deployment failed.') }}"
@@ -34,6 +35,7 @@
      data-placeholder-device-name="{{ gettext('e.g. my phone') }}"
      data-placeholder-key-name="{{ gettext('e.g. my security key') }}"
      data-label-checking-phone="{{ gettext('Checking your phone...') }}"
+     data-label-accept-terms="{{ gettext('Please accept the terms of use first.') }}"
      class="is-hidden"></div>
 <div class="login-wrapper">
   <div class="deploy-card">
@@ -43,6 +45,19 @@
     {% else %}
     <!-- No SSO token yet: the recovery creates it. -->
     <p class="deploy-desc">{{ gettext("Setting up token '{token_name}' for user '{user_name}'.").format(token_name=sso_token_name, user_name=recovery_username) }}</p>
+    {% endif %}
+
+    {% if sso_terms and deploy_token_types %}
+    <!-- The terms of use of the portal (sso_confirm_terms), only where
+         the recovery creates the SSO token. The server checks the
+         version the box was ticked for. -->
+    <div id="step-terms">
+      <div class="terms-text">{{ sso_terms.text }}</div>
+      <label class="terms-accept" for="ssoTermsAccept">
+        <input type="checkbox" id="ssoTermsAccept">
+        <span>{{ gettext("I accept the terms of use.") }}</span>
+      </label>
+    </div>
     {% endif %}
 
     <!-- Step 1: choose a deploy type (same shape as /deploy). The
