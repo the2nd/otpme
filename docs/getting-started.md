@@ -526,6 +526,68 @@ otpme-policy --type authonaction add_hook auth_on_action user add_token
 The actions each object type knows are in the section AUTH ON ACTION HOOKS of
 its man page, e.g. `otpme-user(1)`.
 
+### ACL Groups
+
+Instead of giving ACLs one by one, as for joe above, you can give an ACL
+group. It is a set of ACLs, each entry for an object type, e.g.
+`user:edit:attribute` or `token:view:initial_secret`. On an object the group
+grants the entries for the type of that object. You give it with `add_acl`,
+in place of an ACL:
+
+| Form | Where it counts |
+|------|-----------------|
+| `@group` | on the object itself |
+| `+@group` | on the objects in the unit, or on the tokens of the user |
+| `++@group` | on the whole tree below the unit |
+
+Every site has base groups. Their names are in upper case. OTPme sets their
+entries, and you cannot change, rename or delete them:
+
+| Group | What it grants |
+|-------|----------------|
+| `REALM_USERS` | what every user of the realm may see (`view_public`, `view:attribute`). The role `REALM_USER` has it on the site and the tree below; it is what LDAP clients and `otpme-shell` need. Access groups, clients and policies are not in it. |
+| `USERMANAGER` | add, change and delete users in a unit, add tokens to them, and see the secret and PIN of a new token. No temporary passwords. |
+| `USERADMIN` | everything of `USERMANAGER`, and more: e.g. rename and move users and tokens, unblock users, their keys, photos and policies, and temporary passwords. |
+| `GROUPMANAGER` | add and delete groups in a unit, and add and remove their members. |
+| `PASSUSER` | work with the passwords of a unit, see `otpme-pass(1)`. |
+
+```bash
+otpme-aclgroup show
+otpme-aclgroup get_acls USERMANAGER
+```
+
+To let alice manage the users in `management/users`, give her the group on
+the unit and on everything below it. `++@group` does not count on the unit
+itself, so give `@group` as well. Like other default ACLs, `++@group` only
+reaches objects that are added from then on; `-a -r` hands it to what is
+there already:
+
+```bash
+otpme-unit add_acl -a -r management/users token alice/login "@USERMANAGER,++@USERMANAGER"
+```
+
+For more than a base group gives, make a group of your own. A member group
+adds its entries, so a base group as member is a good start:
+
+```bash
+otpme-aclgroup add helpdesk
+otpme-aclgroup add_aclgroup helpdesk USERMANAGER
+otpme-aclgroup add_entry helpdesk user:edit:attribute:mail
+otpme-aclgroup get_acls -r helpdesk
+otpme-unit add_acl -a -r management/users token alice/login "@helpdesk,++@helpdesk"
+```
+
+A change of a group counts at once on every object it is given on; nothing
+has to be written to those objects again. `find_acls` lists where a group is
+given, also through groups that have it as member (only an admin may run it):
+
+```bash
+otpme-aclgroup find_acls helpdesk
+```
+
+For the same reason, whoever has `add:entry` or `add:aclgroup` on a group
+can grant any ACL wherever the group is given. Give those ACLs with care.
+
 ## 18. Simplify User Creation with Policies
 
 Having to specify `--group` and `--role` on every `otpme-user add` call is
