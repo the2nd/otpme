@@ -243,7 +243,9 @@ Needs the ACL **enable:object**.
 
 **disable** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share*  
 Switch a share off without deleting it. A disabled share cannot be
-mounted.  
+mounted. Where it is mounted already, every access to it is refused: the
+node checks the share about once a second for each mount. Enabled again,
+the mounts that are still there work again.  
 The hosts are told to unmount it, see **Telling the hosts** above. That
 goes to the no mount, root mount and master password tokens as well:
 they may have it mounted too.  

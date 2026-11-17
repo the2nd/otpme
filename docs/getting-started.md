@@ -1203,8 +1203,10 @@ auto-mount for the user:
 otpme-user enable_auto_mount joe
 ```
 
-A share can be made read-only, and it can be disabled entirely (which
-refuses any new mount request — already mounted shares continue to work:
+A share can be made read-only, and it can be disabled entirely. A disabled
+share cannot be mounted, and where it is mounted already, every access to it
+is refused within a second or so. When the share is enabled again, the mounts
+that are still there work again:
 
 ```bash
 otpme-share enable_ro testshare
@@ -1370,6 +1372,13 @@ otpme-user gen_keys root
 otpme-user gen_keys joe
 ```
 
+`gen_keys` makes the keys on the client, and the server gets the private keys
+only encrypted with the key password of the user (key mode `client`). With
+`--server` the server makes them instead and keeps the private keys wrapped
+with a key that the client encrypts with the key password (key mode
+`server`), e.g. `otpme-user gen_keys --server joe`. `otpme-user get_key_mode
+joe` shows the mode of a user.
+
 Create an encrypted share — you will be asked for a master password. Store
 this password in a secure place, as it is needed to decrypt the share if the
 last token is removed and no share keys are available any more:
@@ -1397,13 +1406,22 @@ otpme-token --type yubikey_piv deploy --add-user-key -r joe/login
 otpme-token --type yubikey_piv deploy --add-user-key -n -r joe/login
 ```
 
-To use the Yubikey in PIV mode with the key script, configure the user's key
-script options. The `--use-agent-piv` option delegates PIV operations to the
-otpme-agent so you do not have to enter the PIV PIN on every operation:
+To use the Yubikey in PIV mode with the key script, set the option
+`--yubikey-piv` in the user's key script options. Signing and decrypting then
+happen on the card, always through otpme-agent; the key script never sees the
+PIN. A login with the Yubikey opens the card, otherwise the agent asks for the
+PIN. In a graphical session the agent asks to confirm each use of the card.
+How long the agent keeps the card open is the `key_cache_time` of the user
+(default: until the agent ends):
 
 ```bash
-otpme-user key_script joe scripts/key_script.sh -- --yubikey-piv AUTHENTICATION --use-agent-piv
+otpme-user key_script joe scripts/key_script.sh -- --yubikey-piv
+otpme-user key_cache_time joe 5m
 ```
+
+A slot after `--yubikey-piv` (e.g. `AUTHENTICATION`) is optional: it is only
+the slot `gen_csr` uses when it is not told one. The old option
+`--use-agent-piv` is still accepted and does nothing.
 
 To add the Yubikey PIV key to the ssh-agent on login via the PAM module,
 configure the agent script with `--yubikey-piv`. By default the key is added
@@ -1440,25 +1458,13 @@ otpme-tool sign test.txt test.txt.sig
 otpme-tool verify test.txt.sig test.txt
 ```
 
-### Encrypting for Another User and Key Modes
+### Encrypting for Another User
 
 To encrypt a file for another user, give that user with `-u`. The file is
 encrypted with their public key, so only they can decrypt it:
 
 ```bash
 otpme-tool encrypt -u joe test.txt test.txt.enc
-```
-
-By default `gen_keys` makes the keys on the client, and the server gets the
-private keys only encrypted with the key password of the user (key mode
-`client`). With `--server` the server makes them and keeps the private keys
-wrapped with a key that the client encrypts with the key password (key mode
-`server`). Like `gen_keys` without it, this is only for testing; see the note
-under *Encrypted Shares*.
-
-```bash
-otpme-user gen_keys --server joe
-otpme-user get_key_mode joe
 ```
 
 ### Script Signature Verification
