@@ -329,12 +329,20 @@ commands = {
                     },
                 },
             },
+    'list_auto_remove'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'list_auto_remove',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'add_token'   : {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['token_options', 'login_interfaces', 'sign', 'tags', 'auto_sign', 'share_notifications', 'persist_mount', 'skip_portal_token'],
+                    'oargs'             : ['token_options', 'login_interfaces', 'sign', 'tags', 'auto_sign', 'share_notifications', 'persist_mount', 'skip_portal_token', 'auto_remove'],
                     'job_type'          : 'process',
                     },
                 },
@@ -354,7 +362,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_role',
                     'args'              : ['role_name'],
-                    'oargs'             : ['share_notifications', 'persist_mount'],
+                    'oargs'             : ['share_notifications', 'persist_mount', 'auto_remove'],
                     'job_type'          : 'process',
                     },
                 },

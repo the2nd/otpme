@@ -761,6 +761,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_role',
                     'args'              : ['role_name'],
+                    'oargs'             : ['auto_remove'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -770,6 +771,14 @@ commands = {
                 'exists'    : {
                     'method'            : 'remove_role',
                     'args'              : ['role_name'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'list_auto_remove'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'list_auto_remove',
                     'job_type'          : 'thread',
                     },
                 },
@@ -785,7 +794,7 @@ commands = {
                     # interface, so a positive interface option on such
                     # an assignment matches nothing and would refuse
                     # every login through this client.
-                    'oargs'             : ['token_options', 'skip_portal_token'],
+                    'oargs'             : ['token_options', 'skip_portal_token', 'auto_remove'],
                     'job_type'          : 'process',
                     },
                 },

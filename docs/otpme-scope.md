@@ -172,10 +172,14 @@ A token is named by its path, ***user*/*token***. A role is named by its
 name, which is looked for in the site of the scope, or as
 ***site*/*role*** to take one from another site of the realm.
 
-**add_token *scope* *token_path***  
+**add_token** \[**--auto-remove** *time*\] *scope* *token_path*  
 Let this token hand the scope out.  
 Whoever signs in with it can give the scope to an application that asks
 for it — if that application has the scope as well.  
+**--auto-remove** *time* takes the token out again at *time*: **+1D**
+from now, or a date like **"31.12.2026 14:00"**. **0** keeps a token
+that is in already, see **Members That Leave on Their Own** in
+**otpme**(7).  
 Needs the ACL **add:token**.
 
 **remove_token *scope* *token_path***  
@@ -190,11 +194,17 @@ path. **--token-types** lists only tokens of the given types, for
 example **hotp,totp**.  
 Needs the ACL **view:tokens**.
 
-**add_role *scope* *role***  
+**list_auto_remove *scope***  
+The tokens and roles that leave the scope at a set time, and when. Only
+the lists you may see are shown (**view:tokens**, **view:roles**).
+
+**add_role** \[**--auto-remove** *time*\] *scope* *role*  
 Let every token of this role hand the scope out.  
 This is the way to do it for more than one user: a role holds the
 tokens, the scope holds the role. A role from another site is named
 ***site*/*role***.  
+**--auto-remove** *time* takes the role out again at *time*, as with
+**add_token**.  
 Needs the ACL **add:role**.
 
 **remove_role *scope* *role***  

@@ -165,7 +165,7 @@ Some token types cannot be signed at all. Those are added without a
 signature. A link token can be signed when the token it points at can,
 see **otpme-token**(1).
 
-**add_token** \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign**\] \[**--tags** *tag1,tag2*\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] \[**--skip-portal-token**\] *role* *token* \[*token_options*\]  
+**add_token** \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign**\] \[**--tags** *tag1,tag2*\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] \[**--skip-portal-token**\] \[**--auto-remove** *time*\] *role* *token* \[*token_options*\]  
 Put a token into the role. From then on it reaches everything the role
 is assigned to, and everything the roles above it are assigned to.
 
@@ -203,6 +203,11 @@ Whether the online hosts are told that there are new share permissions.
 **--no-persist-mount**  
 Do not persist new share mounts on hosts.
 
+**--auto-remove *time***  
+Take the token out again at *time*: **+1D** from now, or a date like
+**"31.12.2026 14:00"**. **0** keeps a token that is in already. See
+**Members That Leave on Their Own** in **otpme**(7).
+
 **remove_token** \[**--keep-sign**\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] \[**--skip-portal-token**\] *role* *token*  
 Take the token out of the role. What it reached through the role, it no
 longer reaches.
@@ -228,6 +233,10 @@ reach it through a nested role.
 those types, for example **hotp,totp**.  
 Disabled tokens are listed as well.
 
+**list_auto_remove *role***  
+The tokens and roles that leave the role at a set time, and when. Only
+the lists you may see are shown (**view:tokens**, **view:roles**).
+
 **list_users** \[**--return-type** *type*\] *role*  
 The users those tokens belong to. One user with three tokens in the role
 is named once.
@@ -242,7 +251,7 @@ A *child_role* is looked for in the site of the role, or written as
 **remove_role** takes a UUID as well, which is how a reference to a role
 that is gone is cleared out.
 
-**add_role** \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role* *child_role*  
+**add_role** \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] \[**--auto-remove** *time*\] *role* *child_role*  
 Put *child_role* into *role*. The tokens of *child_role* then reach
 everything *role* is assigned to.
 
@@ -253,6 +262,9 @@ Whether the online hosts are told that there are new share permissions.
 
 **--no-persist-mount**  
 Do not persist new share mounts on hosts.
+
+**--auto-remove *time***  
+Take the role out again at *time*, as with **add_token**.
 
 **remove_role** \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role* *child_role*  
 Take *child_role* out of *role* again.

@@ -49,7 +49,7 @@ which uses
 Here the client name is a DC part of the LDAP bind DN.
 For example, the bind DN
 .RS
-.I uid=user1,ou=users,dc=mailserver,dc=example,dc=org
+.I uid=user1,ou=users,ou=berlin,dc=mailserver,dc=example,dc=org
 .RE
 selects the OTPme client "mailserver".
 So the mail server can only log in users with a token in the access group of the mail server.
@@ -718,6 +718,23 @@ Every site has the groups \fBREALM_USERS\fR, \fBUSERMANAGER\fR, \fBUSERADMIN\fR,
 \fBREALM_USERS\fR is what every user of the realm may see: the site, units, users, groups, roles, hosts and nodes.
 The role \fBREALM_USER\fR has it on the whole site.
 A site from before the group gets it with \fBotpme\-site upgrade\fR, which also takes away the ACLs realm users had one by one.
+.SS Members That Leave on Their Own
+A token or a role can be put into a role, group, access group, client, host, node, scope, VLAN or share for a while only.
+\fB\-\-auto\-remove\fR \fItime\fR with \fBadd_token\fR or \fBadd_role\fR gives the time it leaves again: relative from now, e.g. \fB+8h\fR, \fB+1D\fR, \fB+2W\fR, or a date with a time, e.g. \fB\(dq31.12.2026 14:00\(dq\fR.
+A time that is over is refused.
+The token lists of a share take it as well: \fBadd_root_mount_token\fR, \fBadd_master_password_token\fR and \fBadd_no_mount_token\fR.
+.RS
+.B otpme\-role add_token \-\-auto\-remove +1D \fIhelpdesk alice/login\fR
+.RE
+.PP
+The master node of the site of the object takes the member out, with the same remove command as by hand: the hosts are told about lost share permissions, an SSO token takes the tokens of the portal with it, and its signature goes.
+It looks every 5 minutes, so a member can stay up to 5 minutes longer.
+It does not while the site is in maintenance mode or has no quorum.
+Each removal is written to the log and the audit log.
+.PP
+To change the time, add the member again with a new \fB\-\-auto\-remove\fR; \fB0\fR keeps it for good.
+A member you take out by hand takes its time with it.
+\fBlist_auto_remove\fR shows who leaves and when.
 .SH OFFLINE AUTHENTICATION
 When a host can not reach the OTPme server, it can check logins against data it saved at the last login.
 This has to be switched on for each token (\fBenable_offline\fR).

@@ -165,7 +165,7 @@ A token is named by its path, ***user*/*token***. A role is named by its
 name, which is looked for in the site of the node, or as
 ***site*/*role*** to take one from another site of the realm.
 
-**add_token** \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign** **--tags** *tag1,tag2*\] *node* *token_path* \[*token_options*\]  
+**add_token** \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign** **--tags** *tag1,tag2*\] \[**--auto-remove** *time*\] *node* *token_path* \[*token_options*\]  
 Let this token log in to the node.
 
 **-i *interfaces***  
@@ -192,6 +192,11 @@ be signed with **--sign** is an error.
 Do not sign, whatever the **auto_sign** of the node or the **autosign**
 setting of your own user says.
 
+**--auto-remove *time***  
+Take the token away again at *time*: **+1D** from now, or a date like
+**"31.12.2026 14:00"**. **0** keeps a token that is assigned already.
+See **Members That Leave on Their Own** in **otpme**(7).
+
 A token that is already assigned, with other interfaces or options, is
 not added twice: OTPme asks whether to change what it has.
 
@@ -204,11 +209,17 @@ List the tokens assigned to the node. Use **--return-type** to select
 the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**)
 and **--token-types** to limit the listing to the given token types.
 
-**add_role *node* *role***  
+**list_auto_remove *node***  
+The tokens and roles that leave the node at a set time, and when. Only
+the lists you may see are shown (**view:tokens**, **view:roles**).
+
+**add_role** \[**--auto-remove** *time*\] *node* *role*  
 Add a role to the node. Its tokens may then log in here, with the
 interfaces and options they were given in the role. The dynamic groups
 of the role, and of the roles in it, are added to everybody who logs in
-here.
+here.  
+**--auto-remove** *time* takes the role away again at *time*, as with
+**add_token**.
 
 **remove_role *node* *role***  
 Remove a role from the node. A UUID is taken as well, which is how a

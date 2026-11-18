@@ -209,7 +209,7 @@ roles of the client stay as they are and stop deciding anything.
 This is how a client is created.  
 Needs the ACL **unlimit_logins**.
 
-**add_token** \[**--skip-portal-token**\] *client* *token_path* \[*token_options*\]  
+**add_token** \[**--skip-portal-token**\] \[**--auto-remove** *time*\] *client* *token_path* \[*token_options*\]  
 Put a token into the client.  
 With limited logins this is what lets it in; without them it decides
 nothing.  
@@ -224,6 +224,10 @@ signature is verified in one place, the **authorized_keys** a host
 writes, and what is asked for there is whose token it is — never which
 client it was assigned to. Where a signed assignment does mean something
 is on a role, a group, a host or a node.  
+**--auto-remove** *time* takes the token out again at *time*: **+1D**
+from now, or a date like **"31.12.2026 14:00"**. **0** keeps a token
+that is in already, see **Members That Leave on Their Own** in
+**otpme**(7).  
 Needs the ACL **add:token**.
 
 **remove_token** \[**--skip-portal-token**\] *client* *token_path*  
@@ -241,9 +245,15 @@ path. **--token-types** lists only tokens of the given types, for
 example **hotp,totp**.  
 Needs the ACL **view:tokens**.
 
-**add_role *client* *role***  
+**list_auto_remove *client***  
+The tokens and roles that leave the client at a set time, and when. Only
+the lists you may see are shown (**view:tokens**, **view:roles**).
+
+**add_role** \[**--auto-remove** *time*\] *client* *role*  
 Put a role into the client, which is the way to do it for more than one
 user.  
+**--auto-remove** *time* takes the role out again at *time*, as with
+**add_token**.  
 Needs the ACL **add:role**.
 
 **remove_role *client* *role***  
@@ -790,11 +800,11 @@ With **enable_dot1x** the answer also carries the VLAN of the token.
 
 **LDAP**  
 The client is named in the bind DN, as a **dc=** in front of the realm:
-**uid=alice,ou=users,dc=wiki,dc=example,dc=org** says "the client
-**wiki**". What that picks is the access group of that client, so one
-**ldapd** serves several applications, each with its own group and its
-own session rules. Which object the DN means does not depend on it. See
-**otpme**(7).
+**uid=alice,ou=users,ou=berlin,dc=wiki,dc=example,dc=org** says "the
+client **wiki**". What that picks is the access group of that client, so
+one **ldapd** serves several applications, each with its own group and
+its own session rules. Which object the DN means does not depend on it.
+See **otpme**(7).
 
 **OIDC**  
 The application sends the user to the portal of the site and names

@@ -221,6 +221,8 @@ Needs the ACL \fBenable:object\fR.
 \fBdisable\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
 Switch a share off without deleting it.
 A disabled share cannot be mounted.
+Where it is mounted already, every access to it is refused: the node checks the share about once a second for each mount.
+Enabled again, the mounts that are still there work again.
 .br
 The hosts are told to unmount it, see \fBTelling the hosts\fR above.
 That goes to the no mount, root mount and master password tokens as well: they may have it mounted too.
@@ -478,7 +480,7 @@ The token can be one of any site of the realm.
 .PP
 The four options that tell the hosts are described under \fBTelling the hosts\fR above.
 .TP
-\fBadd_token\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
+\fBadd_token\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] [\fB\-\-auto\-remove\fR \fItime\fR] \fIshare\fR \fItoken_path\fR
 Let this token mount the share.
 The hosts are told to mount it, unless the share is disabled.
 .br
@@ -490,6 +492,12 @@ An encrypted home share is the exception: nothing is copied, the user makes thei
 .br
 With a forced group, a token whose user is not in that group is refused, unless you are an admin.
 With SOTP signing the sign public key of the user is copied into the share, and a user without one is refused.
+.br
+\fB\-\-auto\-remove\fR \fItime\fR takes the token off again at \fItime\fR: \fB+1D\fR from now, or a date like \fB\(dq31.12.2026 14:00\(dq\fR.
+\fB0\fR keeps a token that is on already, see \fBMembers That Leave on Their Own\fR in
+.BR otpme (7).
+It goes as with \fBremove_token\fR, so on an encrypted share that is no home share the share key of the user goes with their last token.
+The three token lists below take the option as well.
 .br
 Needs the ACL \fBadd:token\fR.
 On an encrypted share that is no home share it needs \fBview:share_key\fR as well when a key has to be copied, on the share the key is read from.
@@ -518,7 +526,11 @@ The tokens of the roles are not in this list, and neither are the master passwor
 .br
 Needs the ACL \fBview:tokens\fR.
 .TP
-\fBadd_role\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIrole\fR
+.B list_auto_remove \fIshare\fR
+The tokens and roles that leave the share at a set time, and when, from all token lists of the share.
+Only the lists you may see are shown (\fBview:tokens\fR, \fBview:roles\fR, \fBview:master_password_tokens\fR, \fBview:root_mount_tokens\fR, \fBview:no_mount_tokens\fR).
+.TP
+\fBadd_role\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] [\fB\-\-auto\-remove\fR \fItime\fR] \fIshare\fR \fIrole\fR
 Add a role to the share.
 Every token of the role, and of the roles inside it, may then mount it, and the hosts are told so.
 .br
@@ -526,6 +538,8 @@ The role is looked for in the site of the share, or written as \f(BIsite\fB/\f(B
 .br
 An encrypted share takes no role, because a role would bring in users who have no share key.
 A share with SOTP signing takes none either, see \fBSOTP Signing\fR above.
+.br
+\fB\-\-auto\-remove\fR \fItime\fR takes the role off again at \fItime\fR, as with \fBadd_token\fR.
 .br
 Needs the ACL \fBadd:role\fR.
 .TP
@@ -639,10 +653,12 @@ That is the way back in when no share key is left, and the way a share key gets 
 The token needs no other assignment to the share, and its user gets no share key from this.
 Only an encrypted share takes one.
 .TP
-.B add_master_password_token \fIshare\fR \fItoken_path\fR
+\fBadd_master_password_token\fR [\fB\-\-auto\-remove\fR \fItime\fR] \fIshare\fR \fItoken_path\fR
 Let the token mount the share with the master password.
 .br
 With SOTP signing the sign public key of the user is copied into the share, and a user without one is refused.
+.br
+\fB\-\-auto\-remove\fR \fItime\fR takes it away again at \fItime\fR, as with \fBadd_token\fR.
 .br
 Needs the ACL \fBadd:master_password_token\fR.
 .TP
@@ -661,12 +677,14 @@ It is made for places like a university: the students each see only their own ho
 Only a home share that is not encrypted takes one: on an encrypted home share every home dir has a key of its own, so a mount of the root could read none of them.
 The token needs no other assignment to the share.
 .TP
-\fBadd_root_mount_token\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
+\fBadd_root_mount_token\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] [\fB\-\-auto\-remove\fR \fItime\fR] \fIshare\fR \fItoken_path\fR
 Let the token mount the root directory of the home share.
 What the token gets from the share changes, so the hosts are told to unmount it for the token and to mount it again, see \fBTelling the hosts\fR above.
 A mount the token has already then shows the root directory instead of the home dir; without being told, it would keep the home dir until it connects to a node again, and then switch under the same paths.
 .br
 With SOTP signing the sign public key of the user is copied into the share, and a user without one is refused.
+.br
+\fB\-\-auto\-remove\fR \fItime\fR takes it away again at \fItime\fR, as with \fBadd_token\fR, e.g. for a lecturer until the end of the term.
 .br
 Needs the ACL \fBadd:root_mount_token\fR.
 .TP
@@ -683,11 +701,13 @@ Mounting by hand with \fBotpme\-mount\fR \f(BIshare_site\fB/\f(BIshare_name\fR w
 .PP
 When a share is disabled or deleted the hosts are told to unmount for these tokens too: they may have mounted it by hand.
 .TP
-.B add_no_mount_token \fIshare\fR \fItoken_path\fR
+\fBadd_no_mount_token\fR [\fB\-\-auto\-remove\fR \fItime\fR] \fIshare\fR \fItoken_path\fR
 Add a token that does not get the share mounted by itself.
 .br
 The share key, the forced group and the sign public key are handled as with \fBadd_token\fR.
 No host is told, there is nothing to mount.
+.br
+\fB\-\-auto\-remove\fR \fItime\fR takes the token off again at \fItime\fR, as with \fBadd_token\fR.
 .br
 Needs the ACL \fBadd:no_mount_token\fR, and \fBview:share_key\fR where \fBadd_token\fR needs it.
 .TP

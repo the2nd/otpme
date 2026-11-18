@@ -87,6 +87,14 @@ otpme-realm init \
 | `--dicts` | Word dictionaries loaded into the password strength checker |
 | `--id-ranges` | UID/GID ranges assigned to this realm |
 
+`--dicts` takes only the dictionaries OTPme comes with. They are in
+`/etc/otpme/dicts/`: `english`, `german`, `common-passwords`, `en-top10000`,
+`de-top10000`, `english-guessing`, `german-guessing`, `us-male`, `us-female`,
+`us-surnames`, `de-male`, `de-female`, `de-surnames`, `at-surnames` and
+`abbreviations-it`. The example takes the English ones. For German users add
+e.g. `german,de-top10000,de-male,de-female,de-surnames`. Without `--dicts` the
+site gets none. Dictionaries can be added later, see `otpme-dictionary(1)`.
+
 ## 2. Start the Daemons
 
 ```bash
@@ -322,6 +330,31 @@ otpme-user -f enable alice
 
 Time suffixes: `m` = minutes, `h` = hours, `D` = days, `W` = weeks.
 
+### Auto Remove
+
+A token or a role can be in a role, group, access group, client, host, node,
+scope, VLAN or share for a while only. `--auto-remove` with `add_token` or
+`add_role` gives the time it leaves again: the same format as `auto_disable`,
+or a date like `"31.12.2026 14:00"`. `alice/notebook-wlan` is in the role
+`wlan-user` already (chapter 9), so this only sets the time, after a question:
+
+```bash
+otpme-role add_token --auto-remove +1m wlan-user alice/notebook-wlan
+otpme-role list_auto_remove wlan-user
+```
+
+hostd on the master node takes the token out. It looks every 5 minutes, so it
+can take that much longer. Then the token is no longer in the role, and its
+WLAN logins fail. Put it back for good:
+
+```bash
+otpme-role list_tokens wlan-user
+otpme-role add_token wlan-user alice/notebook-wlan
+```
+
+`--auto-remove 0` keeps a member that has a time. See *Members That Leave on
+Their Own* in `otpme(7)`.
+
 ## 14. Groups
 
 Groups map to POSIX groups on the node. The default group of a user becomes
@@ -478,56 +511,6 @@ otpme-token --type password add user1/wlan
 otpme-tool logout
 ```
 
-### Log In Again Before an Action
-
-When joe added the token, he was asked to log in again. That comes from the
-policy `auth_on_action`. A new site has it, and every object gets it. Before
-certain actions, e.g. adding a token, changing a PIN or deleting an object, it
-asks the user to log in again with the token they are logged in with.
-
-It does not ask over the local socket of a node, so root on a node is not
-asked. It does not ask in API mode either.
-
-```bash
-otpme-policy show auth_on_action
-```
-
-`show` lists the actions it asks before (`HOOKS`), per object type. A login
-again holds while the user keeps working: every action within
-`reauth_timeout` (30 seconds by default) starts it anew. `reauth_expiry` is how
-long it holds at most from the first login again, however busy the user is.
-It is 0 by default, which means no limit. The timeout must be lower than the
-expiry, so set the expiry first:
-
-```bash
-otpme-policy --type authonaction reauth_expiry auth_on_action 1h
-otpme-policy --type authonaction reauth_timeout auth_on_action 5m
-```
-
-A timeout of 0 asks before every action.
-
-Tokens and roles on the whitelist of the policy are never asked. A token in a
-role counts, however deep the roles are nested:
-
-```bash
-otpme-policy --type authonaction whitelist_token auth_on_action joe/login
-otpme-policy --type authonaction unwhitelist_token auth_on_action joe/login
-# The same for a role.
-otpme-policy --type authonaction whitelist_role auth_on_action <role>
-```
-
-You can also stop asking before a single action, and ask again. A hook you
-removed by hand stays removed, also when an OTPme update brings new hooks
-(`update_hooks`):
-
-```bash
-otpme-policy --type authonaction remove_hook auth_on_action user add_token
-otpme-policy --type authonaction add_hook auth_on_action user add_token
-```
-
-The actions each object type knows are in the section AUTH ON ACTION HOOKS of
-its man page, e.g. `otpme-user(1)`.
-
 ### ACL Groups
 
 Instead of giving ACLs one by one, as for joe above, you can give an ACL
@@ -606,6 +589,57 @@ otpme-user --impersonate-token alice/login add management/users/bob
 # ...but not outside of it.
 otpme-user --impersonate-token alice/login add bob2
 ```
+
+### Log In Again Before an Action
+
+When joe added the token `user1/wlan` above, he was asked to log in again.
+That comes from the policy `auth_on_action`. A new site has it, and every
+object gets it. Before certain actions, e.g. adding a token, changing a PIN or
+deleting an object, it asks the user to log in again with the token they are
+logged in with.
+
+It does not ask over the local socket of a node, so root on a node is not
+asked. It does not ask in API mode either.
+
+```bash
+otpme-policy show auth_on_action
+```
+
+`show` lists the actions it asks before (`HOOKS`), per object type. A login
+again holds while the user keeps working: every action within
+`reauth_timeout` (30 seconds by default) starts it anew. `reauth_expiry` is how
+long it holds at most from the first login again, however busy the user is.
+It is 0 by default, which means no limit. The timeout must be lower than the
+expiry, so set the expiry first:
+
+```bash
+otpme-policy --type authonaction reauth_expiry auth_on_action 1h
+otpme-policy --type authonaction reauth_timeout auth_on_action 5m
+```
+
+A timeout of 0 asks before every action.
+
+Tokens and roles on the whitelist of the policy are never asked. A token in a
+role counts, however deep the roles are nested:
+
+```bash
+otpme-policy --type authonaction whitelist_token auth_on_action joe/login
+otpme-policy --type authonaction unwhitelist_token auth_on_action joe/login
+# The same for a role.
+otpme-policy --type authonaction whitelist_role auth_on_action <role>
+```
+
+You can also stop asking before a single action, and ask again. A hook you
+removed by hand stays removed, also when an OTPme update brings new hooks
+(`update_hooks`):
+
+```bash
+otpme-policy --type authonaction remove_hook auth_on_action user add_token
+otpme-policy --type authonaction add_hook auth_on_action user add_token
+```
+
+The actions each object type knows are in the section AUTH ON ACTION HOOKS of
+its man page, e.g. `otpme-user(1)`.
 
 ## 18. Simplify User Creation with Policies
 
@@ -1571,8 +1605,7 @@ otpme-user key_cache_time joe 5m
 ```
 
 A slot after `--yubikey-piv` (e.g. `AUTHENTICATION`) is optional: it is only
-the slot `gen_csr` uses when it is not told one. The old option
-`--use-agent-piv` is still accepted and does nothing.
+the slot `gen_csr` uses when it is not told one.
 
 To add the Yubikey PIV key to the ssh-agent on login via the PAM module,
 configure the agent script with `--yubikey-piv`. By default the key is added
@@ -1959,7 +1992,85 @@ nmcli connection add type ethernet con-name "dot1x-lan" ifname enp0s25 \
     802-1x.password "pass"
 ```
 
-## 30. SSO Portal
+## 30. LDAP
+
+OTPme has an LDAP server, `ldapd`. Services like Nextcloud or a mail server
+use it to check logins and to read users and groups. Every node speaks LDAPS
+on port 2026. On the floating IP, haproxy takes port 636 and spreads the
+connections over the ldapd of all nodes. The certificate is the one of the
+management FQDN (chapter 4).
+
+### A Client per Service
+
+Each service is an OTPme client. The client is named in the bind DN, as a
+`dc=` left of the realm. It picks the access group of the client, so only
+tokens and roles in that group may bind. Without a client in the DN the bind
+is refused. One ldapd serves many services, each with its own access group.
+
+```bash
+otpme-accessgroup add nextcloud
+otpme-client add nextcloud
+otpme-client access_group nextcloud nextcloud
+otpme-accessgroup add_token nextcloud joe/login
+```
+
+### The DN of an Object
+
+Units and the site are `ou=` parts, the realm is made of `dc=` parts. joe is
+in the unit `management/users` of the site `munich`, so the client
+`nextcloud` binds him as:
+
+```
+uid=joe,ou=users,ou=management,ou=munich,dc=nextcloud,dc=otpme,dc=org
+```
+
+An anonymous bind is accepted, but every search needs a bind:
+
+```bash
+LDAPTLS_CACERT=/etc/otpme/ssl/ca.pem ldapsearch -H ldaps://<mgmt_fqdn> \
+    -D "uid=joe,ou=users,ou=management,ou=munich,dc=nextcloud,dc=otpme,dc=org" -w password \
+    -b "dc=nextcloud,dc=otpme,dc=org" "(uid=joe)"
+```
+
+### What a Token May Read
+
+Without an ACL a token only gets the attributes in the site parameter
+`ldif_whitelist_attributes` (by default `dn`, `objectClass`, `uid`, `cn`,
+`displayName`, `entryUUID`, `l`, `mail` and `mailLocalAddress`). Every other
+attribute needs the ACL `view:attribute:<attr>` on the object. The role
+`REALM_USER` has the ACL group `REALM_USERS`, which shows the attributes of
+users, groups and units (see *ACL Groups*).
+
+A service account that syncs the whole directory can skip the ACL check. The
+value is looked up at the token, then its user, unit and site, so this opens
+only the one token:
+
+```bash
+otpme-token config <user>/<token> ldap_verify_acls False
+```
+
+Big attributes can be held back until a search asks for them by name. SOGo
+asks for all attributes in every address book search, and would otherwise get
+the photo of every hit:
+
+```bash
+otpme-site config <site> ldap_on_request_attributes jpegPhoto
+```
+
+### Auth Cache
+
+A service that binds for every request, e.g. a mail server, can be answered
+from a cache. A cached answer counts for `auth_cache_timeout` seconds (60 by
+default), and only for the same user, client and password:
+
+```bash
+otpme-client enable_auth_cache nextcloud
+otpme-client auth_cache_timeout nextcloud 300
+```
+
+See `otpme-client(1)` and the LDAP parameters in `otpme(7)`.
+
+## 31. SSO Portal
 
 OTPme comes with an SSO web portal. Users sign in there, see and manage
 their own tokens and sessions, and web applications such as Nextcloud or
@@ -2744,7 +2855,7 @@ otpme-site config berlin admin_access_trusts munich
 The section "SSO Portal" in `otpme(7)` lists all parameters of the portal,
 and the section "SSO Configuration" in `otpme-site(1)` the commands.
 
-## 31. Trash
+## 32. Trash
 
 OTPme includes a trash that keeps deleted objects. Every object deleted via
 a tree command (e.g. `otpme-user del`) is moved to the trash instead of
@@ -2781,7 +2892,7 @@ To permanently remove all objects from the trash:
 otpme-trash empty
 ```
 
-## 32. Backup and Restore
+## 33. Backup and Restore
 
 OTPme includes a backup tool that exports all OTPme data (excluding trash)
 to a given directory. Additionally you must back up `/etc/otpme` to make a
@@ -2805,7 +2916,7 @@ directly:
 otpme-tool restore -f /var/backups/otpme/<snapshot>/user/realm+user1.json
 ```
 
-## 33. Integrated Deduplication Backup Service
+## 34. Integrated Deduplication Backup Service
 
 OTPme includes a built-in deduplication backup service. Any node or host
 can act as the backup server. There are two backup modes:

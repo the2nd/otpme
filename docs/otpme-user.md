@@ -324,10 +324,6 @@ the agent uses the card without asking. **AGENT_CONFIRM_ACTIONS** in
 **AUTHENTICATION**, **SIGNATURE**, **KEY_MANAGEMENT** or **CARD_AUTH**.
 It can be left out.
 
-**--use-agent-piv**  
-Taken for settings from before, and does nothing: **--yubikey-piv**
-always goes through otpme-agent.
-
 **--yubikey-hmac *slot***  
 The passphrase of the private key goes through the HMAC
 challenge-response of the YubiKey in *slot* (1 or 2). Without the

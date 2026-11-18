@@ -572,10 +572,11 @@ cmd_help = {
                 },
 
     'add_role'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-node add_role {node} {role}'),
-                    'cmd'   :   '<|object|> <"role_name">',
+                    '_cmd_usage_help' : _('Usage: otpme-node add_role [--auto-remove <time>] {node} {role}'),
+                    'cmd'   :   '--auto-remove :"auto_remove": <|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add role to node.'),
+                                    '--auto-remove <time>'  : _('Remove the role again at <time>, e.g. +1D; 0 keeps it.'),
                                 },
                 },
 
@@ -587,15 +588,24 @@ cmd_help = {
                                 },
                 },
 
+    'list_auto_remove'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-node list_auto_remove {node}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List the members that are removed at a set time.'),
+                                },
+                },
+
     'add_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-node add_token [-i tty,gui,ssh] [--no-auto-sign] [--sign --tags {tag1,tag2,...}] {node} {token} [token_options]'),
-                    'cmd'   :   '-i :[login_interfaces]: --no-auto-sign :auto_sign=False: --sign :sign=True: --tags :[tags]: <|object|> <"token_path"> ["token_options"]',
+                    '_cmd_usage_help' : _('Usage: otpme-node add_token [-i tty,gui,ssh] [--no-auto-sign] [--sign --tags {tag1,tag2,...}] [--auto-remove <time>] {node} {token} [token_options]'),
+                    'cmd'   :   '-i :[login_interfaces]: --no-auto-sign :auto_sign=False: --sign :sign=True: --tags :[tags]: --auto-remove :"auto_remove": <|object|> <"token_path"> ["token_options"]',
                     '_help' :   {
                                     'cmd'                   : _('Add token to node.'),
                                     '-i <tty,gui,ssh>'      : _('Limit login to given interface(s).'),
                                     '--sign'                : _('Sign the object with default tags.'),
                                     '--no-auto-sign'        : _('Disable auto sign.'),
                                     '--tags <tag1,tag2>'    : _('Add tags to signature.'),
+                                    '--auto-remove <time>'  : _('Remove the token again at <time>, e.g. +1D; 0 keeps it.'),
                                 },
                 },
 

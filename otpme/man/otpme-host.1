@@ -142,7 +142,7 @@ Seeing it, with \fBshow\fR, needs \fBview:mac_address\fR.
 A token is named by its path, \f(BIuser\fB/\f(BItoken\fR.
 A role is named by its name, which is looked for in the site of the host, or as \f(BIsite\fB/\f(BIrole\fR to take one from another site of the realm.
 .TP
-\fBadd_token\fR [\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] \fIhost\fR \fItoken_path\fR \fR[\fItoken_options\fR]
+\fBadd_token\fR [\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] [\fB\-\-auto\-remove\fR \fItime\fR] \fIhost\fR \fItoken_path\fR \fR[\fItoken_options\fR]
 Let this token log in to the host.
 .RS
 .TP
@@ -165,6 +165,12 @@ A token that cannot be signed with \fB\-\-sign\fR is an error.
 .TP
 .B \-\-no\-auto\-sign
 Do not sign, whatever the \fBauto_sign\fR of the host or the \fBautosign\fR setting of your own user says.
+.TP
+.B \-\-auto\-remove \fItime\fR
+Take the token away again at \fItime\fR: \fB+1D\fR from now, or a date like \fB\(dq31.12.2026 14:00\(dq\fR.
+\fB0\fR keeps a token that is assigned already.
+See \fBMembers That Leave on Their Own\fR in
+.BR otpme (7).
 .RE
 .IP
 A token that is already assigned, with other interfaces or options, is not added twice: OTPme asks whether to change what it has.
@@ -177,10 +183,16 @@ The signature for this assignment is removed with it; \fB\-\-keep\-sign\fR leave
 List the tokens assigned to the host.
 Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-token\-types\fR to limit the listing to the given token types.
 .TP
-.B add_role \fIhost\fR \fIrole\fR
+.B list_auto_remove \fIhost\fR
+The tokens and roles that leave the host at a set time, and when.
+Only the lists you may see are shown (\fBview:tokens\fR, \fBview:roles\fR).
+.TP
+\fBadd_role\fR [\fB\-\-auto\-remove\fR \fItime\fR] \fIhost\fR \fIrole\fR
 Add a role to the host.
 Its tokens may then log in here, with the interfaces and options they were given in the role, and the users the role syncs are synced to this host.
 The dynamic groups of the role, and of the roles in it, are added to everybody who logs in here.
+.br
+\fB\-\-auto\-remove\fR \fItime\fR takes the role away again at \fItime\fR, as with \fBadd_token\fR.
 .br
 Putting the host into a role is the other way round and another thing: that decides which VLAN the host gets and which shares it may reach, see \fBotpme-role\fR(1) \fBadd_host\fR.
 .TP
@@ -932,7 +944,7 @@ Lock the old machine out.
 .B otpme-host gen_jotp notebook1
 A JOTP for the new machine.
 .TP
-.B otpme-tool join \-f \-\-jotp 12345678
+.B otpme-tool \-f join \-\-jotp 12345678
 Run on the new machine.
 It takes the place of the old one, the certificate of the old one is revoked, and the host is enabled again.
 .SS When it leaves

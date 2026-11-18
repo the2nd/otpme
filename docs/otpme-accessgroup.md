@@ -170,7 +170,7 @@ A token is named by its path, ***user*/*token***. A role is named by its
 name, which is looked for in the site of the access group, or as
 ***site*/*role*** to take one from another site of the realm.
 
-**add_token** \[**--skip-portal-token**\] *accessgroup* *token_path* \[*token_options*\]  
+**add_token** \[**--skip-portal-token**\] \[**--auto-remove** *time*\] *accessgroup* *token_path* \[*token_options*\]  
 Let this token use the service.  
 With SOTP signing enabled the sign public key of the token's user is
 copied into the access group, see **SOTP SIGNING**.  
@@ -191,6 +191,10 @@ limited (see **limit_logins** in **otpme-host**(1)), because that is
 where such a host takes the tokens of that group. On any other access
 group they are kept with the assignment and nothing reads them. They are
 not in **show_config** either, only in **export**.  
+**--auto-remove** *time* takes the token out again at *time*: **+1D**
+from now, or a date like **"31.12.2026 14:00"**. **0** keeps a token
+that is in already, see **Members That Leave on Their Own** in
+**otpme**(7).  
 Needs the ACL **add:token**.
 
 **remove_token** \[**--skip-portal-token**\] *accessgroup* *token_path*  
@@ -213,12 +217,18 @@ given types.
 The tokens of the roles are not in this list, see **list_roles**.  
 Needs the ACL **view:tokens**.
 
-**add_role *accessgroup* *role***  
+**list_auto_remove *accessgroup***  
+The tokens and roles that leave the group at a set time, and when. Only
+the lists you may see are shown (**view:tokens**, **view:roles**).
+
+**add_role** \[**--auto-remove** *time*\] *accessgroup* *role*  
 Add a role to the group. Every token of the role, and of the roles
 inside it, may then use the service.  
 This is the way to give a whole group of people a new service: the role
 is already filled, so the service is one command.  
 A group with forced SOTP signing takes no role, see **SOTP SIGNING**.  
+**--auto-remove** *time* takes the role out again at *time*, as with
+**add_token**.  
 Needs the ACL **add:role**.
 
 **remove_role *accessgroup* *role***  

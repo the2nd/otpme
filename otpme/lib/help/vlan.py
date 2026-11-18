@@ -73,11 +73,20 @@ cmd_help = {
                                 },
                 },
 
+    'list_auto_remove'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-vlan list_auto_remove {vlan}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List the members that are removed at a set time.'),
+                                },
+                },
+
     'add_token'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-vlan add_token {vlan} {token}'),
-                    'cmd'   :   '<|object|> <"token_path">',
+                    '_cmd_usage_help' : _('Usage: otpme-vlan add_token [--auto-remove <time>] {vlan} {token}'),
+                    'cmd'   :   '--auto-remove :"auto_remove": <|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Add token to VLAN.'),
+                                    '--auto-remove <time>'  : _('Remove the token again at <time>, e.g. +1D; 0 keeps it.'),
                                 },
                 },
 
@@ -90,10 +99,11 @@ cmd_help = {
                 },
 
     'add_role'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-vlan add_role {vlan} {role}'),
-                    'cmd'   :   '<|object|> <"role_name">',
+                    '_cmd_usage_help' : _('Usage: otpme-vlan add_role [--auto-remove <time>] {vlan} {role}'),
+                    'cmd'   :   '--auto-remove :"auto_remove": <|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add role to VLAN.'),
+                                    '--auto-remove <time>'  : _('Remove the role again at <time>, e.g. +1D; 0 keeps it.'),
                                 },
                 },
 

@@ -412,10 +412,11 @@ cmd_help = {
                 },
 
     'add_role'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-scope add_role {scope} {role}'),
-                    'cmd'   :   '<|object|> <"role_name">',
+                    '_cmd_usage_help' : _('Usage: otpme-scope add_role [--auto-remove <time>] {scope} {role}'),
+                    'cmd'   :   '--auto-remove :"auto_remove": <|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add role to scope.'),
+                                    '--auto-remove <time>'  : _('Remove the role again at <time>, e.g. +1D; 0 keeps it.'),
                                 },
                 },
 
@@ -427,11 +428,20 @@ cmd_help = {
                                 },
                 },
 
+    'list_auto_remove'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-scope list_auto_remove {scope}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List the members that are removed at a set time.'),
+                                },
+                },
+
     'add_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-scope add_token {scope} {token}'),
-                    'cmd'   :   '<|object|> <"token_path">',
+                    '_cmd_usage_help' : _('Usage: otpme-scope add_token [--auto-remove <time>] {scope} {token}'),
+                    'cmd'   :   '--auto-remove :"auto_remove": <|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Add token to scope.'),
+                                    '--auto-remove <time>'  : _('Remove the token again at <time>, e.g. +1D; 0 keeps it.'),
                                 },
                 },
 

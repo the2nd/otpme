@@ -364,10 +364,11 @@ cmd_help = {
                     },
 
     'add_role'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup add_role {accessgroup} {role}'),
-                    'cmd'   :   '<|object|> <"role_name">',
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup add_role [--auto-remove <time>] {accessgroup} {role}'),
+                    'cmd'   :   '--auto-remove :"auto_remove": <|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add role to accessgroup'),
+                                    '--auto-remove <time>'  : _('Remove the role again at <time>, e.g. +1D; 0 keeps it.'),
                                 },
                 },
 
@@ -379,12 +380,21 @@ cmd_help = {
                                 },
                 },
 
+    'list_auto_remove'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup list_auto_remove {accessgroup}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List the members that are removed at a set time.'),
+                                },
+                },
+
     'add_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup add_token [--skip-portal-token] {accessgroup} {token} [token_options]'),
-                    'cmd'   :   '--skip-portal-token :skip_portal_token=True: <|object|> <"token_path"> ["token_options"]',
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup add_token [--skip-portal-token] [--auto-remove <time>] {accessgroup} {token} [token_options]'),
+                    'cmd'   :   '--skip-portal-token :skip_portal_token=True: --auto-remove :"auto_remove": <|object|> <"token_path"> ["token_options"]',
                     '_help' :   {
                                     'cmd'                   : _('Add token to accessgroup.'),
                                     '--skip-portal-token'   : _('Do not add the tokens the SSO portal manages along with an SSO token.'),
+                                    '--auto-remove <time>'  : _('Remove the token again at <time>, e.g. +1D; 0 keeps it.'),
                                 },
                 },
 

@@ -176,7 +176,7 @@ A role in the group counts with its tokens, and with those of the roles it holds
 The users whose default group it is are members as well.
 A disabled token or role counts for nothing.
 .TP
-\fBadd_token\fR [\fB\-\-sign\fR] [\fB\-\-tags\fR \fItag1,tag2\fR] [\fB\-\-no\-auto\-sign\fR] \fIgroup\fR \fItoken\fR
+\fBadd_token\fR [\fB\-\-sign\fR] [\fB\-\-tags\fR \fItag1,tag2\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-auto\-remove\fR \fItime\fR] \fIgroup\fR \fItoken\fR
 Put a token (\fI<user>/<token>\fR) into the group.
 .br
 It is signed when you ask for it, or when auto_sign is on: for you, or as config parameter of the group.
@@ -196,6 +196,12 @@ Put more tags into the signature.
 .TP
 .B \-\-no\-auto\-sign
 Do not sign this time.
+.TP
+.B \-\-auto\-remove \fItime\fR
+Take the token out again at \fItime\fR: \fB+1D\fR from now, or a date like \fB\(dq31.12.2026 14:00\(dq\fR.
+\fB0\fR keeps a token that is in already.
+See \fBMembers That Leave on Their Own\fR in
+.BR otpme (7).
 .RE
 .TP
 \fBremove_token\fR [\fB\-\-keep\-sign\fR] \fIgroup\fR \fItoken\fR
@@ -212,9 +218,15 @@ The tokens put into the group, disabled ones too; not those of its roles.
 .br
 Needs \fBview:tokens\fR.
 .TP
-.B add_role \fIgroup\fR \fIrole\fR
+.B list_auto_remove \fIgroup\fR
+The tokens and roles that leave the group at a set time, and when.
+Only the lists you may see are shown (\fBview:tokens\fR, \fBview:roles\fR).
+.TP
+\fBadd_role\fR [\fB\-\-auto\-remove\fR \fItime\fR] \fIgroup\fR \fIrole\fR
 Put a role into the group.
 One of another site is written as \fI<site>/<role>\fR.
+.br
+\fB\-\-auto\-remove\fR \fItime\fR takes the role out again at \fItime\fR, as with \fBadd_token\fR.
 .br
 Needs \fBadd:role\fR.
 .TP

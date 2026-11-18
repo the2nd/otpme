@@ -258,6 +258,16 @@ global_write_value_acls = {
 
 global_default_acls = []
 
+# The member lists --auto-remove works for, and how a member leaves
+# them: method and the name of its argument (see process_auto_remove()).
+AUTO_REMOVE_METHODS = {
+                    'tokens'                    : ('remove_token', 'token_path'),
+                    'roles'                     : ('remove_role', 'role_name'),
+                    'master_password_tokens'    : ('remove_master_password_token', 'token_path'),
+                    'root_mount_tokens'         : ('remove_root_mount_token', 'token_path'),
+                    'no_mount_tokens'           : ('remove_no_mount_token', 'token_path'),
+                    }
+
 global_recursive_default_acls = []
 
 def format_acl(raw_acl):
@@ -960,6 +970,11 @@ def register_backend():
     # When an unused object disables itself, which the site that owns
     # it works out.
     config.register_index_attribute('auto_disable',
+                                    sync=["node:untrusted"],
+                                    object_types="all")
+    # Has members that leave on their own, which the site that owns it
+    # works out (see process_auto_remove()).
+    config.register_index_attribute('auto_remove',
                                     sync=["node:untrusted"],
                                     object_types="all")
     # Where the object came from. A session says it too, and says it
@@ -4177,6 +4192,14 @@ class OTPmeObject(OTPmeBaseObject):
                                             'required'      : False,
                                         },
 
+            # Members that leave on their own: "<list>:<uuid>" -> when,
+            # see set_auto_remove().
+            'AUTO_REMOVE'               : {
+                                            'var_name'      : 'auto_remove',
+                                            'type'          : dict,
+                                            'required'      : False,
+                                        },
+
             'LDIF'                      : {
                                             'var_name'      : 'ldif',
                                             'type'          : dict,
@@ -5675,6 +5698,7 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         role_name: Union[str,None]=None,
         role_uuid: Union[str,None]=None,
+        auto_remove: Union[str,None]=None,
         return_uuid: bool=False,
         force: bool=False,
         verify_acls: bool=True,
@@ -5694,6 +5718,11 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = denied_msg(self, "add:role")
                 return callback.error(msg, exception=PermissionDenied)
 
+        try:
+            remove_time = self.parse_auto_remove(auto_remove)
+        except OTPmeException as e:
+            return callback.error(str(e))
+
         if role_name:
             role_uuid = self.get_role_uuid(role_name, callback=callback)
             # An unknown role was said by get_role_uuid(), which does not
@@ -5705,6 +5734,12 @@ class OTPmeObject(OTPmeBaseObject):
             raise OTPmeException(msg)
 
         if role_uuid in self.roles:
+            if remove_time is not None:
+                return self.change_member_auto_remove("roles", role_uuid,
+                                                    role_name or role_uuid,
+                                                    remove_time,
+                                                    force=force,
+                                                    callback=callback)
             msg = _("Role is already a member of {obj_type} '{obj_name}'.")
             msg = msg.format(obj_type=self.type, obj_name=self.name)
             return callback.error(msg)
@@ -5763,6 +5798,8 @@ class OTPmeObject(OTPmeBaseObject):
         self.roles.append(role_uuid)
         # Update index.
         self.add_index('role', role_uuid)
+        if remove_time:
+            self.set_auto_remove("roles", role_uuid, remove_time)
 
         self._cache(callback=callback)
         if return_uuid:
@@ -5852,6 +5889,7 @@ class OTPmeObject(OTPmeBaseObject):
         self.roles.remove(role_uuid)
         # Update index.
         self.del_index('role', role_uuid)
+        self.clear_auto_remove("roles", role_uuid)
 
         return self._cache(callback=callback)
 
@@ -6011,6 +6049,7 @@ class OTPmeObject(OTPmeBaseObject):
         token_path: str,
         token_options: Union[dict,None]=None,
         login_interfaces: Union[List,None]=None,
+        auto_remove: Union[str,None]=None,
         return_uuid: bool=False,
         force: bool=False,
         run_policies: bool=True,
@@ -6039,6 +6078,11 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Invalid token path: {token_path}")
             msg = msg.format(token_path=token_path)
             return callback.error(msg)
+
+        try:
+            remove_time = self.parse_auto_remove(auto_remove)
+        except OTPmeException as e:
+            return callback.error(str(e))
 
         found_pos = False
         found_neg = False
@@ -6075,6 +6119,15 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Orphan token: Unknown user: {owner_uuid}")
             msg = msg.format(owner_uuid=token.owner_uuid)
             return callback.error(msg)
+
+        # Only the time changes: no options, signatures or policies.
+        if token.uuid in self.tokens and remove_time is not None:
+            if not token_options and not login_interfaces:
+                return self.change_member_auto_remove("tokens", token.uuid,
+                                                    token.rel_path,
+                                                    remove_time,
+                                                    force=force,
+                                                    callback=callback)
 
         msg = _("Add token '{token_path}' to {object_type} '{object_name}'?: ")
         msg = msg.format(token_path=token_path,
@@ -6166,7 +6219,10 @@ class OTPmeObject(OTPmeBaseObject):
             #        works fine.
             # We already asked the user above, so no need to ask again.
             # The token is added back right below; the portal tokens are
-            # not part of that.
+            # not part of that. Nor is its auto remove time, which it
+            # keeps unless a new one is given.
+            if remove_time is None:
+                remove_time = self.get_auto_remove_time("tokens", token.uuid)
             self.remove_token(token_path,
                             ask_confirmation=False,
                             skip_portal_token=True,
@@ -6319,6 +6375,8 @@ class OTPmeObject(OTPmeBaseObject):
             self.token_options[token.uuid] = token_options
         if login_interfaces:
             self.token_login_interfaces[token.uuid] = login_interfaces
+        if remove_time:
+            self.set_auto_remove("tokens", token.uuid, remove_time)
 
         self._cache(callback=callback)
 
@@ -6457,6 +6515,7 @@ class OTPmeObject(OTPmeBaseObject):
             pass
         # Update index.
         self.del_index('token', token_uuid)
+        self.clear_auto_remove("tokens", token_uuid)
 
         return self._cache(callback=callback)
 
@@ -10524,6 +10583,224 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
+    @staticmethod
+    def parse_auto_remove(auto_remove: Union[str,None]):
+        """ Get the time a member is to leave at from --auto-remove.
+
+        Returns None without a value, 0 for "0" (no auto remove), else
+        the time. A relative time (+1D) counts from now. A time that is
+        over already is refused: the member would leave at once.
+        Raises OTPmeException for a value that is no time.
+        """
+        if auto_remove is None:
+            return None
+        if str(auto_remove) in ("0", ""):
+            return 0
+        try:
+            remove_time = units.string2unixtime(str(auto_remove), time.time())
+        except Exception as e:
+            msg = _("Invalid date string: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg) from e
+        if remove_time <= time.time():
+            msg = _("Auto remove time is in the past: {auto_remove}")
+            msg = msg.format(auto_remove=auto_remove)
+            raise OTPmeException(msg)
+        return remove_time
+
+    def change_member_auto_remove(
+        self,
+        member_list: str,
+        member_uuid: str,
+        member_name: str,
+        remove_time: Union[float,int],
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        ):
+        """ Change the auto remove time of a member that is in already. """
+        if remove_time:
+            when = datetime.datetime.fromtimestamp(remove_time)
+            when = when.strftime('%d.%m.%Y %H:%M:%S')
+            msg = _("{member} is already in {object_type} '{object_name}'. Remove it at {time}?: ")
+            msg = msg.format(member=member_name,
+                            object_type=self.type,
+                            object_name=self.name,
+                            time=when)
+        else:
+            if self.get_auto_remove_time(member_list, member_uuid) is None:
+                msg = _("{member} is already in {object_type} '{object_name}' and has no auto remove.")
+                msg = msg.format(member=member_name,
+                                object_type=self.type,
+                                object_name=self.name)
+                return callback.error(msg, exception=AlreadyExists)
+            msg = _("{member} is already in {object_type} '{object_name}'. Keep it there?: ")
+            msg = msg.format(member=member_name,
+                            object_type=self.type,
+                            object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+        self.set_auto_remove(member_list, member_uuid, remove_time)
+        return self._cache(callback=callback)
+
+    def set_auto_remove(self, member_list: str, member_uuid: str,
+        remove_time: Union[float,int]):
+        """ Let a member of member_list (e.g. tokens) leave at remove_time.
+
+        0 takes it back. The caller writes the object.
+        """
+        key = f"{member_list}:{member_uuid}"
+        if remove_time:
+            self.auto_remove[key] = float(remove_time)
+        elif key in self.auto_remove:
+            self.auto_remove.pop(key)
+        self._update_auto_remove_index()
+
+    def clear_auto_remove(self, member_list: str, member_uuid: str):
+        """ A member that left takes its auto remove time with it. """
+        key = f"{member_list}:{member_uuid}"
+        if key not in self.auto_remove:
+            return False
+        self.auto_remove.pop(key)
+        self._update_auto_remove_index()
+        return True
+
+    def get_auto_remove_time(self, member_list: str, member_uuid: str):
+        """ When the member leaves, or None. """
+        return self.auto_remove.get(f"{member_list}:{member_uuid}")
+
+    def _update_auto_remove_index(self):
+        if len(self.auto_remove) > 0:
+            self.update_index('auto_remove', True)
+        else:
+            self.del_index('auto_remove')
+
+    def get_orphan_auto_removes(self):
+        """ Auto remove times of members that are not members any more. """
+        orphans = []
+        for key in list(self.auto_remove):
+            member_list, member_uuid = key.split(":", 1)
+            members = getattr(self, member_list, None)
+            if members is None or member_uuid not in members:
+                orphans.append(key)
+        return orphans
+
+    def process_auto_remove(self, callback: JobCallback=default_callback):
+        """ Remove the members whose time is up.
+
+        Run by hostd on the master node of the site of the object. A
+        member goes through the remove method of its list, so what that
+        does on top (share notifications, the tokens of the SSO portal,
+        signatures) happens as with a remove by hand.
+        """
+        now = time.time()
+        object_changed = False
+        removed = []
+        for key, remove_time in list(self.auto_remove.items()):
+            if remove_time > now:
+                continue
+            member_list, member_uuid = key.split(":", 1)
+            members = getattr(self, member_list, None)
+            # Gone some other way already.
+            if members is None or member_uuid not in members:
+                self.clear_auto_remove(member_list, member_uuid)
+                object_changed = True
+                continue
+            try:
+                method_name, arg_name = AUTO_REMOVE_METHODS[member_list]
+            except KeyError:
+                log_msg = _("Auto remove: unknown member list: {object_type}: {object_name}: {member_list}", log=True)[1]
+                log_msg = log_msg.format(object_type=self.type,
+                                        object_name=self.name,
+                                        member_list=member_list)
+                logger.warning(log_msg)
+                continue
+            member = backend.get_object(uuid=member_uuid)
+            if not member:
+                # A member that is gone is an orphan, and leaves with
+                # its time through remove_orphans().
+                continue
+            if member.type == "token":
+                member_name = member.rel_path
+            else:
+                member_name = member.name
+            # A token by its path: the remove methods of a share want
+            # one, and the one of a role takes the user for its share
+            # notifications from it. A role by its UUID, which every
+            # remove_role() takes and which names a role of another
+            # site as well.
+            if member.type == "token":
+                arg_value = member.rel_path
+            else:
+                arg_value = member_uuid
+            method = getattr(self, method_name)
+            method_kwargs = {arg_name: arg_value}
+            try:
+                result = method(force=True,
+                                verify_acls=False,
+                                run_policies=False,
+                                callback=callback,
+                                **method_kwargs)
+            except Exception as e:
+                config.raise_exception()
+                result = False
+                log_msg = _("Cannot auto-remove {member} from {object_type} {object_name}: {error}", log=True)[1]
+                log_msg = log_msg.format(member=member_name,
+                                        object_type=self.type,
+                                        object_name=self.name,
+                                        error=e)
+                logger.critical(log_msg)
+                continue
+            if not result:
+                log_msg = _("Cannot auto-remove {member} from {object_type} {object_name}.", log=True)[1]
+                log_msg = log_msg.format(member=member_name,
+                                        object_type=self.type,
+                                        object_name=self.name)
+                logger.critical(log_msg)
+                continue
+            # The remove method took the time with it, see
+            # clear_auto_remove().
+            self.clear_auto_remove(member_list, member_uuid)
+            object_changed = True
+            removed.append(member_name)
+            log_msg = _("Auto-removed {member} from {object_type} {object_name}.", log=True)[1]
+            log_msg = log_msg.format(member=member_name,
+                                    object_type=self.type,
+                                    object_name=self.name)
+            logger.warning(log_msg)
+            audit_logger = config.audit_logger
+            if audit_logger:
+                audit_logger.info(f"{config.daemon_name}: {log_msg}")
+        if object_changed:
+            self._write(callback=callback)
+        return removed
+
+    @cli.check_rapi_opts()
+    def list_auto_remove(
+        self,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Show the members that leave on their own, and when. """
+        lines = []
+        for key in sorted(self.auto_remove,
+                        key=lambda x: self.auto_remove[x]):
+            member_list, member_uuid = key.split(":", 1)
+            # Only what the list itself may be seen with.
+            if not self.verify_acl(f"view:{member_list}"):
+                continue
+            member = backend.get_object(uuid=member_uuid)
+            if member:
+                member_name = member.rel_path if member.type == "token" else member.name
+            else:
+                member_name = member_uuid
+            remove_time = datetime.datetime.fromtimestamp(self.auto_remove[key])
+            remove_time = remove_time.strftime('%d.%m.%Y %H:%M:%S')
+            lines.append(f"{member_list}\t{member_name}\t{remove_time}")
+        if _caller == "CLIENT":
+            return callback.ok("\n".join(lines))
+        return callback.ok(lines)
+
     @check_acls(acls=['edit:secret'])
     @object_lock(full_lock=True)
     @audit_log()
@@ -13070,6 +13347,13 @@ class OTPmeObject(OTPmeBaseObject):
             if items:
                 hooks_found.append((hook, items))
         config_found = self.get_orphan_config_params()
+        # The time of a member that is gone, or is an orphan itself.
+        auto_remove_found = self.get_orphan_auto_removes()
+        for attr, object_type, paired_dicts, kind, orphans in ref_found:
+            for x_uuid in orphans:
+                x_key = f"{attr}:{x_uuid}"
+                if x_key in self.auto_remove and x_key not in auto_remove_found:
+                    auto_remove_found.append(x_key)
 
         # Single confirmation for everything found.
         msg = ""
@@ -13100,6 +13384,9 @@ class OTPmeObject(OTPmeBaseObject):
             msg += _("{type}|{name}: Found the following orphan entries of config parameter {parameter}: {x}\n").format(
                     type=self.type, name=self.name, parameter=parameter,
                     x=','.join(orphans))
+        if auto_remove_found:
+            msg += _("{type}|{name}: Found the following orphan auto remove entries: {x}\n").format(
+                    type=self.type, name=self.name, x=','.join(auto_remove_found))
         if msg:
             msg = _("{msg}Remove? ").format(msg=msg)
             if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -13132,6 +13419,10 @@ class OTPmeObject(OTPmeBaseObject):
                 continue
             if self.remove_orphan_config_entries(parameter, orphans,
                                                 callback=callback):
+                object_changed = True
+        for x_key in auto_remove_found:
+            member_list, member_uuid = x_key.split(":", 1)
+            if self.clear_auto_remove(member_list, member_uuid):
                 object_changed = True
 
         # Optional type specific recursive cascade. Each member writes

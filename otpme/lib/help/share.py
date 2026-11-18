@@ -539,10 +539,11 @@ cmd_help = {
                 },
 
     'add_master_password_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-share add_master_password_token {share} {token}'),
-                    'cmd'   :   '<|object|> <"token_path">',
+                    '_cmd_usage_help' : _('Usage: otpme-share add_master_password_token [--auto-remove <time>] {share} {token}'),
+                    'cmd'   :   '--auto-remove :"auto_remove": <|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Allow token to mount share with master password.'),
+                                    '--auto-remove <time>'  : _('Remove the token again at <time>, e.g. +1D; 0 keeps it.'),
                                 },
                 },
 
@@ -555,22 +556,24 @@ cmd_help = {
                 },
 
     'add_root_mount_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-share add_root_mount_token [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {token}'),
-                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <"token_path">',
+                    '_cmd_usage_help' : _('Usage: otpme-share add_root_mount_token [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] [--auto-remove <time>] {share} {token}'),
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: --auto-remove :"auto_remove": <|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Let token mount the share root of a home share (access to all home dirs).'),
                                     '--share-notify'        : _('Send notification to all online hosts on new share permissions.'),
                                     '--no-share-notify'     : _('Dont send notification to all online hosts on new share permissions.'),
                                     '--persist-mount'       : _('Persist new share mount on hosts.'),
                                     '--no-persist-mount'    : _('Do not persist new share mount on hosts.'),
+                                    '--auto-remove <time>'  : _('Remove the token again at <time>, e.g. +1D; 0 keeps it.'),
                                 },
                 },
 
     'add_no_mount_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-share add_no_mount_token {share} {token}'),
-                    'cmd'   :   '<|object|> <"token_path">',
+                    '_cmd_usage_help' : _('Usage: otpme-share add_no_mount_token [--auto-remove <time>] {share} {token}'),
+                    'cmd'   :   '--auto-remove :"auto_remove": <|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Add token that does not get the share mounted automatically.'),
+                                    '--auto-remove <time>'  : _('Remove the token again at <time>, e.g. +1D; 0 keeps it.'),
                                 },
                 },
 
@@ -600,15 +603,24 @@ cmd_help = {
                                 },
                 },
 
+    'list_auto_remove'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-share list_auto_remove {share}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List the members that are removed at a set time.'),
+                                },
+                },
+
     'add_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-share add_token [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {token}'),
-                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <"token_path">',
+                    '_cmd_usage_help' : _('Usage: otpme-share add_token [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] [--auto-remove <time>] {share} {token}'),
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: --auto-remove :"auto_remove": <|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Add token to share.'),
                                     '--share-notify'        : _('Send notification to all online hosts on new share permissions.'),
                                     '--no-share-notify'     : _('Dont send notification to all online hosts on new share permissions.'),
                                     '--persist-mount'       : _('Persist new share mount on hosts.'),
                                     '--no-persist-mount'    : _('Do not persist new share mount on hosts.'),
+                                    '--auto-remove <time>'  : _('Remove the token again at <time>, e.g. +1D; 0 keeps it.'),
                                 },
                 },
 
@@ -627,14 +639,15 @@ cmd_help = {
                 },
 
     'add_role'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-share add_role [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {role}'),
-                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <"role_name">',
+                    '_cmd_usage_help' : _('Usage: otpme-share add_role [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] [--auto-remove <time>] {share} {role}'),
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: --auto-remove :"auto_remove": <|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add role to share.'),
                                     '--share-notify'        : _('Send notification to all online hosts on new share permissions.'),
                                     '--no-share-notify'     : _('Dont send notification to all online hosts on new share permissions.'),
                                     '--persist-mount'       : _('Persist new share mount on hosts.'),
                                     '--no-persist-mount'    : _('Do not persist new share mount on hosts.'),
+                                    '--auto-remove <time>'  : _('Remove the role again at <time>, e.g. +1D; 0 keeps it.'),
                                 },
                 },
 

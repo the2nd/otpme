@@ -45,7 +45,7 @@ A client can also be an **LDAP client**, which uses **otpme-ldapd**.
 Here the client name is a DC part of the LDAP bind DN. For example, the
 bind DN
 
-> *uid=user1,ou=users,dc=mailserver,dc=example,dc=org*
+> *uid=user1,ou=users,ou=berlin,dc=mailserver,dc=example,dc=org*
 
 selects the OTPme client "mailserver". So the mail server can only log
 in users with a token in the access group of the mail server.
@@ -759,6 +759,29 @@ units, users, groups, roles, hosts and nodes. The role **REALM_USER**
 has it on the whole site. A site from before the group gets it with
 **otpme-site upgrade**, which also takes away the ACLs realm users had
 one by one.
+
+## Members That Leave on Their Own
+
+A token or a role can be put into a role, group, access group, client,
+host, node, scope, VLAN or share for a while only. **--auto-remove**
+*time* with **add_token** or **add_role** gives the time it leaves
+again: relative from now, e.g. **+8h**, **+1D**, **+2W**, or a date with
+a time, e.g. **"31.12.2026 14:00"**. A time that is over is refused. The
+token lists of a share take it as well: **add_root_mount_token**,
+**add_master_password_token** and **add_no_mount_token**.
+
+> **otpme-role add_token --auto-remove +1D *helpdesk* alice/login**
+
+The master node of the site of the object takes the member out, with the
+same remove command as by hand: the hosts are told about lost share
+permissions, an SSO token takes the tokens of the portal with it, and
+its signature goes. It looks every 5 minutes, so a member can stay up to
+5 minutes longer. It does not while the site is in maintenance mode or
+has no quorum. Each removal is written to the log and the audit log.
+
+To change the time, add the member again with a new **--auto-remove**;
+**0** keeps it for good. A member you take out by hand takes its time
+with it. **list_auto_remove** shows who leaves and when.
 
 # OFFLINE AUTHENTICATION
 

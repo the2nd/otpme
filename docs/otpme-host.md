@@ -154,7 +154,7 @@ A token is named by its path, ***user*/*token***. A role is named by its
 name, which is looked for in the site of the host, or as
 ***site*/*role*** to take one from another site of the realm.
 
-**add_token** \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign** **--tags** *tag1,tag2*\] *host* *token_path* \[*token_options*\]  
+**add_token** \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign** **--tags** *tag1,tag2*\] \[**--auto-remove** *time*\] *host* *token_path* \[*token_options*\]  
 Let this token log in to the host.
 
 **-i *interfaces***  
@@ -184,6 +184,11 @@ be signed with **--sign** is an error.
 Do not sign, whatever the **auto_sign** of the host or the **autosign**
 setting of your own user says.
 
+**--auto-remove *time***  
+Take the token away again at *time*: **+1D** from now, or a date like
+**"31.12.2026 14:00"**. **0** keeps a token that is assigned already.
+See **Members That Leave on Their Own** in **otpme**(7).
+
 A token that is already assigned, with other interfaces or options, is
 not added twice: OTPme asks whether to change what it has.
 
@@ -196,11 +201,17 @@ List the tokens assigned to the host. Use **--return-type** to select
 the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**)
 and **--token-types** to limit the listing to the given token types.
 
-**add_role *host* *role***  
+**list_auto_remove *host***  
+The tokens and roles that leave the host at a set time, and when. Only
+the lists you may see are shown (**view:tokens**, **view:roles**).
+
+**add_role** \[**--auto-remove** *time*\] *host* *role*  
 Add a role to the host. Its tokens may then log in here, with the
 interfaces and options they were given in the role, and the users the
 role syncs are synced to this host. The dynamic groups of the role, and
 of the roles in it, are added to everybody who logs in here.  
+**--auto-remove** *time* takes the role away again at *time*, as with
+**add_token**.  
 Putting the host into a role is the other way round and another thing:
 that decides which VLAN the host gets and which shares it may reach, see
 **otpme-role**(1) **add_host**.

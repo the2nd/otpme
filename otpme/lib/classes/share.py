@@ -526,6 +526,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_master_password_token',
                     'args'              : ['token_path'],
+                    'oargs'             : ['auto_remove'],
                     'job_type'          : 'process',
                     },
                 },
@@ -544,7 +545,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_root_mount_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['share_notifications', 'persist_mount'],
+                    'oargs'             : ['share_notifications', 'persist_mount', 'auto_remove'],
                     'job_type'          : 'process',
                     },
                 },
@@ -564,6 +565,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_no_mount_token',
                     'args'              : ['token_path'],
+                    'oargs'             : ['auto_remove'],
                     'job_type'          : 'process',
                     },
                 },
@@ -634,12 +636,20 @@ commands = {
                     },
                 },
             },
+    'list_auto_remove'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'list_auto_remove',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'add_token'   : {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['share_notifications', 'persist_mount'],
+                    'oargs'             : ['share_notifications', 'persist_mount', 'auto_remove'],
                     'job_type'          : 'process',
                     },
                 },
@@ -659,7 +669,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_role',
                     'args'              : ['role_name'],
-                    'oargs'             : ['share_notifications', 'persist_mount'],
+                    'oargs'             : ['share_notifications', 'persist_mount', 'auto_remove'],
                     'job_type'          : 'process',
                     },
                 },
@@ -2609,6 +2619,25 @@ class Share(OTPmeObject):
 
         return self._cache(callback=callback)
 
+    def _change_token_auto_remove(
+        self,
+        member_list: str,
+        token_uuid: str,
+        token_path: str,
+        auto_remove: str,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        ):
+        """ --auto-remove for a token that is in member_list already. """
+        try:
+            remove_time = self.parse_auto_remove(auto_remove)
+        except OTPmeException as e:
+            return callback.error(str(e))
+        return self.change_member_auto_remove(member_list, token_uuid,
+                                            token_path, remove_time,
+                                            force=force,
+                                            callback=callback)
+
     @object_lock()
     def is_master_password_token(
         self,
@@ -2633,6 +2662,7 @@ class Share(OTPmeObject):
     def add_master_password_token(
         self,
         token_path: str,
+        auto_remove: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -2661,9 +2691,19 @@ class Share(OTPmeObject):
             return callback.error(msg)
         token_uuid = result[0]
         if token_uuid in self.master_password_tokens:
+            if auto_remove is not None:
+                return self._change_token_auto_remove("master_password_tokens",
+                                                    token_uuid, token_path,
+                                                    auto_remove, force=force,
+                                                    callback=callback)
             msg = _("Token already assigned to share: {token_path}")
             msg = msg.format(token_path=token_path)
             return callback.error(msg)
+
+        try:
+            remove_time = self.parse_auto_remove(auto_remove)
+        except OTPmeException as e:
+            return callback.error(str(e))
 
         msg = _("Add master password token '{token_path}' to share '{share_name}'? The token may then mount the share with the master password.: ")
         msg = msg.format(token_path=token_path, share_name=self.name)
@@ -2688,6 +2728,8 @@ class Share(OTPmeObject):
                 return callback.error()
 
         self.master_password_tokens.append(token_uuid)
+        if remove_time:
+            self.set_auto_remove("master_password_tokens", token_uuid, remove_time)
 
         return self._write(callback=callback)
 
@@ -2751,6 +2793,7 @@ class Share(OTPmeObject):
                 return callback.error(msg)
 
         self.master_password_tokens.remove(token_uuid)
+        self.clear_auto_remove("master_password_tokens", token_uuid)
 
         if self.sotp_signing:
             self.del_sign_public_key(token_path, callback=callback)
@@ -2829,6 +2872,7 @@ class Share(OTPmeObject):
     def add_root_mount_token(
         self,
         token_path: str,
+        auto_remove: Union[str,None]=None,
         persist_mount: Union[bool,None]=None,
         share_notifications: Union[bool,None]=None,
         force: bool=False,
@@ -2868,9 +2912,19 @@ class Share(OTPmeObject):
             return callback.error(msg)
         token_uuid = result[0]
         if token_uuid in self.root_mount_tokens:
+            if auto_remove is not None:
+                return self._change_token_auto_remove("root_mount_tokens",
+                                                    token_uuid, token_path,
+                                                    auto_remove, force=force,
+                                                    callback=callback)
             msg = _("Token already assigned to share: {token_path}")
             msg = msg.format(token_path=token_path)
             return callback.error(msg)
+
+        try:
+            remove_time = self.parse_auto_remove(auto_remove)
+        except OTPmeException as e:
+            return callback.error(str(e))
 
         msg = _("Add root mount token '{token_path}' to share '{share_name}'? The token then reaches the home directories of all users.: ")
         msg = msg.format(token_path=token_path, share_name=self.name)
@@ -2895,6 +2949,8 @@ class Share(OTPmeObject):
                 return callback.error()
 
         self.root_mount_tokens.append(token_uuid)
+        if remove_time:
+            self.set_auto_remove("root_mount_tokens", token_uuid, remove_time)
 
         # Update index.
         self.add_index('root_mount_token', token_uuid)
@@ -2978,6 +3034,7 @@ class Share(OTPmeObject):
                 return callback.error(msg)
 
         self.root_mount_tokens.remove(token_uuid)
+        self.clear_auto_remove("root_mount_tokens", token_uuid)
 
         if self.sotp_signing:
             self.del_sign_public_key(token_path, callback=callback)
@@ -3051,6 +3108,7 @@ class Share(OTPmeObject):
         self,
         token_path: str,
         share_key: Union[str,None]=None,
+        auto_remove: Union[str,None]=None,
         force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
@@ -3081,9 +3139,19 @@ class Share(OTPmeObject):
             return callback.error(msg)
         token_uuid = result[0]
         if token_uuid in self.no_mount_tokens:
+            if auto_remove is not None:
+                return self._change_token_auto_remove("no_mount_tokens",
+                                                    token_uuid, token_path,
+                                                    auto_remove, force=force,
+                                                    callback=callback)
             msg = _("Token already assigned to share: {token_path}")
             msg = msg.format(token_path=token_path)
             return callback.error(msg)
+
+        try:
+            remove_time = self.parse_auto_remove(auto_remove)
+        except OTPmeException as e:
+            return callback.error(str(e))
 
         msg = _("Add no mount token '{token_path}' to share '{share_name}'?: ")
         msg = msg.format(token_path=token_path, share_name=self.name)
@@ -3194,6 +3262,8 @@ class Share(OTPmeObject):
                 return callback.error()
 
         self.no_mount_tokens.append(token_uuid)
+        if remove_time:
+            self.set_auto_remove("no_mount_tokens", token_uuid, remove_time)
 
         # Update index.
         self.add_index('no_mount_token', token_uuid)
@@ -3259,6 +3329,7 @@ class Share(OTPmeObject):
                 return callback.error(msg)
 
         self.no_mount_tokens.remove(token_uuid)
+        self.clear_auto_remove("no_mount_tokens", token_uuid)
         # Update index.
         self.del_index('no_mount_token', token_uuid)
 
@@ -3359,9 +3430,23 @@ class Share(OTPmeObject):
             return callback.error(msg)
         token_uuid = result[0]
         if token_uuid in self.tokens:
+            auto_remove = kwargs.get("auto_remove")
+            if auto_remove is not None:
+                return self._change_token_auto_remove("tokens",
+                                                    token_uuid, token_path,
+                                                    auto_remove,
+                                                    force=kwargs.get("force", False),
+                                                    callback=callback)
             msg = _("Token already assigned to share: {token_path}")
             msg = msg.format(token_path=token_path)
             return callback.error(msg)
+
+        # Checked before the share key is handed out. The parent class
+        # sets it.
+        try:
+            self.parse_auto_remove(kwargs.get("auto_remove"))
+        except OTPmeException as e:
+            return callback.error(str(e))
 
         token_user = token_path.split("/")[0]
         result = backend.search(object_type="user",

@@ -195,11 +195,15 @@ member of one VLAN per site; adding it to a second one is refused, and
 the message names the one it is in. That is checked after the ACL, so
 only somebody who may add it here is told.
 
-**add_token *vlan* *user/token***  
+**add_token** \[**--auto-remove** *time*\] *vlan* *user/token*  
 Put a token into the VLAN, for 802.1X: the token logs in, and its VLAN
 is sent to the switch. User names are unique in the realm, so the token
 may belong to a user of any site. The token is not signed, whatever
 auto-sign says: nothing checks a signature for a VLAN.  
+**--auto-remove** *time* takes the token out again at *time*: **+1D**
+from now, or a date like **"31.12.2026 14:00"**. **0** keeps a token
+that is in already, see **Members That Leave on Their Own** in
+**otpme**(7).  
 Needs **add:token**.
 
 **remove_token *vlan* *user/token***  
@@ -207,18 +211,24 @@ Take the token out of the VLAN. A UUID is taken as well, which is how a
 token that is gone is cleared out.  
 Needs **remove:token**.
 
-**add_role *vlan* *role***  
+**add_role** \[**--auto-remove** *time*\] *vlan* *role*  
 Put a role into the VLAN. Every token, host and device of the role is
 then in the VLAN, and so is every role nested in it, unless a VLAN names
 one of them more closely.  
 The role is looked for in the site of the VLAN, or written as
 *site/role* to take one from another site of the realm.  
+**--auto-remove** *time* takes the role out again at *time*, as with
+**add_token**.  
 Needs **add:role**.
 
 **remove_role *vlan* *role***  
 Take the role out of the VLAN. It is named as for **add_role**, or by
 its UUID, which is how a role that is gone is cleared out.  
 Needs **remove:role**.
+
+**list_auto_remove *vlan***  
+The tokens and roles that leave the VLAN at a set time, and when. Only
+the lists you may see are shown (**view:tokens**, **view:roles**).
 
 **add_host *vlan* *host***  
 Put a host into the VLAN, for MAB: the switch asks with the MAC address

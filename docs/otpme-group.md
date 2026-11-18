@@ -167,7 +167,7 @@ its tokens, and with those of the roles it holds. The users whose
 default group it is are members as well. A disabled token or role counts
 for nothing.
 
-**add_token** \[**--sign**\] \[**--tags** *tag1,tag2*\] \[**--no-auto-sign**\] *group* *token*  
+**add_token** \[**--sign**\] \[**--tags** *tag1,tag2*\] \[**--no-auto-sign**\] \[**--auto-remove** *time*\] *group* *token*  
 Put a token (*\<user\>/\<token\>*) into the group.  
 It is signed when you ask for it, or when auto_sign is on: for you, or
 as config parameter of the group. The signature is made with your login
@@ -186,6 +186,11 @@ Put more tags into the signature.
 **--no-auto-sign**  
 Do not sign this time.
 
+**--auto-remove *time***  
+Take the token out again at *time*: **+1D** from now, or a date like
+**"31.12.2026 14:00"**. **0** keeps a token that is in already. See
+**Members That Leave on Their Own** in **otpme**(7).
+
 **remove_token** \[**--keep-sign**\] *group* *token*  
 Take the token out of the group. The signatures made for this group go
 with it, each after a question; **--keep-sign** leaves them. A token
@@ -199,9 +204,15 @@ roles. **--return-type** picks what is printed: **rel_path** (default,
 **--token-types** narrows it to those types, e.g. **hotp,totp**.  
 Needs **view:tokens**.
 
-**add_role *group* *role***  
+**list_auto_remove *group***  
+The tokens and roles that leave the group at a set time, and when. Only
+the lists you may see are shown (**view:tokens**, **view:roles**).
+
+**add_role** \[**--auto-remove** *time*\] *group* *role*  
 Put a role into the group. One of another site is written as
 *\<site\>/\<role\>*.  
+**--auto-remove** *time* takes the role out again at *time*, as with
+**add_token**.  
 Needs **add:role**.
 
 **remove_role *group* *role***  

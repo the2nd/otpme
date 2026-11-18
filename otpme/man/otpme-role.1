@@ -177,7 +177,7 @@ Those are added without a signature.
 A link token can be signed when the token it points at can, see
 .BR otpme\-token (1).
 .TP
-\fBadd_token\fR [\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR] [\fB\-\-tags\fR \fItag1,tag2\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] [\fB\-\-skip\-portal\-token\fR] \fIrole\fR \fItoken\fR \fR[\fItoken_options\fR]
+\fBadd_token\fR [\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR] [\fB\-\-tags\fR \fItag1,tag2\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] [\fB\-\-skip\-portal\-token\fR] [\fB\-\-auto\-remove\fR \fItime\fR] \fIrole\fR \fItoken\fR \fR[\fItoken_options\fR]
 Put a token into the role.
 From then on it reaches everything the role is assigned to, and everything the roles above it are assigned to.
 .RS
@@ -210,6 +210,12 @@ Whether the online hosts are told that there are new share permissions.
 .TP
 .B \-\-no\-persist\-mount
 Do not persist new share mounts on hosts.
+.TP
+.B \-\-auto\-remove \fItime\fR
+Take the token out again at \fItime\fR: \fB+1D\fR from now, or a date like \fB\(dq31.12.2026 14:00\(dq\fR.
+\fB0\fR keeps a token that is in already.
+See \fBMembers That Leave on Their Own\fR in
+.BR otpme (7).
 .RE
 .TP
 \fBremove_token\fR [\fB\-\-keep\-sign\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] [\fB\-\-skip\-portal\-token\fR] \fIrole\fR \fItoken\fR
@@ -244,6 +250,10 @@ narrows it to those types, for example \fBhotp,totp\fR.
 .br
 Disabled tokens are listed as well.
 .TP
+.B list_auto_remove \fIrole\fR
+The tokens and roles that leave the role at a set time, and when.
+Only the lists you may see are shown (\fBview:tokens\fR, \fBview:roles\fR).
+.TP
 \fBlist_users\fR [\fB\-\-return\-type\fR \fItype\fR] \fIrole\fR
 The users those tokens belong to.
 One user with three tokens in the role is named once.
@@ -254,7 +264,7 @@ See the \fBDESCRIPTION\fR above.
 A \fIchild_role\fR is looked for in the site of the role, or written as \f(BIsite\fB/\f(BIrole\fR to take one from another site of the realm.
 \fBremove_role\fR takes a UUID as well, which is how a reference to a role that is gone is cleared out.
 .TP
-\fBadd_role\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIrole\fR \fIchild_role\fR
+\fBadd_role\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] [\fB\-\-auto\-remove\fR \fItime\fR] \fIrole\fR \fIchild_role\fR
 Put \fIchild_role\fR into \fIrole\fR.
 The tokens of \fIchild_role\fR then reach everything \fIrole\fR is assigned to.
 .RS
@@ -266,6 +276,9 @@ Whether the online hosts are told that there are new share permissions.
 .TP
 .B \-\-no\-persist\-mount
 Do not persist new share mounts on hosts.
+.TP
+.B \-\-auto\-remove \fItime\fR
+Take the role out again at \fItime\fR, as with \fBadd_token\fR.
 .RE
 .TP
 \fBremove_role\fR [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIrole\fR \fIchild_role\fR

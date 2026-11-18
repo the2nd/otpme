@@ -366,12 +366,20 @@ commands = {
                     },
                 },
             },
+    'list_auto_remove'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'list_auto_remove',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'add_token'   : {
             'default'    : {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['token_options', 'login_interfaces', 'sign', 'tags', 'auto_sign'],
+                    'oargs'             : ['token_options', 'login_interfaces', 'sign', 'tags', 'auto_sign', 'auto_remove'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -391,6 +399,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_role',
                     'args'              : ['role_name'],
+                    'oargs'             : ['auto_remove'],
                     'job_type'          : 'thread',
                     },
                 },

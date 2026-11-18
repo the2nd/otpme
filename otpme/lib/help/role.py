@@ -388,9 +388,17 @@ cmd_help = {
                                 },
                 },
 
+    'list_auto_remove'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-role list_auto_remove {role}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List the members that are removed at a set time.'),
+                                },
+                },
+
     'add_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-role add_token [-i tty,gui,ssh] [--no-auto-sign] [--sign --tags {tag1,tag2,...}] [--share-notify] [--no-share-notify] [--no-persist-mount] [--skip-portal-token] {role} {token} [token_options]'),
-                    'cmd'   :   '-i :[login_interfaces]: --no-auto-sign :auto_sign=False: --sign :sign=True: --tags :[tags]: --share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: --skip-portal-token :skip_portal_token=True: <|object|> <"token_path"> ["token_options"]',
+                    '_cmd_usage_help' : _('Usage: otpme-role add_token [-i tty,gui,ssh] [--no-auto-sign] [--sign --tags {tag1,tag2,...}] [--share-notify] [--no-share-notify] [--no-persist-mount] [--skip-portal-token] [--auto-remove <time>] {role} {token} [token_options]'),
+                    'cmd'   :   '-i :[login_interfaces]: --no-auto-sign :auto_sign=False: --sign :sign=True: --tags :[tags]: --share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: --skip-portal-token :skip_portal_token=True: --auto-remove :"auto_remove": <|object|> <"token_path"> ["token_options"]',
                     '_help' :   {
                                     'cmd'                   : _('Add token to role.'),
                                     '-i <tty,gui,ssh>'      : _('Limit login to given interface(s).'),
@@ -400,6 +408,7 @@ cmd_help = {
                                     '--no-share-notify'     : _('Dont send notification to all online hosts on new share permissions.'),
                                     '--no-persist-mount'    : _('Do not persist new share mount on hosts.'),
                                     '--skip-portal-token'   : _('Do not add the tokens the SSO portal manages along with an SSO token.'),
+                                    '--auto-remove <time>'  : _('Remove the token again at <time>, e.g. +1D; 0 keeps it.'),
                                 },
                 },
 
@@ -417,13 +426,14 @@ cmd_help = {
                 },
 
     'add_role'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-role add_role [--share-notify] [--no-share-notify] [--no-persist-mount] {role} {role}'),
-                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: <|object|> <"role_name">',
+                    '_cmd_usage_help' : _('Usage: otpme-role add_role [--share-notify] [--no-share-notify] [--no-persist-mount] [--auto-remove <time>] {role} {role}'),
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: --auto-remove :"auto_remove": <|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add role to role'),
                                     '--share-notify'        : _('Send notification to all online hosts on new share permissions.'),
                                     '--no-share-notify'     : _('Dont send notification to all online hosts on new share permissions.'),
                                     '--no-persist-mount'    : _('Do not persist new share mount on hosts.'),
+                                    '--auto-remove <time>'  : _('Remove the role again at <time>, e.g. +1D; 0 keeps it.'),
                                 },
                 },
 

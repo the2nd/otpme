@@ -174,10 +174,14 @@ Needs the ACL \fBedit:auto_disable\fR.
 A token is named by its path, \f(BIuser\fB/\f(BItoken\fR.
 A role is named by its name, which is looked for in the site of the scope, or as \f(BIsite\fB/\f(BIrole\fR to take one from another site of the realm.
 .TP
-.B add_token \fIscope\fR \fItoken_path\fR
+\fBadd_token\fR [\fB\-\-auto\-remove\fR \fItime\fR] \fIscope\fR \fItoken_path\fR
 Let this token hand the scope out.
 .br
 Whoever signs in with it can give the scope to an application that asks for it \(em if that application has the scope as well.
+.br
+\fB\-\-auto\-remove\fR \fItime\fR takes the token out again at \fItime\fR: \fB+1D\fR from now, or a date like \fB\(dq31.12.2026 14:00\(dq\fR.
+\fB0\fR keeps a token that is in already, see \fBMembers That Leave on Their Own\fR in
+.BR otpme (7).
 .br
 Needs the ACL \fBadd:token\fR.
 .TP
@@ -195,11 +199,17 @@ List the tokens in the scope, disabled ones included.
 .br
 Needs the ACL \fBview:tokens\fR.
 .TP
-.B add_role \fIscope\fR \fIrole\fR
+.B list_auto_remove \fIscope\fR
+The tokens and roles that leave the scope at a set time, and when.
+Only the lists you may see are shown (\fBview:tokens\fR, \fBview:roles\fR).
+.TP
+\fBadd_role\fR [\fB\-\-auto\-remove\fR \fItime\fR] \fIscope\fR \fIrole\fR
 Let every token of this role hand the scope out.
 .br
 This is the way to do it for more than one user: a role holds the tokens, the scope holds the role.
 A role from another site is named \f(BIsite\fB/\f(BIrole\fR.
+.br
+\fB\-\-auto\-remove\fR \fItime\fR takes the role out again at \fItime\fR, as with \fBadd_token\fR.
 .br
 Needs the ACL \fBadd:role\fR.
 .TP

@@ -478,10 +478,11 @@ cmd_help = {
                                 },
                 },
     'add_role'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-group add_role {group} {role}'),
-                    'cmd'   :   '<|object|> <"role_name">',
+                    '_cmd_usage_help' : _('Usage: otpme-group add_role [--auto-remove <time>] {group} {role}'),
+                    'cmd'   :   '--auto-remove :"auto_remove": <|object|> <"role_name">',
                     '_help' :   {
                                     'cmd'                   : _('Add role to group'),
+                                    '--auto-remove <time>'  : _('Remove the role again at <time>, e.g. +1D; 0 keeps it.'),
                                 },
                 },
 
@@ -493,14 +494,23 @@ cmd_help = {
                                 },
                 },
 
+    'list_auto_remove'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-group list_auto_remove {group}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List the members that are removed at a set time.'),
+                                },
+                },
+
     'add_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-group add_token [--sign] [--tags {tag1,tag2,...}] [--no-auto-sign] {group} {token}'),
-                    'cmd'   :   '--no-auto-sign :auto_sign=False: --sign :sign=True: --tags :[tags]: <|object|> <"token_path">',
+                    '_cmd_usage_help' : _('Usage: otpme-group add_token [--sign] [--tags {tag1,tag2,...}] [--no-auto-sign] [--auto-remove <time>] {group} {token}'),
+                    'cmd'   :   '--no-auto-sign :auto_sign=False: --sign :sign=True: --tags :[tags]: --auto-remove :"auto_remove": <|object|> <"token_path">',
                     '_help' :   {
                                     'cmd'                   : _('Add token to group.'),
                                     '--sign'                : _('Sign the object with default tags.'),
                                     '--tags <tag1,tag2>'    : _('Add tags to signature.'),
                                     '--no-auto-sign'        : _('Do not sign this time.'),
+                                    '--auto-remove <time>'  : _('Remove the token again at <time>, e.g. +1D; 0 keeps it.'),
                                 },
                 },
 

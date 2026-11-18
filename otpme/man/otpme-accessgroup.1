@@ -161,7 +161,7 @@ It is refused for an object the realm or a site comes with, e.g. the admin user;
 A token is named by its path, \f(BIuser\fB/\f(BItoken\fR.
 A role is named by its name, which is looked for in the site of the access group, or as \f(BIsite\fB/\f(BIrole\fR to take one from another site of the realm.
 .TP
-\fBadd_token\fR [\fB\-\-skip\-portal\-token\fR] \fIaccessgroup\fR \fItoken_path\fR \fR[\fItoken_options\fR]
+\fBadd_token\fR [\fB\-\-skip\-portal\-token\fR] [\fB\-\-auto\-remove\fR \fItime\fR] \fIaccessgroup\fR \fItoken_path\fR \fR[\fItoken_options\fR]
 Let this token use the service.
 .br
 With SOTP signing enabled the sign public key of the token's user is copied into the access group, see \fBSOTP SIGNING\fR.
@@ -175,6 +175,10 @@ Only the options the token type allows are kept, the rest is dropped when the fi
 One group is asked for them: the \fBREALM\fR group of a site, when a host of that site writes its \fBauthorized_keys\fR and its logins are not limited (see \fBlimit_logins\fR in \fBotpme\-host\fR(1)), because that is where such a host takes the tokens of that group.
 On any other access group they are kept with the assignment and nothing reads them.
 They are not in \fBshow_config\fR either, only in \fBexport\fR.
+.br
+\fB\-\-auto\-remove\fR \fItime\fR takes the token out again at \fItime\fR: \fB+1D\fR from now, or a date like \fB\(dq31.12.2026 14:00\(dq\fR.
+\fB0\fR keeps a token that is in already, see \fBMembers That Leave on Their Own\fR in
+.BR otpme (7).
 .br
 Needs the ACL \fBadd:token\fR.
 .TP
@@ -199,13 +203,19 @@ The tokens of the roles are not in this list, see
 .br
 Needs the ACL \fBview:tokens\fR.
 .TP
-.B add_role \fIaccessgroup\fR \fIrole\fR
+.B list_auto_remove \fIaccessgroup\fR
+The tokens and roles that leave the group at a set time, and when.
+Only the lists you may see are shown (\fBview:tokens\fR, \fBview:roles\fR).
+.TP
+\fBadd_role\fR [\fB\-\-auto\-remove\fR \fItime\fR] \fIaccessgroup\fR \fIrole\fR
 Add a role to the group.
 Every token of the role, and of the roles inside it, may then use the service.
 .br
 This is the way to give a whole group of people a new service: the role is already filled, so the service is one command.
 .br
 A group with forced SOTP signing takes no role, see \fBSOTP SIGNING\fR.
+.br
+\fB\-\-auto\-remove\fR \fItime\fR takes the role out again at \fItime\fR, as with \fBadd_token\fR.
 .br
 Needs the ACL \fBadd:role\fR.
 .TP

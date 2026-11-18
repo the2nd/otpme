@@ -202,7 +202,7 @@ This is how a client is created.
 .br
 Needs the ACL \fBunlimit_logins\fR.
 .TP
-\fBadd_token\fR [\fB\-\-skip\-portal\-token\fR] \fIclient\fR \fItoken_path\fR \fR[\fItoken_options\fR]
+\fBadd_token\fR [\fB\-\-skip\-portal\-token\fR] [\fB\-\-auto\-remove\fR \fItime\fR] \fIclient\fR \fItoken_path\fR \fR[\fItoken_options\fR]
 Put a token into the client.
 .br
 With limited logins this is what lets it in; without them it decides nothing.
@@ -217,6 +217,10 @@ Nothing reads them on a client; they are kept with the assignment, see
 The assignment is never signed, and there is no \fB\-\-sign\fR here.
 A token signature is verified in one place, the \fBauthorized_keys\fR a host writes, and what is asked for there is whose token it is \(em never which client it was assigned to.
 Where a signed assignment does mean something is on a role, a group, a host or a node.
+.br
+\fB\-\-auto\-remove\fR \fItime\fR takes the token out again at \fItime\fR: \fB+1D\fR from now, or a date like \fB\(dq31.12.2026 14:00\(dq\fR.
+\fB0\fR keeps a token that is in already, see \fBMembers That Leave on Their Own\fR in
+.BR otpme (7).
 .br
 Needs the ACL \fBadd:token\fR.
 .TP
@@ -236,8 +240,14 @@ List the tokens of the client, disabled ones included.
 .br
 Needs the ACL \fBview:tokens\fR.
 .TP
-.B add_role \fIclient\fR \fIrole\fR
+.B list_auto_remove \fIclient\fR
+The tokens and roles that leave the client at a set time, and when.
+Only the lists you may see are shown (\fBview:tokens\fR, \fBview:roles\fR).
+.TP
+\fBadd_role\fR [\fB\-\-auto\-remove\fR \fItime\fR] \fIclient\fR \fIrole\fR
 Put a role into the client, which is the way to do it for more than one user.
+.br
+\fB\-\-auto\-remove\fR \fItime\fR takes the role out again at \fItime\fR, as with \fBadd_token\fR.
 .br
 Needs the ACL \fBadd:role\fR.
 .TP
@@ -811,7 +821,7 @@ With
 the answer also carries the VLAN of the token.
 .TP
 .B LDAP
-The client is named in the bind DN, as a \fBdc=\fR in front of the realm: \fBuid=alice,ou=users,dc=wiki,dc=example,dc=org\fR says "the client \fBwiki\fR".
+The client is named in the bind DN, as a \fBdc=\fR in front of the realm: \fBuid=alice,ou=users,ou=berlin,dc=wiki,dc=example,dc=org\fR says "the client \fBwiki\fR".
 What that picks is the access group of that client, so one \fBldapd\fR serves several applications, each with its own group and its own session rules.
 Which object the DN means does not depend on it.
 See

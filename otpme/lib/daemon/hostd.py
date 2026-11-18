@@ -34,6 +34,7 @@ from otpme.lib import protocols
 from otpme.lib import connections
 from otpme.lib import multiprocessing
 from otpme.lib.sync_cache import SyncCache
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.protocols import status_codes
 from otpme.lib.audit import process_spooled_logs
 from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
@@ -1876,6 +1877,52 @@ class HostDaemon(OTPmeDaemon):
                             join=True)
         self.auto_disabled_run_child = child
 
+    def _process_auto_remove(self):
+        """ Remove the members whose --auto-remove time is up. """
+        search_attributes = {
+                            'auto_remove'   : {'value':True},
+                        }
+        try:
+            result = backend.search(attributes=search_attributes,
+                                    realm=config.realm,
+                                    site=config.site)
+        except ResourceClosedError:
+            return
+        for x_uuid in result:
+            if not config.master_node:
+                break
+            if not config.cluster_status:
+                break
+            if config.master_failover:
+                break
+            x_object = backend.get_object(uuid=x_uuid,
+                                        log_exists=False,
+                                        run_policies=False)
+            if not x_object:
+                continue
+            callback = JobCallback(name="auto_remove", client="auto_remove")
+            try:
+                removed = x_object.process_auto_remove(callback=callback)
+            except Exception as e:
+                config.raise_exception()
+                log_msg = _("Auto remove failed: {object_type} {object_name}: {error}", log=True)[1]
+                log_msg = log_msg.format(object_type=x_object.type,
+                                        object_name=x_object.name,
+                                        error=e)
+                self.logger.critical(log_msg)
+                continue
+            if not removed:
+                continue
+            # What a job runs once its objects are written, e.g. the
+            # share notifications of a role (see OTPmeJob).
+            for post_method in callback.post_methods:
+                try:
+                    post_method()
+                except Exception as e:
+                    log_msg = _("Auto remove post method failed: {post_method}: {error}", log=True)[1]
+                    log_msg = log_msg.format(post_method=post_method, error=e)
+                    self.logger.warning(log_msg)
+
     def _process_auto_disabled(self):
         """ Update auto disabled objects. """
         # Handle multiprocessing stuff.
@@ -1915,6 +1962,10 @@ class HostDaemon(OTPmeDaemon):
                 continue
             x_object.exists(log=False,
                             run_policies=True)
+
+        # Members that leave on their own (--auto-remove), see
+        # OTPmeObject.process_auto_remove().
+        self._process_auto_remove()
 
         # Check autodisable policy objects.
         search_attributes = {

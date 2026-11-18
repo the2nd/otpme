@@ -496,7 +496,7 @@ any site of the realm.
 The four options that tell the hosts are described under **Telling the
 hosts** above.
 
-**add_token** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path*  
+**add_token** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] \[**--auto-remove** *time*\] *share* *token_path*  
 Let this token mount the share. The hosts are told to mount it, unless
 the share is disabled.  
 On an encrypted share the user of the token needs a copy of the share
@@ -511,6 +511,12 @@ their own key at their first mount.
 With a forced group, a token whose user is not in that group is refused,
 unless you are an admin. With SOTP signing the sign public key of the
 user is copied into the share, and a user without one is refused.  
+**--auto-remove** *time* takes the token off again at *time*: **+1D**
+from now, or a date like **"31.12.2026 14:00"**. **0** keeps a token
+that is on already, see **Members That Leave on Their Own** in
+**otpme**(7). It goes as with **remove_token**, so on an encrypted share
+that is no home share the share key of the user goes with their last
+token. The three token lists below take the option as well.  
 Needs the ACL **add:token**. On an encrypted share that is no home share
 it needs **view:share_key** as well when a key has to be copied, on the
 share the key is read from.
@@ -539,7 +545,13 @@ password, root mount and no mount tokens; **show** *share* prints
 those.  
 Needs the ACL **view:tokens**.
 
-**add_role** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *role*  
+**list_auto_remove *share***  
+The tokens and roles that leave the share at a set time, and when, from
+all token lists of the share. Only the lists you may see are shown
+(**view:tokens**, **view:roles**, **view:master_password_tokens**,
+**view:root_mount_tokens**, **view:no_mount_tokens**).
+
+**add_role** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] \[**--auto-remove** *time*\] *share* *role*  
 Add a role to the share. Every token of the role, and of the roles
 inside it, may then mount it, and the hosts are told so.  
 The role is looked for in the site of the share, or written as
@@ -547,6 +559,8 @@ The role is looked for in the site of the share, or written as
 An encrypted share takes no role, because a role would bring in users
 who have no share key. A share with SOTP signing takes none either, see
 **SOTP Signing** above.  
+**--auto-remove** *time* takes the role off again at *time*, as with
+**add_token**.  
 Needs the ACL **add:role**.
 
 **remove_role** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *role*  
@@ -660,10 +674,12 @@ that was taken over with **--no-key-gen**.
 The token needs no other assignment to the share, and its user gets no
 share key from this. Only an encrypted share takes one.
 
-**add_master_password_token *share* *token_path***  
+**add_master_password_token** \[**--auto-remove** *time*\] *share* *token_path*  
 Let the token mount the share with the master password.  
 With SOTP signing the sign public key of the user is copied into the
 share, and a user without one is refused.  
+**--auto-remove** *time* takes it away again at *time*, as with
+**add_token**.  
 Needs the ACL **add:master_password_token**.
 
 **remove_master_password_token *share* *token_path***  
@@ -687,7 +703,7 @@ Only a home share that is not encrypted takes one: on an encrypted home
 share every home dir has a key of its own, so a mount of the root could
 read none of them. The token needs no other assignment to the share.
 
-**add_root_mount_token** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path*  
+**add_root_mount_token** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] \[**--auto-remove** *time*\] *share* *token_path*  
 Let the token mount the root directory of the home share. What the token
 gets from the share changes, so the hosts are told to unmount it for the
 token and to mount it again, see **Telling the hosts** above. A mount
@@ -696,6 +712,8 @@ dir; without being told, it would keep the home dir until it connects to
 a node again, and then switch under the same paths.  
 With SOTP signing the sign public key of the user is copied into the
 share, and a user without one is refused.  
+**--auto-remove** *time* takes it away again at *time*, as with
+**add_token**, e.g. for a lecturer until the end of the term.  
 Needs the ACL **add:root_mount_token**.
 
 **remove_root_mount_token** \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path*  
@@ -716,10 +734,12 @@ the hosts are not told to mount for it. Mounting by hand with
 When a share is disabled or deleted the hosts are told to unmount for
 these tokens too: they may have mounted it by hand.
 
-**add_no_mount_token *share* *token_path***  
+**add_no_mount_token** \[**--auto-remove** *time*\] *share* *token_path*  
 Add a token that does not get the share mounted by itself.  
 The share key, the forced group and the sign public key are handled as
 with **add_token**. No host is told, there is nothing to mount.  
+**--auto-remove** *time* takes the token off again at *time*, as with
+**add_token**.  
 Needs the ACL **add:no_mount_token**, and **view:share_key** where
 **add_token** needs it.
 
