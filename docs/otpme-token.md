@@ -1282,7 +1282,7 @@ A password token. OTPme makes the password up and prints it;
 **--password** sets one of your own. Something has to get the user in
 the first time.
 
-**otpme-token enable_sso_deploy alice/start fido2**  
+**otpme-token --type password enable_sso_deploy alice/start fido2**  
 At their first login on the SSO portal, alice registers a security key
 for herself. Then the password token can go.
 

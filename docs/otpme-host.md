@@ -947,7 +947,7 @@ Lock the old machine out.
 **otpme-host gen_jotp notebook1**  
 A JOTP for the new machine.
 
-**otpme-tool join -f --jotp 12345678**  
+**otpme-tool -f join --jotp 12345678**  
 Run on the new machine. It takes the place of the old one, the
 certificate of the old one is revoked, and the host is enabled again.
 

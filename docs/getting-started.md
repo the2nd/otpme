@@ -9,7 +9,7 @@ common day-to-day administration tasks using a practical example.
 
 If you just want to try out OTPme on a single node without setting up hosts or
 RADIUS clients, you can initialize the realm with `localhost 127.0.0.1` as the
-node FQDN and address. You can always migrate to a fully functional setup later.
+site FQDN and address. You can always migrate to a fully functional setup later.
 
 ### DNS records for a production setup
 
@@ -52,8 +52,10 @@ If you only have one site you can use the realm domain directly for all records
 ## 1. Initialize a Realm
 
 The first step is to initialize a realm. This creates the root CA, the master
-site, and the first node. The positional arguments are the realm name, the site
-name, the FQDN of the node and (optionally) its IP address.
+site and the first node, the master node. The node is named after the host name
+of the machine. The arguments are the realm name, the site name, the FQDN of
+the site and its floating IP. The FQDN becomes the auth, the management and the
+SSO FQDN of the site. Without the IP it is looked up in DNS under the FQDN.
 
 ```bash
 otpme-realm init \
@@ -71,7 +73,7 @@ otpme-realm init \
     --node-key-len 4096 \
     --dicts english,en-top10000,common-passwords,us-female,us-male,us-surnames,abbreviations-it \
     --id-ranges "uidNumber:s:70000-80000,gidNumber:s:70000-80000" \
-    otpme.org munich login.otpme.org 192.168.1.100
+    otpme.org munich login.munich.otpme.org 192.168.1.100
 ```
 
 | Option | Description |
@@ -103,8 +105,8 @@ USE_MGMTD_SOCKET="True"
 
 ## 4. Configure Management and SSO FQDNs
 
-If you use OTPme with hosts and clients and have not initialized the realm
-with `localhost`, you should configure the management and SSO FQDNs. Both
+`init` makes the FQDN of the site the management and the SSO FQDN too. To use
+other names (e.g. `sso.munich.otpme.org` for the portal), change them. Both
 need DNS records pointing to the floating IP. The management FQDN is used
 by `mgmtd` and `ldapd`; the SSO FQDN is used by `httpd` for the SSO
 portal. The commands create the corresponding certificates automatically:
@@ -588,6 +590,23 @@ otpme-aclgroup find_acls helpdesk
 For the same reason, whoever has `add:entry` or `add:aclgroup` on a group
 can grant any ACL wherever the group is given. Give those ACLs with care.
 
+### Testing ACLs: Work as Another Token
+
+An admin passes every ACL check, so as an admin you do not see what alice
+may really do. With the global option `--impersonate-token` an admin works
+as another token, with the ACLs of that token and its user. It is not
+possible for your own token, for the admin token of the realm, and for tokens
+or users in the site parameter `site_admin_blacklist`. Every use is written
+to the log and the audit log. With `--api` the option has no effect.
+
+```bash
+# alice may add users in her unit...
+otpme-user --impersonate-token alice/login add management/users/bob
+
+# ...but not outside of it.
+otpme-user --impersonate-token alice/login add bob2
+```
+
 ## 18. Simplify User Creation with Policies
 
 Having to specify `--group` and `--role` on every `otpme-user add` call is
@@ -798,7 +817,26 @@ cannot be assigned, the object is not added. Because of that, whoever adds a
 policy to the list needs what assigning that policy needs. Objects that exist
 already keep the policies they have.
 
-## 19. Joining a Host to the Realm
+## 19. Confirmation Policy
+
+OTPme asks for confirmation when changing or deleting objects. This
+behaviour is controlled by the `confirmation_policy` config parameter:
+
+- **paranoid** — ask for confirmation on all changes; deleting requires typing the object name (default)
+- **normal** — only ask when deleting objects; requires typing the object name to confirm
+- **force** — never ask for confirmation
+
+The `-f` command line option also skips all confirmations regardless of the
+policy.
+
+The policy can be set on the site (applies globally), on a unit or on
+individual tokens:
+
+```bash
+otpme-site config <site> confirmation_policy force
+```
+
+## 20. Joining a Host to the Realm
 
 Before a host can authenticate users via OTPme, it must be joined to the realm.
 The join command must always be run as root on the host itself. It creates the
@@ -886,7 +924,7 @@ enabled again. Tokens, roles and sync users stay as they are.
 otpme-host disable <yourhostname>
 otpme-host gen_jotp <yourhostname>
 # On the new machine.
-otpme-tool join -f --jotp <jotp>
+otpme-tool -f join --jotp <jotp>
 ```
 
 ### Switching JOTP and LOTP Off
@@ -961,7 +999,7 @@ otpme-host enable_sync_groups <yourhostname>
 otpme-host disable_sync_by_login_token <yourhostname>
 ```
 
-## 20. Configure the PAM Module
+## 21. Configure the PAM Module
 
 To enable OTPme logins on a host, the PAM module must be deployed. Copy the
 module and the OTPme PAM configuration files into place:
@@ -996,7 +1034,7 @@ You should now be able to log in as user joe from any TTY. To test, use
 login joe
 ```
 
-## 21. Offline Logins
+## 22. Offline Logins
 
 Offline login support must be enabled per token. Once enabled, the token
 credentials are cached locally after a successful online login and can be
@@ -1041,7 +1079,7 @@ VALID_LOGIN_USERS="joe,alice"
 DENY_LOGIN_USERS="alice"
 ```
 
-## 22. Dynamic Groups
+## 23. Dynamic Groups
 
 Dynamic groups allow OTPme to add users to local POSIX groups (via
 `setgroups()`) at login time — for example to grant access to `plugdev` for
@@ -1075,7 +1113,7 @@ ALLOW_DYNAMIC_GROUPS=""
 DENY_DYNAMIC_GROUPS="wheel"
 ```
 
-## 23. Extending the Cluster
+## 24. Extending the Cluster
 
 To achieve high availability and load balancing you can add more nodes to
 the OTPme cluster. Install OTPme on the additional server (see README) and
@@ -1168,7 +1206,7 @@ choice, and the log says so.
 otpme-node disable_vote_script node2
 ```
 
-## 24. Fileserver and Shares
+## 25. Fileserver and Shares
 
 OTPme provides fileserver capabilities using FUSE mounts on the client side.
 Files and directories in the share root (default: `/otpme-mounts/`, see
@@ -1417,6 +1455,36 @@ users have to log in again to reach the share.
 See `otpme-pool(1)` and the section "Pool and Node Management" in
 `otpme-share(1)` for all commands.
 
+### Home Shares
+
+A normal share hands out its root directory to everybody. A home share gives
+every user a directory of their own below it, and nothing else. The directory
+is made at the first mount of the user, owned by the user and with mode
+`0700` by default. How it is named is chosen when the share is added:
+
+| Option | Directory name |
+|--------|----------------|
+| `--home-share` | the user UUID; a renamed user keeps the directory |
+| `--home-share-uid` | the user name, as one expects e.g. below `/home` |
+
+```bash
+mkdir /otpme-mounts/homes
+otpme-share add --home-share-uid homes
+otpme-share add_role homes REALM_USER
+
+# Make the home dirs group readable.
+otpme-share home_share_permissions homes 0o750
+```
+
+A root mount token gets no home dir. It mounts the root directory of the
+share and so reaches the home dirs of all users. Think of a university: the
+students each see only their own home dir and hand in their exams there, and
+a lecturer with a root mount token reaches all of them:
+
+```bash
+otpme-share add_root_mount_token homes root/login
+```
+
 ### Encrypted Shares
 
 OTPme supports encrypted shares where file content and path names are
@@ -1449,6 +1517,26 @@ last token is removed and no share keys are available any more:
 otpme-share add --crypt testcrypt
 ```
 
+### Encrypted Home Shares
+
+A home share (see *Home Shares* above) can be encrypted. Every home dir is then encrypted on its own,
+with a key per user, and the share has no key of its own: adding it asks for
+no master password. At the first mount the user is asked for a new password.
+The key of the home dir is made from it and kept in the share, encrypted with
+the keys of the user (see `gen_keys` above, or a Yubikey below). Save the
+password in a safe place. When a token is removed from a home share, the key
+of its user stays by default, because it is the only key the home dir can be
+read with.
+
+An encrypted share takes no roles, and an encrypted home share no root mount
+token, so add the tokens one by one:
+
+```bash
+mkdir /otpme-mounts/homes-crypt
+otpme-share add --crypt --home-share homes-crypt
+otpme-share add_token homes-crypt joe/login
+```
+
 ### Using a Yubikey for Key Management
 
 By default the private key created with `gen_keys` is encrypted by the key
@@ -1458,7 +1546,8 @@ the recommended way. The following
 command replaces (`-r`) the user's default token so that the user can only
 log in on hosts where the PAM module is configured and the Yubikey is
 connected. The `--add-user-key` option adds the public key to the token
-user:
+user. Without a Yubikey, skip this section: `joe/login` then stays a password
+token, and the rest of the guide works with it.
 
 ```bash
 # WARNING: This resets the PIV applet and erases all PIV keys on the Yubikey.
@@ -1494,7 +1583,7 @@ confirmation add `--no-confirm`:
 otpme-user agent_script joe scripts/agent_script.sh -- --yubikey-piv --no-confirm
 ```
 
-## 25. Encrypting, Decrypting and Signing Files
+## 26. Encrypting, Decrypting and Signing Files
 
 After logging in as a user with a key pair (see above), you can use
 `otpme-tool` to encrypt, decrypt, sign and verify files:
@@ -1596,7 +1685,7 @@ otpme-tool sync
 otpme-get-authorized-keys joe
 ```
 
-## 26. SSH Login Configuration
+## 27. SSH Login Configuration
 
 To allow SSH logins using OTPme-managed authorized keys, add the following
 to your SSH configuration (e.g. `/etc/ssh/sshd_config.d/otpme.conf`):
@@ -1607,7 +1696,7 @@ AuthorizedKeysCommandUser root
 PermitUserEnvironment yes
 ```
 
-## 27. TOTP Login and Second Factor Authentication
+## 28. TOTP Login and Second Factor Authentication
 
 If you do not have a hardware token or smartcard, you can use a TOTP token
 with any TOTP authenticator app (e.g. Google Authenticator). Add a TOTP
@@ -1706,25 +1795,6 @@ otpme-host remove_token <yourhostname> joe/totp
 
 After syncing (`otpme-tool sync` or waiting for `SYNC_INTERVAL` (default 180s, configurable in `/etc/otpme/otpme.conf`)), enter
 password+PIN+OTP at the login prompt.
-
-## 28. Confirmation Policy
-
-OTPme asks for confirmation when changing or deleting objects. This
-behaviour is controlled by the `confirmation_policy` config parameter:
-
-- **paranoid** — ask for confirmation on all changes; deleting requires typing the object name (default)
-- **normal** — only ask when deleting objects; requires typing the object name to confirm
-- **force** — never ask for confirmation
-
-The `-f` command line option also skips all confirmations regardless of the
-policy.
-
-The policy can be set on the site (applies globally), on a unit or on
-individual tokens:
-
-```bash
-otpme-site config <site> confirmation_policy force
-```
 
 ## 29. 802.1x and MAB Port Authentication
 
@@ -1938,7 +2008,7 @@ roles and access groups.
 otpme-token --type password add alice/sso-otpme.org-munich
 
 # At the first login alice registers a FIDO2 key for herself.
-otpme-token enable_sso_deploy alice/sso-otpme.org-munich fido2
+otpme-token --type password enable_sso_deploy alice/sso-otpme.org-munich fido2
 
 # Allow the token to sign in to the portal.
 otpme-role add_token SSO_USER alice/sso-otpme.org-munich
