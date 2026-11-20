@@ -111,7 +111,7 @@ get_opts () {
         # and a word of it that starts with "-" (the reason of
         # "otpme-pass show_password --offline") was an unknown option.
         # reason: takes a value, which may start with "-" itself.
-        if ! ARGS=`getopt -n $BASENAME -l help -l api -l auth-token -l rsa -l no-rsa -l algo: -l salt-file -l key-enc -l use-gpg -l yubikey-hmac -l yubikey-piv -l use-agent-piv -l server-key -l force-pass -l no-self-decrypt -l reason: u:b:h "$@"` ; then
+        if ! ARGS=`getopt -n $BASENAME -l help -l api -l auth-token -l rsa -l no-rsa -l algo: -l salt-file -l key-enc -l use-gpg -l yubikey-hmac -l yubikey-piv -l server-key -l force-pass -l no-self-decrypt -l reason: u:b:h "$@"` ; then
                 show_help
                 return 1
         fi
@@ -127,15 +127,6 @@ get_opts () {
 								show_help
 								return 1
 							fi
-							shift
-                        ;;
-
-
-                        --use-agent-piv)
-							# The card is always used through
-							# otpme-agent now, which asks for the
-							# PIN and for each use of it. Taken so
-							# existing key script options still work.
 							shift
                         ;;
 
@@ -368,7 +359,6 @@ show_help () {
 	echo "	--key-enc <rsa|aes|gpg|yubikey-hmac>	Force encryption of AES keys with the given encrytion type (e.g. gpg)"
 	echo "	--use-gpg <id>				Use given GPG key (e.g. to en/decrypt RSA private key)"
 	echo "	--yubikey-piv [slot]		Use yubikey PIV mode for private key operations, through otpme-agent."
-	echo "	--use-agent-piv				Accepted and ignored: --yubikey-piv always goes through otpme-agent."
 	echo "	--yubikey-hmac <slot>		Pass the private key passphrase through yubikey HMAC challenge/response."
 	echo "	--no-self-decrypt			Do not add self decryption script to encrypted file."
 }

@@ -958,20 +958,78 @@ class OTPmeClient(OTPmeClientBase):
         if status_code == status_codes.CONNECTION_REDIRECT:
             raise ConnectionRedirect(response)
 
-        # Handle status code.
-        if status_code == status_codes.OK:
-            status = True
-        elif status_code == status_codes.ABORT:
-            status = None
-        else:
-            status = False
+        status = self._status_of(status_code)
+        return status, status_code, response, binary_data
 
+    @staticmethod
+    def _status_of(status_code):
+        """ What send() answers for a status code. """
+        if status_code == status_codes.OK:
+            return True
+        if status_code == status_codes.ABORT:
+            return None
+        return False
+
+    def send_request(self, command, command_args=None, **kwargs):
+        """ Send a request and do not wait for its answer.
+
+        For a caller that wants the next request on the wire while it
+        works on the answer it has (OTPmeFS reading a file in a row).
+        The daemon answers the requests of a connection in the order it
+        got them, so the answers have to be fetched with recv_response()
+        in that order, and before anything else is sent or received on
+        this connection. Takes what _send() takes.
+        """
+        if command_args is None:
+            command_args = {}
+        return self._send_request(command=command,
+                                command_args=command_args,
+                                **kwargs)
+
+    def recv_response(self, pending):
+        """ The answer to a request of send_request().
+
+        Answers what send() does with handle_response=False. A request
+        sent ahead cannot be sent again after an authentication, so an
+        answer that asks for one is a ConnectionError here.
+        """
+        status_code, \
+        response, \
+        binary_data = self._recv_response(pending)
+        if status_code == status_codes.MASTER_FAILOVER:
+            raise MasterFailover(response)
+        if status_code == status_codes.CLUSTER_NOT_READY:
+            raise ConnectionError(response)
+        if status_code == status_codes.NEED_USER_AUTH \
+        or status_code == status_codes.NEED_HOST_AUTH:
+            msg = _("Request sent ahead needs authentication: {response}")
+            msg = msg.format(response=response)
+            raise ConnectionError(msg)
+        if status_code == status_codes.CONNECTION_REDIRECT:
+            raise ConnectionRedirect(response)
+        status = self._status_of(status_code)
         return status, status_code, response, binary_data
 
     def _send(self, command, command_args=None, binary_data=None, use_agent=None,
         encode_request=True, encrypt_request=None, compress_request=None,
         blocking=None, timeout=None):
         """ Convert command args and actually send command to daemon. """
+        pending = self._send_request(command=command,
+                                    command_args=command_args,
+                                    binary_data=binary_data,
+                                    use_agent=use_agent,
+                                    encode_request=encode_request,
+                                    encrypt_request=encrypt_request,
+                                    compress_request=compress_request,
+                                    blocking=blocking,
+                                    timeout=timeout)
+        return self._recv_response(pending)
+
+    def _send_request(self, command, command_args=None, binary_data=None,
+        use_agent=None, encode_request=True, encrypt_request=None,
+        compress_request=None, blocking=None, timeout=None):
+        """ Build the request and send it. Returns what _recv_response()
+        needs to read its answer. """
         if command_args is None:
             command_args = {}
 
@@ -1058,7 +1116,6 @@ class OTPmeClient(OTPmeClientBase):
         #    if not encrypt_request:
         #        print("SENDING_UNENCRYPTED", self.daemon, command, command_args)
 
-        response = None
         # Set default timeout.
         if timeout is None:
             timeout = self.timeout
@@ -1070,6 +1127,20 @@ class OTPmeClient(OTPmeClientBase):
             error_msg = _("Error while sending: {error}")
             error_msg = error_msg.format(error=e)
             raise ConnectionError(error_msg) from e
+        return {
+                'enc_mod'   : enc_mod,
+                'enc_key'   : enc_key,
+                'blocking'  : blocking,
+                'timeout'   : timeout,
+                }
+
+    def _recv_response(self, pending):
+        """ Read the answer to a request _send_request() sent. """
+        enc_mod = pending['enc_mod']
+        enc_key = pending['enc_key']
+        blocking = pending['blocking']
+        timeout = pending['timeout']
+        response = None
 
         # Decode response.
         decode_method = self.decode_response

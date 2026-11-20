@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Optional
 import time
 from datetime import datetime
+from datetime import timedelta
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.ciphers.aead import AESSIV
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -1280,12 +1281,46 @@ class BackupServer:
                 snap_id INTEGER NOT NULL,
                 entry_id INTEGER NOT NULL,
                 PRIMARY KEY (snap_id, entry_id)) WITHOUT ROWID""")
-            # The other direction: is this entry still referenced anywhere?
-            db.execute("CREATE INDEX IF NOT EXISTS idx_snap_entries_entry ON snap_entries(entry_id)")
+            self._drop_entry_index(db)
             self._check_snap_schema(db)
 
         self._snap_db = db
         return db
+
+    @staticmethod
+    def _drop_entry_index(db) -> None:
+        """Drop the index of snap_entries by entry_id, if a repository has it.
+
+        It answered "does any snapshot still reference this entry?", and
+        nothing else needs it: every lookup goes by snapshot and entry, which
+        is the primary key. But a snapshot holds a row for every file, and
+        nearly every entry is in nearly every snapshot, so the rows of one
+        snapshot are spread over the whole index. Deleting a snapshot wrote
+        every page of it twice, once to the WAL and once back: 25 minutes
+        for one snapshot of 14.5 million files on an SSD, more than an hour
+        on the backup server, 10 GiB of WAL each time (measured 2026-11-20
+        on a 33 GB index of 44 snapshots). Without it the same delete is
+        31 seconds; _remove_snap_from_index() finds the orphans by the
+        primary key.
+
+        secure_delete is a compile time default on Debian: it would zero
+        every page of the dropped index. They held snapshot and entry
+        numbers, there is nothing to wipe. Without it the drop reads the
+        index once and writes next to nothing: 300 seconds and 10 MiB of
+        WAL instead of 21 minutes and 10 GiB, once per repository.
+        """
+        row = db.execute("SELECT 1 FROM sqlite_master WHERE type='index' "
+                        "AND name='idx_snap_entries_entry'").fetchone()
+        if row is None:
+            return
+        logger.info("Dropping index idx_snap_entries_entry of the snap-index ...")
+        secure_delete = db.execute("PRAGMA secure_delete").fetchone()[0]
+        db.execute("PRAGMA secure_delete=OFF")
+        try:
+            db.execute("DROP INDEX idx_snap_entries_entry")
+            db.commit()
+        finally:
+            db.execute(f"PRAGMA secure_delete={int(secure_delete)}")
 
     def _check_snap_schema(self, db, readonly: bool = False) -> None:
         """Stamp the snap-index schema version and refuse an older one.
@@ -2439,17 +2474,56 @@ class BackupServer:
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("PRAGMA synchronous=NORMAL")
         try:
+            self._drop_entry_index(db)
             if snap_id != 0:
-                db.execute("DELETE FROM snap_entries WHERE snap_id=?", (snap_id,))
-                # Whatever no other snapshot references any more.
-                db.execute("DELETE FROM entries WHERE NOT EXISTS "
-                        "(SELECT 1 FROM snap_entries se WHERE se.entry_id = entries.entry_id)")
+                self._delete_snap_entries(db, snap_id)
             db.execute("DELETE FROM snap_meta WHERE snap_name=?", (snap_name,))
             db.commit()
         finally:
             db.close()
 
         self._snap_id_cache.pop(snap_name, None)
+
+    @staticmethod
+    def _delete_snap_entries(db, snap_id: int) -> int:
+        """Delete the rows of one snapshot and the entries only it had.
+
+        Everything goes by the primary key (snap_id, entry_id), there is no
+        index by entry (see _drop_entry_index()). An unchanged file keeps
+        its entry from one snapshot to the next, so nearly every entry of
+        the snapshot is in the one before or the one after it: two lookups
+        each take those out. What is left is looked up in every other
+        snapshot, so an entry that skipped a snapshot is kept as well.
+        Returns the number of entries deleted.
+        """
+        others = [row[0] for row in db.execute(
+                    "SELECT snap_id FROM snap_meta WHERE snap_id<>? ORDER BY snap_id",
+                    (snap_id,))]
+        prev_id = max((x for x in others if x < snap_id), default=None)
+        next_id = min((x for x in others if x > snap_id), default=None)
+        db.execute("CREATE TEMP TABLE IF NOT EXISTS orphan_candidates "
+                    "(entry_id INTEGER PRIMARY KEY)")
+        db.execute("DELETE FROM orphan_candidates")
+        db.execute("INSERT INTO orphan_candidates SELECT entry_id FROM snap_entries "
+                    "WHERE snap_id=?", (snap_id,))
+        db.execute("DELETE FROM snap_entries WHERE snap_id=?", (snap_id,))
+        db.execute("DELETE FROM orphan_candidates WHERE "
+                    "EXISTS (SELECT 1 FROM snap_entries se WHERE se.snap_id=? "
+                    "AND se.entry_id=orphan_candidates.entry_id) "
+                    "OR EXISTS (SELECT 1 FROM snap_entries se WHERE se.snap_id=? "
+                    "AND se.entry_id=orphan_candidates.entry_id)",
+                    (prev_id, next_id))
+        # IN, not a join with snap_meta: SQLite would answer the join by
+        # walking all of snap_entries for every candidate.
+        db.execute("DELETE FROM orphan_candidates WHERE EXISTS "
+                    "(SELECT 1 FROM snap_entries se WHERE se.snap_id IN "
+                    "(SELECT snap_id FROM snap_meta WHERE snap_id<>?) "
+                    "AND se.entry_id=orphan_candidates.entry_id)", (snap_id,))
+        cur = db.execute("DELETE FROM entries WHERE entry_id IN "
+                    "(SELECT entry_id FROM orphan_candidates)")
+        deleted = cur.rowcount
+        db.execute("DELETE FROM orphan_candidates")
+        return deleted
 
     def delete_snapshot(self, snap_name: str) -> int:
         """Delete a snapshot and run GC.  Returns number of orphaned blocks removed."""
@@ -2564,17 +2638,22 @@ class BackupServer:
             return 0
 
     def apply_retention(self, daily: int = None, weekly: int = None,
-                        monthly: int = None, dry_run: bool = False) -> list:
+                        monthly: int = None, dry_run: bool = False,
+                        now: datetime = None) -> list:
         """Delete snapshots that fall outside the retention policy.
 
-        Keeps the *newest* snapshot per calendar day / ISO week / month,
-        then retains at most ``daily`` daily, ``weekly`` weekly, and
-        ``monthly`` monthly snapshots.  Any snapshot not covered by at
-        least one retention bucket is deleted.
+        Keeps every snapshot of the last ``daily`` calendar days, then
+        the newest snapshot of each of the ``weekly`` ISO weeks and the
+        ``monthly`` months before them, see _retention_keep(). Any
+        snapshot none of them keeps is deleted.
 
         If daily/weekly/monthly are not passed (None), values are read
         from .daily/.weekly/.monthly files in the repository root.
-        A missing file means 0 (no retention limit for that bucket).
+        A missing file means 0: that level keeps nothing. With all three
+        at 0 nothing is deleted.
+
+        now is the time the days are counted from, the current time if
+        not given.
 
         Returns the list of deleted snapshot names.
         """
@@ -2587,11 +2666,94 @@ class BackupServer:
         self.lock_repo()
         self.load_pack_index()
         try:
-            return self._apply_retention_locked(daily, weekly, monthly, dry_run)
+            return self._apply_retention_locked(daily, weekly, monthly, dry_run,
+                                                now=now)
         finally:
             self.unlock_repo()
 
-    def _apply_retention_locked(self, daily, weekly, monthly, dry_run):
+    @staticmethod
+    def _retention_keep(entries, daily: int, weekly: int, monthly: int,
+                        today) -> set:
+        """Return the names of the snapshots the retention keeps.
+
+        entries are (name, datetime) pairs, newest first. Everything is
+        counted in calendar days, weeks and months from today, and each
+        level starts where the one before ends:
+
+        - daily=N:   all snapshots of the last N days, today included.
+        - weekly=M:  the newest snapshot of each ISO week, for the M
+                     weeks before the week the daily window starts in.
+        - monthly=L: the newest snapshot of each month, for the L months
+                     before the month the weekly window starts in.
+
+        The week a window starts in belongs to both: it gets no weekly
+        snapshot when it has a daily one, but its newest is kept when it
+        has none -- otherwise a week backed up Monday to Friday, with the
+        window starting on its Saturday, would lose Friday now and be a
+        weekly week without a snapshot next week. The same goes for the
+        month the weekly window starts in.
+
+        A level set to 0 is left out, and the next one starts where it
+        would have. A snapshot dated after today is kept: the clock of
+        whoever named it was ahead, and that is no reason to delete it.
+
+        It used to count days, weeks and months that have a snapshot. A
+        day without one did not count, so every failed backup moved the
+        window one day further back: daily=30 kept 42 days on a server
+        that had missed twelve. And the week the daily window ended in
+        got a weekly snapshot on top of its daily ones.
+        """
+        keep = set()
+        # Monday of the week of a day, and a month as one number.
+        def week_of(day):
+            return day - timedelta(days=day.weekday())
+
+        def month_of(day):
+            return day.year * 12 + day.month - 1
+
+        # Where the daily window starts: the first day it covers.
+        daily_start = today - timedelta(days=daily - 1) if daily > 0 \
+                    else today + timedelta(days=1)
+        # Weeks from here on back are the weekly ones.
+        weekly_end = week_of(daily_start) if daily > 0 \
+                    else week_of(today) + timedelta(days=7)
+        weekly_start = weekly_end - timedelta(days=7 * weekly)
+        # Months from here on back are the monthly ones.
+        if weekly > 0:
+            monthly_end = month_of(weekly_start)
+        elif daily > 0:
+            monthly_end = month_of(daily_start)
+        else:
+            monthly_end = month_of(today) + 1
+        monthly_start = monthly_end - monthly
+
+        # Weeks and months that have a snapshot we keep. Entries are
+        # newest first, so the first one kept of a week or a month is
+        # its newest.
+        kept_weeks = set()
+        kept_months = set()
+
+        def take(name, week, month):
+            keep.add(name)
+            kept_weeks.add(week)
+            kept_months.add(month)
+
+        for name, dt in entries:
+            day = dt.date()
+            week = week_of(day)
+            month = month_of(day)
+            if day > today or day >= daily_start:
+                take(name, week, month)
+            elif weekly > 0 and weekly_start <= week <= weekly_end \
+                    and week not in kept_weeks:
+                take(name, week, month)
+            elif monthly > 0 and monthly_start <= month <= monthly_end \
+                    and month not in kept_months:
+                take(name, week, month)
+        return keep
+
+    def _apply_retention_locked(self, daily, weekly, monthly, dry_run,
+                                now=None):
         snaps = self.list_snapshots()
         if not snaps:
             return []
@@ -2619,68 +2781,14 @@ class BackupServer:
             entries.append((name, dt))
         entries.sort(key=lambda e: e[1], reverse=True)
 
-        # Retention cascade: daily → weekly → monthly.
-        #
-        # - daily=N:   keep ALL snapshots from the N most recent days
-        # - weekly=M:  for snapshots older than the daily window, keep
-        #              the NEWEST snapshot per calendar week, M weeks back
-        # - monthly=L: for snapshots older than daily+weekly, keep
-        #              the NEWEST snapshot per month, L months back
-
-        keep = set()
-
-        # Group by day
-        day_groups = {}
-        for name, dt in entries:
-            k = dt.date()
-            if k not in day_groups:
-                day_groups[k] = []
-            day_groups[k].append(name)
-
-        # Daily: keep all snapshots from the N newest days
-        daily_days = list(day_groups.keys())[:daily] if daily > 0 else []
-        daily_cutoff = set()
-        for k in daily_days:
-            keep.update(day_groups[k])
-            daily_cutoff.update(day_groups[k])
-
-        # Weekly: from snapshots NOT covered by daily, keep newest per week
-        weekly_kept_weeks = set()
-        if weekly > 0:
-            week_groups = {}
-            for name, dt in entries:
-                if name in daily_cutoff:
-                    continue
-                k = dt.isocalendar()[:2]
-                if k not in week_groups:
-                    week_groups[k] = name  # newest (entries are newest-first)
-            kept_weeks = list(week_groups.keys())[:weekly]
-            weekly_kept_weeks = set(kept_weeks)
-            for k in kept_weeks:
-                keep.add(week_groups[k])
-
-        # Monthly: from snapshots outside daily days AND outside weekly weeks,
-        # keep newest per month
-        if monthly > 0:
-            daily_days_set = set(daily_days)
-            month_groups = {}
-            for name, dt in entries:
-                # Skip snapshots from days covered by daily
-                if dt.date() in daily_days_set:
-                    continue
-                # Skip snapshots from weeks covered by weekly
-                if dt.isocalendar()[:2] in weekly_kept_weeks:
-                    continue
-                k = (dt.year, dt.month)
-                if k not in month_groups:
-                    month_groups[k] = name
-            kept_months = list(month_groups.keys())[:monthly]
-            for k in kept_months:
-                keep.add(month_groups[k])
+        if now is None:
+            now = datetime.now()
+        keep = self._retention_keep(entries, daily, weekly, monthly,
+                                    now.date())
 
         deleted = []
         to_delete = []
-        for name, _ in entries:
+        for name, _unused_dt in entries:
             if name not in keep:
                 if dry_run:
                     logger.info("Retention: would delete snapshot '%s'", name)
@@ -2837,13 +2945,17 @@ class BackupServer:
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("PRAGMA synchronous=NORMAL")
         try:
+            self._drop_entry_index(db)
             total = db.execute("SELECT COUNT(*) FROM entries").fetchone()[0]
             db.execute("DELETE FROM snap_entries WHERE snap_id NOT IN "
                     "(SELECT snap_id FROM snap_meta)")
             db.execute("DELETE FROM snap_entries WHERE NOT EXISTS "
                     "(SELECT 1 FROM entries e WHERE e.entry_id = snap_entries.entry_id)")
-            cur = db.execute("DELETE FROM entries WHERE NOT EXISTS "
-                    "(SELECT 1 FROM snap_entries se WHERE se.entry_id = entries.entry_id)")
+            # NOT IN reads snap_entries once into a temporary index. NOT
+            # EXISTS would read all of it for every entry: there is no index
+            # by entry (see _drop_entry_index()).
+            cur = db.execute("DELETE FROM entries WHERE entry_id NOT IN "
+                    "(SELECT entry_id FROM snap_entries)")
             orphans = cur.rowcount
             db.commit()
             logger.info("Repair: %d orphaned entries removed (of %d total)",
@@ -2938,31 +3050,47 @@ class BackupServer:
         # them. This is for that case.
         self._seal_active_pack()
 
-        live_by_pack = {}
-        for h, pid, offset, length in self._pack_db.execute(
-                "SELECT hash, pack_id, offset, length FROM pack_index"):
-            live_by_pack.setdefault(pid, []).append((h, offset, length))
-
-        saved = 0
-        for pid, entries in live_by_pack.items():
+        # Two passes over the index instead of holding all of it: the
+        # first only adds up what is live per pack, the second fetches
+        # the rows of the packs that have dead space. Holding every row
+        # took 3.6 GB for 14.7 million blocks (measured 2026-11-20), on
+        # a backup server with 5 GB, and left no page cache for the
+        # updates below.
+        live_size_by_pack = {}
+        for pid, length in self._pack_db.execute(
+                "SELECT pack_id, length FROM pack_index"):
+            live_size_by_pack[pid] = live_size_by_pack.get(pid, 0) + 68 + length
+            self._progress()
+        pack_sizes = {}
+        for pid, live_size in live_size_by_pack.items():
             pack_path = self._pack_path(pid)
             if not pack_path.exists():
                 continue
             pack_size = pack_path.stat().st_size
-            live_size = sum(68 + entry_length
-                            for _unused_hash, _unused_offset, entry_length
-                            in entries)
             if live_size >= pack_size:
                 continue  # no dead space
+            pack_sizes[pid] = pack_size
+        live_by_pack = {pid: [] for pid in pack_sizes}
+        for rowid, h, pid, offset, length in self._pack_db.execute(
+                "SELECT rowid, hash, pack_id, offset, length FROM pack_index"):
+            entries = live_by_pack.get(pid)
+            if entries is not None:
+                entries.append((h, offset, length, rowid))
+            self._progress()
+
+        saved = 0
+        for pid, entries in live_by_pack.items():
+            pack_path = self._pack_path(pid)
+            pack_size = pack_sizes[pid]
 
             new_pid = self._next_pack_id()
             new_path = self._pack_path(new_pid)
             new_path.parent.mkdir(parents=True, exist_ok=True)
-            updates = []  # (new_pid, new_offset, length, h)
+            updates = []  # (new_pid, new_offset, length, rowid, h)
             try:
                 with open(pack_path, 'rb') as src, open(new_path, 'wb') as dst:
                     new_offset = 0
-                    for h, offset, length in sorted(entries, key=lambda e: e[1]):
+                    for h, offset, length, rowid in sorted(entries, key=lambda e: e[1]):
                         record_len = 68 + length
                         src.seek(offset)
                         entry_data = src.read(record_len)
@@ -2987,7 +3115,7 @@ class BackupServer:
                                             stored=stored_hash, wanted=h)
                             raise OTPmeException(msg)
                         dst.write(entry_data)
-                        updates.append((new_pid, new_offset, length, h))
+                        updates.append((new_pid, new_offset, length, rowid, h))
                         new_offset += record_len
                         self._progress()
                     dst.flush()
@@ -3000,9 +3128,29 @@ class BackupServer:
                 except OSError:
                     pass
                 raise
-            self._pack_db.executemany(
-                "UPDATE pack_index SET pack_id=?, offset=?, length=? WHERE hash=?",
-                updates)
+            # By rowid and in its order, not by hash. A lookup by hash
+            # goes through the hash index and then to the row, and one
+            # of the two is always hit at random: for the 761,000 blocks
+            # of one pack that was 2.2 million reads, 60 seconds on an
+            # SSD and hours on the disk of a backup server. By rowid the
+            # hash index is not touched and the rows are read in order:
+            # 2 seconds, 33,000 reads (measured 2026-11-20). The hash is
+            # compared as well, so a row that is not the one we read is
+            # not overwritten: rowids only change with a VACUUM, which
+            # cannot run while we hold the repository lock.
+            updates.sort(key=lambda u: u[3])
+            cur = self._pack_db.executemany(
+                "UPDATE pack_index SET pack_id=?, offset=?, length=? "
+                "WHERE rowid=? AND hash=?", updates)
+            if cur.rowcount != len(updates):
+                self._pack_db.rollback()
+                try:
+                    new_path.unlink()
+                except OSError:
+                    pass
+                msg = _("Pack index of pack {pid:06x} changed during repack: {got} of {want} entries updated")
+                msg = msg.format(pid=pid, got=cur.rowcount, want=len(updates))
+                raise OTPmeException(msg)
             self._pack_db.commit()
             # From here on nobody reads the old pack any more.
             try:

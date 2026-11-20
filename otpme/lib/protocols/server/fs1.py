@@ -1058,6 +1058,17 @@ class OTPmeFsP1(OTPmeFsServer1):
             return self.build_response(status, False)
 
         if command == "add_share_key":
+            # The key is written to the share object, and objects are
+            # written on the master node. The client comes here by the
+            # mgmt FQDN, which is the master; this is for the floating
+            # IP that has not moved yet, or a client that took a node.
+            if config.master_node is not True:
+                status = status_codes.CLUSTER_NOT_READY
+                message, log_msg = _("Not the master node, cannot add the share key here: {node}", log=True)
+                message = message.format(node=config.host_data['name'])
+                log_msg = log_msg.format(node=config.host_data['name'])
+                self.logger.warning(log_msg)
+                return self.build_response(status, message)
             try:
                 share_key = command_args['share_key']
             except KeyError:

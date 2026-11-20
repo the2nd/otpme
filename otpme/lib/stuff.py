@@ -643,6 +643,41 @@ def is_mounted(mount_point):
                 return True
     return False
 
+def unescape_mount_field(field):
+    """ A field of /proc/mounts as it was given: the kernel writes a
+    space, tab, newline and backslash as \\040, \\011, \\012 and
+    \\134. """
+    parts = field.split("\\")
+    result = [parts[0]]
+    for part in parts[1:]:
+        code = part[:3]
+        if len(code) == 3 and all(x in "01234567" for x in code):
+            result.append(chr(int(code, 8)) + part[3:])
+        else:
+            result.append("\\" + part)
+    return "".join(result)
+
+def get_otpme_mounts(mounts_file="/proc/mounts"):
+    """ The OTPme shares mounted here, as (share ID, mountpoint), in the
+    order the kernel lists them. Those of the agent and those with a
+    mountpoint of their own alike: all of them are fuse.otpme with
+    OTPmeFS:/<share ID> as their source (see fuse.mount_share()). """
+    mounts = []
+    with open(mounts_file, "r") as f:
+        for line in f:
+            fields = line.split()
+            if len(fields) < 3:
+                continue
+            source, mount_point, fs_type = fields[:3]
+            if fs_type != "fuse.otpme":
+                continue
+            if not source.startswith("OTPmeFS:/"):
+                continue
+            share_id = unescape_mount_field(source[len("OTPmeFS:/"):])
+            mount_point = unescape_mount_field(mount_point)
+            mounts.append((share_id, mount_point))
+    return mounts
+
 def check_pid(pid):
     """ Check if PID is running.
 

@@ -168,6 +168,12 @@ def main():
     p.add_argument("--dry-run", action="store_true",
                     help="Show what would be deleted without actually deleting")
 
+    sub.add_parser("jobs", help="List the jobs of the repository, or of all repositories below the directory")
+
+    # Started by backupd, see otpme.lib.classes.backup_job.
+    p = sub.add_parser("run-job", help="Run a job backupd started (not by hand)")
+    p.add_argument("job_id", help="Job ID")
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
@@ -177,6 +183,20 @@ def main():
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(levelname)s: %(message)s",
     )
+
+    if args.command == "jobs":
+        from otpme.lib.classes import backup_job
+        rows = []
+        for repo_root in backup_job.find_repositories(args.backup_dir):
+            for job in backup_job.list_jobs(repo_root):
+                rows.append((repo_root, job))
+        if not rows:
+            print("No jobs found.")
+            return
+        rows.sort(key=lambda row: row[1].get('created', 0))
+        for line in backup_job.format_jobs(rows):
+            print(line)
+        return
 
     # Create server (storage-only, no password needed)
     server = BackupServer(args.backup_dir)
@@ -269,6 +289,10 @@ def main():
     elif args.command == "rebuild-index":
         count = server.rebuild_pack_index()
         print(f"Rebuilt index with {count} entries")
+    elif args.command == "run-job":
+        from otpme.lib.classes import backup
+        from otpme.lib.classes import backup_job
+        sys.exit(backup_job.run_job(server, args.job_id, backup.logger))
     elif args.command == "retention":
         deleted = server.apply_retention(
             daily=args.daily, weekly=args.weekly, monthly=args.monthly,

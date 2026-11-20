@@ -12,13 +12,15 @@ After=network.target
 Type=forking
 #Type=simple
 ExecStart=/usr/local/bin/otpme-controld start
-ExecStop=/usr/local/bin/otpme-controld stop
+ExecStop=/usr/local/bin/otpme-controld stop --timeout 170
 ExecReload=/usr/local/bin/otpme-controld reload
 PIDFile=/var/run/otpme/pidfiles/otpme-controld.pid
-# ExecStop runs `otpme-controld stop`, which sends SIGTERM to each child
-# daemon, waits up to 10 s per child for a clean exit, then SIGKILLs any
-# stragglers. With ~10 daemons the worst case is around 100 s, so we
-# give the unit 180 s before systemd intervenes.
+# ExecStop sends SIGTERM to controld, which stops its daemons one after
+# the other: each gets 30 s for a clean exit (DAEMON_TERMINATE_WAIT in
+# controld.py), then it is killed. That is usually done in seconds.
+# The command waits --timeout for controld to be gone; its default of
+# 60 s would give up long before the unit does, so it waits almost as
+# long as the unit, which gives systemd 180 s before it intervenes.
 TimeoutStopSec=180
 # KillMode=mixed means systemd's signal phase only targets the main
 # controld PID, leaving controld in charge of its own children — but

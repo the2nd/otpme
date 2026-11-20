@@ -32,9 +32,31 @@ only with **otpme-backup start localhost**.
 
 Which snapshots the retention keeps say the files *.daily*, *.weekly*
 and *.monthly* in the repository on the backup server, each with a
-number in it: the newest snapshot of that many days, weeks and months is
-kept, and the others are deleted. Without any of the files nothing is
-deleted.
+number in it. The days, weeks and months are counted on the calendar,
+back from today. A day without a backup counts as well.
+
+> -   *.daily*: every snapshot of the last that many days, today
+>     included.
+>
+> -   *.weekly*: the newest snapshot of each week, for that many weeks
+>     before the daily ones.
+>
+> -   *.monthly*: the newest snapshot of each month, for that many
+>     months before the weekly ones.
+
+A week that has daily snapshots gets no weekly one, and a month that has
+a weekly one gets no monthly one. All other snapshots are deleted.
+Without any of the files nothing is deleted. The retention never deletes
+a snapshot whose backup did not finish; delete it with **local-backup
+delete**, see **local-backup**(1).
+
+The backup server applies the retention as a job of its own: deleting
+snapshots and getting their space back can take hours, and the backup
+does not wait for it. The job goes on when OTPme is stopped or restarted
+on the backup server. While it runs, a backup of the same object finds
+the repository locked and is tried again later. What the job deletes is
+in *backup-jobs.log* in the log directory of the backup server, and
+**local-backup jobs** lists the jobs, see **local-backup**(1).
 
 A share backed up as **tree** can be mounted as a restore share, see
 **otpme-share**(1).
@@ -75,7 +97,8 @@ out.
 it **backup_exclude_special** decides.  
 **--apply-retention** lets the backup server delete the snapshots its
 retention no longer keeps, after the backup. A backup started by the
-schedule always does.  
+schedule always does. The backup server starts a job for that, and the
+backup does not wait for it.  
 **--dry-run** shows what would be backed up and stores nothing.
 
 **restore** \[**--dry-run**\] \[**--snapshot** *snapshot*\] \[**--path** *path*\] **--destination** *directory* *backup_object*  
@@ -242,8 +265,12 @@ Show what a restore of the newest snapshot would write.
 */var/backups/*  
 **BACKUP_DIR** on the backup server. A repository is the directory
 *\<site\>/\<type\>/\<name\>/* in it, for example *berlin/share/data/*,
-with its password in *.password* and the retention in *.daily*,
-*.weekly* and *.monthly*.
+with its password in *.password*, the retention in *.daily*, *.weekly*
+and *.monthly*, and its jobs in *jobs/*.
+
+*/var/log/otpme/backup-jobs.log*  
+What the jobs of the backup server did: the snapshots they deleted, the
+space the repack got back, errors.
 
 # SEE ALSO
 

@@ -277,6 +277,46 @@ class OTPmeConfig(object):
                             # Backups, by the gigabyte.
                             "backupd"   : 104857600,
                             })
+        # Which daemons have the kernel notice a client that is gone
+        # without saying so: (idle, interval, count) in seconds, set as
+        # TCP keepalive on the listening socket, which accepted
+        # connections inherit it from.
+        #
+        # A connection waits for the next request without a timeout,
+        # and a client that ends closes it, which recv() sees. One that
+        # is gone without a word -- a reset, a power cut, a network that
+        # is cut -- sends nothing, and nothing makes the server send
+        # either. Its recv() then waits forever.
+        #
+        # backupd holds the lock on a repository for as long as the
+        # connection lasts, so such a connection kept every further
+        # backup of that object out: a node went a week without one.
+        # With this it ends 60 + 4 * 15 seconds after the last word.
+        # A backup the server is still working on is not cut short:
+        # the kernel answers the probes for a client that is alive.
+        self.register_config_var("daemon_tcp_keepalive", dict, {
+                            "backupd"   : (60, 15, 4),
+                            })
+        # Which connections a client opens with its receive window kept
+        # to this size, in bytes (TCP_WINDOW_CLAMP).
+        #
+        # Linux offers half the receive buffer as its window, and it
+        # acknowledges at once only while the window it would offer next
+        # is not smaller than the one it offered. With data in the
+        # buffer that the program has not read yet, it is smaller, and
+        # the ACK waits. The FUSE client of an encrypted share is such a
+        # program: it decrypts a MiB while the next ones come in, so
+        # every hundredth ACK came 1.7 ms late, and the node stood still
+        # waiting for it -- a read went at 86 MB/s on a 1 GbE link,
+        # while a plain share, read as it comes, went at 110. With the
+        # window kept below what the buffer could offer, the window does
+        # not get smaller and the ACK goes at once: 103-105 MB/s
+        # (measured 2026-11-20, with a route that set it for one node).
+        # 4 MiB is still far more than the link needs: at 0.25 ms round
+        # trip a gigabit is about 30 KiB in flight.
+        self.register_config_var("daemon_tcp_window_clamp", dict, {
+                            "fsd"       : 4194304,
+                            })
         # Global cap on a single incoming message frame (compressed
         # size), for a daemon that daemon_max_request_size does not
         # name. Also what a recv() reads at most in one go.

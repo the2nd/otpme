@@ -101,6 +101,16 @@ Remove entries of the snapshot index that no snapshot has.
 Build the index of the pack files again from the pack files, for an
 index that is lost or broken.
 
+**jobs**  
+List the jobs the backup daemon started for the repository: when, for
+how long, their state and what came of them. Given **BACKUP_DIR**
+instead of a repository, list those of all repositories below it. A job
+that is started or running but has no process any more is shown as
+**aborted**. A finished job is listed for 7 days.
+
+**run-job *id***  
+Run a job the backup daemon started. Not for use by hand.
+
 # EXAMPLES
 
 **local-backup -d /var/backups/berlin/share/data list**  
@@ -114,6 +124,9 @@ Which snapshots a retention of 7 days and 4 weeks would delete.
 
 **local-backup -d /var/backups/berlin/share/data repack**  
 Get back the space of deleted snapshots.
+
+**local-backup -d /var/backups jobs**  
+The jobs of all repositories on the backup server.
 
 # SEE ALSO
 

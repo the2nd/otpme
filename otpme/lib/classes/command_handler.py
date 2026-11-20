@@ -717,7 +717,7 @@ class CommandHandler(object):
             return self.handle_smartcard_detection(command, subcommand)
 
         if command == "mount":
-            return self.handle_mount(command, subcommand)
+            return self.handle_mount(command_line)
 
         if command == "shell":
             return self.handle_shell(command_line)
@@ -1941,14 +1941,20 @@ class CommandHandler(object):
         log_msg = _("Applying retention: {backup_object}", log=True)[1]
         log_msg = log_msg.format(backup_object=backup_object)
         log_lines.append(log_msg)
-        deleted_snapshots = backupd_conn.apply_retention()
-        if deleted_snapshots:
-            log_msg = _("Retention deleted snapshots: {deleted_snapshots}", log=True)[1]
-            log_msg = log_msg.format(deleted_snapshots=deleted_snapshots)
-            log_lines.append(log_msg)
+        # The backup server runs the retention as a job of its own and
+        # answers right away; what it deletes is in its log, see
+        # otpme.lib.classes.backup_job. A server of before that answered
+        # when it was done, with the list of deleted snapshots.
+        retention_result = backupd_conn.apply_retention()
+        if isinstance(retention_result, list):
+            if retention_result:
+                log_msg = _("Retention deleted snapshots: {deleted_snapshots}", log=True)[1]
+                log_msg = log_msg.format(deleted_snapshots=retention_result)
+            else:
+                log_msg = _("Retention deleted no snapshots.", log=True)[1]
         else:
-            log_msg = _("Retention deleted no snapshots.", log=True)[1]
-            log_lines.append(log_msg)
+            log_msg = str(retention_result)
+        log_lines.append(log_msg)
         log_msg = _("Backup finished: {backup_object}", log=True)[1]
         log_msg = log_msg.format(backup_object=backup_object)
         log_lines.append(log_msg)
@@ -8029,41 +8035,55 @@ class CommandHandler(object):
             sys.exit(exit_status)
         return ""
 
-    def handle_mount(self, command, subcommand):
-        import argparse
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--foreground", dest="foreground", action="store_true", help="Run in foreground")
-        parser.add_argument("--list", dest="list_shares", action="store_true", help="List shares")
-        parser.add_argument('--nodes', dest='nodes')
-        parser.add_argument("--hard", dest="hard", action="store_true", help="Hold write requests on connection failure")
-        parser.add_argument("--encrypted", dest="encrypted", action="store_true", help="Share is encrypted")
-        parser.add_argument("--add-share-key", dest="add_share_key", action="store_true", help="Add share key to share")
-        parser.add_argument("--master-password-mount", dest="master_password_mount", action="store_true", help="Use master password to mount encrypted share.")
-        parser.add_argument("-a", dest="mount_all", action="store_true", help="Mount all shares")
-        parser.add_argument("-u", dest="umount", action="store_true", help="Unmount shares")
-        parser.add_argument('share', nargs='?')
-        parser.add_argument('mount', nargs='?')
-        args = parser.parse_args(sys.argv)
+    def handle_mount(self, command_line):
+        from otpme.lib import help
+        # The options are those of the help screen, see
+        # otpme/lib/help/mount.py.
+        help_dict = help.get_cmd_help("mount")
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            command_args = cli.get_opts(command_syntax=help_dict['cmd'],
+                                    command_line=list(command_line))
+        except Exception as e:
+            if str(e) == "help":
+                return self.get_help()
+            return self.get_help(str(e))
+
+        # Nothing given: what is mounted. Read off the mount table, so
+        # it needs no login and shows the mounts with a mountpoint of
+        # their own as well, which the agent does not know about.
+        if not command_args:
+            return self.list_mounts()
+
+        # Under the names of the command template. An option that was not
+        # given is not in there at all.
+        share_id = command_args.get('share')
+        mount_point = command_args.get('mount_point')
+        # A list already: :[nodes]: in the command template.
+        nodes = command_args.get('nodes')
+        list_shares = command_args.get('list_shares', False)
+        mount_all = command_args.get('mount_all', False)
+        umount = command_args.get('umount', False)
+        hard = command_args.get('hard', False)
+        encrypted = command_args.get('encrypted', False)
+        foreground = command_args.get('foreground', False)
+        master_password_mount = command_args.get('master_password_mount', False)
+        add_share_key = command_args.get('add_share_key', False)
 
         login_status = self.get_login_status()
         if not login_status:
             raise OTPmeException(_("Not logged in."))
 
-        share_id = args.share
         if share_id:
             # Written without the realm it is one of ours. Done here as
             # well as in mount_share(), because unmounting needs the full
             # ID too: the agent knows a mounted share under the ID the
             # server gave it.
             share_id = stuff.get_share_id(*stuff.split_share_id(share_id))
-        mount_point = args.mount
-        master_password_mount = args.master_password_mount
-        add_share_key = args.add_share_key
-        foreground = args.foreground
-        encrypted = args.encrypted
-        hard = args.hard
 
-        if args.list_shares:
+        if list_shares:
             response = self.send_command(daemon="mgmtd",
                                     command="get_shares",
                                     parse_command_syntax=False,
@@ -8071,7 +8091,7 @@ class CommandHandler(object):
             return response
 
         # Mount all shares.
-        if args.mount_all and not args.umount:
+        if mount_all and not umount:
             if mount_point:
                 msg = _("Mountpoint not valid with -a")
                 raise OTPmeException(msg)
@@ -8088,7 +8108,7 @@ class CommandHandler(object):
             if hard:
                 msg = _("--hard not valid with -a")
                 raise OTPmeException(msg)
-            if args.nodes:
+            if nodes:
                 msg = _("--nodes not valid with -a")
                 raise OTPmeException(msg)
             response = self.send_command(daemon="mgmtd",
@@ -8122,7 +8142,7 @@ class CommandHandler(object):
             return
 
         # Umount all shares.
-        if args.mount_all and args.umount:
+        if mount_all and umount:
             try:
                 agent_conn = connections.get("agent")
             except Exception as e:
@@ -8139,7 +8159,7 @@ class CommandHandler(object):
             return
 
         # Umount share.
-        if args.umount:
+        if umount:
             if not share_id:
                 msg = _("Command misses share ID.")
                 raise OTPmeException(msg)
@@ -8164,7 +8184,7 @@ class CommandHandler(object):
         # token and a --hard mount failed its writes all the same.
         if not mount_point:
             given = [
-                    ("--nodes", args.nodes),
+                    ("--nodes", nodes),
                     ("--hard", hard),
                     ("--master-password-mount", master_password_mount),
                     ("--add-share-key", add_share_key),
@@ -8177,9 +8197,6 @@ class CommandHandler(object):
                 msg = msg.format(option=option)
                 raise OTPmeException(msg)
 
-        nodes = None
-        if args.nodes:
-            nodes = args.nodes.split(",")
         return self.mount_share(share_id=share_id,
                                 mount_point=mount_point,
                                 encrypted=encrypted,
@@ -8188,6 +8205,21 @@ class CommandHandler(object):
                                 master_password_mount=master_password_mount,
                                 add_share_key=add_share_key,
                                 foreground=foreground)
+
+    def list_mounts(self):
+        """ The OTPme shares mounted here, one per line. """
+        mounts = stuff.get_otpme_mounts()
+        if not mounts:
+            return ""
+        table = PrettyTable(["share", "mountpoint"],
+                            header=False,
+                            border=False)
+        table.align = "l"
+        table.padding_width = 0
+        table.right_padding_width = 2
+        for share_id, mount_point in mounts:
+            table.add_row([share_id, mount_point])
+        return table.get_string()
 
     def mount_share(self, share_id, mount_point=None, encrypted=False,
         nodes=None, hard=False, sotp_signing=False, mount_timeout=None,

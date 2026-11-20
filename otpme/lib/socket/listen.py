@@ -261,6 +261,13 @@ class ListenSocket(object):
                                     socket.SO_SNDBUF, buffer_size)
                 self._socket.setsockopt(socket.SOL_SOCKET,
                                     socket.SO_RCVBUF, buffer_size)
+            # Notice a client that is gone without a word, for the
+            # daemons that hold something for a client as long as its
+            # connection lasts. Inherited like the buffer above. See
+            # daemon_tcp_keepalive in otpme/lib/otpme_config.py.
+            keepalive = config.daemon_tcp_keepalive.get(self.name)
+            if keepalive:
+                net.set_tcp_keepalive(self._socket, *keepalive)
             # Disable Nagle's algorithm for lower latency.
             if self.protocol == "tcp":
                 self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)

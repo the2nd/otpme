@@ -29,6 +29,7 @@ from otpme.lib import posix_acl
 from otpme.lib import multiprocessing
 
 from otpme.lib.protocols import status_codes
+from otpme.lib.classes import backup_job
 from otpme.lib.classes.backup import BackupServer
 from otpme.lib.classes.backup import BACKUP_MODES
 from otpme.lib.multiprocessing import drop_privileges
@@ -1320,11 +1321,30 @@ class OTPmeBackupP1(OTPmeFsServer1):
             return self.build_response(status, message)
 
         elif command == "apply_retention":
+            # A job of its own, not in this connection: deleting a
+            # snapshot and the repack after it can take hours, and no
+            # keepalive gets out while one SQLite statement runs -- the
+            # client gave up, called the backup failed and we finished
+            # without it. The job also outlives a restart of OTPme, see
+            # otpme.lib.classes.backup_job.
+            log_file = os.path.join(config.log_dir, "backup-jobs.log")
             try:
-                message = self.backup_handler.apply_retention()
+                job, started = backup_job.start_job(self.backup_root,
+                                                    self.repository,
+                                                    "retention",
+                                                    log_file)
             except Exception as e:
                 status = False
                 message = f"{command}: {e}"
+                return self.build_response(status, message)
+            if started:
+                message = _("Retention started on the backup server as job {job_id}.")
+                log_msg = _("Started retention job {job_id}: {repository}", log=True)[1]
+                log_msg = log_msg.format(job_id=job['id'], repository=self.repository)
+                self.logger.info(log_msg)
+            else:
+                message = _("Retention job {job_id} is still running on the backup server.")
+            message = message.format(job_id=job['id'])
             return self.build_response(status, message)
 
         elif command == "lock_repo":

@@ -23,8 +23,29 @@ The backup daemon starts the backups of nodes and shares by itself, within \fBba
 It applies the retention after each of them, and sends the report mail, see \fBCONFIG PARAMETERS\fR.
 A host is backed up only with \fBotpme\-backup start localhost\fR.
 .PP
-Which snapshots the retention keeps say the files \fI.daily\fR, \fI.weekly\fR and \fI.monthly\fR in the repository on the backup server, each with a number in it: the newest snapshot of that many days, weeks and months is kept, and the others are deleted.
+Which snapshots the retention keeps say the files \fI.daily\fR, \fI.weekly\fR and \fI.monthly\fR in the repository on the backup server, each with a number in it.
+The days, weeks and months are counted on the calendar, back from today.
+A day without a backup counts as well.
+.RS
+.IP \(bu 2
+\fI.daily\fR: every snapshot of the last that many days, today included.
+.IP \(bu 2
+\fI.weekly\fR: the newest snapshot of each week, for that many weeks before the daily ones.
+.IP \(bu 2
+\fI.monthly\fR: the newest snapshot of each month, for that many months before the weekly ones.
+.RE
+.PP
+A week that has daily snapshots gets no weekly one, and a month that has a weekly one gets no monthly one.
+All other snapshots are deleted.
 Without any of the files nothing is deleted.
+The retention never deletes a snapshot whose backup did not finish; delete it with \fBlocal\-backup delete\fR, see
+.BR local\-backup (1).
+.PP
+The backup server applies the retention as a job of its own: deleting snapshots and getting their space back can take hours, and the backup does not wait for it.
+The job goes on when OTPme is stopped or restarted on the backup server.
+While it runs, a backup of the same object finds the repository locked and is tried again later.
+What the job deletes is in \fIbackup\-jobs.log\fR in the log directory of the backup server, and \fBlocal\-backup jobs\fR lists the jobs, see
+.BR local\-backup (1).
 .PP
 A share backed up as \fBtree\fR can be mounted as a restore share, see
 .BR otpme\-share (1).
@@ -66,6 +87,7 @@ A directory with a file \fI.nobackup\fR in it is left out.
 .br
 \fB\-\-apply\-retention\fR lets the backup server delete the snapshots its retention no longer keeps, after the backup.
 A backup started by the schedule always does.
+The backup server starts a job for that, and the backup does not wait for it.
 .br
 \fB\-\-dry\-run\fR shows what would be backed up and stores nothing.
 .TP
@@ -219,7 +241,10 @@ Show what a restore of the newest snapshot would write.
 .TP
 \fI/var/backups/\fR
 \fBBACKUP_DIR\fR on the backup server.
-A repository is the directory \fI<site>/<type>/<name>/\fR in it, for example \fIberlin/share/data/\fR, with its password in \fI.password\fR and the retention in \fI.daily\fR, \fI.weekly\fR and \fI.monthly\fR.
+A repository is the directory \fI<site>/<type>/<name>/\fR in it, for example \fIberlin/share/data/\fR, with its password in \fI.password\fR, the retention in \fI.daily\fR, \fI.weekly\fR and \fI.monthly\fR, and its jobs in \fIjobs/\fR.
+.TP
+\fI/var/log/otpme/backup\-jobs.log\fR
+What the jobs of the backup server did: the snapshots they deleted, the space the repack got back, errors.
 .hy
 .ad
 .SH SEE ALSO

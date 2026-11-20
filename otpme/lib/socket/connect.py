@@ -120,6 +120,14 @@ class ConnectSocket(object):
             # Disable Nagle's algorithm for lower latency.
             if self.protocol == "tcp":
                 self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                # Before connect(): the window is agreed on in the
+                # handshake. See daemon_tcp_window_clamp in
+                # otpme/lib/otpme_config.py for why.
+                window_clamp = config.daemon_tcp_window_clamp.get(self.daemon)
+                if window_clamp:
+                    self._socket.setsockopt(socket.IPPROTO_TCP,
+                                        socket.TCP_WINDOW_CLAMP,
+                                        window_clamp)
 
             # Create SSL socket if requested.
             if self.use_ssl and cert and key:

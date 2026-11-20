@@ -2706,9 +2706,16 @@ def index_add(object_id, object_paths=None, object_config=None,
                                         object_uuid=uuid,
                                         use_index=False)
 
-    # Check if the object already exists in the index DB.
+    # Check if the object already exists in the index DB. Locked until
+    # the end of the transaction: two updates of one object at the same
+    # time each read its attributes, each deleted the old value and each
+    # added the new one -- a node had last_modified and last_report of an
+    # os_packages object twice, and its index checksum differed from the
+    # other nodes for good. With the row locked the second update waits,
+    # and what it reads then is what the first one left. SQLite takes a
+    # lock on the whole database for a write and leaves this out.
     q = session.query(IndexObject)
-    x = q.filter(IndexObject.uuid == uuid)
+    x = q.filter(IndexObject.uuid == uuid).with_for_update()
     index_object = x.first()
     # We also have to check if an object with the same OID exists. This should
     # not happen and means our index is corrupt. But we can fix it automatically

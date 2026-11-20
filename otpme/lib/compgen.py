@@ -93,6 +93,7 @@ PARAMETER_OBJECT_TYPES = {
                     'new_unit'              : "unit",
                     'node'                  : "node",
                     'node_name'             : "node",
+                    'nodes'                 : "node",
                     'policy_name'           : "policy",
                     'pool_name'             : "pool",
                     'realm'                 : "realm",
@@ -407,6 +408,28 @@ def conf_job_type_values(object_type):
     """ The kinds of configuration management job there are. """
     from otpme.lib.classes.data_objects.conf_job import get_job_types
     return get_job_types()
+
+def mount_share_values(unmount):
+    """ The share IDs otpme-mount takes. For -u the ones mounted here,
+    read off the mount table. Else the ones we may mount, which is what
+    "otpme-mount --list" asks mgmtd for: by their ID, which is how the
+    command takes them and not how "otpme-share list" names them. That
+    needs a login, and without one there is nothing to offer. """
+    from otpme.lib import stuff
+    if unmount:
+        try:
+            return [x[0] for x in stuff.get_otpme_mounts()]
+        except Exception:
+            return []
+    from otpme.lib.classes.command_handler import CommandHandler
+    try:
+        shares = CommandHandler().handle_command(command="mount",
+                                                command_line=["--list"])
+    except Exception:
+        return []
+    if not isinstance(shares, dict):
+        return []
+    return sorted(shares)
 
 def conf_job_actions(job_type):
     """ The actions one kind of configuration management job knows. """
@@ -909,6 +932,10 @@ def show_compgen():
             # The parameter it is the value of stands right before it.
             if len(positionals) > 1:
                 print("\n".join(config_parameter_values(positionals[1])))
+            return
+        if parameter == "share" and main_command == "mount":
+            unmount = "-u" in comp_words[:comp_cword]
+            print("\n".join(mount_share_values(unmount)))
             return
         if parameter == "action" and main_command == "deploy":
             # The job type it is an action of is the parameter before

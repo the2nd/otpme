@@ -27,6 +27,7 @@ from otpme.lib import multiprocessing
 from otpme.lib.protocols import status_codes
 from otpme.lib.register import register_module
 from otpme.lib.encryption import hash_password
+from otpme.lib.fscoding import ACL_XATTRS
 from otpme.lib.fscoding import encode_method_call
 from otpme.lib.pinentry.pynentry import get_new_password
 
@@ -62,6 +63,18 @@ ENC_NAME_CHARS = frozenset(
 
 # We use cephfs blocksize which results in good read/write performance.
 PREFERRED_BLOCK_SIZE = 4194304
+
+# How many reads of a file read in a row are on the connection ahead of
+# the one the kernel asks for, see OTPmeFS.read(). Two, so that while
+# one answer is on the wire the request for the next one is with fsd
+# already: it answers the requests of a connection one after the other,
+# and its send buffer takes an answer long before the wire is through
+# with it, so it reads the next block while the last one still goes out.
+READ_AHEAD_DEPTH = 2
+
+# How many writes are on the connection without their answer, see
+# OTPmeFS.write().
+WRITE_BEHIND_DEPTH = 4
 
 register_module("otpme.lib.encryption")
 
@@ -260,6 +273,15 @@ class OTPmeFS(fuse.Operations):
         self.master_password = None
         self.restore_share = False
         self.sotp_signing = sotp_signing
+        # The reads sent ahead and not fetched yet, oldest first, and
+        # where the last read ended (path, offset). See read().
+        self.pending_reads = []
+        self.last_read = None
+        # The writes sent and not answered yet, oldest first, and the
+        # error of a write that failed after it was answered as done,
+        # per path, until somebody is told. See write().
+        self.pending_writes = []
+        self.write_errors = {}
         self.share_id = stuff.get_share_id(self.share_realm,
                                         self.share_site, self.share)
         config.daemon_mode = True
@@ -484,6 +506,21 @@ class OTPmeFS(fuse.Operations):
         """
         tried_nodes = []
         nodes = self.nodes
+        if self.add_share_key:
+            # The key is stored in the share object, and objects are
+            # written on the master node: fsd refuses add_share_key
+            # anywhere else. The master node of the site of the share
+            # is reached by the mgmt FQDN of that site, the floating IP,
+            # which goes where the master goes. Once the key is added a
+            # reconnect goes to the nodes of the share again.
+            share_realm, share_site, _share_name = stuff.split_share_id(self.share_id)
+            try:
+                mgmt_fqdn = stuff.get_site_fqdn(share_realm, share_site, mgmt=True)
+            except Exception as e:
+                msg = _("Unable to get the master node of the share: {e}")
+                msg = msg.format(e=e)
+                raise OSError(errno.EHOSTUNREACH, msg) from e
+            nodes = [mgmt_fqdn]
         while True:
             remaining_nodes = list(set(nodes) - set(tried_nodes))
             if not remaining_nodes:
@@ -760,13 +797,24 @@ class OTPmeFS(fuse.Operations):
                                                 encode_request=False,
                                                 compress_request=False)
                 if not add_status:
-                    raise OSError(errno.EACCES, _("Failed to add share key."))
+                    # What fsd said, e.g. that it is not the master node.
+                    msg = _("Failed to add share key: {error}")
+                    msg = msg.format(error=add_response)
+                    raise OSError(errno.EACCES, msg)
                 self.add_share_key = False
             self.connection_use_time = time.time()
             self.timeout_reconnect = False
             break
 
     def send(self, command, command_args, binary_data=None):
+        # The answers to reads sent ahead and to writes not answered yet
+        # come next on the connection, before the one to this request.
+        # Not wanted, as this request is not one of those reads, and the
+        # writes have to be through before anything else looks at the
+        # file.
+        while self.pending_reads:
+            self.fetch_read_ahead()
+        self.drain_writes()
         while True:
             if not self.connected():
                 if not self.wait_for_connection(command):
@@ -966,6 +1014,11 @@ class OTPmeFS(fuse.Operations):
     def destroy(self, path: str) -> None:
         if config.debug_enabled:
             self.logger.debug(f"destroy method called for path: {path}")
+        # Writes not answered yet must not go with the connection.
+        try:
+            self.drain_writes()
+        except Exception as e:
+            self.logger.error(f"Failed to finish writes on unmount: {e}")
         # Close fsd connection.
         if self.fsd_conn:
             self.fsd_conn.close()
@@ -1069,6 +1122,141 @@ class OTPmeFS(fuse.Operations):
 
     @fuse.overrides(fuse.Operations)
     def read(self, path: str, size: int, offset: int, fh: int) -> bytes:
+        """ Read, with the next block already asked for where a file is
+        read in a row.
+
+        One request at a time left the wire empty from the end of an
+        answer to the first byte of the next: the answer handed to the
+        kernel, the next read taken from it, the request sent, fsd
+        reading the file. Measured 5 ms per 4 MiB on a 1 GbE link with
+        a slow client, where an answer itself arrives at line rate.
+
+        So a read that goes on where the last one of the file ended
+        keeps READ_AHEAD_DEPTH reads on the connection ahead of it: the
+        request for the next block goes out before the answer to this
+        one is read, and fsd has it when it is through with this one.
+        With only the next one sent once this answer was in, the gap
+        was down to 1.4 ms per MiB -- the rest of the answer read, the
+        request on its way, fsd reading the block.
+
+        An encrypted share reads its records through this too
+        (EncryptedFS.read()): a file read in a row is a row of record
+        ranges, each one starting where the last one ended, so they are
+        asked for ahead the same way, and the next records are on the
+        wire while the last ones are decrypted. What else EncryptedFS
+        reads -- the IV of a directory, the helper file of a long name,
+        one block before a write into part of it, the length in the
+        last record -- does not go on from a read of the same file
+        before it and is read as it is asked for.
+        """
+        # The answer that comes next has to be the one of a read.
+        self.drain_writes()
+        pending = None
+        if self.pending_reads:
+            pending = self.pending_reads[0]
+        if pending is not None \
+        and pending['path'] == path \
+        and pending['offset'] == offset \
+        and pending['size'] == size:
+            # The next one out before this answer is waited for.
+            self.send_read_ahead(path, size)
+            result = self.fetch_read_ahead()
+            if result is not None:
+                status, \
+                response_code, \
+                response, \
+                binary_data = result
+                if status is True:
+                    self.read_in_a_row(path, size, offset, binary_data)
+                    return binary_data
+            # It did not work. The read itself says why, if it fails too.
+        data = self.read_from_node(path, size, offset)
+        self.read_in_a_row(path, size, offset, data)
+        return data
+
+    def read_in_a_row(self, path, size, offset, data):
+        """ Remember where this read ended, and where it went on from
+        the last one, ask for the next block already. A short read is
+        the end of the file. """
+        in_a_row = self.last_read == (path, offset)
+        self.last_read = (path, offset + len(data))
+        if in_a_row and len(data) == size:
+            self.send_read_ahead(path, size)
+
+    def send_read_ahead(self, path, size):
+        """ Send reads of the blocks after the last one asked for, until
+        READ_AHEAD_DEPTH are out, and do not wait for them. See read().
+        Nothing is sent where we are not connected: connecting is
+        send()'s. """
+        while len(self.pending_reads) < READ_AHEAD_DEPTH:
+            if not self.connected():
+                return
+            if self.pending_reads:
+                last = self.pending_reads[-1]
+                offset = last['offset'] + last['size']
+            else:
+                offset = self.last_read[1]
+            method_data = encode_method_call(method_name="read",
+                                            path=path,
+                                            size=size,
+                                            offset=offset)
+            command_args = {'method_data':method_data}
+            try:
+                pending = self.fsd_conn.send_request(command="fsop_read",
+                                                    command_args=command_args,
+                                                    encrypt_request=False,
+                                                    encode_request=False,
+                                                    compress_request=False)
+            except Exception as e:
+                log_msg = _("Failed to send read ahead: {share}: {e}", log=True)[1]
+                log_msg = log_msg.format(share=self.share, e=e)
+                self.logger.warning(log_msg)
+                self.drop_connection()
+                return
+            self.pending_reads.append({
+                                'conn'      : self.fsd_conn,
+                                'path'      : path,
+                                'size'      : size,
+                                'offset'    : offset,
+                                'pending'   : pending,
+                                })
+
+    def fetch_read_ahead(self):
+        """ The answer to the oldest read sent ahead, as send() gives
+        it, or None where it did not work.
+
+        Fetched whether it is wanted or not: it comes next on the
+        connection. Those sent on a connection that is gone since are
+        dropped as they are.
+        """
+        if not self.pending_reads:
+            return None
+        pending = self.pending_reads.pop(0)
+        if pending['conn'] is not self.fsd_conn:
+            self.pending_reads = []
+            return None
+        try:
+            result = self.fsd_conn.recv_response(pending['pending'])
+        except Exception as e:
+            log_msg = _("Failed to receive read ahead: {share}: {e}", log=True)[1]
+            log_msg = log_msg.format(share=self.share, e=e)
+            self.logger.warning(log_msg)
+            self.drop_connection()
+            return None
+        self.connection_use_time = time.time()
+        return result
+
+    def drop_connection(self):
+        """ Close a connection that broke under a read sent ahead. What
+        else was sent ahead on it does not come any more. send()
+        connects again. """
+        self.pending_reads = []
+        if self.fsd_conn is not None:
+            self.fsd_conn.close()
+        self.fsd_conn = None
+
+    def read_from_node(self, path: str, size: int, offset: int) -> bytes:
+        """ One read request to the node. """
         if config.debug_enabled:
             self.logger.debug(f"read method called for path: {path}")
         method_data = encode_method_call(method_name="read",
@@ -1120,6 +1308,10 @@ class OTPmeFS(fuse.Operations):
         """
         if config.debug_enabled:
             self.logger.debug(f"fsync method called for path: {path}")
+        # A write that failed after it was answered as done is what an
+        # fsync is asked to tell, see write().
+        self.drain_writes()
+        self.raise_write_error(path)
         method_data = encode_method_call(method_name="fsync",
                                         path=path,
                                         datasync=datasync)
@@ -1137,7 +1329,11 @@ class OTPmeFS(fuse.Operations):
         return response
 
     @fuse.overrides(fuse.Operations)
-    def release(self, path: str, fh: int=None) -> int:
+    def release(self, path: str, fh: int=None, keep_write_errors: bool=False) -> int:
+        """ keep_write_errors is for a release that is not the kernel's:
+        EncryptedFS releases a file of its own after reading the length
+        off its last block, and that must not take away an error the
+        next write, flush or fsync of the file has to tell. """
         if config.debug_enabled:
             self.logger.debug(f"release method called for path: {path}")
         method_data = encode_method_call(method_name="release", path=path)
@@ -1147,6 +1343,13 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_release", command_args=command_args)
         self.invalidate_caches(path)
+        # Nobody left to tell, see below. flush() came first and told
+        # what there was then.
+        write_error = None
+        if not keep_write_errors:
+            write_error = self.write_errors.pop(path, None)
+        if write_error is not None:
+            self.logger.error(f"Write failed for {path}: {os.strerror(write_error)}")
         if status is not True:
             # Logged, not raised: the kernel calls flush on close() and
             # throws away what release answers, so raising here told
@@ -1383,6 +1586,154 @@ class OTPmeFS(fuse.Operations):
 
     @fuse.overrides(fuse.Operations)
     def write(self, path: str, data: bytes, offset: int, fh: int) -> int:
+        """ Send the write, and answer it as done before fsd has.
+
+        Waiting for each answer left the wire empty from the end of one
+        write to the start of the next, as with the reads, see read().
+        So up to WRITE_BEHIND_DEPTH writes are on the connection without
+        their answer; the oldest is fetched when one more would be too
+        many, and all of them before any other request goes out, see
+        send() -- fsd answers the requests of a connection in the order
+        they came, so whatever comes next sees what was written.
+
+        A write that fails at the node has been answered as done by
+        then. Its error is kept for the path and given to the next
+        write, flush (that is close()) or fsync of it, as NFS does; an
+        application that has to know its data is there asks fsync.
+
+        The data of a write stays here until it is answered: a write the
+        connection lost on the way is sent again, in order, once we are
+        connected again -- with --hard until it gets through.
+
+        An encrypted share writes the records of a file through
+        write_behind() itself (EncryptedFS.write_block_records()); what
+        else it writes through this -- the IV of a directory, the helper
+        file of a long name -- is written and waited for, as an error
+        told later would leave a directory nobody can read.
+        """
+        if self.encrypted:
+            return self.write_to_node(path, data, offset)
+        return self.write_behind(path, data, offset)
+
+    def write_behind(self, path: str, data: bytes, offset: int) -> int:
+        """ The write of write(), sent without waiting for its answer. """
+        self.raise_write_error(path)
+        # Answers of reads sent ahead come before those of our writes.
+        while self.pending_reads:
+            self.fetch_read_ahead()
+        while len(self.pending_writes) >= WRITE_BEHIND_DEPTH:
+            self.fetch_write_behind()
+        self.raise_write_error(path)
+        if not self.connected():
+            # Connecting is send()'s.
+            return self.write_to_node(path, data, offset)
+        method_data = encode_method_call(method_name="write", path=path, offset=offset)
+        command_args = {'method_data':method_data}
+        try:
+            pending = self.fsd_conn.send_request(command="fsop_write",
+                                                command_args=command_args,
+                                                binary_data=data,
+                                                encrypt_request=False,
+                                                encode_request=False,
+                                                compress_request=False)
+        except Exception as e:
+            log_msg = _("Failed to send write: {share}: {e}", log=True)[1]
+            log_msg = log_msg.format(share=self.share, e=e)
+            self.logger.warning(log_msg)
+            self.resend_writes()
+            return self.write_to_node(path, data, offset)
+        self.pending_writes.append({
+                            'conn'      : self.fsd_conn,
+                            'path'      : path,
+                            'offset'    : offset,
+                            'data'      : data,
+                            'pending'   : pending,
+                            })
+        self.invalidate_caches(path)
+        return len(data)
+
+    def raise_write_error(self, path):
+        """ Tell the error of a write of this path that was answered as
+        done, once. """
+        error = self.write_errors.pop(path, None)
+        if error is not None:
+            raise fuse.FuseOSError(error)
+
+    def fetch_write_behind(self):
+        """ The answer to the oldest write not answered yet. An error is
+        kept for its path, see write(). """
+        if not self.pending_writes:
+            return
+        pending = self.pending_writes[0]
+        if pending['conn'] is not self.fsd_conn:
+            # The connection it went out on is gone, and its answer with
+            # it. The one we have now is fine.
+            self.resend_writes(drop_connection=False)
+            return
+        try:
+            result = self.fsd_conn.recv_response(pending['pending'])
+        except Exception as e:
+            log_msg = _("Failed to receive write answer: {share}: {e}", log=True)[1]
+            log_msg = log_msg.format(share=self.share, e=e)
+            self.logger.warning(log_msg)
+            self.resend_writes()
+            return
+        self.pending_writes.pop(0)
+        self.connection_use_time = time.time()
+        status, \
+        response_code, \
+        response, \
+        binary_data = result
+        if status is not True:
+            self.keep_write_error(pending['path'], response_code)
+            return
+        if response != len(pending['data']):
+            # A short write of a regular file: no room on the device.
+            self.keep_write_error(pending['path'], errno.ENOSPC)
+
+    def keep_write_error(self, path, error):
+        if not isinstance(error, int):
+            error = errno.EIO
+        log_msg = _("Write failed at the node: {path}: {error}", log=True)[1]
+        log_msg = log_msg.format(path=path, error=os.strerror(error))
+        self.logger.warning(log_msg)
+        self.write_errors.setdefault(path, error)
+
+    def resend_writes(self, drop_connection=True):
+        """ Send what is not answered yet again, one by one and waiting
+        for each, after the connection broke under it. send() connects
+        again. """
+        pending_writes = self.pending_writes
+        self.pending_writes = []
+        if drop_connection:
+            if self.fsd_conn is not None:
+                self.fsd_conn.close()
+            self.fsd_conn = None
+        for pending in pending_writes:
+            try:
+                self.write_to_node(pending['path'],
+                                pending['data'],
+                                pending['offset'])
+            except fuse.FuseOSError as e:
+                self.keep_write_error(pending['path'], e.errno)
+            except OSError as e:
+                self.keep_write_error(pending['path'], e.errno)
+
+    def drain_writes(self):
+        """ Fetch the answers of all writes not answered yet. """
+        while self.pending_writes:
+            self.fetch_write_behind()
+
+    @fuse.overrides(fuse.Operations)
+    def flush(self, path: str, fh: int=None) -> int:
+        """ On close(): the writes through, and the error of one that
+        failed after it was answered as done. """
+        self.drain_writes()
+        self.raise_write_error(path)
+        return 0
+
+    def write_to_node(self, path: str, data: bytes, offset: int) -> int:
+        """ One write request to the node, waiting for its answer. """
         if config.debug_enabled:
             self.logger.debug(f"write method called for path: {path}")
         method_data = encode_method_call(method_name="write", path=path, offset=offset)
@@ -1457,6 +1808,14 @@ class OTPmeFS(fuse.Operations):
         global getxattr_cache
         if config.debug_enabled:
             self.logger.debug(f"getxattr method called for path: {path}")
+        # fsd serves the POSIX ACLs and answers any other name with
+        # EOPNOTSUPP, file or no file. The kernel asks for
+        # security.capability before every write, and since a write
+        # drops the cache entry of its path, that was a round trip to
+        # the node per write: one in two requests of a file written in
+        # 1 MiB blocks.
+        if name not in ACL_XATTRS:
+            raise fuse.FuseOSError(errno.EOPNOTSUPP)
         try:
             getxattr_cached_data = getxattr_cache[path][name]
             cache_time = getxattr_cached_data['cache_time']
@@ -1951,27 +2310,35 @@ class EncryptedFS(OTPmeFS):
         return struct.pack('!QI', block_index, unencrypted_block_len)
 
     def _encrypt_block(self, block, unencrypted_block_len, nonce, block_index):
+        """ One record: both lengths, the encrypted block, nonce, tag. """
+        return b"".join(self._encrypt_block_parts(block, unencrypted_block_len,
+                                                nonce, block_index))
+
+    def _encrypt_block_parts(self, block, unencrypted_block_len, nonce, block_index):
+        """ The record of _encrypt_block() in its parts, for a caller that
+        puts many of them together and would copy each one twice else.
+
+        A 1 MiB write is 256 of these, and the Python around the
+        encryption cost more than AES-GCM itself: two slices of the
+        ciphertext, two struct.pack() and a concatenation of five
+        (measured 2026-11-20). Cutting the ciphertext with a memoryview
+        instead of slices was slower, not faster. """
         if config.debug_enabled:
             self.logger.debug(f"Encrypting block of size {len(block)} with nonce {nonce.hex()}")
         try:
             aad = self.block_aad(block_index, unencrypted_block_len)
             ciphertext = self.aesgcm.encrypt(nonce, block, aad)
-            tag = ciphertext[-self.tag_size:]
-            encrypted_block = ciphertext[:-self.tag_size]
-            block_len = len(encrypted_block)
+            block_len = len(ciphertext) - self.tag_size
             if block_len != self.block_size:
                 self.logger.error(f"Encrypted block size invalid: {block_len}, expected {self.block_size}")
                 raise fuse.FuseOSError(errno.EIO)
+            tag = ciphertext[block_len:]
             if config.debug_enabled:
                 self.logger.debug(f"Encrypted block size: {block_len}, tag: {tag.hex()}")
-            serialized_block = (
-                struct.pack('!I', block_len) +
-                struct.pack('!I', unencrypted_block_len) +
-                encrypted_block +
-                nonce +
-                tag
-            )
-            return serialized_block
+            return (struct.pack('!II', block_len, unencrypted_block_len),
+                    ciphertext[:block_len],
+                    nonce,
+                    tag)
         except Exception as e:
             self.logger.error(f"Encryption failed: {e}")
             raise fuse.FuseOSError(errno.EIO) from e
@@ -2114,6 +2481,21 @@ class EncryptedFS(OTPmeFS):
                 raise
             enc = self._map_plain_to_enc(path)
             return super().open(enc, flags)
+
+    def flush(self, path: str, fh: int=None) -> int:
+        """ On close(): the writes through, and the error of one that
+        failed after it was answered as done -- kept under the name of
+        the file on the node, see OTPmeFS.write(). """
+        self.drain_writes()
+        if not self.write_errors:
+            return 0
+        try:
+            enc = self._map_plain_to_enc(path, use_diriv_cache=True)
+        except fuse.FuseOSError:
+            # Gone since; release() logs what is left.
+            return 0
+        self.raise_write_error(enc)
+        return 0
 
     def release(self, path: str, fh: int=None):
         enc = self._map_plain_to_enc(path, use_diriv_cache=True)
@@ -2535,40 +2917,33 @@ class EncryptedFS(OTPmeFS):
         read_size = block_count * self.block_with_metadata_size
         if config.debug_enabled:
             self.logger.debug(f"Read offset: {read_offset}, read size: {read_size}")
-        #try:
-        #    encrypted_size = self._read_file_size_cache[enc]
-        #except KeyError:
-        #    encrypted_size = self._get_file_size(enc)
-        #    self._read_file_size_cache[enc] = encrypted_size
-        encrypted_size = self._get_file_size(enc)
-        if encrypted_size == 0:
+        # Where the file ends is what the node gives back: no more than
+        # there is. It used to be asked first, with a getattr for every
+        # read, which was a round trip each time and fetched every read
+        # sent ahead before it (OTPmeFS.read()) -- so nothing could be
+        # read ahead at all. What comes back is the size from the node
+        # all the same, for a share with more than one client too.
+        try:
+            encrypted_data = super().read(enc, read_size, read_offset, fh)
             if config.debug_enabled:
-                self.logger.debug("File is empty")
-            return b''
+                self.logger.debug(f"Read {len(encrypted_data)} bytes from server")
+        except Exception as e:
+            self.logger.error(f"Read failed: {path}: {e}")
+            raise fuse.FuseOSError(errno.EIO) from e
         # Only whole records are readable. A file can end in half a
         # record after a write that could not put all of its bytes
         # down, and reading into it would fail the read it is in -- so
         # the file ends, as far as reading goes, at the last complete
         # record. _calc_unencrypted_size() reports the size the same
         # way.
-        encrypted_size -= encrypted_size % self.block_with_metadata_size
-        if encrypted_size == 0:
-            return b''
-        read_size = min(read_size, encrypted_size - read_offset)
-        if read_size <= 0:
+        whole = len(encrypted_data) - len(encrypted_data) % self.block_with_metadata_size
+        if whole == 0:
             if config.debug_enabled:
                 self.logger.debug("No data to read at offset")
             return b''
-        try:
-            encrypted_data = super().read(enc, read_size, read_offset, fh)
-            if config.debug_enabled:
-                self.logger.debug(f"Read {len(encrypted_data)} bytes from server")
-            if len(encrypted_data) != read_size:
-                self.logger.error(f"Expected {read_size} bytes, but read {len(encrypted_data)}")
-                raise fuse.FuseOSError(errno.EIO)
-        except Exception as e:
-            self.logger.error(f"Read failed: {path}: {e}")
-            raise fuse.FuseOSError(errno.EIO) from e
+        if whole != len(encrypted_data):
+            encrypted_data = encrypted_data[:whole]
+        block_count = min(block_count, whole // self.block_with_metadata_size)
         decrypted_data = self._decrypt_blocks(encrypted_data, block_count,
                                             start_block=start_block)
         del encrypted_data
@@ -2639,7 +3014,12 @@ class EncryptedFS(OTPmeFS):
         starting at <start_block>.
         """
         write_offset = start_block * self.block_with_metadata_size
-        serialized_data = bytearray()
+        # The nonces of all blocks in one go: one getrandom() instead of
+        # one per block, 256 of them for a 1 MiB write. Each block still
+        # gets twelve random bytes of its own, see below.
+        nonce_size = self.nonce_size
+        nonces = os.urandom(nonce_size * len(blocks))
+        parts = []
         for counter, (block, block_length) in enumerate(blocks):
             # The nonce is all random now, and it has to be.
             #
@@ -2666,15 +3046,19 @@ class EncryptedFS(OTPmeFS):
             #
             # 96 random bits is what NIST SP 800-38D asks of a random
             # nonce, good for 2**32 writes under one key.
-            nonce = os.urandom(self.nonce_size)
-            serialized_data.extend(self._encrypt_block(block, block_length,
-                                                    nonce,
-                                                    start_block + counter))
+            nonce = nonces[counter * nonce_size:(counter + 1) * nonce_size]
+            parts.extend(self._encrypt_block_parts(block, block_length,
+                                                nonce,
+                                                start_block + counter))
+        # One copy of everything, here, instead of one per record into a
+        # bytearray and then all of it once more into bytes.
+        payload = b"".join(parts)
+        del parts
         try:
             if config.debug_enabled:
-                self.logger.debug(f"Writing {len(serialized_data)} bytes at offset {write_offset}")
-            if len(serialized_data) != len(blocks) * self.block_with_metadata_size:
-                self.logger.error(f"Invalid serialized data size: {len(serialized_data)}, expected {len(blocks) * self.block_with_metadata_size}")
+                self.logger.debug(f"Writing {len(payload)} bytes at offset {write_offset}")
+            if len(payload) != len(blocks) * self.block_with_metadata_size:
+                self.logger.error(f"Invalid serialized data size: {len(payload)}, expected {len(blocks) * self.block_with_metadata_size}")
                 raise fuse.FuseOSError(errno.EIO)
             # Every byte of this has to get there. A write may write
             # less than it was given -- the backing store running out
@@ -2682,22 +3066,29 @@ class EncryptedFS(OTPmeFS):
             # half a record is a record that does not decrypt. The
             # caller is told the whole write succeeded, so nobody would
             # ever learn about it.
-            payload = bytes(serialized_data)
             written = 0
             while written < len(payload):
                 chunk = payload if not written else payload[written:]
-                count = super().write(enc, chunk, write_offset + written, fh)
+                # Sent without waiting for the answer, see
+                # OTPmeFS.write(): a short write there comes back as an
+                # error of this file later.
+                count = self.write_behind(enc, chunk, write_offset + written)
                 if not count:
                     self.logger.error(f"Short write at offset {write_offset + written}: nothing written of {len(chunk)} bytes")
                     raise fuse.FuseOSError(errno.EIO)
                 if written or count != len(chunk):
                     self.logger.warning(f"Short write at offset {write_offset + written}: {count} of {len(chunk)} bytes, writing the rest")
                 written += count
+        except fuse.FuseOSError as e:
+            # What a write before this one left for the file, see
+            # OTPmeFS.write(): no room is no room, not an I/O error.
+            self.logger.error(f"Write failed: {e}")
+            raise
         except Exception as e:
             self.logger.error(f"Write failed: {e}")
             raise fuse.FuseOSError(errno.EIO) from e
         finally:
-            del serialized_data
+            del payload
         # The clear-text size is worked out from the last block, so it
         # has to be asked again now, see invalidate_size_cache().
         self.invalidate_size_cache(path)
@@ -2713,8 +3104,26 @@ class EncryptedFS(OTPmeFS):
         end_block = (offset + len(data) - 1) // block_size
         if config.debug_enabled:
             self.logger.debug(f"Start block: {start_block}, End block: {end_block}")
-        enc_size = self._get_file_size(enc)
-        existing_blocks = enc_size // self.block_with_metadata_size
+        # The size of the file only matters for a block the write fills
+        # in part: what else is in it has to be read, if it is there. A
+        # full block is written whole whatever was there, so a write of
+        # full blocks only -- dd, a copy, the pages of an mmap written
+        # back -- does not ask. Asking costs a round trip, and it waits
+        # for every write sent ahead to be answered first, so every
+        # write waited for the one before it again.
+        #
+        # From the node, when it is asked: a share has more than one
+        # client, and another one may have written to the file since
+        # our last write. Taken from that last write instead, a block
+        # somebody else wrote counted as not there, and a write into
+        # part of it wrote zeros over the rest. That version also lost
+        # whole blocks in fsx with mmap and one client, four runs in
+        # eleven, for a reason not found.
+        enc_size = None
+        existing_blocks = None
+        if offset % block_size or (offset + len(data)) % block_size:
+            enc_size = self._get_file_size(enc)
+            existing_blocks = enc_size // self.block_with_metadata_size
         blocks = []
         data_offset = 0
         for index in range(start_block, end_block + 1):
@@ -2723,13 +3132,20 @@ class EncryptedFS(OTPmeFS):
             until = min(offset + len(data), block_start + block_size) - block_start
             chunk = data[data_offset:data_offset + (until - at)]
             data_offset += len(chunk)
+            if at == 0 and until == block_size:
+                # A full block is the chunk as it is: what patch_block()
+                # would make of it, without a new block and two copies,
+                # 256 times for a 1 MiB write.
+                blocks.append((chunk, block_size))
+                continue
             old_block = None
             old_len = 0
             # Read what is there, except where the write covers the
             # whole block anyway -- a full block needs nothing of the
             # old one, and reading it would cost a round trip per block
-            # of every sequential write.
-            if index < existing_blocks and (at > 0 or until < block_size):
+            # of every sequential write. Only a block the write fills in
+            # part gets here, and then the size was asked for above.
+            if index < existing_blocks:
                 old_block, stored_len = self.read_block(enc, index, fh,
                                                     enc_size=enc_size)
                 # Only the last block of a file holds a length that is
@@ -2985,7 +3401,7 @@ class EncryptedFS(OTPmeFS):
         try:
             offset = (num_blocks - 1) * self.block_with_metadata_size + 4
             len_data = super().read(enc, 4, offset, None)
-            super().release(enc, None)
+            super().release(enc, None, keep_write_errors=True)
             unencrypted_block_len = struct.unpack('!I', len_data)[0]
             if config.debug_enabled:
                 self.logger.debug(f"Last block unencrypted length: {unencrypted_block_len}")
@@ -3143,6 +3559,10 @@ class EncryptedFS(OTPmeFS):
 
     def getxattr(self, path: str, name: str, position: int = 0, use_diriv_cache: bool=True) -> bytes:
         """Get extended attributes (including POSIX ACLs) from encrypted filesystem"""
+        # Before the name is mapped, which may read from the node: the
+        # answer does not depend on the file. See OTPmeFS.getxattr().
+        if name not in ACL_XATTRS:
+            raise fuse.FuseOSError(errno.EOPNOTSUPP)
         enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
         known_missing = self.in_no_such_file_cache(enc)
         try:

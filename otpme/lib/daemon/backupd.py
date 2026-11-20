@@ -725,7 +725,7 @@ class BackupDaemon(OTPmeDaemon):
                     # that holds it open already. So this one goes and
                     # the next attempt brings its own.
                     connections.close_connections()
-                    time.sleep(BACKUP_RETRY_INTERVAL)
+                    time.sleep(retry_interval)
                     continue
                 failed = _("Giving up on a busy backup repository after {attempt} attempts: {backup_object}: {error}", log=True)[1]
                 failed = failed.format(attempt=attempt,

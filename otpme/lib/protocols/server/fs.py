@@ -23,18 +23,15 @@ except Exception:
 from otpme.lib import config
 
 from otpme.lib.fscoding import decode_packet
+# The extended attributes that carry a POSIX ACL, where the client finds
+# them as well. The backup protocol imports them from here.
+from otpme.lib.fscoding import ACL_XATTRS
 from otpme.lib.protocols import status_codes
 from otpme.lib.protocols.otpme_server import OTPmeServer1
 
 from otpme.lib.exceptions import *
 
 filehandlers = {}
-
-# The extended attributes that carry a POSIX ACL.
-ACL_XATTRS = [
-                "system.posix_acl_access",
-                "system.posix_acl_default",
-            ]
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']

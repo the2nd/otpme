@@ -7,6 +7,15 @@
 import struct
 from typing import Optional, List, Any, Tuple, Union
 
+# The extended attributes a share serves: the POSIX ACLs. Here because
+# both ends need them: fsd answers every other name with EOPNOTSUPP (see
+# check_xattr() in otpme/lib/protocols/server/fs.py), and OTPmeFS gives
+# that answer itself instead of asking for it.
+ACL_XATTRS = [
+                "system.posix_acl_access",
+                "system.posix_acl_default",
+            ]
+
 # Method codes mapping
 METHOD_CODES = {
     'read': 0,

@@ -3,6 +3,8 @@
 otpme-mount \- mount and unmount OTPme file shares
 .SH SYNOPSIS
 .B otpme-mount
+.br
+.B otpme-mount
 [\fIoptions\fR]
 .I share
 .RI [ mountpoint ]
@@ -57,6 +59,11 @@ Options that change how it is mounted, \fB\-\-nodes\fR, \fB\-\-hard\fR, \fB\-\-m
 .PP
 This is also where the shares of a user are mounted at login.
 A mount made by hand with a mountpoint of your own is yours alone: the agent does not know about it, so it is not unmounted with the others.
+.SS What is mounted
+Without arguments
+.B otpme-mount
+shows the OTPme shares mounted on this host, one per line: the share and its mountpoint.
+It reads the mount table, so it needs no login, and it also shows the shares mounted at a mountpoint of your own.
 .SS Which node
 By default the nodes of the share are asked for, and one of them is picked at random.
 That spreads the load.
@@ -96,6 +103,13 @@ It is the way in when no token of yours holds a key for the share.
 .B \-\-add\-share\-key
 stores the key that was made from the master password for your own token, so later mounts need no master password.
 It needs \fB\-\-master\-password\-mount\fR, and therefore a token that may use the master password of the share.
+.PP
+The key is stored in the share object, which only the master node writes.
+So with \fB\-\-add\-share\-key\fR the share is mounted from the master node of its site, by the mgmt FQDN of that site.
+The master node has to serve the share for this.
+If it does not, the mount is turned away with \(lqShare is not served by this node\(rq.
+Add the master node to the share or to one of its pools first, see
+.BR otpme\-share (1).
 .PP
 It also has to run in the login session of the system user \fBroot\fR.
 That is the session and not the command: the user is read from the agent, so a \fBsudo\fR in front of this command does not make one.

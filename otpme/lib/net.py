@@ -22,6 +22,29 @@ from otpme.lib import config
 
 from otpme.lib.exceptions import *
 
+def set_tcp_keepalive(sock, idle, interval, count):
+    """ Have the kernel probe a connection that has been quiet for
+    <idle> seconds, every <interval> seconds, and give up on it after
+    <count> probes without an answer. recv() then ends: on a plain
+    socket with ETIMEDOUT, on a TLS one with b"". Set on a listening
+    socket, the connections it accepts get it as well. """
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, idle)
+    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, interval)
+    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, count)
+
+def tcp_connection_lost(sock):
+    """ Whether a connection on which recv() gave b"" was lost and not
+    closed: a client that closed sent a FIN and leaves us in CLOSE_WAIT,
+    one that is gone (keepalive given up, or a reset) leaves CLOSE. On
+    TLS both read as b"". False for what is no TCP socket. """
+    try:
+        state = sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_INFO, 1)[0]
+    except (OSError, AttributeError, ValueError):
+        return False
+    # TCP_CLOSE in include/net/tcp_states.h.
+    return state == 7
+
 def is_ip(ip):
     """ Check if given IP is valid (IPv4 or IPv6). """
     try:

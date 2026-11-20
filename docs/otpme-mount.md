@@ -4,6 +4,7 @@ otpme-mount - mount and unmount OTPme file shares
 
 # SYNOPSIS
 
+**otpme-mount**  
 **otpme-mount** \[*options*\] *share* \[*mountpoint*\]  
 **otpme-mount -a**  
 **otpme-mount -u** *share*  
@@ -52,6 +53,13 @@ This is also where the shares of a user are mounted at login. A mount
 made by hand with a mountpoint of your own is yours alone: the agent
 does not know about it, so it is not unmounted with the others.
 
+## What is mounted
+
+Without arguments **otpme-mount** shows the OTPme shares mounted on this
+host, one per line: the share and its mountpoint. It reads the mount
+table, so it needs no login, and it also shows the shares mounted at a
+mountpoint of your own.
+
 ## Which node
 
 By default the nodes of the share are asked for, and one of them is
@@ -98,6 +106,13 @@ holds a key for the share.
 password for your own token, so later mounts need no master password. It
 needs **--master-password-mount**, and therefore a token that may use
 the master password of the share.
+
+The key is stored in the share object, which only the master node
+writes. So with **--add-share-key** the share is mounted from the master
+node of its site, by the mgmt FQDN of that site. The master node has to
+serve the share for this. If it does not, the mount is turned away with
+“Share is not served by this node”. Add the master node to the share or
+to one of its pools first, see **otpme-share**(1).
 
 It also has to run in the login session of the system user **root**.
 That is the session and not the command: the user is read from the

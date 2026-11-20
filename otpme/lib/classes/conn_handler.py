@@ -10,6 +10,7 @@ try:
 except Exception:
     pass
 
+from otpme.lib import net
 from otpme.lib import config
 from otpme.lib.protocols import status_codes
 from otpme.lib.protocols.request import decode_request
@@ -66,6 +67,13 @@ class ConnHandler(object):
                 # recv() already closed on the way out, and a client
                 # that has nothing to say is exactly the one we must
                 # not keep a worker busy with.
+                if self.idle_timeout is None:
+                    # No timeout of ours, so it was the kernel giving
+                    # up on the client (daemon_tcp_keepalive).
+                    log_msg = _("Connection lost, client does not answer: {client}", log=True)[1]
+                    log_msg = log_msg.format(client=self.client)
+                    self.logger.warning(log_msg)
+                    break
                 log_msg = _("Closing idle connection after {timeout}s: {client}", log=True)[1]
                 log_msg = log_msg.format(timeout=self.idle_timeout,
                                         client=self.client)
@@ -85,6 +93,14 @@ class ConnHandler(object):
                 break
 
             if len(data) == 0:
+                # On TLS a client that is gone reads like one that
+                # closed. The TCP state tells them apart.
+                sock = getattr(self.connection, "connection", None)
+                if net.tcp_connection_lost(sock):
+                    log_msg = _("Connection lost, client does not answer: {client}", log=True)[1]
+                    log_msg = log_msg.format(client=self.client)
+                    self.logger.warning(log_msg)
+                    break
                 log_msg = _("Received null data from client, closing connection: {client}", log=True)[1]
                 log_msg = log_msg.format(client=self.client)
                 self.logger.debug(log_msg)
